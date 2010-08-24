@@ -3,9 +3,9 @@ Alsosql: Is a Hybrid Relational-Database/NOSQL-Datastore.
 
 SQL Tables, SQL Statements and SQL Data-types are supported. Alsosql is built on top of the NOSQL datastore redis and supports normalisation/denormalisation of redis data structures (lists,sets,hash-tables) into/from Alsosql tables, as well as import/export of tables to/from Mysql. It is a data storage Swiss army knife.
 
-Storing Data in NOSQL and/or SQL and converting to and fro can be done w/ a few straightforward SQL-esque commands. Alsosql is optimised for a OLTP workload and is both extremely fast and extremely memory efficient. Alsosql attains its speed by storing ALL of its data in RAM, periodically snapshot-saving the data to disk and by optimising the SQL statements commonly used in OLTP workloads.
+Storing Data in NOSQL and/or SQL and converting to and fro can be done w/ a few straightforward SQL-esque commands. Alsosql is optimised for a OLTP workload and is both extremely fast and extremely memory efficient. Alsosql attains its speed by storing ALL of its data in RAM, periodically snapshot-saving the data to disk and by optimising to the SQL statements commonly used in OLTP workloads.
 
-Philosophy of Alsosql: RAM is now affordable enough to be able to put ENTIRE OLTP Databases on a single machine. So Alsosql provides a relational database with very little memory overhead that does the most common OLTP Database SQL statements amazingly fast and throws in a NOSQL Data-store for further optimisation.
+Philosophy of Alsosql: RAM is now affordable enough to be able to put ENTIRE OLTP Databases on a single machine. So Alsosql provides a relational database with very little memory overhead that does the most common OLTP Database SQL statements amazingly fast and throws in a NOSQL Data-store for further optimisations.
 
 FAST: On commodity hardware (3.0GHz CPU) on a single core:
   84K INSERT/sec, 81K SELECT/sec, 75K UPDATE/sec, 85K DELETE/sec
@@ -16,7 +16,7 @@ MEMORY EFFICIENT:
   Benchmarks:
     Rows w/ 16 bytes of data,  17 million fit in 1GB RAM.
     Rows w/ 36 bytes of data,  13 million fit in 1GB RAM.
-    Rows w/ 100* bytes of data, 7  million fit in 1GB RAM 
+    Rows w/ 100 bytes of data,  7 million fit in 1GB RAM 
       (*NOTE: row-size was 130 bytes pre compression).
   Each row has approx. 36 bytes of overhead when stored.
   Additionally both INT and TEXT data are packed/compressed using algorithms w/ negligible performance hits.
@@ -28,21 +28,21 @@ BUILD:
 RUN:
   type "./redis-server"
 CONFIG:
- Config is done in redis: The config file is called redis.conf
+ Config is done in redis: The config file is called "redis.conf"
 
 Additional features:
  1.) Data can be exported to Mysql effortlessly for Data-warehousing.
  2.) Data can be imported from Mysql effortlessly and if wanted denormalised to NOSQL data structures.
  3.) No need to worry about being locked in to NOSQL as Alsosql can convert NOSQL data structures to SQL tables.
  3.) redis: trivial to setup master-slave replication
- 4.) redis: from time to time data is saved to disk asynchronously (semi persistent mode) or alternatively every change is written into an append only file (fully persistent mode). Redis is able to rebuild the append only file in the background when it gets too big. 
- 5.) redis: Virtual memory - swaps keys to disk when memory usage is too high
+ 4.) redis: Persistence: from time to time data is saved to disk asynchronously (semi persistent mode) or alternatively every change is written into an append only file (fully persistent mode). Redis is able to rebuild the append only file in the background when it gets too big. 
+ 5.) redis: Virtual memory - swaps values to disk, retaining keys in RAM, when memory usage is too high
 
 
 SUPPORTED SQL:
 1.) CREATE and DROP TABLE
 2.) INSERT into table
-3.) SELECT columns FROM table
+3.) SELECT columns FROM table WHERE ...
      A.) single row lookup (e.g. WHERE id = 12345)
      B.) multi-row foreign key lookup (e.g. WHERE fk = 44)
      C.) range queries (e.g. WHERE id BETWEEN 30 and 50)
@@ -57,20 +57,21 @@ SUPPORTED SQL:
 6.) CREATE and DROP INDEX
 7.) DUMP table to mysql format
 8.) DESC table - provides detailed info on memory usage including index memory usage
-AlsoSql Commands
-1.) NORMALIZE wildcard -> searches all redis-keys w/ wildcard and creates a table
+Supported SQL data types are currently UNSIGNED INT and TEXT. FLOAT is coming very soon. TEXT uses variable length storage and compression. UNSIGNED INT stores data using 2 bytes when possible.
+
+ALSOSQL Commands
+1.) NORMALIZE wildcard -> all redis-keys matching wildcard are normalised into a SQL table (star schema normalisation also possible)
 2.) SELECT ..... STORE REDIS-COMMAND
     A.) SELECT name, salary FROM employee WHERE city = 7 STORE HSET SanFranWorker
-        Would create a redis HashTable with all the employess from city 7(SanFran)
+        Would create a redis HashTable named SanFranWorker with all the employess from city 7 (SanFran)
 
-Supported data types are currently UNSIGNED INT and TEXT. FLOAT is coming soon.
 
 
 UNSUPPORTED SQL: 
-Alsosql does not support the following SQL as it is generally bad practice in OLTP environments.
+Alsosql does not support the following SQL functionalities as they are generally bad practice in OLTP environments and supporting them would bloat the code and ultimately slow the server down.
 NOTE: some of these can be done in Alsosql by storing join results in temporary tables and then joining to said temp-tables
-1.) nested joins (requires two+ join steps)
-2.) joins on columns that are not indexed, which result in full table scans.
+1.) nested joins (requires 2+ join steps)
+2.) joins on columns that are not indexed (which result in full table scans).
 3.) joins on entire tables (also full table scans), a range must be given
 4.) GROUP BY, this is mainly a Datawarehouse use-case
 5.) ORDER BY ... this is on the TODO (but only on indexed columns in the where-clause)
@@ -79,7 +80,7 @@ NOTE: some of these can be done in Alsosql by storing join results in temporary 
 ABOUT redis: http://code.google.com/p/redis/
 Redis is an advanced key-value store. It is similar to memcached but the dataset is not volatile, and values can be strings, exactly like in memcached, but also lists, sets, and ordered sets. All this data types can be manipulated with atomic operations to push/pop elements, add/remove elements, perform server side union, intersection, difference between sets, and so forth. Redis supports different kind of sorting abilities.
 It is possible to think at Redis as a data structures server, it is not just another key-value DB, see all the commands supported by Redis to get the first feeling. Redis supports operations like atomic push and pop of elements on lists, taking ranges of elements from this lists at once, trimming of lists, server-side intersections of sets and even sorting data!
-Alsosql can normalize all redis data structures into SQL tables, including denormalized sets of keys (e.g. user:id:attribute*). Alsosql can also denormalize SQL tables into any of the redis data structures using a SQL-esque ELECT ... STORE syntax.
+Alsosql can normalize all redis data structures into SQL tables, including denormalized sets of keys (e.g. user:id:attribute*). Alsosql can also denormalize SQL tables into any of the redis data structures using a SQL-esque SELECT ... STORE syntax.
 
 
 BENCHMARKS:
@@ -90,11 +91,11 @@ BENCHMARKS:
 5.) Memory Comparison "./redis-benchmark -n 1000000 -r 1000000 -c 200 -A"
 
 
-EXAMPLES:
+EXAMPLES: (very alpha)
 The file "bash_functions.sh" has a lot of example SQL statements I used when testing. This is still very alpha :)
 NOTE:
 1.) The functions in "bash_functions.sh" use the unix command line utility "redis-cli" and some characters ("(","*") need to be escaped to avoid shell expansion.
-2.) In order to efficiently transmit data using the redis line protocol, the following SQL requirements are in place
+2.) In order to efficiently transmit data using the redis line protocol, the following SQL requirements are in place:
  A.) INSERT can NOT have spaces in the data section 
       e.g. INSERT INTO x VALUES (a,b,c) <- no spaces here
  B.) UPDATE can NOT have spaces in the data section 
