@@ -10,8 +10,9 @@ Philosophy of Alsosql: RAM is now affordable enough to be able to put ENTIRE OLT
 FAST (on commodity hardware): Over 1GbE LAN against a single core running at 3.0GHz w/ RAM at 400MHz (PC3200):
   84K INSERT/sec, 81K SELECT/sec, 75K UPDATE/sec, 85K DELETE/sec
   RangeQuery returning 10 rows:   38K/sec
-  2 Table Join returning 10 rows: 18K/sec
-  3 Table Join returning 10 rows: 12.5K/sec
+  2  Table Join returning 10 rows: 18K/sec
+  3  Table Join returning 10 rows: 12.5K/sec
+  10 Table Join returning 10 rows:  4.5K/sec
 MEMORY EFFICIENT:
   Benchmarks:
     Rows w/ 16 bytes of data,  17 million fit in 1GB RAM.
@@ -64,6 +65,9 @@ ALSOSQL Commands
 2.) SELECT ..... STORE REDIS-COMMAND
     A.) SELECT name, salary FROM employee WHERE city = 7 STORE HSET SanFranWorker
         Would create a redis HashTable named SanFranWorker with all the employess from city 7 (SanFran)
+3.) CREATE TABLE table AS REDIS-DATASTRUCTURE
+    A.) CREATE TABLE san_fran_employee AS SanFranWorker
+        would normalise the redis HashTable SanFranWorker into the Alsosql Table san_fran_employee
 
 
 
