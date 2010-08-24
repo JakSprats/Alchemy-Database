@@ -5,23 +5,23 @@ SQL Tables, SQL Statements and SQL Data-types are supported. Alsosql is built on
 
 Storing Data in NOSQL and/or SQL and converting to and fro can be done w/ a few straightforward SQL-esque commands. Alsosql is optimised for a OLTP workload and is both extremely fast and extremely memory efficient. Alsosql attains its speed by storing ALL of its data in RAM, periodically snapshot-saving the data to disk and by optimising to the SQL statements commonly used in OLTP workloads.
 
-Philosophy of Alsosql: RAM is now affordable enough to be able to put ENTIRE OLTP Databases on a single machine. So Alsosql provides a relational database with very little memory overhead that does the most common OLTP SQL statements amazingly fast and throws in a NOSQL Data-store to extend the optimisation possibilites.
+Philosophy of Alsosql: RAM is now affordable enough to be able to put ENTIRE OLTP Databases on a single machine. So Alsosql provides a relational database with very little memory overhead that does the most common OLTP SQL statements amazingly fast and throws in a NOSQL Data-store to further extend the optimisation possibilites.
 
-FAST (on commodity hardware): Over 1GbE LAN against a single core running at 3.0GHz w/ RAM at 400MHz (PC3200):
+* FAST (on commodity hardware): Client/Server using 1GbE LAN to/from a single core running at 3.0GHz w/ RAM at 400MHz (PC3200):
   84K INSERT/sec, 81K SELECT/sec, 75K UPDATE/sec, 85K DELETE/sec
-  RangeQuery returning 10 rows:   38K/sec
+  RangeQuery returning 10 rows:    38K/sec
   2  Table Join returning 10 rows: 18K/sec
   3  Table Join returning 10 rows: 12.5K/sec
   10 Table Join returning 10 rows:  4.5K/sec
-MEMORY EFFICIENT:
+* MEMORY EFFICIENT:
+  Each row has approx. 48 bytes of overhead when stored.
   Benchmarks:
     Rows w/ 16 bytes of data,  17 million fit in 1GB RAM.
     Rows w/ 36 bytes of data,  13 million fit in 1GB RAM.
     Rows w/ 100 bytes of data,  7 million fit in 1GB RAM 
-      (*NOTE: row-size was 130 bytes pre compression).
-  Each row has approx. 36 bytes of overhead when stored.
+      (*NOTE: row-size was 130 bytes pre compression, storage has only 18% memory overhead).
   Additionally both INT and TEXT data are packed/compressed using algorithms w/ negligible performance hits.
-EASY:
+* EASY:
   Its SQL ... you already know it :) And redis commands are even easier to learn :)
 
 BUILD:
@@ -58,21 +58,23 @@ SUPPORTED SQL:
 6.) CREATE and DROP INDEX
 7.) DUMP table to mysql format
 8.) DESC table - provides detailed info on memory usage including index memory usage
+
 Supported SQL data types are currently UNSIGNED INT and TEXT. FLOAT is coming very soon. TEXT uses variable length storage and compression. UNSIGNED INT stores data using 2 bytes when possible.
 
 ALSOSQL Commands
-1.) NORMALIZE wildcard -> all redis-keys matching wildcard are normalised into a SQL table (star schema normalisation also possible)
+1.) NORMALIZE wildcard [wildcard2,wildcard3]
+    All redis-keys matching "wildcard" are normalised into a SQL table (star schema normalisation also possible, using wildcard2,3,,,)
 2.) SELECT ..... STORE REDIS-COMMAND
     A.) SELECT name, salary FROM employee WHERE city = 7 STORE HSET SanFranWorker
-        Would create a redis HashTable named SanFranWorker with all the employess from city 7 (SanFran)
+        Creates a redis HashTable named SanFranWorker with all the employess from city 7 (SanFran)
 3.) CREATE TABLE table AS REDIS-DATASTRUCTURE
     A.) CREATE TABLE san_fran_employee AS SanFranWorker
-        would normalise the redis HashTable SanFranWorker into the Alsosql Table san_fran_employee
+        Normalises the redis HashTable SanFranWorker into the Alsosql Table san_fran_employee
 
 
 
 UNSUPPORTED SQL: 
-Alsosql does not support the following SQL functionalities as they are generally bad practice in OLTP environments and supporting them would bloat the code and ultimately slow the server down.
+Alsosql does not support the following SQL functionalities as they are generally bad practice in OLTP environments and supporting them would bloat the code and ultimately slow the server down. Alsosql supports OLTP SQL, which means long running queries MUST be avoided.
 NOTE: some of these can be done in Alsosql by storing join results in temporary tables and then joining to said temp-tables
 1.) nested joins (requires 2+ join steps)
 2.) joins on columns that are not indexed (which result in full table scans).
@@ -84,7 +86,6 @@ NOTE: some of these can be done in Alsosql by storing join results in temporary 
 ABOUT redis: http://code.google.com/p/redis/
 Redis is an advanced key-value store. It is similar to memcached but the dataset is not volatile, and values can be strings, exactly like in memcached, but also lists, sets, and ordered sets. All this data types can be manipulated with atomic operations to push/pop elements, add/remove elements, perform server side union, intersection, difference between sets, and so forth. Redis supports different kind of sorting abilities.
 It is possible to think at Redis as a data structures server, it is not just another key-value DB, see all the commands supported by Redis to get the first feeling. Redis supports operations like atomic push and pop of elements on lists, taking ranges of elements from this lists at once, trimming of lists, server-side intersections of sets and even sorting data!
-Alsosql can normalize all redis data structures into SQL tables, including denormalized sets of keys (e.g. user:id:attribute*). Alsosql can also denormalize SQL tables into any of the redis data structures using a SQL-esque SELECT ... STORE syntax.
 
 
 BENCHMARKS:
@@ -105,3 +106,7 @@ NOTE:
  B.) UPDATE can NOT have spaces in the data section 
       e.g. UPDATE x SET a=123,b=456,c=7890 WHERE id =7
                         ^-no spaces here-^
+
+CLIENTS:
+1.) working on the PHP client - fork of Rediska
+2.) working on the Ruby client - fork of ezmobius' client
