@@ -39,7 +39,7 @@ Additional features:
  5.) redis: Virtual memory - swaps keys to disk when memory usage is too high
 
 
-Supported SQL:
+SUPPORTED SQL:
 1.) CREATE and DROP TABLE
 2.) INSERT into table
 3.) SELECT columns FROM table
@@ -66,6 +66,16 @@ AlsoSql Commands
 Supported data types are currently UNSIGNED INT and TEXT. FLOAT is coming soon.
 
 
+UNSUPPORTED SQL: 
+Alsosql does not support the following SQL as it is generally bad practice in OLTP environments.
+NOTE: some of these can be done in Alsosql by storing join results in temporary tables and then joining to said temp-tables
+1.) nested joins (requires two+ join steps)
+2.) joins on columns that are not indexed, which result in full table scans.
+3.) joins on entire tables (also full table scans), a range must be given
+4.) GROUP BY, this is mainly a Datawarehouse use-case
+5.) ORDER BY ... this is on the TODO (but only on indexed columns in the where-clause)
+
+
 ABOUT redis: http://code.google.com/p/redis/
 Redis is an advanced key-value store. It is similar to memcached but the dataset is not volatile, and values can be strings, exactly like in memcached, but also lists, sets, and ordered sets. All this data types can be manipulated with atomic operations to push/pop elements, add/remove elements, perform server side union, intersection, difference between sets, and so forth. Redis supports different kind of sorting abilities.
 It is possible to think at Redis as a data structures server, it is not just another key-value DB, see all the commands supported by Redis to get the first feeling. Redis supports operations like atomic push and pop of elements on lists, taking ranges of elements from this lists at once, trimming of lists, server-side intersections of sets and even sorting data!
@@ -78,3 +88,15 @@ BENCHMARKS:
 3.) 3 Table Join      "./Benchmark_Range_Query_Lengths.sh 3WAY"
 4.) Speed             "./redis-benchmark -n 1000000 -r 1000000 -c 200 -T"
 5.) Memory Comparison "./redis-benchmark -n 1000000 -r 1000000 -c 200 -A"
+
+
+EXAMPLES:
+The file "bash_functions.sh" has a lot of example SQL statements I used when testing. This is still very alpha :)
+NOTE:
+1.) The functions in "bash_functions.sh" use the unix command line utility "redis-cli" and some characters ("(","*") need to be escaped to avoid shell expansion.
+2.) In order to efficiently transmit data using the redis line protocol, the following SQL requirements are in place
+ A.) INSERT can NOT have spaces in the data section 
+      e.g. INSERT INTO x VALUES (a,b,c) <- no spaces here
+ B.) UPDATE can NOT have spaces in the data section 
+      e.g. UPDATE x SET a=123,b=456,c=7890 WHERE id =7
+                        ^-no spaces here-^
