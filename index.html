@@ -52,19 +52,21 @@
       Hybrid Relational-Database/NOSQL-Datastore
     </div>
 
-    <p>SQL Tables, SQL Statements and SQL Data-types are supported. Alsosql is built on top of the NOSQL datastore redis and supports normalisation/denormalisation of redis data structures (lists,sets,hash-tables) into/from Alsosql tables, as well as import/export of tables to/from Mysql. It is a data storage Swiss army knife.
+    <p>SQL Tables, SQL Statements and SQL Data-types are supported. Alsosql is built on top of the NOSQL datastore redis and supports normalisation/denormalisation of redis data structures (lists,sets,hash-tables) into/from Alsosql tables, as well as import/export of tables to/from Mysql. It is a data storage Swiss army knife.<br/>
+Storing Data in NOSQL and/or SQL and converting to and fro can be done w/ a few straightforward SQL-esque commands. Alsosql is optimised for a OLTP workload and is both extremely fast and extremely memory efficient. Alsosql attains its speed by storing ALL of its data in RAM, periodically snapshot-saving the data to disk and by optimising to the SQL statements commonly used in OLTP workloads.
 </p><h2>Dependencies</h2>
 <p>none. ANSI C</p>
 <h2>Install</h2>
-<p>1.) download the code and type "make"
-2.) edit "redis.conf" as needed
+<p>1.) download the code and type "make"<br/>
+2.) edit "redis.conf" as needed<br/>
 3.) run "./redis-server"</p>
 <h2>License</h2>
 <p>MIT License</p>
 <h2>Authors</h2>
 <p>JakSprats</p>
 <h2>Contact</h2>
-<p>JakSprats (jaksprats@gmail.com)<br/>      </p>
+<p>JakSprats (jaksprats@gmail.com)
+<br/>      </p>
 
 
     <h2>Download</h2>
