@@ -396,6 +396,13 @@ function init_join_table() {
 function init_third_join_table() {
   $CLI CREATE TABLE third_join \(id int primary key, field TEXT, name TEXT\)
 }
+function init_ten_join_tables() {
+  I=0
+  while [ $I -lt 10 ]; do
+    $CLI CREATE TABLE join_$I \(id int primary key, field TEXT, name TEXT\)
+    I=$[${I}+1];
+  done
+}
 # STRING_PK STRING_PK STRING_PK STRING_PK STRING_PK STRING_PK STRING_PK
 function init_string_test_table() {
   $CLI CREATE TABLE test \(id TEXT, field TEXT, name TEXT\)

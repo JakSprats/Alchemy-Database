@@ -99,6 +99,7 @@ static struct config {
     bool perform_range_query;
     bool perform_join_test;
     bool perform_3way_join_test;
+    bool perform_10way_join_test;
     bool perform_fk_test;
     bool perform_fk_join_test;
     bool perform_address_test;
@@ -107,6 +108,7 @@ static struct config {
     bool populate_test_table;
     bool populate_join_table;
     bool populate_3way_join_table;
+    bool populate_10way_join_table;
     bool populate_fk_table;
     bool populate_fk2_table;
 
@@ -191,8 +193,8 @@ long default_range_query_len      = 5;
 long start_range_query      = 100000001;
 long orig_start_range_query = 100000001;
 
-long not_rand        = 1;
-long second_rand     = 1;
+long not_rand    = 1;
+long second_rand = 1;
 static void reset_non_rand() {
     not_rand    = 1;
     second_rand = 1;
@@ -533,30 +535,34 @@ void parseOptions(int argc, char **argv) {
 
         /* START: ALSOSQL */
         } else if (!strcmp(argv[i],"-R")) {
-            config.perform_range_query      = 1;
+            config.perform_range_query       = 1;
         } else if (!strcmp(argv[i],"-A")) {
-            config.perform_address_test     = 1;
+            config.perform_address_test      = 1;
         } else if (!strcmp(argv[i],"-T")) {
-            config.perform_test_table_test  = 1;
+            config.perform_test_table_test   = 1;
         } else if (!strcmp(argv[i],"-J")) {
-            config.perform_join_test        = 1;
+            config.perform_join_test         = 1;
         } else if (!strcmp(argv[i],"-J3")) {
-            config.perform_3way_join_test   = 1;
+            config.perform_3way_join_test    = 1;
+        } else if (!strcmp(argv[i],"-J10")) {
+            config.perform_10way_join_test   = 1;
         } else if (!strcmp(argv[i],"-F")) {
-            config.perform_fk_test          = 1;
+            config.perform_fk_test           = 1;
         } else if (!strcmp(argv[i],"-FJ")) {
-            config.perform_fk_join_test     = 1;
+            config.perform_fk_join_test      = 1;
 
         } else if (!strcmp(argv[i],"-PT")) {
-            config.populate_test_table      = 1;
+            config.populate_test_table       = 1;
         } else if (!strcmp(argv[i],"-PJ")) {
-            config.populate_join_table      = 1;
+            config.populate_join_table       = 1;
         } else if (!strcmp(argv[i],"-PJ3")) {
-            config.populate_3way_join_table = 1;
+            config.populate_3way_join_table  = 1;
+        } else if (!strcmp(argv[i],"-PJ10")) {
+            config.populate_10way_join_table = 1;
         } else if (!strcmp(argv[i],"-PF")) {
-            config.populate_fk_table        = 1;
+            config.populate_fk_table         = 1;
         } else if (!strcmp(argv[i],"-PF2")) {
-            config.populate_fk2_table       = 1;
+            config.populate_fk2_table        = 1;
 
         } else if (!strcmp(argv[i],"-Q") && !lastarg) {
             config.range_query_len = default_range_query_len;
@@ -606,6 +612,7 @@ void parseOptions(int argc, char **argv) {
             printf(" -R                   SELECT * BETWEEN X AND Y\n");
             printf(" -J                   Join tables (test & join) w/ range-query\n");
             printf(" -J3                  Join tables (test & join & third_join) w/ range-query\n");
+            printf(" -J10                 Join tables (test & join & third_join) w/ range-query\n");
             printf(" -PT                  populate(INSERT) into test table\n");
             printf(" -PJ                  populate(INSERT) into join table\n");
             printf(" -PJ3                 populate(INSERT) into third_join table\n");
@@ -616,9 +623,9 @@ void parseOptions(int argc, char **argv) {
         }
     }
 
-    if (config.perform_range_query    || config.perform_join_test   ||
-        config.perform_3way_join_test || config.perform_fk_test     ||
-        config.perform_fk_join_test)
+    if (config.perform_range_query    || config.perform_join_test        ||
+        config.perform_3way_join_test || config.perform_fk_test          ||
+        config.perform_fk_join_test   || config.perform_10way_join_test)
             randomize_range = 1; 
 }
 
@@ -882,6 +889,32 @@ void test_3way_join() {
     endBenchmark("3-WAY JOIN");
 }
 
+void test_insert_10way_join_table(int i) {
+// THE FOLLOWING COMMAND MUST BE RUN using 10 times varying _0 from (_0 to _9)
+// ./redis-cli CREATE TABLE join_0 (id INT, field TEXT, name TEXT)
+    reset_non_rand();
+    prepareForBenchmark();
+    client c = createClient();
+    if (!c) exit(1);
+    c->obuf = sdscatprintf(c->obuf,
+                "INSERT INTO join_%d VALUES (000100000001,%d,%d)\r\n", i, i, i);
+    prepareClientForReply(c,REPLY_RETCODE);
+    createMissingClients(c);
+    aeMain(config.el);
+    endBenchmark("INSERT 10WAY_JOIN");
+}
+
+void test_10way_join() {
+    reset_non_rand();
+    prepareForBenchmark();
+    client c = createClient();
+    if (!c) exit(1);
+    c->obuf = sdscat(c->obuf,"SELECT join_0.id, join_0.field, join_1.field, join_2.field, join_3.field, join_4.field, join_5.field, join_6.field, join_7.field, join_8.field, join_9.field FROM join_0, join_1, join_2, join_3, join_4, join_5, join_6, join_7, join_8, join_9 WHERE join_0.id BETWEEN 000100000001 AND 000100000002 AND join_0.id = join_1.id AND join_0.id = join_2.id AND join_0.id = join_3.id AND join_0.id = join_4.id AND join_0.id = join_5.id AND join_0.id = join_6.id AND join_0.id = join_7.id AND join_0.id = join_8.id AND join_0.id = join_9.id\n");
+    prepareClientForReply(c,REPLY_MBULK);
+    createMissingClients(c);
+    aeMain(config.el);
+    endBenchmark("10-WAY JOIN");
+}
 
 void test_insert_FK_table() {
 // THE FOLLOWING COMMAND MUST BE RUN using ./redis-cli
@@ -966,19 +999,21 @@ int main(int argc, char **argv) {
     config.range_query_len          = default_range_query_len;
     config.second_random_modulo     = default_second_random_modulo;
 
-    config.perform_address_test     = 0;
-    config.perform_test_table_test  = 0;
-    config.perform_range_query      = 0;
-    config.perform_join_test        = 0;
-    config.perform_3way_join_test   = 0;
-    config.perform_fk_test          = 0;
-    config.perform_fk_join_test     = 0;
+    config.perform_address_test      = 0;
+    config.perform_test_table_test   = 0;
+    config.perform_range_query       = 0;
+    config.perform_join_test         = 0;
+    config.perform_3way_join_test    = 0;
+    config.perform_10way_join_test   = 0;
+    config.perform_fk_test           = 0;
+    config.perform_fk_join_test      = 0;
 
-    config.populate_test_table      = 0;
-    config.populate_join_table      = 0;
-    config.populate_3way_join_table = 0;
-    config.populate_fk_table        = 0;
-    config.populate_fk2_table       = 0;
+    config.populate_test_table       = 0;
+    config.populate_join_table       = 0;
+    config.populate_3way_join_table  = 0;
+    config.populate_10way_join_table = 0;
+    config.populate_fk_table         = 0;
+    config.populate_fk2_table        = 0;
 
     parseOptions(argc,argv);
 
@@ -1031,6 +1066,14 @@ int main(int argc, char **argv) {
             return 0;
         }
 
+        if (config.populate_10way_join_table) {
+            printf("test_insert_third_join_table\n");
+            for (int i = 0; i < 10; i++) {
+                test_insert_10way_join_table(i);
+            }
+            return 0;
+        }
+
 
         if (config.perform_range_query) {
             printf("Range Query Test: length: %ld\n", config.range_query_len);
@@ -1050,6 +1093,13 @@ int main(int argc, char **argv) {
             printf("JoinTest: length: %ld\n", config.range_query_len);
             printf("test_3way_join\n");
             test_3way_join();
+            return 0;
+        }
+
+        if (config.perform_10way_join_test) {
+            printf("JoinTest: length: %ld\n", config.range_query_len);
+            printf("test_10way_join\n");
+            test_10way_join();
             return 0;
         }
 

@@ -14,38 +14,55 @@ fi
 
 JOIN=0
 if [ "$1" == "JOIN" ]; then
-  JOIN=1
-elif [ "$1" == "3WAY" ]; then
   JOIN=2
+elif [ "$1" == "3WAY" ]; then
+  JOIN=3
+elif [ "$1" == "10WAY" ]; then
+  JOIN=10
 fi
 CLI="./redis-cli"
 
 ACT_OPT="-R"
 
 #CREATE TABLE
-echo create table test \(id int primary key, field TEXT, name TEXT\)
-$CLI create table test \(id int primary key, field TEXT, name TEXT\)
-if [ $JOIN -gt 0 ]; then
-  echo CREATE TABLE join \(id int primary key, field TEXT, name TEXT\)
-  $CLI CREATE TABLE join \(id int primary key, field TEXT, name TEXT\)
-  ACT_OPT="-J"
-fi
-if [ $JOIN -eq 2 ]; then
-  echo CREATE TABLE third_join \(id int primary key, field TEXT, name TEXT\)
-  $CLI CREATE TABLE third_join \(id int primary key, field TEXT, name TEXT\)
-  ACT_OPT="-J3"
+if [ $JOIN -ne 10 ]; then
+  echo create table test \(id int primary key, field TEXT, name TEXT\)
+  $CLI create table test \(id int primary key, field TEXT, name TEXT\)
+  if [ $JOIN -eq 2 -o $JOIN -eq 3 ]; then
+    echo CREATE TABLE join \(id int primary key, field TEXT, name TEXT\)
+    $CLI CREATE TABLE join \(id int primary key, field TEXT, name TEXT\)
+    ACT_OPT="-J"
+  fi
+  if [ $JOIN -eq 3 ]; then
+    echo CREATE TABLE third_join \(id int primary key, field TEXT, name TEXT\)
+    $CLI CREATE TABLE third_join \(id int primary key, field TEXT, name TEXT\)
+    ACT_OPT="-J3"
+  fi
+else
+  I=0
+  while [ $I -lt 10 ]; do
+    echo CREATE TABLE join_$I \(id int primary key, field TEXT, name TEXT\)
+    $CLI CREATE TABLE join_$I \(id int primary key, field TEXT, name TEXT\)
+    I=$[${I}+1];
+  done
+  ACT_OPT="-J10"
 fi
 
 #POPULATE DATA
-echo ./redis-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PT 
-taskset -c 1 ./redis-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PT >/dev/null
-if [ $JOIN -gt 0 ]; then
-  echo ./redis-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PJ
-  taskset -c 1 ./redis-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PJ >/dev/null
-fi
-if [ $JOIN -eq 2 ]; then
-  echo ./redis-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PJ3
-  taskset -c 1 ./redis-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PJ3 >/dev/null
+if [ $JOIN -eq 10 ]; then
+  echo taskset -c 1 ./redis-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PJ10
+  taskset -c 1 ./redis-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PJ10 >/dev/null
+else
+  echo ./redis-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PT 
+  taskset -c 1 ./redis-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PT >/dev/null
+  if [ $JOIN -gt 0 ]; then
+    echo ./redis-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PJ
+    taskset -c 1 ./redis-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PJ >/dev/null
+  fi
+  if [ $JOIN -eq 2 ]; then
+    echo ./redis-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PJ3
+    taskset -c 1 ./redis-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PJ3 >/dev/null
+  fi
 fi
 
 MAX=20;
