@@ -5,7 +5,7 @@ SQL Tables, SQL Statements and SQL Data-types are supported. Alsosql is built on
 
 Storing Data in NOSQL and/or SQL and converting to and fro can be done w/ a few straightforward SQL-esque commands. Alsosql is optimised for a OLTP workload and is both extremely fast and extremely memory efficient. Alsosql attains its speed by storing ALL of its data in RAM, periodically snapshot-saving the data to disk and by optimising to the SQL statements commonly used in OLTP workloads.
 
-Philosophy of Alsosql: RAM is now affordable enough to be able to put ENTIRE OLTP Databases on a single machine. So Alsosql provides a relational database with very little memory overhead that does the most common OLTP Database SQL statements amazingly fast and throws in a NOSQL Data-store for further optimisations.
+Philosophy of Alsosql: RAM is now affordable enough to be able to put ENTIRE OLTP Databases on a single machine. So Alsosql provides a relational database with very little memory overhead that does the most common OLTP SQL statements amazingly fast and throws in a NOSQL Data-store to extend the optimisation possibilites.
 
 FAST (on commodity hardware): Over 1GbE LAN against a single core running at 3.0GHz w/ RAM at 400MHz (PC3200):
   84K INSERT/sec, 81K SELECT/sec, 75K UPDATE/sec, 85K DELETE/sec
