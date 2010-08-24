@@ -23,6 +23,12 @@ MEMORY EFFICIENT:
 EASY:
   Its SQL ... you already know it :) And redis commands are even easier to learn :)
 
+BUILD:
+  Just download the code and type "make"
+RUN:
+  type "./redis-server"
+CONFIG:
+ Config is done in redis: The config file is called redis.conf
 
 Additional features:
  1.) Data can be exported to Mysql effortlessly for Data-warehousing.
@@ -30,6 +36,7 @@ Additional features:
  3.) No need to worry about being locked in to NOSQL as Alsosql can convert NOSQL data structures to SQL tables.
  3.) redis: trivial to setup master-slave replication
  4.) redis: from time to time data is saved to disk asynchronously (semi persistent mode) or alternatively every change is written into an append only file (fully persistent mode). Redis is able to rebuild the append only file in the background when it gets too big. 
+ 5.) redis: Virtual memory - swaps keys to disk when memory usage is too high
 
 
 Supported SQL:
@@ -59,7 +66,15 @@ AlsoSql Commands
 Supported data types are currently UNSIGNED INT and TEXT. FLOAT is coming soon.
 
 
-About redis: http://code.google.com/p/redis/
+ABOUT redis: http://code.google.com/p/redis/
 Redis is an advanced key-value store. It is similar to memcached but the dataset is not volatile, and values can be strings, exactly like in memcached, but also lists, sets, and ordered sets. All this data types can be manipulated with atomic operations to push/pop elements, add/remove elements, perform server side union, intersection, difference between sets, and so forth. Redis supports different kind of sorting abilities.
 It is possible to think at Redis as a data structures server, it is not just another key-value DB, see all the commands supported by Redis to get the first feeling. Redis supports operations like atomic push and pop of elements on lists, taking ranges of elements from this lists at once, trimming of lists, server-side intersections of sets and even sorting data!
 Alsosql can normalize all redis data structures into SQL tables, including denormalized sets of keys (e.g. user:id:attribute*). Alsosql can also denormalize SQL tables into any of the redis data structures using a SQL-esque ELECT ... STORE syntax.
+
+
+BENCHMARKS:
+1.) Range Query       "./Benchmark_Range_Query_Lengths.sh"
+2.) 2 Table Join      "./Benchmark_Range_Query_Lengths.sh JOIN"
+3.) 3 Table Join      "./Benchmark_Range_Query_Lengths.sh 3WAY"
+4.) Speed             "./redis-benchmark -n 1000000 -r 1000000 -c 200 -T"
+5.) Memory Comparison "./redis-benchmark -n 1000000 -r 1000000 -c 200 -A"
