@@ -126,7 +126,7 @@ function inserter() {
   insert_external
 }
 
-function selecter() {
+function SELECTer() {
   echo "SELECT"
   echo division -------------------------------------------
   T; $CLI SELECT "*" FROM division WHERE id = 22                 | $T2P; NL
@@ -292,7 +292,7 @@ function joiner() {
 function works() {
   initer
   inserter
-  selecter
+  SELECTer
   iselecter
   updater
   iselecter_employee
@@ -348,15 +348,15 @@ function scan_healthpan() {
 }
 
 function istore_worker_name_list() {
-  echo select name from worker where division between 11 and 33 STORE RPUSH l_worker_name
-  $CLI select name from worker where division between 11 and 33 STORE RPUSH l_worker_name
+  echo SELECT name FROM worker WHERE division BETWEEN 11 AND 33 STORE RPUSH l_worker_name
+  $CLI SELECT name FROM worker WHERE division BETWEEN 11 AND 33 STORE RPUSH l_worker_name
   echo lrange l_worker_name 0 10
   $CLI lrange l_worker_name 0 10
 }
 
 function istore_worker_hash_name_salary() {
-  echo select name,salary from worker where division between 11 and 33 STORE HSET h_worker_name_to_salary
-  $CLI select name,salary from worker where division between 11 and 33 STORE HSET h_worker_name_to_salary
+  echo SELECT name,salary FROM worker WHERE division BETWEEN 11 AND 33 STORE HSET h_worker_name_to_salary
+  $CLI SELECT name,salary FROM worker WHERE division BETWEEN 11 AND 33 STORE HSET h_worker_name_to_salary
   $CLI HKEYS h_worker_name_to_salary
   $CLI HVALS h_worker_name_to_salary
 }
@@ -526,13 +526,13 @@ function secondary_range_query_test() {
 done
 }
 function secondary_range_query_scan_pk() {
-  $CLI SELECT \* FROM test where id BETWEEN 012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789_80 AND 012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789_82
+  $CLI SELECT \* FROM test WHERE id BETWEEN 012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789_80 AND 012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789_82
 }
 function secondary_range_query_scan_name() {
-  $CLI SELECT \* FROM test where name BETWEEN N_80 AND N_82
+  $CLI SELECT \* FROM test WHERE name BETWEEN N_80 AND N_82
 }
 function secondary_range_query_scan_field() {
-  $CLI SELECT \* FROM test where field BETWEEN F_80 AND F_82
+  $CLI SELECT \* FROM test WHERE field BETWEEN F_80 AND F_82
 }
 function secondary_many_range_query_test() {
   J=0;
@@ -540,7 +540,7 @@ function secondary_many_range_query_test() {
   while [ $J -lt 99 ]; do
     J=$[${K}+3];
     echo -ne "$K $J: ";
-    $CLI SELECT \* FROM test where name BETWEEN N_$K AND N_$J | \
+    $CLI SELECT \* FROM test WHERE name BETWEEN N_$K AND N_$J | \
       tr \. "\n" |wc -l;
     K=$[${K}+1];
   done

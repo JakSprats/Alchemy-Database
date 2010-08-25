@@ -389,7 +389,7 @@ static bt_data_t nodedeletekey(struct btree     *btr,
                 KEYS(btr, x) + i + 1,
                 (x->n - i - 1) * sizeof k);
         x->n--;
-        KEYS(btr, x)[x->n] = NULL; /* RUSS added for iterator */
+        KEYS(btr, x)[x->n] = NULL; /* JakSprats added for iterator */
         return kp;
     }
 
@@ -429,7 +429,7 @@ static bt_data_t nodedeletekey(struct btree     *btr,
              * if both y and z have only t - 1 keys, merge k
              * and all of z into y, so that x loses both k and
              * the pointer to z, and y now contains 2t - 1
-             * keys. */ /* RUSS fixed a bug here, the return ptr was wrong */
+             * keys. */ /* JakSprats fixed a bug here, the return ptr was wrong */
             y       = NODES(btr, x)[i];
             z       = NODES(btr, x)[i + 1];
             void *v = KEYS(btr, x)[i];
