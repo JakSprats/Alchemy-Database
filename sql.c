@@ -1,5 +1,5 @@
 /*
-  COPYRIGHT :Russ
+  COPYRIGHT :JakSprats
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -98,6 +98,10 @@ unsigned char checkSQLWhereClauseOrReply(redisClient  *c,
             token[sdslen(token) - 1] = '\0';
             got_eq = 1;
         } else { // pk=X
+            if (cmatch) {
+                *eq     = '\0';
+                *cmatch = find_column(tmatch, token);
+            }
             *key = createStringObject(eq + 1, sdslen(token) - (eq - token) - 1);
             return 1;
         }

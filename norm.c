@@ -1,5 +1,5 @@
 /*
-  COPYRIGHT :Russ
+  COPYRIGHT :JakSprats
  */
 
 #include <stdio.h>
@@ -88,24 +88,38 @@ static void condSelectReply(redisClient   *c,
 }
 
 void tscanCommand(redisClient *c) {
-    int argn;
-    int which = 3; /*used in ARGN_OVERFLOW */
-    sds clist = sdsdup(c->argv[1]->ptr);
-    bool last_arg_comma = 0;
+    int   argn;
+    int   which = 3; /*used in ARGN_OVERFLOW */
+    robj *pko   = NULL, *range  = NULL;
+    sds   clist = sdsempty();
     for (argn = 1; argn < c->argc; argn++) {
-        char *y = c->argv[argn]->ptr;
-        char *x = strchr(y, ',');
-        if (last_arg_comma) clist = sdscatlen(clist, y, sdslen(y));
+        sds y = c->argv[argn]->ptr;
+        if (!strcasecmp(y, "FROM")) break;
 
-        if (x && ((size_t)(x - y) == (sdslen(y) - 1))) last_arg_comma = 1;
-        else                                           break;
+        if (*y == CCOMMA) {
+             if (sdslen(y) == 1) continue;
+             y++;
+        }
+        char *nextc = y;
+        while ((nextc = strrchr(nextc, CCOMMA))) {
+            *nextc = '\0';
+            nextc++;
+            if (sdslen(clist)) clist  = sdscatlen(clist, COMMA, 1);
+            clist  = sdscat(clist, y);
+            y      = nextc;
+        }
+        if (*y) {
+            if (sdslen(clist)) clist  = sdscatlen(clist, COMMA, 1);
+            clist  = sdscat(clist, y);
+        }
     }
-    ARGN_OVERFLOW
-    if (strcasecmp(c->argv[argn]->ptr, "FROM")) {
+
+    if (argn == c->argc) {
         addReply(c, shared.selectsyntax_nofrom);
         goto tscan_cmd_err;
     }
     ARGN_OVERFLOW
+
     TABLE_CHECK_OR_REPLY(c->argv[argn]->ptr,)
     ARGN_OVERFLOW
 
@@ -114,7 +128,6 @@ void tscanCommand(redisClient *c) {
     if (!qcols) goto tscan_cmd_err;
 
     int            imatch = -1,    cmatch = -1;
-    robj          *pko    = NULL, *range  = NULL;
     unsigned char  where  = checkSQLWhereClauseOrReply(c, &pko, &range, &imatch,
                                                        &cmatch, &argn, tmatch,
                                                        0);
