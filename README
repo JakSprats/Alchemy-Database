@@ -74,13 +74,13 @@ ALSOSQL Commands
 
 
 UNSUPPORTED SQL: 
-Alsosql does not support the following SQL functionalities as they are generally bad practice in OLTP environments and supporting them would bloat the code and ultimately slow the server down. Alsosql supports OLTP SQL, which means long running queries MUST be avoided.
+The key longterm goals of Alsqosql are that EACH release Alsqosql will become faster, use less memory, and be more predictable in terms of run-time performance. For these reasons and as Alsosql is an OLTP optimised Database, Alsosql does not support the subset of SQL that results in either unpredictable run time performance behavior or extra server side executions steps. The OLTP best practices of avoiding long running queries must still be practiced in the application, but the programmer will be able to predict exactly how long a query should take for the simple reason that Alsqosql does not have a query planner, it does exactly what you tell it to do. Alsosql will strive to support as much SQL as possible that results in predictable run time performance.
+  1.) nested joins (requires 2+ join steps)
+  2.) joins on columns that are not indexed (which result in full table scans).
+  3.) joins on entire tables (also full table scans), a range must be given
+  4.) GROUP BY, this is mainly a Datawarehouse use-case (can cause sort passes)
+  5.) ORDER BY ... this is on the TODO (but only on a single ndexed column in the where-clause as other cases result in sort passes)
 NOTE: some of these can be done in Alsosql by storing join results in temporary tables and then joining to said temp-tables
-1.) nested joins (requires 2+ join steps)
-2.) joins on columns that are not indexed (which result in full table scans).
-3.) joins on entire tables (also full table scans), a range must be given
-4.) GROUP BY, this is mainly a Datawarehouse use-case
-5.) ORDER BY ... this is on the TODO (but only on indexed columns in the where-clause)
 
 
 ABOUT redis: http://code.google.com/p/redis/
