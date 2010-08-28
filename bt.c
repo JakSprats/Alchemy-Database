@@ -118,6 +118,7 @@ static inline uchar *getString(uchar *s, uint *slen) {
 }
 
 int btStreamCmp(void *a, void *b) {
+    if (!a || !b) return -1;
     uchar *s1     = (uchar *)a;
     uchar *s2     = (uchar *)b;
     uchar  sflag1 = getSflag(*s1);

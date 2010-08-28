@@ -6,7 +6,8 @@
 
 MIT License
 
-Copyright (c) 2010 Russell Sullivan
+Copyright (c) 2010 Russell Sullivan <jaksprats AT gmail DOT com>
+ALL RIGHTS RESERVED 
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
@@ -329,6 +330,19 @@ void createTable(redisClient *c) {
                     parse_col_type  = 1;
                 }
             }
+
+// CREATE TABLE `user` (
+// `Host` char(60) COLLATE utf8_bin NOT NULL DEFAULT '',
+//   `max_user_connections` int(11) unsigned NOT NULL DEFAULT '0',
+//  PRIMARY KEY (`Host`,`User`)
+//) 
+            // TODO extend this filtering
+            //      1.) in 2nd word search for INT (but not BIGINT)
+            //           if (found) -> INT
+            //           else -> TEXT
+            //      2.) ignore these 
+            //      3.) IGNORE words PRIMARY,KEY,CONSTRAINT,UNIQUE
+            //      4.) IGNORE after ")"
             if (token[len - 1] == ')') { /* delete "(.....)" */
                 token[len - 1] = '\0';
                 for (int j = len - 2; j > 0; j--) {
@@ -405,7 +419,8 @@ void insertCommitReply(redisClient *c,
     }
 
     int   pktype = Tbl_col_type[tmatch][0];
-    robj *o   = lookupKeyWrite(c->db, Tbl_name[tmatch]);
+    robj *o      = lookupKeyWrite(c->db, Tbl_name[tmatch]);
+
     robj *pko = createStringObject(pk, pklen);
     if (pktype == COL_TYPE_INT) {
         long l   = atol(pko->ptr);
@@ -500,13 +515,9 @@ void selectReply(redisClient  *c,
     decrRefCount(r);
 }
 
-void selectALSOSQLCommand(redisClient *c) {
-    int   argn;
-    int   which = 0; /*used in ARGN_OVERFLOW */
-    robj *pko   = NULL, *range = NULL;
-    sds   clist = sdsempty();
-    for (argn = 1; argn < c->argc; argn++) {
-        sds y = c->argv[argn]->ptr;
+void parseSelectColumnList(redisClient *c, sds *clist, int *argn) {
+    for (; *argn < c->argc; *argn = *argn + 1) {
+        sds y = c->argv[*argn]->ptr;
         if (!strcasecmp(y, "FROM")) break;
 
         if (*y == CCOMMA) {
@@ -517,15 +528,24 @@ void selectALSOSQLCommand(redisClient *c) {
         while ((nextc = strrchr(nextc, CCOMMA))) {
             *nextc = '\0';
             nextc++;
-            if (sdslen(clist)) clist  = sdscatlen(clist, COMMA, 1);
-            clist  = sdscat(clist, y);
+            if (sdslen(*clist)) *clist  = sdscatlen(*clist, COMMA, 1);
+            *clist  = sdscat(*clist, y);
             y      = nextc;
         }
         if (*y) {
-            if (sdslen(clist)) clist  = sdscatlen(clist, COMMA, 1);
-            clist  = sdscat(clist, y);
+            if (sdslen(*clist)) *clist  = sdscatlen(*clist, COMMA, 1);
+            *clist  = sdscat(*clist, y);
         }
     }
+}
+
+void selectALSOSQLCommand(redisClient *c) {
+    int   argn = 1;
+    int   which = 0; /*used in ARGN_OVERFLOW */
+    robj *pko   = NULL, *range = NULL;
+    sds   clist = sdsempty();
+
+    parseSelectColumnList(c, &clist, &argn);
 
     if (argn == c->argc) {
         addReply(c, shared.selectsyntax_nofrom);
@@ -544,7 +564,7 @@ void selectALSOSQLCommand(redisClient *c) {
     }
 
     if (join) {
-        joinParseReply(c, clist, argn, which);
+        joinParseReply(c, clist, argn);
     } else {
         TABLE_CHECK_OR_REPLY(tbl_list,);
 
@@ -576,9 +596,7 @@ void selectALSOSQLCommand(redisClient *c) {
             int qcols = parseColListOrReply(c, tmatch, clist, cmatchs);
             if (!qcols) goto sel_cmd_err;
     
-            robj *o = lookupKeyReadOrReply(c, Tbl_name[tmatch], shared.nullbulk);
-            if (!o)     goto sel_cmd_err;
-    
+            robj *o = lookupKeyRead(c->db, Tbl_name[tmatch]);
             selectReply(c, o, pko, tmatch, cmatchs, qcols);
         }
     }
@@ -645,9 +663,7 @@ void updateCommand(redisClient *c) {
         iupdateAction(c, range->ptr, tmatch, imatch, ncols, matches, indices,
                       vals, vlens, cmiss);
     } else {
-        robj *o = lookupKeyReadOrReply(c, Tbl_name[tmatch], shared.czero);
-        if (!o) return;
-
+        robj *o   = lookupKeyRead(c->db, Tbl_name[tmatch]);
         robj *row = btFindVal(o, pko, Tbl_col_type[tmatch][0]);
         if (!row) {
             addReply(c, shared.czero);

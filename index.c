@@ -4,7 +4,8 @@
 
 MIT License
 
-Copyright (c) 2010 Russell Sullivan
+Copyright (c) 2010 Russell Sullivan <jaksprats AT gmail DOT com>
+ALL RIGHTS RESERVED 
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
@@ -43,20 +44,20 @@ extern char  CPERIOD;
 
 extern char *Col_type_defs[];
 
-extern robj          *Tbl_name     [MAX_NUM_TABLES];
-extern int            Tbl_col_count[MAX_NUM_TABLES];
-extern robj          *Tbl_col_name [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
-extern unsigned char  Tbl_col_type [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
-extern int            Tbl_virt_indx[MAX_NUM_TABLES];
+extern robj  *Tbl_name     [MAX_NUM_TABLES];
+extern int    Tbl_col_count[MAX_NUM_TABLES];
+extern robj  *Tbl_col_name [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
+extern uchar  Tbl_col_type [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
+extern int    Tbl_virt_indx[MAX_NUM_TABLES];
 
 // GLOBALS
 int Num_indx;
 //TODO make these 4 a struct
-robj          *Index_obj     [MAX_NUM_INDICES];
-int            Index_on_table[MAX_NUM_INDICES];
-int            Indexed_column[MAX_NUM_INDICES];
-unsigned char  Index_type    [MAX_NUM_INDICES];
-bool           Index_virt    [MAX_NUM_INDICES];
+robj  *Index_obj     [MAX_NUM_INDICES];
+int    Index_on_table[MAX_NUM_INDICES];
+int    Indexed_column[MAX_NUM_INDICES];
+uchar  Index_type    [MAX_NUM_INDICES];
+bool   Index_virt    [MAX_NUM_INDICES];
 
 // HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS
 // HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS
@@ -116,7 +117,7 @@ int checkIndexedColumnOrReply(redisClient *c, char *curr_tname) {
 
 // INDEX_MAINTENANCE INDEX_MAINTENANCE INDEX_MAINTENANCE INDEX_MAINTENANCE
 // INDEX_MAINTENANCE INDEX_MAINTENANCE INDEX_MAINTENANCE INDEX_MAINTENANCE
-void iAdd(bt *ibtr, robj *i_key, robj *i_val, unsigned char pktype) {
+void iAdd(bt *ibtr, robj *i_key, robj *i_val, uchar pktype) {
     bt   *nbtr;
     robj *nbt = btIndFindVal(ibtr, i_key, ibtr->ktype);
     if (!nbt) {
@@ -146,19 +147,15 @@ static void iRem(bt *ibtr, robj *i_key, robj *i_val, int pktype) {
     }
 }
 
-void addToIndex(redisDb      *db,
-                robj         *pko,
-                char         *vals,
-                unsigned int  col_ofsts[],
-                int           inum) {
+void addToIndex(redisDb *db, robj *pko, char *vals, uint cofsts[], int inum) {
     if (Index_virt[inum]) return;
     robj *ind        = Index_obj[inum];
     robj *ibt        = lookupKey(db, ind);
     bt   *ibtr       = (bt *)(ibt->ptr);
     int   i          = Indexed_column[inum];
     int   j          = i - 1;
-    int   end        = col_ofsts[j];
-    int   len        = col_ofsts[i] - end - 1;
+    int   end        = cofsts[j];
+    int   len        = cofsts[i] - end - 1;
     robj *col_key    = createStringObject(vals + end, len); /* freeME */
     int   pktype     = Tbl_col_type[Index_on_table[inum]][0];
 
@@ -166,15 +163,11 @@ void addToIndex(redisDb      *db,
     decrRefCount(col_key);
 }
 
-void delFromIndex(redisClient *c,
-                  robj        *old_pk,
-                  robj        *row,
-                  int          inum,
-                  int          tmatch) {
+void delFromIndex(redisDb *db, robj *old_pk, robj *row, int inum, int tmatch) {
     if (Index_virt[inum]) return;
     robj *ind     = Index_obj     [inum];
     int   cmatch  = Indexed_column[inum];
-    robj *ibt     = lookupKey(c->db, ind);
+    robj *ibt     = lookupKey(db, ind);
     bt   *ibtr    = (bt *)(ibt->ptr);
     robj *old_val = createColObjFromRow(row, cmatch, old_pk, tmatch); //freeME
     int   pktype  = Tbl_col_type[Index_on_table[inum]][0];
@@ -183,18 +176,18 @@ void delFromIndex(redisClient *c,
     decrRefCount(old_val);
 }
 
-void updateIndex(redisClient  *c,
-                 robj          *old_pk,
-                 robj          *new_pk,
-                 robj          *new_val,
-                 robj          *row,
-                 int            inum,
-                 unsigned char  pk_update,
-                 int            tmatch) {
+void updateIndex(redisDb *db,
+                 robj    *old_pk,
+                 robj    *new_pk,
+                 robj    *new_val,
+                 robj    *row,
+                 int       inum,
+                 uchar     pk_update,
+                 int       tmatch) {
     if (Index_virt[inum]) return;
     int   cmatch  = Indexed_column[inum];
     robj *ind     = Index_obj     [inum];
-    robj *ibt     = lookupKey(c->db, ind);
+    robj *ibt     = lookupKey(db, ind);
     bt   *ibtr    = (bt *)(ibt->ptr);
     robj *old_val = createColObjFromRow(row, cmatch, old_pk, tmatch); //freeME
     int   pktype  = Tbl_col_type[Index_on_table[inum]][0];
@@ -229,7 +222,7 @@ void newIndex(redisClient *c, char *iname, int tmatch, int cmatch, bool virt) {
     Num_indx++;
 }
 
-void indexCommit(redisClient *c, char *iname, char *trgt) {
+static void indexCommit(redisClient *c, char *iname, char *trgt) {
     if (Num_indx >= MAX_NUM_INDICES) {
         addReply(c, shared.toomanyindices);
         return;
@@ -379,8 +372,8 @@ void iupdateAction(redisClient   *c,
                    int            matches,
                    int            indices[],
                    char          *vals[],
-                   unsigned int   vlens[],
-                   unsigned char  cmiss[]) {
+                   uint   vlens[],
+                   uchar  cmiss[]) {
     RANGE_CHECK_OR_REPLY(range)
     btEntry    *be, *nbe;
     robj       *o    = lookupKeyRead(c->db, Tbl_name[tmatch]);
@@ -543,8 +536,7 @@ void ikeysCommand(redisClient *c) {
 void dumpCommand(redisClient *c) {
     char buf[192];
     TABLE_CHECK_OR_REPLY(c->argv[1]->ptr,)
-    robj *o = lookupKeyReadOrReply(c, Tbl_name[tmatch], shared.nullbulk);
-    if (!o) return;
+    robj *o = lookupKeyRead(c->db, Tbl_name[tmatch]);
 
     bt *btr = (bt *)o->ptr;
     if (!btr->numkeys) {
@@ -637,8 +629,7 @@ int get_sum_all_index_size_for_table(redisClient *c, int tmatch) {
 void descCommand(redisClient *c) {
     char buf[192];
     TABLE_CHECK_OR_REPLY( c->argv[1]->ptr,)
-    robj *o = lookupKeyReadOrReply(c, Tbl_name[tmatch], shared.nullbulk);
-    if (!o) return;
+    robj *o = lookupKeyRead(c->db, Tbl_name[tmatch]);
 
     LEN_OBJ;
     for (int j = 0; j < Tbl_col_count[tmatch]; j++) {

@@ -4,7 +4,8 @@
 
 MIT License
 
-Copyright (c) 2010 Russell Sullivan
+Copyright (c) 2010 Russell Sullivan <jaksprats AT gmail DOT com>
+ALL RIGHTS RESERVED 
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
@@ -451,38 +452,49 @@ void joinGeneric(redisClient *c,
     decrRefCount(low);
     decrRefCount(high);
 
-    int   reply_size = 0;
-    for (int i = 0; i < n_ind; i++) { // compute maxlen possible 4 joined row
-        reply_size += j_ind_len[i] + 1;
-    }
-    char *reply      = malloc(reply_size); /* freed after while() loop */
-
-    char         **rcols  [MAX_JOIN_INDXS][MAX_JOIN_COLS];
-    int            rc_lens[MAX_JOIN_INDXS][MAX_JOIN_COLS];
-    dictEntry     *pde;
-    dictIterator  *pdi = dictGetIterator(res_set[0]->ptr);
-    while ((pde = dictNext(pdi)) != NULL) {         // L-join on first index
-        dictEntry    *sde;
-        robj         *jk     = dictGetEntryKey(pde);
-        robj         *setobj = dictGetEntryVal(pde);
-        dictIterator *sdi    = dictGetIterator(setobj->ptr);
-        while ((sde = dictNext(sdi)) != NULL) {
-            robj *sel = sde->key;
-            char *first_entry = (char *)(sel->ptr);
-            for (int j = 0; j < jind_ncols[0]; j++) {
-                rcols[0][j]  = (char **)first_entry;
-                first_entry += PTR_SIZE;
-                memcpy(&rc_lens[0][j], first_entry, UINT_SIZE);
-                first_entry += UINT_SIZE;
-            }
-
-            if (!buildJRowReply(c, fc, reply, res_set, 1, n_ind, jk, &card,
-                                jind_ncols, rcols, rc_lens, sto))         break;
+    /* cant join if one table had ZERO rows */
+    bool one_empty = 0;
+    for (int i = 0; i < n_ind; i++) {
+        if (dictSize((dict *)res_set[i]->ptr) == 0) {
+            one_empty = 1;
+            break;
         }
-        dictReleaseIterator(sdi);
     }
-    dictReleaseIterator(pdi);
-    free(reply);
+
+    if (!one_empty) {
+        int   reply_size = 0;
+        for (int i = 0; i < n_ind; i++) { // figger maxlen possible 4 joined row
+            reply_size += j_ind_len[i] + 1;
+        }
+        char *reply      = malloc(reply_size); /* freed after while() loop */
+    
+        char         **rcols  [MAX_JOIN_INDXS][MAX_JOIN_COLS];
+        int            rc_lens[MAX_JOIN_INDXS][MAX_JOIN_COLS];
+        dictEntry     *pde;
+        dictIterator  *pdi = dictGetIterator(res_set[0]->ptr);
+        while ((pde = dictNext(pdi)) != NULL) {         // L-join on first index
+            dictEntry    *sde;
+            robj         *jk     = dictGetEntryKey(pde);
+            robj         *setobj = dictGetEntryVal(pde);
+            dictIterator *sdi    = dictGetIterator(setobj->ptr);
+            while ((sde = dictNext(sdi)) != NULL) {
+                robj *sel = sde->key;
+                char *first_entry = (char *)(sel->ptr);
+                for (int j = 0; j < jind_ncols[0]; j++) {
+                    rcols[0][j]  = (char **)first_entry;
+                    first_entry += PTR_SIZE;
+                    memcpy(&rc_lens[0][j], first_entry, UINT_SIZE);
+                    first_entry += UINT_SIZE;
+                }
+    
+                if (!buildJRowReply(c, fc, reply, res_set, 1, n_ind, jk, &card,
+                                    jind_ncols, rcols, rc_lens, sto))     break;
+            }
+            dictReleaseIterator(sdi);
+        }
+        dictReleaseIterator(pdi);
+        free(reply);
+    }
 
     // free strdup() from joinAddColsFromInd()
     dictEntry *de, *ide;

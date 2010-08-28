@@ -130,6 +130,7 @@ static struct redisCommand cmdTable[] = {
     {"zincrby",4,CMDFLAG_NONE},
     {"zrem",3,CMDFLAG_NONE},
     {"zremrangebyscore",4,CMDFLAG_NONE},
+    {"zremrangebyrank",4,CMDFLAG_NONE},
     {"zunion",-4,CMDFLAG_NONE},
     {"zinter",-4,CMDFLAG_NONE},
     {"zrange",-4,CMDFLAG_NONE},

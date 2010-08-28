@@ -199,12 +199,6 @@ typedef struct redisClient {
     list *pubsub_patterns;  /* patterns a client is interested in (SUBSCRIBE) */
 } redisClient;
 
-typedef struct storage_command {
-    void (*func)(redisClient *c);
-    char *name;
-    int   argc;
-} stor_cmd;
-
 robj *createObject(int type, void *ptr);
 robj *createHashObject(void);
 robj *createSetObject(void);
@@ -218,6 +212,7 @@ int htNeedsResize(dict *dict);
 void setGenericCommand(redisClient *c, int nx, robj *key, robj *val,
                               robj *expire, unsigned char internal);
 
+struct redisCommand *lookupCommand(char *name);
 robj *lookupKey(redisDb *db, robj *key);
 robj *lookupKeyWrite(redisDb *db, robj *key);
 robj *lookupKeyReadOrReply(redisClient *c, robj *key, robj *reply);
@@ -298,6 +293,8 @@ struct sharedObjectsStruct {
     *selectsyntax_store_norange,
     *joinsyntax_no_tablename,
     *drop_virtual_index,
+    *create_table_as_function_not_found, *create_table_as_dump_num_args,
+    *create_table_as_access_num_args,
 #endif /* ALSOSQL END */
     *outofrangeerr, *plus,
     *select0, *select1, *select2, *select3, *select4,
@@ -477,5 +474,31 @@ robj *rdbLoadStringObject(FILE *fp);
 } while(0)
 
 #define REDIS_RDB_LENERR UINT_MAX
+
+typedef void redisCommandProc(redisClient *c);
+typedef void redisVmPreloadProc(redisClient *c, struct redisCommand *cmd, int argc, robj **argv);
+
+struct redisCommand {
+    char *name;
+    redisCommandProc *proc;
+    int arity;
+    int flags;
+    /* Use a function to determine which keys need to be loaded
+     * in the background prior to executing this command. Takes precedence
+     * over vm_firstkey and others, ignored when NULL */
+    redisVmPreloadProc *vm_preload_proc;
+    /* What keys should be loaded in background when calling this command? */
+    int vm_firstkey; /* The first argument that's a key (0 = no keys) */
+    int vm_lastkey;  /* THe last argument that's a key */
+    int vm_keystep;  /* The step between first and last key */
+    int alsosql; //TODO throwout
+};
+
+/* ALSOSQL */
+typedef struct storage_command {
+    void (*func)(redisClient *c);
+    char *name;
+    int   argc;
+} stor_cmd;
 
 #endif

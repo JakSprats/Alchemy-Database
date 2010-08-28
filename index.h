@@ -4,7 +4,8 @@
 
 MIT License
 
-Copyright (c) 2010 Russell Sullivan
+Copyright (c) 2010 Russell Sullivan <jaksprats AT gmail DOT com>
+ALL RIGHTS RESERVED 
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
@@ -35,26 +36,18 @@ int checkIndexedColumnOrReply(redisClient *c, char *curr_tname);
 void newIndex(redisClient *c, char *iname, int tmatch, int cmatch, bool virt);
 void createIndex(redisClient *c);
 
-void iAdd(bt *btr, robj *i_key, robj *i_val, unsigned char pktype);
+void iAdd(bt *btr, robj *i_key, robj *i_val, uchar pktype);
 
-void addToIndex(redisDb      *db,
-                robj         *pko,
-                char         *vals,
-                unsigned int  col_ofsts[],
-                int           inum);
-void delFromIndex(redisClient *c, 
-                  robj        *old_pk,
-                  robj        *row,  
-                  int          inum,  
-                  int          tmatch);
-void updateIndex(redisClient   *c,
-                 robj          *old_pk,
-                 robj          *new_pk,
-                 robj          *new_val,
-                 robj          *row,
-                 int            inum,
-                 unsigned char  pk_update,
-                 int            tmatch);
+void addToIndex(  redisDb *db, robj *pko, char *vals, uint cofsts[], int inum);
+void delFromIndex(redisDb *db, robj *old_pk, robj *row, int inum, int tmatch);
+void updateIndex( redisDb *db,
+                  robj    *old_pk,
+                  robj    *new_pk,
+                  robj    *new_val,
+                  robj    *row,
+                  int      inum,
+                  uchar    pk_update,
+                  int      tmatch);
 
 /* RANGE_CHECK_OR_REPLY(char *cargv3ptr) -
      creates (robj *low, robj *high)     */
@@ -89,8 +82,8 @@ void iupdateAction(redisClient   *c,
                    int            matches,
                    int            indices[],
                    char          *vals[],
-                   unsigned int   vlens[],
-                   unsigned char  cmiss[]);
+                   uint   vlens[],
+                   uchar  cmiss[]);
 
 int get_sum_all_index_size_for_table(redisClient *c, int tmatch);
 

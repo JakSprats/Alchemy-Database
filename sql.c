@@ -4,7 +4,8 @@
 
 MIT License
 
-Copyright (c) 2010 Russell Sullivan
+Copyright (c) 2010 Russell Sullivan <jaksprats AT gmail DOT com>
+ALL RIGHTS RESERVED 
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
@@ -210,16 +211,14 @@ static unsigned char checkSQLWhereJoinReply(redisClient  *c,
     return 1;
 }
 
-void joinParseReply(redisClient *c, sds clist, int argn, int which) {
+void joinParseReply(redisClient *c, sds clist, int argn) {
+    int  which  = 1;
     int j_indxs[MAX_JOIN_INDXS];
     int j_tbls [MAX_JOIN_INDXS];
     int j_cols [MAX_JOIN_INDXS];
 
     int qcols = multiColCheckOrReply(c, clist, j_tbls, j_cols);
-    if (!qcols) {
-        addReply(c, shared.joincolumnlisterror);
-        return;
-    }
+    if (!qcols) return;
 
     for (; argn < c->argc; argn++) {
         sds y = c->argv[argn]->ptr;
@@ -292,6 +291,7 @@ void joinParseReply(redisClient *c, sds clist, int argn, int which) {
                     CHECK_STORE_TYPE_OR_REPLY(c->argv[argn]->ptr)
                     ARGN_OVERFLOW
                     newname = c->argv[argn];
+                    done = 1;
                 }
             } else {
                 done = 1;

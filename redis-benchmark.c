@@ -104,6 +104,8 @@ static struct config {
     bool perform_fk_join_test;
     bool perform_address_test;
     bool perform_test_table_test;
+    bool perform_bigrow_table_test;
+    bool perform_bigrow_sel_test;
 
     bool populate_test_table;
     bool populate_join_table;
@@ -550,6 +552,10 @@ void parseOptions(int argc, char **argv) {
             config.perform_fk_test           = 1;
         } else if (!strcmp(argv[i],"-FJ")) {
             config.perform_fk_join_test      = 1;
+        } else if (!strcmp(argv[i],"-B")) {
+            config.perform_bigrow_table_test = 1;
+        } else if (!strcmp(argv[i],"-BS")) {
+            config.perform_bigrow_sel_test   = 1;
 
         } else if (!strcmp(argv[i],"-PT")) {
             config.populate_test_table       = 1;
@@ -617,6 +623,8 @@ void parseOptions(int argc, char **argv) {
             printf(" -PJ                  populate(INSERT) into join table\n");
             printf(" -PJ3                 populate(INSERT) into third_join table\n");
             printf(" -PF                  populate(INSERT) into fk table\n");
+            printf(" -B                   populate(INSERT) into bigrow table\n");
+            printf(" -BS                  SELECT FROM into bigrow table\n");
             printf(" -Q <range-query-len> SELECT * BETWEEN X AND (X + range-query-len)\n");
             printf(" -M <modulo-for-fk>   INSERT of FKs modulo\n");
             exit(1);
@@ -968,6 +976,32 @@ void test_join_FK_table() {
     endBenchmark("ISELECT FK");
 }
 
+void perform_bigrow_table_test() {
+// THE FOLLOWING COMMAND MUST BE RUN using ./redis-cli
+// CREATE TABLE bigrow \(id int primary key, field TEXT\)
+    reset_non_rand();
+    prepareForBenchmark();
+    client c = createClient();
+    if (!c) exit(1);
+    c->obuf = sdscat(c->obuf,"INSERT INTO bigrow VALUES (000100000001,abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrs)\r\n");
+    prepareClientForReply(c,REPLY_RETCODE);
+    createMissingClients(c);
+    aeMain(config.el);
+    endBenchmark("INSERT TEST");
+}
+
+void perform_bigrow_sel_test() {
+    reset_non_rand();
+    prepareForBenchmark();
+    client c = createClient();
+    if (!c) exit(1);
+    c->obuf = sdscat(c->obuf,"SELECT * FROM bigrow WHERE id = 000100000001\n");
+    prepareClientForReply(c,REPLY_BULK);
+    createMissingClients(c);
+    aeMain(config.el);
+    endBenchmark("SELECT TEST");
+}
+
 
 int main(int argc, char **argv) {
     client c;
@@ -1014,6 +1048,8 @@ int main(int argc, char **argv) {
     config.populate_10way_join_table = 0;
     config.populate_fk_table         = 0;
     config.populate_fk2_table        = 0;
+    config.perform_bigrow_table_test = 0;
+    config.perform_bigrow_sel_test   = 0;
 
     parseOptions(argc,argv);
 
@@ -1073,7 +1109,6 @@ int main(int argc, char **argv) {
             }
             return 0;
         }
-
 
         if (config.perform_range_query) {
             printf("Range Query Test: length: %ld\n", config.range_query_len);
@@ -1147,6 +1182,18 @@ int main(int argc, char **argv) {
             printf("denorm_set_for_compare_w_test_table\n");
             denorm_set_for_compare_w_test_table();
 
+            return 0;
+        }
+
+        if (config.perform_bigrow_table_test) {
+            printf("perform_bigrow_table_test\n");
+            perform_bigrow_table_test();
+            return 0;
+        }
+
+        if (config.perform_bigrow_sel_test) {
+            printf("perform_bigrow_sel_test\n");
+            perform_bigrow_sel_test();
             return 0;
         }
 

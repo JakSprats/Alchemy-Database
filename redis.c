@@ -487,8 +487,10 @@ typedef struct pubsubPattern {
     robj *pattern;
 } pubsubPattern;
 
+#if 0
 typedef void redisCommandProc(redisClient *c);
 typedef void redisVmPreloadProc(redisClient *c, struct redisCommand *cmd, int argc, robj **argv);
+
 struct redisCommand {
     char *name;
     redisCommandProc *proc;
@@ -504,6 +506,7 @@ struct redisCommand {
     int vm_keystep;  /* The step between first and last key */
     int alsosql; //TODO throwout
 };
+#endif
 
 struct redisFunctionSym {
     char *name;
@@ -653,7 +656,6 @@ static int blockClientOnSwappedKeys(redisClient *c, struct redisCommand *cmd);
 static int dontWaitForSwappedKey(redisClient *c, robj *key);
 static void handleClientsBlockedOnSwappedKey(redisDb *db, robj *key);
 static void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask);
-static struct redisCommand *lookupCommand(char *name);
 static void call(redisClient *c, struct redisCommand *cmd);
 static void resetClient(redisClient *c);
 static void convertToRealHash(robj *o);
@@ -743,10 +745,10 @@ static void msetCommand(redisClient *c);
 static void msetnxCommand(redisClient *c);
 static void zaddCommand(redisClient *c);
 static void zincrbyCommand(redisClient *c);
+static void zrevrangeCommand(redisClient *c);
 static void zrangeCommand(redisClient *c);
 static void zrangebyscoreCommand(redisClient *c);
 static void zcountCommand(redisClient *c);
-static void zrevrangeCommand(redisClient *c);
 static void zcardCommand(redisClient *c);
 static void zremCommand(redisClient *c);
 static void zscoreCommand(redisClient *c);
@@ -947,6 +949,7 @@ static struct redisCommand cmdTable[] = {
 extern int            Num_tbls;
 extern int            Num_indx;
 extern stor_cmd       StorageCommands[];
+extern stor_cmd       AccessCommands[];
 extern char          *EQUALS;
 extern char          *PERIOD;
 extern char          *Col_type_defs[];
@@ -1720,147 +1723,154 @@ static void createSharedObjects(void) {
     shared.emptymultibulk = createObject(REDIS_STRING,sdsnew("*0\r\n"));
     shared.pong = createObject(REDIS_STRING,sdsnew("+PONG\r\n"));
     shared.queued = createObject(REDIS_STRING,sdsnew("+QUEUED\r\n"));
-    shared.wrongtypeerr = createObject(REDIS_STRING,sdsnew(
-        "-ERR Operation against a key holding the wrong kind of value\r\n"));
 
 #ifdef ALSOSQL
     shared.toomanytables = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: MAX tables reached (256)\r\n"));
+        "-ERR MAX tables reached (256)\r\n"));
     shared.undefinedcolumntype = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: Column Type Unknown [INT,TEXT]\r\n"));
+        "-ERR Column Type Unknown [INT,TEXT]\r\n"));
     shared.columnnametoobig = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: ColumnName too long MAX(64)\r\n"));
+        "-ERR ColumnName too long MAX(64)\r\n"));
     shared.toomanycolumns = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: MAX columns reached(64)\r\n"));
+        "-ERR MAX columns reached(64)\r\n"));
     shared.toofewcolumns = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: Too few columns (min 2)\r\n"));
+        "-ERR Too few columns (min 2)\r\n"));
     shared.nonuniquecolumns = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: Column name defined more than once\r\n"));
+        "-ERR Column name defined more than once\r\n"));
     shared.nonuniquetablenames = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: Table name already exists\r\n"));
+        "-ERR Table name already exists\r\n"));
     shared.toomanyindices = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: MAX indices reached(512)\r\n"));
+        "-ERR MAX indices reached(512)\r\n"));
     shared.nonuniqueindexnames = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: Index name already exists\r\n"));
+        "-ERR Index name already exists\r\n"));
     shared.indextargetinvalid = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: Index on Tablename.columnname target error\r\n"));
+        "-ERR Index on Tablename.columnname target error\r\n"));
     shared.indexedalready = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: Tablename.Columnname is ALREADY indexed)\r\n"));
+        "-ERR Tablename.Columnname is ALREADY indexed)\r\n"));
     shared.nonexistenttable = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: Table does not exist\r\n"));
+        "-ERR Table does not exist\r\n"));
     shared.insertcolumnmismatch = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: SYNTAX|FORMAT - number of columns mismatch ... SYNTAX: INSERT INTO tablename VALUES (vals,,,,)\r\n"));
+        "-ERR SYNTAX|FORMAT - number of columns mismatch ... SYNTAX: INSERT INTO tablename VALUES (vals,,,,)\r\n"));
     shared.insertcannotoverwrite = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: INSERT on Existing Data - use OVERWRITE \r\n"));
+        "-ERR INSERT on Existing Data - use UPDATE\r\n"));
 
     shared.uint_pk_too_big = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: INSERT: PK greater than UINT_MAX(4GB)\r\n"));
+        "-ERR INSERT: PK greater than UINT_MAX(4GB)\r\n"));
     shared.uint_no_negative_values = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: INSERT: UINT PK can not be negative\r\n"));
+        "-ERR INSERT: UINT PK can not be negative\r\n"));
     shared.col_uint_too_big = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: INSERT: UINT Column greater than UINT_MAX(4GB)\r\n"));
+        "-ERR INSERT: UINT Column greater than UINT_MAX(4GB)\r\n"));
     shared.col_uint_no_negative_values = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: INSERT: UINT Column can not be negative\r\n"));
+        "-ERR INSERT: UINT Column can not be negative\r\n"));
 
     shared.columntoolarge = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: INSERT - MAX column size is 1GB\r\n"));
+        "-ERR INSERT - MAX column size is 1GB\r\n"));
     shared.nonexistentcolumn = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: Column does not exist\r\n"));
+        "-ERR Column does not exist\r\n"));
     shared.nonexistentindex = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: Index does not exist\r\n"));
+        "-ERR Index does not exist\r\n"));
     shared.badindexedcolumnsyntax = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: Indexed Column syntax is: tablename.columname\r\n"));
+        "-ERR Indexed Column syntax is: tablename.columname\r\n"));
     shared.invalidupdatestring = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: UPDATE: string error, syntax is col1=val1,col2=val2,....\r\n"));
+        "-ERR UPDATE: string error, syntax is col1=val1,col2=val2,....\r\n"));
     shared.invalidrange = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: RANGE: Invalid range\r\n"));
+        "-ERR RANGE: Invalid range\r\n"));
 
     shared.toofewindicesinjoin = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: SELECT: JOIN: Too few indexed columns in join(min=2)\r\n"));
+        "-ERR SELECT: JOIN: Too few indexed columns in join(min=2)\r\n"));
     shared.toomanyindicesinjoin = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: SELECT: JOIN: MAX indices in JOIN reached(64)\r\n"));
+        "-ERR SELECT: JOIN: MAX indices in JOIN reached(64)\r\n"));
     shared.indexordermismatchcolumndeclaration = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: SELECT: JOIN: Strict ordering in declaration necessary. Join Index declaration must match Table.column declaration (in SAME order)\r\n"));
+        "-ERR SELECT: JOIN: Strict ordering in declaration necessary. Join Index declaration must match Table.column declaration (in SAME order)\r\n"));
     shared.joinindexedcolumnlisterror = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: SELECT: JOIN: error on indexed columns (join columns)\r\n"));
+        "-ERR SELECT: JOIN: error on indexed columns (join columns)\r\n"));
     shared.joincolumnlisterror = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: SELECT: JOIN: error in columnlist (select columns)\r\n"));
+        "-ERR SELECT: JOIN: error in columnlist (select columns)\r\n"));
     shared.join_on_multi_col = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: SELECT: JOIN: Only SINGLE index joins are supported\r\n"));
+        "-ERR SELECT: JOIN: Only SINGLE index joins are supported\r\n"));
     shared.join_requires_range = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: SELECT: JOIN: A range must be specified when joining (e.g. tbl.col BETWEEN x AND Y) -> Full Table Scans when joining are purposefully prohibited\r\n"));
+        "-ERR SELECT: JOIN: A range must be specified when joining (e.g. tbl.col BETWEEN x AND Y) -> Full Table Scans when joining are purposefully prohibited\r\n"));
 
     shared.storagetypeunkown = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: STORE: StorageType must be write commands (LPUSH,SADD,ZADD,INSERT,SET,etc...)\r\n"));
+        "-ERR STORE: StorageType must be write commands (LPUSH,SADD,ZADD,INSERT,SET,etc...)\r\n"));
     shared.storagenumargsmismatch = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: STORE: NumberSelectedColumns must match StorageType InputNumargs(1||2)\r\n"));
+        "-ERR STORE: NumberSelectedColumns must match StorageType InputNumargs(1||2)\r\n"));
     shared.erronstoretotable = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: STORE: Store to table, create table error\r\n"));
+        "-ERR STORE: Store to table, create table error\r\n"));
 
     shared.createsyntax = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: SYNTAX: CREATE tablename (columnname type,,,,) OR CREATE INDEX indexname (table.column)\r\n"));
+        "-ERR SYNTAX: CREATE tablename (columnname type,,,,) OR CREATE INDEX indexname (table.column)\r\n"));
     shared.dropsyntax = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: SYNTAX: DROP TABLE tablename OR DROP INDEX indexname\r\n"));
+        "-ERR SYNTAX: DROP TABLE tablename OR DROP INDEX indexname\r\n"));
 
     shared.insertsyntax = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: SYNTAX: INSERT INTO tablename VALUES (vals,,,,)\r\n"));
+        "-ERR SYNTAX: INSERT INTO tablename VALUES (vals,,,,)\r\n"));
     shared.insertsyntax_no_into = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: SYNTAX: INSERT INTO tablename VALUES (vals,,,,) - \"INTO\" keyword MISSING\r\n"));
+        "-ERR SYNTAX: INSERT INTO tablename VALUES (vals,,,,) - \"INTO\" keyword MISSING\r\n"));
     shared.insertsyntax_col_declaration = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: SYNTAX: INSERT INTO tablename VALUES (vals,,,,) - Column Declaration not supported\r\n"));
+        "-ERR SYNTAX: INSERT INTO tablename VALUES (vals,,,,) - Column Declaration not supported\r\n"));
     shared.insertsyntax_no_values = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: SYNTAX: INSERT INTO tablename VALUES (vals,,,,) - \"VALUES\" keyword MISSING\r\n"));
+        "-ERR SYNTAX: INSERT INTO tablename VALUES (vals,,,,) - \"VALUES\" keyword MISSING\r\n"));
 
     shared.selectsyntax = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: SYNTAX: SELECT col,,,, FROM tablename WHERE indexed_column = val || WHERE indexed_column BETWEEN x AND y\r\n"));
+        "-ERR SYNTAX: SELECT col,,,, FROM tablename WHERE indexed_column = val || WHERE indexed_column BETWEEN x AND y\r\n"));
     shared.selectsyntax_nofrom = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: SYNTAX: SELECT col,,,, FROM tablename WHERE indexed_column = val - \"FROM\" keyword MISSING\r\n"));
+        "-ERR SYNTAX: SELECT col,,,, FROM tablename WHERE indexed_column = val - \"FROM\" keyword MISSING\r\n"));
     shared.selectsyntax_nowhere = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: SYNTAX: SELECT col,,,, FROM tablename WHERE indexed_column = val - \"WHERE\" keyword MISSING\r\n"));
+        "-ERR SYNTAX: SELECT col,,,, FROM tablename WHERE indexed_column = val - \"WHERE\" keyword MISSING\r\n"));
     shared.selectsyntax_notpk = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: SYNTAX: SELECT col,,,, FROM tablename WHERE indexed_column = val - Column must be indexed\r\n"));
+        "-ERR SYNTAX: SELECT col,,,, FROM tablename WHERE indexed_column = val - Column must be indexed\r\n"));
     shared.selectsyntax_noequals = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: SYNTAX: SELECT col,,,, FROM tablename WHERE indexed_column = val - \"EQUALS SIGN\" MISSING\r\n"));
+        "-ERR SYNTAX: SELECT col,,,, FROM tablename WHERE indexed_column = val - \"EQUALS SIGN\" MISSING\r\n"));
 
     shared.deletesyntax = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: SYNTAX: DELETE FROM tablename WHERE indexed_column = val || WHERE indexed_column BETWEEN x AND y\r\n"));
+        "-ERR SYNTAX: DELETE FROM tablename WHERE indexed_column = val || WHERE indexed_column BETWEEN x AND y\r\n"));
     shared.deletesyntax_nowhere = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: SYNTAX: DELETE FROM tablename WHERE indexed_column = val - \"WHERE\" keyword MISSING\r\n"));
+        "-ERR SYNTAX: DELETE FROM tablename WHERE indexed_column = val - \"WHERE\" keyword MISSING\r\n"));
     shared.deletesyntax_notpk = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: SYNTAX: DELETE FROM tablename WHERE indexed_column = val - Column must be indexed\r\n"));
+        "-ERR SYNTAX: DELETE FROM tablename WHERE indexed_column = val - Column must be indexed\r\n"));
     shared.deletesyntax_noequals = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: SYNTAX: DELETE FROM tablename WHERE indexed_column = val  - \"EQUALS SIGN\" MISSING\r\n"));
+        "-ERR SYNTAX: DELETE FROM tablename WHERE indexed_column = val  - \"EQUALS SIGN\" MISSING\r\n"));
 
     shared.updatesyntax = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: SYNTAX: UPDATE tablename SET col1=val1,col2=val2,,,, WHERE indexed_column = val\r\n"));
+        "-ERR SYNTAX: UPDATE tablename SET col1=val1,col2=val2,,,, WHERE indexed_column = val\r\n"));
     shared.updatesyntax_nowhere = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: SYNTAX: UPDATE tablename SET col1=val1,col2=val2,,,, WHERE indexed_column = val \"WHERE\" keyword MISSING\r\n"));
+        "-ERR SYNTAX: UPDATE tablename SET col1=val1,col2=val2,,,, WHERE indexed_column = val \"WHERE\" keyword MISSING\r\n"));
     shared.updatesyntax_notpk = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: SYNTAX: UPDATE tablename SET col1=val1,col2=val2,,,, WHERE indexed_column = val - Column must be indexed\r\n"));
+        "-ERR SYNTAX: UPDATE tablename SET col1=val1,col2=val2,,,, WHERE indexed_column = val - Column must be indexed\r\n"));
     shared.updatesyntax_noequals = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: SYNTAX: UPDATE tablename SET col1=val1,col2=val2,,,, WHERE indexed_column = val - \"EQUALS SIGN\" MISSING\r\n"));
+        "-ERR SYNTAX: UPDATE tablename SET col1=val1,col2=val2,,,, WHERE indexed_column = val - \"EQUALS SIGN\" MISSING\r\n"));
 
     shared.createtable_as_on_wrong_type = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: TYPE: CREATE TABLE tablename AS X - X must be [LIST,SET,HASH,ZET]\r\n"));
+        "-ERR TYPE: CREATE TABLE tablename AS X - X must be [LIST,SET,HASH,ZET]\r\n"));
 
     shared.whereclause_no_and = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: SYNTAX: WHERE-CLAUSE: WHERE indexed_column BETWEEN start AND finish - \"AND\" MISSING\r\n"));
+        "-ERR SYNTAX: WHERE-CLAUSE: WHERE indexed_column BETWEEN start AND finish - \"AND\" MISSING\r\n"));
     shared.selectsyntax_store_norange = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: SYNTAX: SELECT w/ STORE requires WHERE indexed_column BETWEEN start AND FINISH\r\n"));
+        "-ERR SYNTAX: SELECT w/ STORE requires WHERE indexed_column BETWEEN start AND FINISH\r\n"));
 
     shared.scanselectsyntax = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: SYNTAX: SCANSELECT col,,,, FROM tablename WHERE col = val\r\n"));
+        "-ERR SYNTAX: SCANSELECT col,,,, FROM tablename WHERE col = val\r\n"));
     shared.scanselectsyntax_noequals = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: SYNTAX: SELECT col,,,, FROM tablename WHERE col = val - \"EQUALS SIGN\" MISSING\r\n"));
+        "-ERR SYNTAX: SELECT col,,,, FROM tablename WHERE col = val - \"EQUALS SIGN\" MISSING\r\n"));
 
     shared.joinsyntax_no_tablename = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: SYNTAX: SELECT tbl.col,,,, FROM tbl1,tbl2 WHERE tbl1.indexed_column = tbl2.indexed_column AND tbl1.indexed_column BETWEEN x AND y - MISSING table-name in WhereClause\r\n"));
+        "-ERR SYNTAX: SELECT tbl.col,,,, FROM tbl1,tbl2 WHERE tbl1.indexed_column = tbl2.indexed_column AND tbl1.indexed_column BETWEEN x AND y - MISSING table-name in WhereClause\r\n"));
 
     shared.drop_virtual_index = createObject(REDIS_STRING,sdsnew(
-        "-ERROR: MISC: Primary Key Indices can not be dropped\r\n"));
+        "-ERR MISC: Primary Key Indices can not be dropped\r\n"));
+
+    shared.create_table_as_function_not_found = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: CREATE TABLE tablename AS [DUMP,SELECT,LRANGE,ZRANGE,ZRANGEBYSCORE,ZREVRANGE,HMGET,HKEYS,HVALS,HGETALL,SUNION,SDIFF,SINTER,SMEMBERS,SORT] redis_object - redis function name not recognized\r\n"));
+    shared.create_table_as_dump_num_args = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: CREATE TABLE tablename AS DUMP redis_object - too few arguments\r\n"));
+    shared.create_table_as_access_num_args = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: CREATE TABLE tablename AS [SELECT,LRANGE,ZRANGE,ZRANGEBYSCORE,ZREVRANGE,HMGET,HKEYS,HVALS,HGETALL,SUNION,SDIFF,SINTER,SMEMBERS,SORT] redis_object MIN MAX - too few arguments\r\n"));
 #endif /* ALSOSQL END */
 
 
+    shared.wrongtypeerr = createObject(REDIS_STRING,sdsnew(
+        "-ERR Operation against a key holding the wrong kind of value\r\n"));
     shared.nokeyerr = createObject(REDIS_STRING,sdsnew(
         "-ERR no such key\r\n"));
     shared.syntaxerr = createObject(REDIS_STRING,sdsnew(
@@ -2075,6 +2085,58 @@ static void initServer() {
     StorageCommands[10].name = "SETEX";
     StorageCommands[10].argc = -3;
 //#define STORAGE_MAX_ARGC 3
+
+    //#define ACCESS_SELECT_COMMAND_NUM 0
+    AccessCommands[0].func   = selectALSOSQLCommand;
+    AccessCommands[0].name   = "SELECT";
+    AccessCommands[0].argc   = 4;
+
+    AccessCommands[1].func   = lrangeCommand;
+    AccessCommands[1].name   = "LRANGE";
+    AccessCommands[1].argc   = 4;
+
+    AccessCommands[2].func   = zrangeCommand;
+    AccessCommands[2].name   = "ZRANGE";
+    AccessCommands[2].argc   = 4;
+    AccessCommands[3].func   = zrangebyscoreCommand;
+    AccessCommands[3].name   = "ZRANGEBYSCORE";
+    AccessCommands[3].argc   = 4;
+    AccessCommands[4].func   = zrevrangeCommand;
+    AccessCommands[4].name   = "ZREVRANGE";
+    AccessCommands[4].argc   = 3;
+
+    AccessCommands[5].func   = hmgetCommand;
+    AccessCommands[5].name   = "HMGET";
+    AccessCommands[5].argc   = 3;
+    AccessCommands[6].func   = hkeysCommand;
+    AccessCommands[6].name   = "HKEYS";
+    AccessCommands[6].argc   = 2;
+    AccessCommands[7].func   = hvalsCommand;
+    AccessCommands[7].name   = "HVALS";
+    AccessCommands[7].argc   = 2;
+    AccessCommands[8].func   = hgetallCommand;
+    AccessCommands[8].name   = "HGETALL";
+    AccessCommands[8].argc   = 2;
+
+    AccessCommands[9].func   = sunionCommand;
+    AccessCommands[9].name   = "SUNION";
+    AccessCommands[9].argc   = 3;
+    AccessCommands[10].func   = sdiffCommand;
+    AccessCommands[10].name   = "SDIFF";
+    AccessCommands[10].argc   = 3;
+    AccessCommands[11].func  = sinterCommand;
+    AccessCommands[11].name  = "SINTER";
+    AccessCommands[11].argc  = 3;
+    AccessCommands[12].func  = sinterCommand;
+    AccessCommands[12].name  = "SMEMBERS";
+    AccessCommands[12].argc  = 2;
+
+    AccessCommands[13].func  = sortCommand;
+    AccessCommands[13].name  = "SORT";
+    AccessCommands[13].argc  = 2;
+
+
+    //RUSS JAKSPRATS 
 
     init_six_bit_strings();
 
@@ -2539,7 +2601,7 @@ static void sendReplyToClientWritev(aeEventLoop *el, int fd, void *privdata, int
     }
 }
 
-static struct redisCommand *lookupCommand(char *name) {
+struct redisCommand *lookupCommand(char *name) {
     int j = 0;
     while(cmdTable[j].name != NULL) {
         if (!strcasecmp(name,cmdTable[j].name)) return &cmdTable[j];
@@ -4600,7 +4662,11 @@ void setGenericCommand(redisClient *c, int nx, robj *key, robj *val,
              * will be marked as free. */
             if (server.vm_enabled && deleteIfSwapped(c->db,key))
                 incrRefCount(key);
-            dictReplace(c->db->dict,key,val);
+            /* JAKSPRATS: ALSOSQL: tables or indices cant get overwritten */
+            if (dictReplace(c->db->dict,key,val) == DICT_ERR) {
+                addReply(c, shared.wrongtypeerr);
+                return;
+            }
             incrRefCount(val);
         } else {
             if (internal) addReply(c,shared.czero);
@@ -9062,6 +9128,7 @@ static int rewriteAppendOnlyFile(char *filename) {
                     }
                     dictReleaseIterator(di);
                 }
+            //TODO break this out into a function
             } else if (o->type == REDIS_BTREE) {
                 bt  *btr    = (struct btree *)(o->ptr);
                 if (btr) { /* virtual indices have NULLs */

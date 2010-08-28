@@ -627,3 +627,18 @@ function populate_join_fk_test() {
   echo SELECT reference1.val, reference2.val FROM reference1, reference2 WHERE reference1.master_id = reference2.master_id AND reference1.master_id BETWEEN 1 AND 3
   $CLI SELECT reference1.val, reference2.val FROM reference1, reference2 WHERE reference1.master_id = reference2.master_id AND reference1.master_id BETWEEN 1 AND 3
 }
+
+function init_bigrow_table() {
+  $CLI CREATE TABLE bigrow \(id int primary key, field TEXT\)
+}
+
+function create_table_as_select_customer() {
+  $CLI CREATE TABLE copy AS SELECT id,hobby,name,employee FROM customer WHERE hobby BETWEEN a AND z
+}
+
+function create_table_as_select_join_worker_health() {
+  $CLI CREATE TABLE worker_health AS SELECT worker.id,worker.name,worker.salary,healthplan.name FROM worker,healthplan WHERE worker.health = healthplan.id AND healthplan.id BETWEEN 1 AND 5
+  $CLI DESC worker_health
+  $CLI DUMP worker_health
+}
+

@@ -4,7 +4,8 @@
 
 MIT License
 
-Copyright (c) 2010 Russell Sullivan
+Copyright (c) 2010 Russell Sullivan <jaksprats AT gmail DOT com>
+ALL RIGHTS RESERVED 
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
@@ -145,9 +146,7 @@ void tscanCommand(redisClient *c) {
                                                        0);
     if (!where) goto tscan_cmd_err;
 
-    robj *o = lookupKeyReadOrReply(c, Tbl_name[tmatch], shared.nullbulk);
-    if (!o) goto tscan_cmd_err;
-
+    robj *o = lookupKeyRead(c->db, Tbl_name[tmatch]);
     LEN_OBJ
     bool rq = (where == 2); /* RANGE QUERY */
     robj *rq_low, *rq_high;

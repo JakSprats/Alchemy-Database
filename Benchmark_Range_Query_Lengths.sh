@@ -59,7 +59,7 @@ else
     echo ./redis-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PJ
     taskset -c 1 ./redis-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PJ >/dev/null
   fi
-  if [ $JOIN -eq 2 ]; then
+  if [ $JOIN -eq 3 ]; then
     echo ./redis-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PJ3
     taskset -c 1 ./redis-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PJ3 >/dev/null
   fi

@@ -5,7 +5,8 @@
 
 MIT License
 
-Copyright (c) 2010 Russell Sullivan
+Copyright (c) 2010 Russell Sullivan <jaksprats AT gmail DOT com>
+ALL RIGHTS RESERVED 
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
@@ -23,11 +24,17 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include "redis.h"
 #include "index.h"
 #include "store.h"
+#include "alsosql.h"
+#include "sql.h"
+#include "join.h"
 #include "denorm.h"
 
 // FROM redis.c
 #define RL4 redisLog(4,
 extern struct sharedObjectsStruct shared;
+
+stor_cmd AccessCommands[NUM_ACCESS_TYPES];
+char *DUMP = "DUMP";
 
 static robj *_createStringObject(char *s) {
     return createStringObject(s, strlen(s));
@@ -36,11 +43,16 @@ static robj *_createStringObject(char *s) {
 static bool addSingle(redisClient *c,
                       redisClient *fc,
                       robj        *key,
-                      long        *inserted) {
+                      long        *instd,
+                      bool         is_insert) {
     robj *vals  = createObject(REDIS_STRING, NULL);
-    vals->ptr   = (key->encoding == REDIS_ENCODING_RAW) ?
-        sdscatprintf(sdsempty(), "%ld,%s",  *inserted, (char *)key->ptr):
-        sdscatprintf(sdsempty(), "%ld,%ld", *inserted, (long)  key->ptr);
+    if (is_insert) {
+        vals->ptr   = sdsnewlen(key->ptr, sdslen(key->ptr));
+    } else {
+        vals->ptr   = (key->encoding == REDIS_ENCODING_RAW) ?
+            sdscatprintf(sdsempty(), "%ld,%s",  *instd, (char *)key->ptr):
+            sdscatprintf(sdsempty(), "%ld,%ld", *instd, (long)  key->ptr);
+    }
     fc->argv[2] = vals;
     //RL4 "SGL: INSERTING [1]: %s [2]: %s", fc->argv[1]->ptr, fc->argv[2]->ptr);
     legacyInsertCommand(fc);
@@ -50,7 +62,7 @@ static bool addSingle(redisClient *c,
         addReply(c, ln->value);
         return 0;
     }
-    *inserted = *inserted + 1;
+    *instd = *instd + 1;
     return 1;
 }
 
@@ -58,28 +70,28 @@ static bool addDouble(redisClient *c,
                      redisClient *fc,
                      robj        *key,
                      robj        *val,
-                     long        *inserted,
+                     long        *instd,
                      bool         val_is_dbl) {
     robj *vals  = createObject(REDIS_STRING, NULL);
     if (val_is_dbl) {
         double d = *((double *)val);
         vals->ptr   = (key->encoding == REDIS_ENCODING_RAW) ?
             sdscatprintf(sdsempty(), "%ld,%s,%f", 
-                          *inserted, (char *)key->ptr, d) :
+                          *instd, (char *)key->ptr, d) :
             sdscatprintf(sdsempty(), "%ld,%ld,%f",
-                          *inserted, (long)  key->ptr, d);
+                          *instd, (long)  key->ptr, d);
     } else if (val->encoding == REDIS_ENCODING_RAW) {
         vals->ptr   = (key->encoding == REDIS_ENCODING_RAW) ?
             sdscatprintf(sdsempty(), "%ld,%s,%s", 
-                          *inserted, (char *)key->ptr, (char *)val->ptr) :
+                          *instd, (char *)key->ptr, (char *)val->ptr) :
             sdscatprintf(sdsempty(), "%ld,%ld,%s",
-                          *inserted, (long)  key->ptr, (char *)val->ptr);
+                          *instd, (long)  key->ptr, (char *)val->ptr);
     } else {
         vals->ptr   = (key->encoding == REDIS_ENCODING_RAW) ?
             sdscatprintf(sdsempty(), "%ld,%s,%ld", 
-                          *inserted, (char *)key->ptr, (long)val->ptr) :
+                          *instd, (char *)key->ptr, (long)val->ptr) :
             sdscatprintf(sdsempty(), "%ld,%ld,%ld",
-                          *inserted, (long)  key->ptr, (long)val->ptr);
+                          *instd, (long)  key->ptr, (long)val->ptr);
     }
     fc->argv[2] = vals;
     //RL4 "DBL: INSERTING [1]: %s [2]: %s", fc->argv[1]->ptr, fc->argv[2]->ptr);
@@ -90,85 +102,224 @@ static bool addDouble(redisClient *c,
         addReply(c, ln->value);
         return 0;
     }
-    *inserted = *inserted + 1;
+    *instd = *instd + 1;
     return 1;
 }
 
-void createTableAsObject(redisClient *c) {
-    robj *key = c->argv[4];
-    robj *o   = lookupKeyReadOrReply(c, key, shared.nullbulk);
-    robj *cdef;
-    bool single;
-    if (o->type == REDIS_LIST) {
-        cdef = _createStringObject("pk=INT,lvalue=TEXT");
-        single = 1;
-    } else if (o->type == REDIS_SET) {
-        cdef = _createStringObject("pk=INT,svalue=TEXT");
-        single = 1;
-    } else if (o->type == REDIS_ZSET) {
-        cdef = _createStringObject("pk=INT,zkey=TEXT,zvalue=TEXT");
-        single = 0;
-    } else if (o->type == REDIS_HASH) {
-        cdef = _createStringObject("pk=INT,hkey=TEXT,hvalue=TEXT");
-        single = 0;
-    } else {
-        addReply(c, shared.createtable_as_on_wrong_type);
-        return;
+/* TODO the protocol-parsing does not exactly follow the line protocol,
+        it follow what the code does ... the code could change */
+
+/* NOTE: this function implements a fakeClient pipe */
+void createTableAsObjectOperation(redisClient *c, bool is_insert) {
+    robj               *wargv[3];
+    struct redisClient *wfc    = createFakeClient(); /* one client to write */
+    wfc->argc                  = 3;
+    wfc->argv                  = wargv;
+    wfc->argv[1]               = c->argv[2]; /* table name */
+
+    robj               **rargv = malloc(sizeof(robj *) * c->argc);
+    struct redisClient *rfc    = createFakeClient(); /* one client to read */
+    rfc->argv                  = rargv;
+    for (int i = 5; i < c->argc; i++) {
+        rfc->argv[i - 4] = c->argv[i];
+    }
+    rfc->argc                  = c->argc - 4;
+    rfc->db                    = c->db;
+
+    struct redisCommand *cmd = lookupCommand(c->argv[4]->ptr);
+    cmd->proc(rfc);
+
+    long instd = 1; /* ZER0 as pk is sometimes bad */
+    listNode *ln;
+    listIter li;
+    robj *o;
+    listRewind(rfc->reply,&li);
+    while((ln = listNext(&li))) {
+        o     = ln->value;
+        sds s = o->ptr;
+        /* ignore protocol, we just want data */
+        if (*s == '*' || *s == '\r') continue;
+        if (*s == '-')               break; /* error */
+        if (*s == '$') { /* parse doubles which are w/in this list element */
+            char *x = strchr(s, '\r');
+            uint line_len = x - s;
+            if (line_len + 2 < sdslen(s)) { /* got a double */
+                x += 2; /* move past \r\n */
+                char *y = strchr(x, '\r'); /* kill the final \r\n */
+                *y = '\0';
+                robj *r = createStringObject(x, strlen(x));
+                if (!addSingle(c, wfc, r, &instd, is_insert)) goto cr8tbloo_err;
+            }
+            continue;
+        }
+        /* all ranges are single */
+        if (!addSingle(c, wfc, o, &instd, is_insert)) goto cr8tbloo_err;
     }
 
-    robj               *argv[3];
-    struct redisClient *fc = createFakeClient();
-    fc->argv               = argv;
-
-    fc->argv[1]    = c->argv[2];
-    fc->argv[2]    = cdef;
-    fc->argc   = 3;
-
-    legacyTableCommand(fc);
-    if (!respOk(fc)) { /* most likely table already exists */
-        listNode *ln = listFirst(fc->reply);
-        addReply(c, ln->value);
-        return;
-    }
-
-    long inserted = 1; /* ZER0 as pk is sometimes bad */
-    if (o->type == REDIS_LIST) {
-        list     *list = o->ptr;
-        listNode *ln   = list->head;
-        while (ln) {
-            robj *key = listNodeValue(ln);
-            if (!addSingle(c, fc, key, &inserted)) return;
-            ln = ln->next;
-        }
-    } else if (o->type == REDIS_SET) {
-        dictEntry    *de;
-        dict         *set = o->ptr;
-        dictIterator *di  = dictGetIterator(set);
-        while ((de = dictNext(di)) != NULL) {   
-            robj *key  = dictGetEntryKey(de);
-            if (!addSingle(c, fc, key, &inserted)) return;
-        }
-        dictReleaseIterator(di);
-    } else if (o->type == REDIS_ZSET) {
-        dictEntry    *de;
-        zset         *zs  = o->ptr;
-        dictIterator *di  = dictGetIterator(zs->dict);
-        while ((de = dictNext(di)) != NULL) {   
-            robj *key = dictGetEntryKey(de);
-            robj *val = dictGetEntryVal(de);
-            if (!addDouble(c, fc, key, val, &inserted, 1)) return;
-        }
-        dictReleaseIterator(di);
-    } else {
-        hashIterator *hi = hashInitIterator(o);
-        while (hashNext(hi) != REDIS_ERR) {
-            robj *key = hashCurrent(hi, REDIS_HASH_KEY);
-            robj *val = hashCurrent(hi, REDIS_HASH_VALUE);
-            if (!addDouble(c, fc, key, val, &inserted, 0)) return;
-        }
-        hashReleaseIterator(hi);
-    }
-
+cr8tbloo_err:
+    freeFakeClient(rfc);
+    freeFakeClient(wfc);
+    free(rargv);
     addReply(c, shared.ok);
     return;
+}
+
+void createTableAsObject(redisClient *c) {
+    robj *axs_type = c->argv[4];
+    int   axs      = -1;
+    for (int i = 0; i < NUM_ACCESS_TYPES; i++) {
+        if (!strcasecmp(axs_type->ptr, AccessCommands[i].name)) {
+            axs = i;
+            break;
+        }
+    }
+  
+    if (axs != -1) {
+        if (c->argc < (4 + AccessCommands[axs].argc)) {
+            addReply(c, shared.create_table_as_access_num_args);
+            return;
+        }
+    } else {
+        if (strcasecmp(axs_type->ptr, DUMP)) {
+            addReply(c, shared.create_table_as_function_not_found);
+            return;
+        }
+        if (c->argc < 6) {
+            addReply(c, shared.create_table_as_dump_num_args);
+            return;
+        }
+    }
+
+    robj *cdef;
+    bool  single;
+    robj *o  = NULL;
+    if (axs == ACCESS_SELECT_COMMAND_NUM) {
+        int   which = 0; /*used in ARGN_OVERFLOW */
+        int   argn  = 5;
+        sds   clist = sdsempty();
+
+        parseSelectColumnList(c, &clist, &argn);
+        /* parseSelectColumnList edits the cargv ----------------\/           */
+        sdsfree(c->argv[5]->ptr);                             /* so free it   */
+        c->argv[5]->ptr = sdsnewlen(clist, sdslen(clist));;   /* and recr8 it */
+        ARGN_OVERFLOW                      /* skip SQL keyword"FROM" */
+
+        robj               *argv[3];
+        bool                ret   = 1;
+        int                 qcols = 0;
+        struct redisClient *rfc   = createFakeClient();
+        rfc->argv                 = argv;
+        rfc->argv[1]              = c->argv[2];
+        if (strchr(clist, '.')) { /* CREATE TABLE AS SELECT JOIN */
+            int j_tbls [MAX_JOIN_INDXS];
+            int j_cols [MAX_JOIN_INDXS];
+            qcols = multiColCheckOrReply(c, clist, j_tbls, j_cols);
+            if (qcols) ret = createTableFromJoin(c, rfc, qcols, j_tbls, j_cols);
+        } else {
+            TABLE_CHECK_OR_REPLY(c->argv[argn]->ptr,);
+            int cmatchs[MAX_COLUMN_PER_TABLE];
+            qcols = parseColListOrReply(c, tmatch, clist, cmatchs);
+            if (qcols) ret = internalCreateTable(c, rfc, qcols,
+                                                 cmatchs, tmatch);
+        }
+        freeFakeClient(rfc);
+        if (!ret || !qcols) return;
+
+        createTableAsObjectOperation(c, 1);
+
+        addReply(c, shared.ok);
+        return;
+    } else {
+        robj *key = c->argv[5];
+        o         = lookupKeyReadOrReply(c, key, shared.nullbulk);
+        if (!o) return;
+
+        if (axs != -1) { /* all ranges are single */
+            cdef = _createStringObject("pk=INT,value=TEXT");
+            single = 1;
+        } else if (o->type == REDIS_LIST) {
+            cdef = _createStringObject("pk=INT,lvalue=TEXT");
+            single = 1;
+        } else if (o->type == REDIS_SET) {
+            cdef = _createStringObject("pk=INT,svalue=TEXT");
+            single = 1;
+        } else if (o->type == REDIS_ZSET) {
+            cdef = _createStringObject("pk=INT,zkey=TEXT,zvalue=TEXT");
+            single = 0;
+        } else if (o->type == REDIS_HASH) {
+            cdef = _createStringObject("pk=INT,hkey=TEXT,hvalue=TEXT");
+            single = 0;
+        } else {
+            addReply(c, shared.createtable_as_on_wrong_type);
+            return;
+        }
+    }
+
+    { /* CREATE TABLE */
+        robj               *argv[3];
+        struct redisClient *fc = createFakeClient();
+        fc->argv               = argv;
+        fc->argv[1]            = c->argv[2];
+        fc->argv[2]            = cdef;
+        fc->argc               = 3;
+
+        legacyTableCommand(fc);
+        if (!respOk(fc)) { /* most likely table already exists */
+            listNode *ln = listFirst(fc->reply);
+            addReply(c, ln->value);
+            freeFakeClient(fc);
+            return;
+        }
+        freeFakeClient(fc);
+    }
+
+    if (axs != -1) {
+        createTableAsObjectOperation(c, 0);
+    } else {
+        robj               *argv[3];
+        struct redisClient *dfc    = createFakeClient();
+        dfc->argv                  = argv;
+        dfc->argv[1]               = c->argv[2]; /* table name */
+        long                instd = 1;          /* ZER0 as PK can be bad */
+        if (o->type == REDIS_LIST) {
+            list     *list = o->ptr;
+            listNode *ln   = list->head;
+            while (ln) {
+                robj *key = listNodeValue(ln);
+                if (!addSingle(c, dfc, key, &instd, 0)) goto cr8tbldmp_err;
+                ln = ln->next;
+            }
+        } else if (o->type == REDIS_SET) {
+            dictEntry    *de;
+            dict         *set = o->ptr;
+            dictIterator *di  = dictGetIterator(set);
+            while ((de = dictNext(di)) != NULL) {   
+                robj *key  = dictGetEntryKey(de);
+                if (!addSingle(c, dfc, key, &instd, 0)) goto cr8tbldmp_err;
+            }
+            dictReleaseIterator(di);
+        } else if (o->type == REDIS_ZSET) {
+            dictEntry    *de;
+            zset         *zs  = o->ptr;
+            dictIterator *di  = dictGetIterator(zs->dict);
+            while ((de = dictNext(di)) != NULL) {   
+                robj *key = dictGetEntryKey(de);
+                robj *val = dictGetEntryVal(de);
+                if (!addDouble(c, dfc, key, val, &instd, 1)) goto cr8tbldmp_err;
+            }
+            dictReleaseIterator(di);
+        } else {
+            hashIterator *hi = hashInitIterator(o);
+            while (hashNext(hi) != REDIS_ERR) {
+                robj *key = hashCurrent(hi, REDIS_HASH_KEY);
+                robj *val = hashCurrent(hi, REDIS_HASH_VALUE);
+                if (!addDouble(c, dfc, key, val, &instd, 0)) goto cr8tbldmp_err;
+            }
+            hashReleaseIterator(hi);
+        }
+        addReply(c, shared.ok);
+
+cr8tbldmp_err:
+        freeFakeClient(dfc);
+    }
 }

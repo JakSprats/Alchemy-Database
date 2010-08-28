@@ -4,7 +4,8 @@
 
 MIT License
 
-Copyright (c) 2010 Russell Sullivan
+Copyright (c) 2010 Russell Sullivan <jaksprats AT gmail DOT com>
+ALL RIGHTS RESERVED 
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
@@ -208,11 +209,11 @@ static bool _internalCreateTable(redisClient *c,
     return 1;
 }
 
-static bool internalCreateTable(redisClient *c,
-                                redisClient *fc,
-                                int          qcols,
-                                int          cmatchs[],
-                                int          tmatch) {
+bool internalCreateTable(redisClient *c,
+                         redisClient *fc,
+                         int          qcols,
+                         int          cmatchs[],
+                         int          tmatch) {
     int  idum[1];
     bool bdum[1];
     return _internalCreateTable(c, fc, qcols, cmatchs, tmatch,
@@ -231,6 +232,7 @@ bool createTableFromJoin(redisClient *c,
             if (!strcmp(Tbl_col_name[j_tbls[i]][j_cols[i]]->ptr,
                         Tbl_col_name[j_tbls[j]][j_cols[j]]->ptr)) {
                 cname_cflix[i] = 1;
+                break;
             } else {
                 cname_cflix[i] = 0;
             }

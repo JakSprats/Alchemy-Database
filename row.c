@@ -4,7 +4,8 @@
 
 MIT License
 
-Copyright (c) 2010 Russell Sullivan
+Copyright (c) 2010 Russell Sullivan <jaksprats AT gmail DOT com>
+ALL RIGHTS RESERVED 
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
@@ -476,14 +477,12 @@ int deleteRow(redisClient *c,
               robj        *pko,
               int          matches,
               int          indices[]) {
-    robj *o = lookupKeyRead(c->db, Tbl_name[tmatch]);
-    if (!o) return 0;
-
+    robj *o   = lookupKeyRead(c->db, Tbl_name[tmatch]);
     robj *row = btFindVal(o, pko, Tbl_col_type[tmatch][0]);
     if (!row) return 0;
     if (matches) { // indices
         for (int i = 0; i < matches; i++) {         // delete indices
-            delFromIndex(c, pko, row, indices[i], tmatch);
+            delFromIndex(c->db, pko, row, indices[i], tmatch);
         }
     }
     btDelete(o, pko, Tbl_col_type[tmatch][0]);
@@ -624,7 +623,7 @@ bool updateRow(redisClient   *c,
     if (!cmiss[0]) { //pk update
         robj *npk = createStringObjectFromAobj(&avals[0]);
         for (int i = 0; i < matches; i++) { //redo ALL indices
-            updateIndex(c, okey, npk, NULL, orow, indices[i], 1, tmatch);
+            updateIndex(c->db, okey, npk, NULL, orow, indices[i], 1, tmatch);
         }
         // delete then add
         btDelete(o, okey,    Tbl_col_type[tmatch][0]);
@@ -637,7 +636,7 @@ bool updateRow(redisClient   *c,
             int cmatch = Indexed_column[inum];
             if (!cmiss[cmatch]) {
                 robj *new_val = createStringObjectFromAobj(&avals[cmatch]);
-                updateIndex(c, okey, npk, new_val, orow, inum, 0, tmatch);
+                updateIndex(c->db, okey, npk, new_val, orow, inum, 0, tmatch);
                 decrRefCount(new_val);
             }
         }
