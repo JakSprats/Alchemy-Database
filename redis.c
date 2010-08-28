@@ -936,7 +936,7 @@ static struct redisCommand cmdTable[] = {
     {"ikeys",        ikeysCommand,          3,REDIS_CMD_INLINE,NULL,1,1,1,1},
 
     {"scanselect",   tscanCommand,         -4,REDIS_CMD_INLINE,NULL,1,1,1,1},
-    {"normalize",    normCommand,           3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
+    {"normalize",    normCommand,          -2,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
 
     {"legacyjoin",   legacyJoinCommand,     4,REDIS_CMD_INLINE,NULL,1,1,1,1},
     {"legacytable",  legacyTableCommand,   -3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},

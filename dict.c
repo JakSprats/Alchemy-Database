@@ -314,9 +314,9 @@ int dictReplace(dict *d, void *key, void *val)
     entry = dictFind(d, key);
 
     /* JAKSPRATS: ALSOSQL: tables or indices cant get overwritten */
-    if (entry) {
-        robj *val = entry->val;
-        if (val->type == REDIS_BTREE) return DICT_ERR;
+    if (entry && val) {
+        robj *dval = entry->val;
+        if (dval->type == REDIS_BTREE) return DICT_ERR;
     }
 
     /* Free the old value and set the new one */

@@ -261,7 +261,8 @@ static bool istoreAction(redisClient *c,
                          int qcols,
                          int sto,
                          robj *pko,
-                         robj *row) {
+                         robj *row,
+                         robj *newname) {
     aobj  cols[MAX_COLUMN_PER_TABLE];
     int   totlen = 0;
     for (int i = 0; i < qcols; i++) {
@@ -294,6 +295,7 @@ static bool istoreAction(redisClient *c,
             if (cols[i].sixbit) free(cols[i].s);
         }
     } else {                         // INSERT
+        fc->argv[1] = newname;
         //TODO this can be done simpler w/ sdscatlen()
         int len = totlen + qcols -1;
         if (len > rowlen) {
@@ -344,12 +346,12 @@ void istoreCommit(redisClient *c,
     robj               *argv[STORAGE_MAX_ARGC + 1];
     struct redisClient *fc = createFakeClient();
     fc->argv               = argv;
-
-    fc->argv[1] = newname; // this will be the Stored Objects NAME
-
+    fc->argv[1]            = newname; /* the NEW Stored Objects NAME */
     if (!StorageCommands[sto].argc) { // create table first if needed
         if (!internalCreateTable(c, fc, qcols, cmatchs, tmatch)) {
             freeFakeClient(fc);
+            decrRefCount(low);
+            decrRefCount(high);
             return;
         }
     }
@@ -364,7 +366,8 @@ void istoreCommit(redisClient *c,
         if (virt) {
             robj *pko = be->key;
             robj *row = be->val;
-            if (!istoreAction(c, fc, tmatch, cmatchs, qcols, sto, pko, row))
+            if (!istoreAction(c, fc, tmatch, cmatchs, qcols, sto,
+                              pko, row, newname))
                 goto istore_err;
             stored++;
         } else {
@@ -374,7 +377,7 @@ void istoreCommit(redisClient *c,
                 robj *pko = nbe->key;
                 robj *row = btFindVal(o, pko, Tbl_col_type[tmatch][0]);
                 if (!istoreAction(c, fc, tmatch, cmatchs, qcols, sto,
-                                  pko, row)) {
+                                  pko, row, newname)) {
                     btReleaseRangeIterator(nbi);
                     goto istore_err;
                 }

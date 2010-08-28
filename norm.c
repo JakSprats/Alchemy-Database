@@ -22,12 +22,13 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <unistd.h>
 #include <assert.h>
 
-#include "redis.h"
+#include "common.h"
 #include "bt_iterator.h"
 #include "row.h"
 #include "sql.h"
 #include "index.h"
 #include "store.h"
+#include "redis.h"
 
 // FROM redis.c
 #define RL4 redisLog(4,
@@ -36,148 +37,45 @@ extern struct sharedObjectsStruct shared;
 // GLOBALS
 extern char  CCOMMA;
 extern char  CEQUALS;
-extern char  CMINUS;
 extern char *EQUALS;
 extern char *COMMA;
 
 extern char *Col_type_defs[];
 
-extern robj          *Tbl_name     [MAX_NUM_TABLES];
-extern unsigned char  Tbl_col_type [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
-extern robj          *Index_obj     [MAX_NUM_INDICES];
-extern int            Indexed_column[MAX_NUM_INDICES];
-
 #define STO_FUNC_INSERT 6
 
 // HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS
 // HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS
-static int col_cmp(char *a, char *b, int type) {
-    if (type == COL_TYPE_INT) {
-        int i = atoi(a);
-        int j = atoi(b);
-        return i > j ? 1 : (i == j) ? 0 : -1;
-    } else if (type == COL_TYPE_STRING) {
-        return strcmp(a, b);
-    } else {
-        assert(!"col_cmp DOUBLE not supported");
-    }
-    return 0;
+static bool is_int(robj *pko) {
+    char *endptr;
+    long val = strtol(pko->ptr, &endptr, 10);
+    val = 0; /* compiler warning */
+    if (endptr[0] != '\0') return 0;
+    else                   return 1;
 }
 
-// SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN
-// SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN
-static void condSelectReply(redisClient   *c,
-                            robj          *o,
-                            robj          *key,
-                            robj          *row,
-                            int            tmatch,
-                            int            cmatch,
-                            int            qcols,
-                            int            cmatchs[],
-                            robj          *low,
-                            robj          *high,
-                            unsigned long *card) {
-    char *s;
-    robj *r = NULL;
-    if (!cmatch) {
-        s = key->ptr;
-    } else {
-        r = createColObjFromRow(row, cmatch, NULL, tmatch); // freeME
-        s = r->ptr;
-    }
-
-    unsigned char hit = 0;
-    int type = Tbl_col_type[tmatch][cmatch];
-    if (col_cmp(s, low->ptr,  type) >= 0 &&
-        col_cmp(s, high->ptr, type) <= 0) {
-        hit = 1;
-    }
-
-    if (hit) {
-        selectReply(c, o, key, tmatch, cmatchs, qcols);
-        *card = *card + 1;
-    }
-    if (r) decrRefCount(r);
+static void handleTableCreationError(redisClient *fc, robj *lenobj) {
+    listNode *ln = listFirst(fc->reply);
+    robj     *o  = (robj *)ln->value;
+    /* UGLY: lenobj has already been addReply()d */
+    sds       s  = sdsnewlen(o->ptr, sdslen(o->ptr));
+    lenobj->ptr  = s;
+    incrRefCount(lenobj);
 }
 
-void tscanCommand(redisClient *c) {
-    int   argn;
-    int   which = 3; /*used in ARGN_OVERFLOW */
-    robj *pko   = NULL, *range  = NULL;
-    sds   clist = sdsempty();
-    for (argn = 1; argn < c->argc; argn++) {
-        sds y = c->argv[argn]->ptr;
-        if (!strcasecmp(y, "FROM")) break;
-
-        if (*y == CCOMMA) {
-             if (sdslen(y) == 1) continue;
-             y++;
-        }
-        char *nextc = y;
-        while ((nextc = strrchr(nextc, CCOMMA))) {
-            *nextc = '\0';
-            nextc++;
-            if (sdslen(clist)) clist  = sdscatlen(clist, COMMA, 1);
-            clist  = sdscat(clist, y);
-            y      = nextc;
-        }
-        if (*y) {
-            if (sdslen(clist)) clist  = sdscatlen(clist, COMMA, 1);
-            clist  = sdscat(clist, y);
-        }
+/* build response string (which are the table definitions) */
+static robj *createNormRespStringObject(sds nt, robj *cdef) {
+    robj *resp   = createStringObject("CREATE TABLE ", 13);
+    resp->ptr    = sdscatlen(resp->ptr, nt, sdslen(nt));
+    resp->ptr    = sdscatlen(resp->ptr, " (", 2);
+    sds sql_cdef = sdsnewlen(cdef->ptr, sdslen(cdef->ptr));
+    for (uint i = 0; i < sdslen(sql_cdef); i++) {
+        if (sql_cdef[i] == CEQUALS) sql_cdef[i] = ' ';
     }
-
-    if (argn == c->argc) {
-        addReply(c, shared.selectsyntax_nofrom);
-        goto tscan_cmd_err;
-    }
-    ARGN_OVERFLOW
-
-    TABLE_CHECK_OR_REPLY(c->argv[argn]->ptr,)
-    ARGN_OVERFLOW
-
-    int cmatchs[MAX_COLUMN_PER_TABLE];
-    int qcols = parseColListOrReply(c, tmatch, clist, cmatchs);
-    if (!qcols) goto tscan_cmd_err;
-
-    int            imatch = -1,    cmatch = -1;
-    unsigned char  where  = checkSQLWhereClauseOrReply(c, &pko, &range, &imatch,
-                                                       &cmatch, &argn, tmatch,
-                                                       0);
-    if (!where) goto tscan_cmd_err;
-
-    robj *o = lookupKeyRead(c->db, Tbl_name[tmatch]);
-    LEN_OBJ
-    bool rq = (where == 2); /* RANGE QUERY */
-    robj *rq_low, *rq_high;
-    if (rq) {
-        RANGE_CHECK_OR_REPLY(range->ptr)
-        rq_low  = low;
-        rq_high = high;
-    } else {
-        rq_low  = pko;
-        rq_high = pko;
-    }
-
-    btEntry    *be;
-    btIterator *bi = btGetFullRangeIterator(o, 0, 1);
-    while ((be = btRangeNext(bi, 0)) != NULL) {      // iterate btree
-        robj *key = be->key;
-        robj *row = be->val;
-        condSelectReply(c, o, key, row, tmatch, cmatch,
-                        qcols, cmatchs, rq_low, rq_high, &card);
-    }
-    btReleaseRangeIterator(bi);
-    if (rq) {
-        decrRefCount(rq_low);
-        decrRefCount(rq_high);
-    }
-
-    lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
-tscan_cmd_err:
-    sdsfree(clist);
-    if (pko)   decrRefCount(pko);
-    if (range) decrRefCount(range);
+    resp->ptr    = sdscatlen(resp->ptr, sql_cdef, sdslen(sql_cdef));
+    sdsfree(sql_cdef);
+    resp->ptr    = sdscatlen(resp->ptr, ")", 1);
+    return resp;
 }
 
 // NORM NORM NORM NORM NORM NORM NORM NORM NORM NORM NORM NORM NORM NORM
@@ -187,8 +85,10 @@ static robj *makeWildcard(sds pattern, int plen, char *token, int token_len) {
     if (token_len) {
         r->ptr = sdscatlen(r->ptr, ":*:", 3);
         r->ptr = sdscatlen(r->ptr, token, token_len);
+        r->ptr = sdscatlen(r->ptr, "*", 1);
+    } else {
+        r->ptr = sdscatlen(r->ptr, ":*", 2);
     }
-    r->ptr  = sdscatlen(r->ptr, ":*", 2);
     return r;
 }
 static robj *makeTblName(sds pattern, int plen, char *token, int token_len) {
@@ -200,87 +100,133 @@ static robj *makeTblName(sds pattern, int plen, char *token, int token_len) {
     return r;
 }
 
+static void assignPkAndColToRow(robj *pko,
+                                char *cname,
+                                robj *valobj,
+                                robj *cdefs[],
+                                robj *rowvals[],
+                                int  *nrows,
+                                int   ep) {
+    void *enc    = (void *)(long)valobj->encoding;
+    /* If a string is an INT, we will store it as an INT */
+    if (valobj->encoding == REDIS_ENCODING_RAW) {
+        if (is_int(valobj)) enc = (void *)REDIS_ENCODING_INT;
+    }
+
+    robj      *col   = createStringObject(cname, strlen(cname));
+    dictEntry *cdef  = dictFind((dict *)cdefs[ep]->ptr, col);
+    if (!cdef) {                                /* new column */
+        dictAdd((dict *)cdefs[ep]->ptr, col, enc);
+    } else {                                    /* known column */
+        void *cenc = cdef->val;
+        if (cenc == (void *)REDIS_ENCODING_INT) { /* check enc */
+            if (cenc != enc) { /* string in INT col -> TEXT col */
+                dictReplace((dict *)cdefs[ep]->ptr, col, enc);
+            }
+        }
+    }
+
+    dictEntry *row  = dictFind((dict *)rowvals[ep]->ptr, pko);
+    if (!row) {         /* row does not yet have columns defined */
+        *nrows = *nrows + 1;
+        robj *set = createSetObject();
+        dictAdd((dict *)set->ptr,       col, valobj);
+        dictAdd((dict *)rowvals[ep]->ptr, pko, set);
+    } else {            /* row has at least one column defined */
+        robj      *set  = row->val;
+        dictAdd((dict *)set->ptr, col, valobj);
+    }
+}
+
 #define MAX_NUM_NORM_TBLS 16
 void normCommand(redisClient *c) {
-    sds pattern = c->argv[1]->ptr;
-    int plen    = sdslen(pattern);
-
     robj *new_tbls[MAX_NUM_NORM_TBLS];
     robj *ext_patt[MAX_NUM_NORM_TBLS];
-    int   n_ep  = 0;
-    sds   start = c->argv[2]->ptr; 
-    char *token = start;
-    char *nextc = start;
-    while ((nextc = strchr(nextc, CCOMMA))) {
-        ext_patt[n_ep] = makeWildcard(pattern, plen, token, nextc - token);
-        new_tbls[n_ep] = makeTblName( pattern, plen, token, nextc - token);
+    uint  ext_len [MAX_NUM_NORM_TBLS];
+    sds   pattern = c->argv[1]->ptr;
+    int   plen    = sdslen(pattern);
+    int   n_ep    = 0;
+
+    /* First: create wildcards and their destination tablenames */
+    if (c->argc > 2) {
+        sds   start = c->argv[2]->ptr; 
+        char *token = start;
+        char *nextc = start;
+        while ((nextc = strchr(nextc, CCOMMA))) {
+            ext_patt[n_ep] = makeWildcard(pattern, plen, token, nextc - token);
+            ext_len [n_ep] = sdslen(ext_patt[n_ep]->ptr);
+            new_tbls[n_ep] = makeTblName( pattern, plen, token, nextc - token);
+            n_ep++;
+            nextc++;
+            token          = nextc;
+        }
+        int token_len  = sdslen(start) - (token - start);
+        ext_patt[n_ep] = makeWildcard(pattern, plen, token, token_len);
+        ext_len [n_ep] = sdslen(ext_patt[n_ep]->ptr);
+        new_tbls[n_ep] = makeTblName( pattern, plen, token, token_len);
         n_ep++;
-        nextc++;
-        token          = nextc;
     }
-    ext_patt[n_ep] = makeWildcard(pattern, plen, token,
-                                   sdslen(start) - (token - start));
-    new_tbls[n_ep] = makeTblName( pattern, plen, token,
-                                   sdslen(start) - (token - start));
-    n_ep++;
     ext_patt[n_ep] = makeWildcard(pattern, plen, NULL, 0);
+    sds e          = ext_patt[n_ep]->ptr;
+    ext_len [n_ep] = strrchr(e, ':') - e + 1;
     new_tbls[n_ep] = makeTblName( pattern, plen, NULL, 0);
     n_ep++;
 
-    robj          *col_defs[MAX_NUM_NORM_TBLS];
-    robj          *h_data  [MAX_NUM_NORM_TBLS];
-    unsigned char  pk_type[MAX_NUM_NORM_TBLS];
+    robj  *cdefs   [MAX_NUM_NORM_TBLS];
+    robj  *rowvals [MAX_NUM_NORM_TBLS];
+    uchar  pk_type [MAX_NUM_NORM_TBLS];
     for (int i = 0; i < n_ep; i++) {
-        col_defs[i] = createSetObject();
-        h_data  [i] = createSetObject();
-        pk_type [i] = COL_TYPE_INT;
+        cdefs  [i] = createSetObject();
+        rowvals[i] = createSetObject();
+        pk_type[i] = COL_TYPE_INT;
     }
 
+    /* Second: search ALL keys and create column_definitions for wildcards */
     dictEntry    *de;
     int           nrows = 0;
     dictIterator *di = dictGetIterator(c->db->dict);
-    while((de = dictNext(di)) != NULL) {
+    while((de = dictNext(di)) != NULL) {                   /* search ALL keys */
         robj *keyobj = dictGetEntryKey(de);
         sds   key    = keyobj->ptr;
-        robj *valobj = dictGetEntryVal(de);
         for (int i = 0; i < n_ep; i++) {
-            if (stringmatchlen(ext_patt[i]->ptr, sdslen(ext_patt[i]->ptr),
-                               key, sdslen(key), 0)) {
+            sds e = ext_patt[i]->ptr;
+            if (stringmatchlen(e, sdslen(e), key, sdslen(key), 0)) { /* MATCH */
+                robj *val    = dictGetEntryVal(de);
+                char *pk     = strchr(key, ':') + 1;
+                char *end_pk = strchr(pk, ':');
+                int   pklen  = end_pk ? end_pk - pk : (int)strlen(pk);
+                robj *pko    = createStringObject(pk, pklen);
+                /* a single STRING means the PK is TEXT */
+                if (!is_int(pko)) pk_type[i] = COL_TYPE_STRING;
 
-                char      *cname = strrchr(key, ':') + 1;
-                robj      *col   = createStringObject(cname, strlen(cname));
-                dictEntry *edef  = dictFind((dict *)col_defs[i]->ptr, col);
-                if (!edef) {
-                    dictAdd((dict *)col_defs[i]->ptr, col, valobj);
-                }
-
-                char      *pk    = strchr(key, ':') + 1;
-                int        pklen = strchr(pk, ':') - pk;
-                robj      *pko   = createStringObject(pk, pklen);
-                {
-                    char *endptr;
-                    long val = strtol(pko->ptr, &endptr, 10); /* test is INT */
-                    if (endptr[0] != '\0') pk_type[i] = COL_TYPE_STRING;
-                    val = 0; /* compiler warning */
-                }
-
-                dictEntry *epk  = dictFind((dict *)h_data[i]->ptr, pko);
-                if (!epk) {
-                    nrows++;
-                    robj *set = createSetObject();
-                    dictAdd((dict *)set->ptr,       col, valobj);
-                    dictAdd((dict *)h_data[i]->ptr, pko, set);
-                } else {
-                    robj *set = epk->val;
-                    dictEntry *ecol  = dictFind((dict *)set->ptr, col);
-                    if (!ecol) {
-                        dictAdd((dict *)set->ptr, col, valobj);
-                    } else {
-                        dictReplace((dict *)set->ptr, col, valobj);
+                if (val->type == REDIS_HASH) { /* each hash key is a colname */
+                    hashIterator *hi = hashInitIterator(val);
+                    while (hashNext(hi) != REDIS_ERR) {
+                        robj *hkey = hashCurrent(hi, REDIS_HASH_KEY);
+                        robj *hval = hashCurrent(hi, REDIS_HASH_VALUE);
+                        assignPkAndColToRow(pko, hkey->ptr, hval,
+                                            cdefs, rowvals, &nrows, i);
                     }
+                    hashReleaseIterator(hi);
+                    break; /* match FIRST ext_patt[] */
+                } else if (val->type == REDIS_STRING) {
+                    char *cname;
+                    if (i == (n_ep - 1)) { /* primary key */
+                        cname = strchr(key + ext_len[i], ':') + 1;
+                    } else {
+                        /* 2ndary matches of REDIS_STRINGs MUST have the format
+                            "primarywildcard:pk:secondarywildcard:columnname" */
+                        if (sdslen(key) <= (ext_len[i] + 1) || /* ":" -> +1 */
+                            key[ext_len[i] - 1] != ':') {
+                            decrRefCount(pko);
+                            continue;
+                        }
+                        cname = key + ext_len[i];
+                    }
+                    assignPkAndColToRow(pko, cname, val,
+                                         cdefs, rowvals, &nrows, i);
+                    break; /* match FIRST ext_patt[] */
                 }
-
-                break;
             }
         }
     }
@@ -299,76 +245,66 @@ void normCommand(redisClient *c) {
     for (int i = 0; i < n_ep; i++) {
         dictEntry    *de, *ide;
         dictIterator *di, *idi;
-        argv[1]    = createStringObject(new_tbls[i]->ptr,
-                                         sdslen(new_tbls[i]->ptr));
-        robj *cdef = pk_type[i] == COL_TYPE_STRING ?
-                                         createStringObject("pk=TEXT", 7) :
-                                         createStringObject("pk=INT",  6); 
-
-        di         = dictGetIterator(col_defs[i]->ptr);
+        /* Third: CREATE TABLE with column definitions from Step 2*/
+        sds   nt   = new_tbls[i]->ptr;
+        bool  cint = (pk_type[i] == COL_TYPE_STRING);
+        robj *cdef = cint ?  createStringObject("pk=TEXT", 7) :
+                             createStringObject("pk=INT",  6); 
+        di         = dictGetIterator(cdefs[i]->ptr);
         while((de = dictNext(di)) != NULL) {
             robj *key = de->key;
-            robj *val = de->val;
+            long  enc = (long)de->val;
             cdef->ptr = sdscatprintf(cdef->ptr, "%s%s%s%s",
                                       COMMA, (char *)key->ptr,
-                                      EQUALS, Col_type_defs[val->encoding]);
+                                      EQUALS, Col_type_defs[enc]);
         }
         dictReleaseIterator(di);
 
-        robj *resp = createStringObject("table ", 6);
-        resp->ptr  = sdscatlen(resp->ptr, new_tbls[i]->ptr, 
-                                          sdslen(new_tbls[i]->ptr));
-        resp->ptr  = sdscatlen(resp->ptr, " ", 1);
-        resp->ptr  = sdscatlen(resp->ptr, cdef->ptr, sdslen(cdef->ptr));
-
-        argv[2]    = cdef;
-        fc->argc   = 3;
+        robj *resp  = createNormRespStringObject(nt, cdef);
+        fc->argv[1] = createStringObject(nt, sdslen(nt));
+        fc->argv[2] = cdef;
+        fc->argc    = 3;
 
         legacyTableCommand(fc);
         if (!respOk(fc)) { /* most likely table already exists */
-            listNode *ln = listFirst(fc->reply);
-            robj     *o  = (robj *)ln->value;
-            /* lenobj has already been addReply()d */
-            sds       s  = sdsnewlen(o->ptr, sdslen(o->ptr));
-            lenobj->ptr  = s;
-            incrRefCount(lenobj);
+            handleTableCreationError(fc, lenobj);
             goto norm_err;
         }
         decrRefCount(cdef);
 
-        di = dictGetIterator(h_data[i]->ptr);
+        /* Fourth: INSERT INTO new_table with rows from Step 2 */
+        di = dictGetIterator(rowvals[i]->ptr);
         while((de = dictNext(di)) != NULL) {
-            robj *key   = de->key;
-            robj *val   = de->val;
-            robj *ic    = createStringObject(key->ptr, sdslen(key->ptr));
-            dict *row   = (dict*)val->ptr;
-            idi         = dictGetIterator(col_defs[i]->ptr);
+            robj *key  = de->key;
+            robj *val  = de->val;
+            /* create SQL-ROW from key & loop[vals] */
+            robj *ir   = createStringObject(key->ptr, sdslen(key->ptr));
+            dict *row  = (dict*)val->ptr;
+            idi        = dictGetIterator(cdefs[i]->ptr);
             while((ide = dictNext(idi)) != NULL) {
-                ic->ptr         = sdscatlen(ic->ptr, COMMA, 1);
+                ir->ptr         = sdscatlen(ir->ptr, COMMA, 1);
                 robj      *ckey = ide->key;
                 dictEntry *erow = dictFind(row, ckey);
                 if (erow) {
                     robj *cval = erow->val;
-                    if (cval->encoding != REDIS_ENCODING_RAW) {
-                        ic->ptr = sdscatprintf(ic->ptr, "%ld",
-                                                         (long)(cval->ptr));
-                    } else {
-                        ic->ptr = sdscatlen(ic->ptr, cval->ptr,
-                                                      sdslen(cval->ptr));
-                    }
+                    void *cvp  = cval->ptr;
+                    bool rwenc = (cval->encoding != REDIS_ENCODING_RAW);
+                    ir->ptr = rwenc ? sdscatprintf(ir->ptr, "%ld", (long)(cvp)):
+                                      sdscatlen(   ir->ptr, cvp,   sdslen(cvp));
                 }
             }
             dictReleaseIterator(idi);
 
-            argv[2]    = ic;
-            fc->argc   = 3;
+            fc->argv[1] = createStringObject(nt, sdslen(nt));
+            fc->argv[2] = ir;
+            fc->argc    = 3;
             if (!performStoreCmdOrReply(c, fc, STO_FUNC_INSERT)) {
                 dictReleaseIterator(di);
                 decrRefCount(resp);
-                decrRefCount(ic);
+                decrRefCount(ir);
                 goto norm_err;
             }
-            decrRefCount(ic);
+            decrRefCount(ir);
         }
         dictReleaseIterator(di);
 
@@ -380,9 +316,10 @@ void normCommand(redisClient *c) {
 
 norm_err:
     for (int i = 0; i < n_ep; i++) {
+        decrRefCount(new_tbls[i]);
         decrRefCount(ext_patt[i]);
-        decrRefCount(col_defs[i]);
-        decrRefCount(h_data  [i]);
+        decrRefCount(cdefs   [i]);
+        decrRefCount(rowvals [i]);
     }
     freeFakeClient(fc);
 }
