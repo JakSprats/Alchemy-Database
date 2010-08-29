@@ -21,6 +21,14 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include "redis.h"
 #include "common.h"
 
+char *rem_backticks(char *token, int *len);
+
+bool parseCreateTable(redisClient *c,
+                      char          cnames[][MAX_COLUMN_NAME_SIZE],
+                      int          *ccount,
+                      int          *parsed_argn,
+                      char         *o_token[]);
+
 #define CHECK_WHERE_CLAUSE_ERROR_REPLY(ret)                    \
     if      (which == 0) addReply(c, shared.selectsyntax);     \
     else if (which == 1) addReply(c, shared.deletesyntax);     \

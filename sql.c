@@ -19,6 +19,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <string.h>
 #include <strings.h>
 #include <unistd.h>
+char *strcasestr(const char *haystack, const char *needle); /*compiler warning*/
 
 #include "redis.h"
 #include "common.h"
@@ -40,14 +41,144 @@ extern char  CMINUS;
 extern char *COMMA;
 extern char *STORE;
 
-extern robj *Tbl_col_name [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
+extern int Num_tbls;
+extern robj  *Tbl_col_name [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
+extern uchar  Tbl_col_type [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
 
 extern stor_cmd StorageCommands[NUM_STORAGE_TYPES];
+
+char *Col_keywords_to_ignore[] = {"PRIMARY", "CONSTRAINT", "UNIQUE",
+                                  "KEY", "FOREIGN" };
+uint  Num_col_keywords_to_ignore = 5;
 
 static void convertFkValueToRange(sds fk_ptr, robj **range) {
     *range        = createStringObject(fk_ptr, sdslen(fk_ptr));
     (*range)->ptr = sdscatprintf((*range)->ptr, "-%s", (char *)fk_ptr);
 }
+
+
+char *rem_backticks(char *token, int *len) {
+    if (*token == '`') {
+        token++;
+        *len = *len - 1;
+    }
+    if (token[*len - 1] == '`') {
+        token[*len - 1] = '\0';
+        *len = *len - 1;
+    }
+    return token;
+}
+
+static void parseUntilNextCommaNotInParans(redisClient *c, int *argn) {
+    bool got_open_parn = 0;
+    for (; *argn < c->argc; *argn = *argn + 1) {
+        sds x = c->argv[*argn]->ptr;
+        if (strchr(x, '(')) got_open_parn = 1;
+        if (got_open_parn) {
+            char *y = strchr(x, ')');
+            if (y) {
+                got_open_parn = 0;
+                if (strchr(y, ',')) break;
+            }
+        } else {
+            if (strchr(x, ',')) break;
+        }
+    }
+}
+static bool parseCr8TblCName(redisClient *c,
+                             int         *argn,
+                             char        *tkn,
+                             int          len,
+                             bool        *p_cname,
+                             bool        *continuer,
+                             char         cnames[][MAX_COLUMN_NAME_SIZE],
+                             int          ccount) {
+    if (*tkn == '(') { /* delete "(" @ begin */
+        tkn++;
+        len--;
+        if (!len) { /* lone "(" */
+            *continuer = 1;
+            return 1;
+        }
+    }
+    tkn = rem_backticks(tkn, &len);
+
+    for (uint i = 0; i < Num_col_keywords_to_ignore; i++) {
+        if (!strcasecmp(tkn, Col_keywords_to_ignore[i])) {
+            parseUntilNextCommaNotInParans(c, argn);
+            *continuer = 1;
+            break;
+        }
+    }
+    if (*continuer) {
+        *p_cname = 1;
+    } else {
+        if (!cCpyOrReply(c, tkn, cnames[ccount], len)) return 0;
+        *p_cname = 0;
+    }
+    return 1;
+}
+
+bool parseCreateTable(redisClient *c,
+                      char          cnames[][MAX_COLUMN_NAME_SIZE],
+                      int          *ccount,
+                      int          *parsed_argn,
+                      char         *o_token[]) {
+    int   argn;
+    bool  p_cname     = 1;
+    char *trailer     = NULL;
+    for (argn = 3; argn < c->argc; argn++) {
+        sds token  = sdsdup(c->argv[argn]->ptr);
+        o_token[*parsed_argn] = token;
+        *parsed_argn = *parsed_argn + 1;
+        if (p_cname) {
+            int   len  = sdslen(token);
+            char *tkn  = token; /* convert to "char *" to edit in raw form */
+            bool  cont = 0;
+            bool  ok = parseCr8TblCName(c, &argn, tkn, len, &p_cname, &cont,
+                                        cnames, *ccount);
+            if (!ok)  return 0;
+            if (cont) continue;
+        } else {
+            if (trailer) { /* when last token ended with "int,x" */
+                int  len  = strlen(trailer);
+                bool cont = 0;
+                bool ok   = parseCr8TblCName(c, &argn, trailer, len,
+                                             &p_cname, &cont, cnames, *ccount);
+                if (!ok)  return 0;
+                if (cont) continue;
+            }
+            trailer = NULL;
+
+            int c_argn = argn;
+            parseUntilNextCommaNotInParans(c, &argn);
+
+            int   len   = sdslen(token);
+            char *tkn   = token; /* convert to "char *" to edit in raw form */
+            if (argn == c_argn) { /* this token has a comma */
+                char *comma = strchr(tkn, CCOMMA);
+                if ((comma - tkn) == (len - 1)) { /* "," @ end */
+                    p_cname = 1;
+                } else { /* means token ends w/ "int,x" */
+                    trailer    = comma + 1;
+                    p_cname = 0;
+                }
+            } else {
+                p_cname = 1;
+            }
+
+            /* in 2nd word search for INT (but not BIGINT) */
+            if (strcasestr(tkn, "INT") && !strcasestr(tkn, "BIGINT")) {
+                Tbl_col_type[Num_tbls][*ccount] = COL_TYPE_INT;
+            } else {
+                Tbl_col_type[Num_tbls][*ccount] = COL_TYPE_STRING;
+            }
+            *ccount = *ccount + 1;
+        }
+    }
+    return 1;
+}
+
 
 #define PARGN_OVERFLOW                    \
     *pargn = *pargn + 1;                    \

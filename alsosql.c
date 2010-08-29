@@ -31,6 +31,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include "alsosql.h"
 #include "denorm.h"
 #include "sql.h"
+#include "common.h"
+
 
 // FROM redis.c
 #define RL4 redisLog(4,
@@ -59,17 +61,17 @@ char *STORE        = "STORE";
 char *Col_type_defs[] = {"TEXT", "INT" };
 
 //TODO make these 4 a struct
-robj          *Tbl_name     [MAX_NUM_TABLES];
-int            Tbl_col_count[MAX_NUM_TABLES];
-robj          *Tbl_col_name [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
-unsigned char  Tbl_col_type [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
-int            Tbl_virt_indx[MAX_NUM_TABLES];
+robj   *Tbl_name     [MAX_NUM_TABLES];
+int     Tbl_col_count[MAX_NUM_TABLES];
+robj   *Tbl_col_name [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
+uchar   Tbl_col_type [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
+int     Tbl_virt_indx[MAX_NUM_TABLES];
 
-extern robj          *Index_obj     [MAX_NUM_INDICES];
-extern int            Index_on_table[MAX_NUM_INDICES];
-extern int            Indexed_column[MAX_NUM_INDICES];
-extern unsigned char  Index_type    [MAX_NUM_INDICES];
-extern bool           Index_virt    [MAX_NUM_INDICES];
+extern robj  *Index_obj     [MAX_NUM_INDICES];
+extern int    Index_on_table[MAX_NUM_INDICES];
+extern int    Indexed_column[MAX_NUM_INDICES];
+extern uchar  Index_type    [MAX_NUM_INDICES];
+extern bool   Index_virt    [MAX_NUM_INDICES];
 
 // HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS
 // HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS
@@ -106,11 +108,11 @@ int find_column(int tmatch, char *column) {
     return -1;
 }
 
-static char *parseRowVals(sds            vals,
-                          char         **pk,
-                          int           *pklen,
-                          int            ncols,
-                          unsigned int   cofsts[]) {
+static char *parseRowVals(sds    vals,
+                          char **pk,
+                          int   *pklen,
+                          int    ncols,
+                          uint   cofsts[]) {
     if (vals[sdslen(vals) - 1] == ')') vals[sdslen(vals) - 1] = '\0';
     if (*vals == '(') vals++;
 
@@ -118,7 +120,7 @@ static char *parseRowVals(sds            vals,
     char *token    = vals;
     char *nextc    = vals;
     while ((nextc = strchr(nextc, CCOMMA))) {
-        unsigned char num_dbl_qts = 0;
+        uchar num_dbl_qts = 0;
         for (char *x = token; x < nextc; x++)  if (*x == '"') num_dbl_qts++;
         if (num_dbl_qts == 1) {
             nextc++;
@@ -178,7 +180,7 @@ int parseUpdateOrReply(redisClient  *c,
                        char         *cname,
                        int           cmatchs[],
                        char         *vals   [],
-                       unsigned int  vlens  []) {
+                       uint          vlens  []) {
     int   qcols = 0;
     while (1) {
         char *val   = strchr(cname, CEQUALS);
@@ -201,12 +203,10 @@ int parseUpdateOrReply(redisClient  *c,
             return 0;
         }
 
-        unsigned int val_len  = nextc ?  nextc - val - 1 :
-                                         (unsigned int)strlen(val);
-
+        uint val_len   = nextc ?  nextc - val - 1 : (uint)strlen(val);
         cmatchs[qcols] = cmatch;
-        vals    [qcols] = val;
-        vlens[qcols] = val_len;
+        vals   [qcols] = val;
+        vlens  [qcols] = val_len;
         qcols++;
 
         if (!nextc) break;
@@ -217,7 +217,7 @@ int parseUpdateOrReply(redisClient  *c,
 
 // SIMPLE_COMMANDS SIMPLE_COMMANDS SIMPLE_COMMANDS SIMPLE_COMMANDS
 // SIMPLE_COMMANDS SIMPLE_COMMANDS SIMPLE_COMMANDS SIMPLE_COMMANDS
-bool cCpyOrReply(redisClient *c, char *src, char *dest, unsigned int len) {
+bool cCpyOrReply(redisClient *c, char *src, char *dest, uint len) {
     if (len >= MAX_COLUMN_NAME_SIZE) {
         addReply(c, shared.columnnametoobig);
         return 0;
@@ -229,16 +229,16 @@ bool cCpyOrReply(redisClient *c, char *src, char *dest, unsigned int len) {
 
 void createTableCommitReply(redisClient *c,
                             char         cnames[][MAX_COLUMN_NAME_SIZE],
-                            int          col_count,
+                            int          ccount,
                             char        *tname) {
-    if (col_count < 2) {
+    if (ccount < 2) {
         addReply(c, shared.toofewcolumns);
         return;
     }
 
     // check for repeat column names
-    for (int i = 0; i < col_count; i++) {
-        for (int j = 0; j < col_count; j++) {
+    for (int i = 0; i < ccount; i++) {
+        for (int j = 0; j < ccount; j++) {
             if (i == j) continue;
             if (!strcmp(cnames[i], cnames[j])) {
                 addReply(c, shared.nonuniquecolumns);
@@ -249,12 +249,12 @@ void createTableCommitReply(redisClient *c,
 
     addReply(c, shared.ok);
     // commit table definition
-    for (int i = 0; i < col_count; i++) {
+    for (int i = 0; i < ccount; i++) {
         Tbl_col_name[Num_tbls][i] = createStringObject(cnames[i],
                                                        strlen(cnames[i]));
     }
     robj *tbl               = createStringObject(tname, strlen(tname));
-    Tbl_col_count[Num_tbls] = col_count;
+    Tbl_col_count[Num_tbls] = ccount;
     Tbl_name     [Num_tbls] = tbl;
     robj *bt                = createBtreeObject(Tbl_col_type[Num_tbls][0],
                                                 Num_tbls, BTREE_TABLE);
@@ -274,7 +274,10 @@ void createTable(redisClient *c) {
         return;
     }
 
-    sds tname = c->argv[2]->ptr;
+    int   len   = sdslen(c->argv[2]->ptr);
+    char *tname = c->argv[2]->ptr;
+    /* Mysql denotes strings w/ backticks */
+    tname       = rem_backticks(tname, &len);
     if (find_table(tname) != -1) {
         addReply(c, shared.nonuniquetablenames);
         return;
@@ -285,99 +288,19 @@ void createTable(redisClient *c) {
         return;
     }
 
-    //TODO break out cnames into function -> sql.c
-    char  cnames[MAX_COLUMN_PER_TABLE][MAX_COLUMN_NAME_SIZE];
-    char *o_token  [MAX_COLUMN_PER_TABLE];
-    int   argn;
-    int   col_count      = 0;
-    bool  parse_col_name = 1;
-    bool  parse_col_type = 0;
-    char *trailer        = NULL;
-    for (argn = 3; argn < c->argc; argn++) {
-        sds token  = sdsdup(c->argv[argn]->ptr);
-        o_token[argn] = token;
-        if (parse_col_name) {
-            int len        = sdslen(token);
-            if (*token == '(') { /* delete "(" @ begin */
-                token++;
-                len--;
-                if (!len) continue; /* lone "(" */
-            }
-            if (!cCpyOrReply(c, token, cnames[col_count], len)) {
-                goto create_table_err;
-            }
-            parse_col_name = 0;
-            parse_col_type = 1;
-        } else if (parse_col_type) {
-            parse_col_type = 0;
-            if (trailer) { /* when last token ended with "int,x" */
-                int len = strlen(trailer);
-                if (!cCpyOrReply(c, trailer, cnames[col_count], len)) {
-                    goto create_table_err;
-                }
-            }
-            trailer     = NULL;
-            int   len   = sdslen(token);
-            char *comma = strchr(token, CCOMMA);
-            if (comma) {
-                if ((comma - token) == (len - 1)) { /* delete "," @ end */
-                    len--;
-                    parse_col_name = 1;
-                } else { /* means token ends w/ "int,x" */
-                    len            -= (comma - token);
-                    *comma          = '\0';
-                    trailer         = comma + 1;
-                    parse_col_type  = 1;
-                }
-            }
+    //TODO break out into function -> sql.c
+    char  cnames [MAX_COLUMN_PER_TABLE][MAX_COLUMN_NAME_SIZE];
+    char *o_token[MAX_COLUMN_PER_TABLE * 3]; /* can be 2+ times more */
+    int   ccount      = 0;
+    int   parsed_argn = 0;
 
-// CREATE TABLE `user` (
-// `Host` char(60) COLLATE utf8_bin NOT NULL DEFAULT '',
-//   `max_user_connections` int(11) unsigned NOT NULL DEFAULT '0',
-//  PRIMARY KEY (`Host`,`User`)
-//) 
-            // TODO extend this filtering
-            //      1.) in 2nd word search for INT (but not BIGINT)
-            //           if (found) -> INT
-            //           else -> TEXT
-            //      2.) ignore these 
-            //      3.) IGNORE words PRIMARY,KEY,CONSTRAINT,UNIQUE
-            //      4.) IGNORE after ")"
-            if (token[len - 1] == ')') { /* delete "(.....)" */
-                token[len - 1] = '\0';
-                for (int j = len - 2; j > 0; j--) {
-                    if (token[j] == '(') {
-                        token[j]  = '\0';
-                        len      -= ((len - 1) - j);
-                        break;
-                    }
-                }
-            }
-            unsigned char miss = 1;
-            for (unsigned char j = 0; j < NUM_COL_TYPES; j++) {
-                if (!strncasecmp(token, Col_type_defs[j], len)) {
-                    Tbl_col_type[Num_tbls][col_count] = j;
-                    miss                              = 0;
-                    break;
-                }
-            }
-            if (miss) {
-                addReply(c, shared.undefinedcolumntype);
-                goto create_table_err;
-            }
-            col_count++;
-        } else { /* ignore until "," */
-            if (token[sdslen(token) - 1] == CCOMMA) parse_col_name = 1;
-        }
-    }
-    createTableCommitReply(c, cnames, col_count, tname);
+    if (parseCreateTable(c, cnames, &ccount, &parsed_argn, o_token))
+        createTableCommitReply(c, cnames, ccount, tname);
 
-create_table_err:
-    for (int j = 3; j < argn; j++) {
+    for (int j = 0; j < parsed_argn; j++) {
         sdsfree(o_token[j]);
     }
 }
-
 
 void createCommand(redisClient *c) {
     if (c->argc < 4) {
@@ -409,7 +332,7 @@ void insertCommitReply(redisClient *c,
                        int          tmatch,
                        int          matches,
                        int          indices[]) {
-    unsigned int cofsts[MAX_COLUMN_PER_TABLE];
+    uint  cofsts[MAX_COLUMN_PER_TABLE];
     char *pk     = NULL;
     int   pklen  = 0; /* init avoids compiler warning*/
     vals         = parseRowVals(vals, &pk, &pklen, ncols, cofsts);
@@ -568,10 +491,9 @@ void selectALSOSQLCommand(redisClient *c) {
     } else {
         TABLE_CHECK_OR_REPLY(tbl_list,);
 
-        int           imatch = -1;
-        unsigned char where  = checkSQLWhereClauseOrReply(c, &pko, &range,
-                                                          &imatch, NULL, &argn,
-                                                          tmatch, 0);
+        int   imatch = -1;
+        uchar where  = checkSQLWhereClauseOrReply(c, &pko, &range, &imatch,
+                                                  NULL, &argn, tmatch, 0);
         if (!where) goto sel_cmd_err;
 
         if (argn < (c->argc - 1)) { /* DENORM e.g.: STORE LPUSH list */
@@ -615,11 +537,11 @@ void deleteCommand(redisClient *c) {
 
     TABLE_CHECK_OR_REPLY(c->argv[2]->ptr,)
 
-    int            imatch = -1;
-    robj          *pko    = NULL, *range = NULL;
-    int            argn   = 3;
-    unsigned char  where  = checkSQLWhereClauseOrReply(c, &pko, &range, &imatch,
-                                                       NULL, &argn, tmatch, 1);
+    int    imatch = -1;
+    robj  *pko    = NULL, *range = NULL;
+    int    argn   = 3;
+    uchar  where  = checkSQLWhereClauseOrReply(c, &pko, &range, &imatch,
+                                               NULL, &argn, tmatch, 1);
     if (!where) return;
 
     if (where == 2) { /* RANGE QUERY */
@@ -641,23 +563,22 @@ void updateCommand(redisClient *c) {
         return;
     }
 
-    int            cmatchs[MAX_COLUMN_PER_TABLE];
-    char          *mvals  [MAX_COLUMN_PER_TABLE];
-    unsigned int   mvlens [MAX_COLUMN_PER_TABLE];
-    char          *nvals = c->argv[3]->ptr;
-    int            ncols = Tbl_col_count[tmatch];
-    int            qcols = parseUpdateOrReply(c, tmatch, nvals, cmatchs,
-                                              mvals, mvlens);
+    int    cmatchs[MAX_COLUMN_PER_TABLE];
+    char  *mvals  [MAX_COLUMN_PER_TABLE];
+    uint   mvlens [MAX_COLUMN_PER_TABLE];
+    char  *nvals = c->argv[3]->ptr;
+    int    ncols = Tbl_col_count[tmatch];
+    int    qcols = parseUpdateOrReply(c, tmatch, nvals, cmatchs, mvals, mvlens);
     if (!qcols) return;
     MATCH_INDICES(tmatch)
 
     ASSIGN_UPDATE_HITS_AND_MISSES
 
-    int            imatch = -1;
-    robj          *pko    = NULL, *range = NULL;
-    int            argn   = 4;
-    unsigned char  where  = checkSQLWhereClauseOrReply(c, &pko, &range, &imatch,
-                                                       NULL, &argn, tmatch, 2);
+    int    imatch = -1;
+    robj  *pko    = NULL, *range = NULL;
+    int    argn   = 4;
+    uchar  where  = checkSQLWhereClauseOrReply(c, &pko, &range, &imatch,
+                                               NULL, &argn, tmatch, 2);
     if (!where) goto update_cmd_err;
     if (where == 2) { /* RANGE QUERY */
         iupdateAction(c, range->ptr, tmatch, imatch, ncols, matches, indices,
