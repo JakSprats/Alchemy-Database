@@ -1,5 +1,5 @@
 /*
- * This file implements the "SCANSELECT" and "NORMALIZE" commands
+ * This file implements the "NORMALIZE" commands
  *
 
 MIT License

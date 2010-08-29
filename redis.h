@@ -295,6 +295,7 @@ struct sharedObjectsStruct {
     *drop_virtual_index,
     *create_table_as_function_not_found, *create_table_as_dump_num_args,
     *create_table_as_access_num_args,
+    *denorm_wildcard_no_star,
 #endif /* ALSOSQL END */
     *outofrangeerr, *plus,
     *select0, *select1, *select2, *select3, *select4,
@@ -493,6 +494,8 @@ struct redisCommand {
     int vm_keystep;  /* The step between first and last key */
     int alsosql; //TODO throwout
 };
+
+void hsetCommand(redisClient *c);
 
 /* ALSOSQL */
 typedef struct storage_command {

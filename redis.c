@@ -762,7 +762,7 @@ static void appendCommand(redisClient *c);
 static void substrCommand(redisClient *c);
 static void zrankCommand(redisClient *c);
 static void zrevrankCommand(redisClient *c);
-static void hsetCommand(redisClient *c);
+void hsetCommand(redisClient *c);
 static void hsetnxCommand(redisClient *c);
 static void hgetCommand(redisClient *c);
 static void hmsetCommand(redisClient *c);
@@ -797,6 +797,7 @@ void deleteCommand(redisClient *c);
 
 void tscanCommand(redisClient *c);
 void normCommand(redisClient *c);
+void denormCommand(redisClient *c);
 
 void ikeysCommand(redisClient *c);
 
@@ -936,7 +937,8 @@ static struct redisCommand cmdTable[] = {
     {"ikeys",        ikeysCommand,          3,REDIS_CMD_INLINE,NULL,1,1,1,1},
 
     {"scanselect",   tscanCommand,         -4,REDIS_CMD_INLINE,NULL,1,1,1,1},
-    {"normalize",    normCommand,          -2,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
+    {"norm",    normCommand,          -2,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
+    {"denorm",  denormCommand,        -3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
 
     {"legacyjoin",   legacyJoinCommand,     4,REDIS_CMD_INLINE,NULL,1,1,1,1},
     {"legacytable",  legacyTableCommand,   -3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
@@ -1866,6 +1868,9 @@ static void createSharedObjects(void) {
         "-ERR SYNTAX: CREATE TABLE tablename AS DUMP redis_object - too few arguments\r\n"));
     shared.create_table_as_access_num_args = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: CREATE TABLE tablename AS [SELECT,LRANGE,ZRANGE,ZRANGEBYSCORE,ZREVRANGE,HMGET,HKEYS,HVALS,HGETALL,SUNION,SDIFF,SINTER,SMEMBERS,SORT] redis_object MIN MAX - too few arguments\r\n"));
+
+    shared.denorm_wildcard_no_star = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: NORM tablename wildcard - wildcard must have '*'\r\n"));
 #endif /* ALSOSQL END */
 
 
@@ -7054,7 +7059,7 @@ static robj *hashLookupWriteOrCreate(redisClient *c, robj *key) {
 }
 
 /* ============================= Hash commands ============================== */
-static void hsetCommand(redisClient *c) {
+void hsetCommand(redisClient *c) {
     int update;
     robj *o;
 

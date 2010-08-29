@@ -28,10 +28,17 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include "sql.h"
 #include "join.h"
 #include "denorm.h"
+#include "bt_iterator.h"
+#include "row.h"
 
 // FROM redis.c
 #define RL4 redisLog(4,
 extern struct sharedObjectsStruct shared;
+
+extern robj          *Tbl_name     [MAX_NUM_TABLES];
+extern int            Tbl_col_count[MAX_NUM_TABLES];
+extern robj          *Tbl_col_name [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
+extern unsigned char  Tbl_col_type [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
 
 stor_cmd AccessCommands[NUM_ACCESS_TYPES];
 char *DUMP = "DUMP";
@@ -322,4 +329,65 @@ void createTableAsObject(redisClient *c) {
 cr8tbldmp_err:
         freeFakeClient(dfc);
     }
+}
+
+void denormCommand(redisClient *c) {
+    TABLE_CHECK_OR_REPLY(c->argv[1]->ptr,)
+    sds wildcard = c->argv[2]->ptr;
+    if (!strchr(wildcard, '*')) {
+        addReply(c, shared.denorm_wildcard_no_star);
+        return;
+    }
+
+    uint wlen = sdslen(wildcard);
+    uint spot = 0;
+    for (uint i = 0; i < wlen; i++) {
+        if (wildcard[i] == '*') {
+            spot = i;
+            break;
+        }
+    }
+    uint  restlen  = (spot < wlen - 2) ? wlen - spot - 1: 0;
+    sds   s_wldcrd = sdsnewlen(wildcard, spot);
+    s_wldcrd       = sdscatlen(s_wldcrd, "%s", 2);
+    if (restlen) s_wldcrd = sdscatlen(s_wldcrd, &wildcard[spot + 1], restlen);
+    sds   d_wldcrd = sdsdup(s_wldcrd);
+    char *fmt      = strstr(d_wldcrd, "%s") + 1;
+    *fmt           = 'd';
+
+    robj               *argv[4];
+    struct redisClient *fc = createFakeClient();
+    fc->argv               = argv;
+    fc->argc               = 4;
+
+    btEntry    *be;
+    robj       *o  = lookupKeyRead(c->db, Tbl_name[tmatch]);
+    btIterator *bi = btGetFullRangeIterator(o, 0, 1);
+    while ((be = btRangeNext(bi, 0)) != NULL) {      // iterate btree
+        robj *key = be->key;
+        robj *row = be->val;
+
+        sds hname = sdsempty();
+        if (key->encoding == REDIS_ENCODING_RAW) {
+            hname = sdscatprintf(hname, s_wldcrd, key->ptr);
+        } else {
+            hname = sdscatprintf(hname, d_wldcrd, key->ptr);
+        }
+        fc->argv[1] = createStringObject(hname, sdslen(hname));
+        sdsfree(hname);
+
+        for (int i = 1; i < Tbl_col_count[tmatch]; i++) { /* PK is in name */
+            robj *r     = createColObjFromRow(row, i, key, tmatch);
+            sds tname   = Tbl_col_name[tmatch][i]->ptr;
+            fc->argv[2] = createStringObject(tname, sdslen(tname));
+            sds cname   = r->ptr;
+            fc->argv[3] = createStringObject(cname, sdslen(cname));
+            hsetCommand(fc);
+        }
+    }
+
+    addReply(c, shared.ok);
+    sdsfree(s_wldcrd);
+    sdsfree(d_wldcrd);
+    freeFakeClient(fc);
 }
