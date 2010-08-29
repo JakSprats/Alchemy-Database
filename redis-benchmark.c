@@ -116,6 +116,12 @@ static struct config {
 
     long range_query_len;
     long second_random_modulo;
+
+    bool random_force;
+    long not_rand;
+    long second_not_rand;
+
+    long dump_every_x_reqs;
 } config;
 
 typedef struct _client {
@@ -187,6 +193,8 @@ static void resetClient(client c) {
     createMissingClients(c);
 }
 
+long start_first_id = 100000001;
+
 bool randomize_range = 0;
 
 long default_second_random_modulo = 50;
@@ -195,11 +203,11 @@ long default_range_query_len      = 5;
 long start_range_query      = 100000001;
 long orig_start_range_query = 100000001;
 
-long not_rand    = 1;
-long second_rand = 1;
+long not_rand_reset_val        = 1;
+long second_not_rand_reset_val = 1;
 static void reset_non_rand() {
-    not_rand    = 1;
-    second_rand = 1;
+    config.not_rand        = not_rand_reset_val;
+    config.second_not_rand = second_not_rand_reset_val;
 }
 
 static void randomizeClientKey(client c) {
@@ -214,16 +222,29 @@ static void randomizeClientKey(client c) {
             bool nested_rand = 0;
             char *y = strstr(x, ",0001");
             if (y) nested_rand = 1;
-            not_rand++;
-            sprintf(buf, "%ld", not_rand);
+            if (config.random_force) {
+                r = start_first_id + random() % config.randomkeys_keyspacelen;
+            } else {
+                r = start_first_id + config.not_rand++;
+            }
+            sprintf(buf, "%ld", r);
             int diff = 9 - strlen(buf);
             memcpy(x + 4 + diff, buf, strlen(buf));
             if (nested_rand) {
-                if ((not_rand % config.second_random_modulo) == 0)
-                    second_rand++;
-                sprintf(buf, "%ld", second_rand);
+                if ((config.not_rand % config.second_random_modulo) == 0)
+                    config.second_not_rand++;
+                sprintf(buf, "%ld", config.second_not_rand);
                 diff = 9 - strlen(buf);
                 memcpy(x + 17 + diff, buf, strlen(buf));
+            }
+            //if ((r % 1000000) == 0) RL4 "%ld: buf: %s", r, c->obuf);
+        } else {
+            while ((p = strstr(p, "_rand"))) {
+                if (!p) return;
+                p += 5;
+                r = random() % config.randomkeys_keyspacelen;
+                sprintf(buf, "%ld", r);
+                memcpy(p, buf, strlen(buf));
             }
         }
     } else {
@@ -237,14 +258,6 @@ static void randomizeClientKey(client c) {
             if (start_range_query >= 
                 orig_start_range_query + config.randomkeys_keyspacelen)
                      start_range_query = orig_start_range_query;
-        } else {
-            while ((p = strstr(p, "_rand"))) {
-                if (!p) return;
-                p += 5;
-                r = random() % config.randomkeys_keyspacelen;
-                sprintf(buf,"%ld",r);
-                memcpy(p,buf,strlen(buf));
-            }
         }
     }
     //RL4 "buf: %s", c->obuf);
@@ -262,6 +275,22 @@ static void prepareClientForReply(client c, int type) {
         c->replytype = type;
         c->readlen = 0;
     }
+}
+
+// reqs per interval
+long long last_call_time = 0;
+int       last_num_reqs                   = 0;
+static void dump_req_per_sec() {
+    if (last_call_time == 0) last_call_time = config.start;
+
+    long long now        = mstime();
+    long long time_delta = now                 - last_call_time;
+    int       reqs_delta = config.donerequests - last_num_reqs;
+    float     reqpersec  = 1000*(float)reqs_delta/((float)time_delta);
+    printf("%.2f req-per-sec tot_reqs: %d actual_time: %lld\n",
+           reqpersec, config.donerequests, now);
+    last_call_time = now;
+    last_num_reqs = config.donerequests;
 }
 
 static void clientDone(client c) {
@@ -291,6 +320,9 @@ static void clientDone(client c) {
         config.liveclients++;
         freeClient(c);
     }
+    if (config.dump_every_x_reqs &&
+        (config.donerequests % config.dump_every_x_reqs == 0))
+          dump_req_per_sec();
 }
 
 static void readHandler(aeEventLoop *el, int fd, void *privdata, int mask)
@@ -569,6 +601,8 @@ void parseOptions(int argc, char **argv) {
             config.populate_fk_table         = 1;
         } else if (!strcmp(argv[i],"-PF2")) {
             config.populate_fk2_table        = 1;
+        } else if (!strcmp(argv[i],"-RF")) {
+            config.random_force              = 1;
 
         } else if (!strcmp(argv[i],"-Q") && !lastarg) {
             config.range_query_len = default_range_query_len;
@@ -581,6 +615,18 @@ void parseOptions(int argc, char **argv) {
             config.second_random_modulo = atoi(argv[i+1]);
             if (config.second_random_modulo < 0)
                 config.second_random_modulo = default_second_random_modulo;
+            i++;
+        } else if (!strcmp(argv[i],"-NR") && !lastarg) {
+            int val = atoi(argv[i+1]);
+            if (val > 0) not_rand_reset_val = val; /* will set not_rand */
+            i++;
+        } else if (!strcmp(argv[i],"-SNR") && !lastarg) {
+            int val = atoi(argv[i+1]);
+            if (val > 0) second_not_rand_reset_val = val;
+            i++;
+        } else if (!strcmp(argv[i],"-X")) {
+            long val = atol(argv[i+1]);
+            if (val > 0) config.dump_every_x_reqs = val;
             i++;
         /* END: ALSOSQL */
 
@@ -1051,6 +1097,10 @@ int main(int argc, char **argv) {
     config.perform_bigrow_table_test = 0;
     config.perform_bigrow_sel_test   = 0;
 
+    config.random_force              = 0;
+    config.dump_every_x_reqs         = 0;
+    reset_non_rand();
+
     parseOptions(argc,argv);
 
     if (config.keepalive == 0) {
@@ -1141,7 +1191,7 @@ int main(int argc, char **argv) {
         if (config.populate_fk_table) {
             printf("test_insert_FK_table: %ld\n", config.second_random_modulo);
             test_insert_FK_table();
-            printf("max FK: %ld\n", second_rand);
+            printf("max FK: %ld\n", config.second_not_rand);
             return 0;
         }
 
@@ -1162,7 +1212,7 @@ int main(int argc, char **argv) {
         if (config.populate_fk2_table) {
             printf("test_insert_FK2_table: %ld\n", config.second_random_modulo);
             test_insert_FK2_table();
-            printf("max FK: %ld\n", second_rand);
+            printf("max FK: %ld\n", config.second_not_rand);
             return 0;
         }
 
