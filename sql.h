@@ -36,10 +36,10 @@ bool parseCreateTable(redisClient *c,
     else                 addReply(c, shared.scanselectsyntax); \
     return ret;
 
-#define ARGN_OVERFLOW                    \
-    argn++;                              \
-    if (argn == c->argc) {               \
-        CHECK_WHERE_CLAUSE_ERROR_REPLY() \
+#define ARGN_OVERFLOW(ret)                  \
+    argn++;                                 \
+    if (argn == c->argc) {                  \
+        CHECK_WHERE_CLAUSE_ERROR_REPLY(ret) \
     }
 
 unsigned char checkSQLWhereClauseOrReply(redisClient  *c,
@@ -49,8 +49,21 @@ unsigned char checkSQLWhereClauseOrReply(redisClient  *c,
                                           int         *cmatch,
                                           int         *argn, 
                                           int          tmatch,
-                                          bool         which);
+                                          bool         which,
+                                          bool         just_parse);
 
-void joinParseReply(redisClient *c, sds clist, int argn);
+bool joinParseReply(redisClient  *c,
+                    sds           clist,
+                    int           argn,
+                    int           j_indxs[],
+                    int           j_tbls [],
+                    int           j_cols [],
+                    int          *qcols,
+                    int          *sto,
+                    robj        **newname,
+                    robj        **range,
+                    int          *n_ind);
+
+void joinReply(redisClient *c, sds clist, int argn);
 
 #endif /*__ALSOSQL_SQL__H */ 

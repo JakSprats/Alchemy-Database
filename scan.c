@@ -94,7 +94,7 @@ static void condSelectReply(redisClient   *c,
 
 void tscanCommand(redisClient *c) {
     int   argn;
-    int   which = 3; /*used in ARGN_OVERFLOW */
+    int   which = 3; /*used in ARGN_OVERFLOW() */
     robj *pko   = NULL, *range  = NULL;
     sds   clist = sdsempty();
     for (argn = 1; argn < c->argc; argn++) {
@@ -123,10 +123,10 @@ void tscanCommand(redisClient *c) {
         addReply(c, shared.selectsyntax_nofrom);
         goto tscan_cmd_err;
     }
-    ARGN_OVERFLOW
+    ARGN_OVERFLOW()
 
     TABLE_CHECK_OR_REPLY(c->argv[argn]->ptr,)
-    ARGN_OVERFLOW
+    ARGN_OVERFLOW()
 
     int cmatchs[MAX_COLUMN_PER_TABLE];
     int qcols = parseColListOrReply(c, tmatch, clist, cmatchs);
@@ -135,7 +135,7 @@ void tscanCommand(redisClient *c) {
     int            imatch = -1,    cmatch = -1;
     unsigned char  where  = checkSQLWhereClauseOrReply(c, &pko, &range, &imatch,
                                                        &cmatch, &argn, tmatch,
-                                                       0);
+                                                       0, 0);
     if (!where) goto tscan_cmd_err;
 
     robj *o = lookupKeyRead(c->db, Tbl_name[tmatch]);

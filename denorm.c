@@ -22,10 +22,10 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <unistd.h>
 
 #include "redis.h"
+#include "sql.h"
 #include "index.h"
 #include "store.h"
 #include "alsosql.h"
-#include "sql.h"
 #include "join.h"
 #include "denorm.h"
 #include "bt_iterator.h"
@@ -201,7 +201,7 @@ void createTableAsObject(redisClient *c) {
     bool  single;
     robj *o  = NULL;
     if (axs == ACCESS_SELECT_COMMAND_NUM) {
-        int   which = 0; /*used in ARGN_OVERFLOW */
+        int   which = 0; /*used in ARGN_OVERFLOW() */
         int   argn  = 5;
         sds   clist = sdsempty();
 
@@ -209,28 +209,39 @@ void createTableAsObject(redisClient *c) {
         /* parseSelectColumnList edits the cargv ----------------\/           */
         sdsfree(c->argv[5]->ptr);                             /* so free it   */
         c->argv[5]->ptr = sdsnewlen(clist, sdslen(clist));;   /* and recr8 it */
-        ARGN_OVERFLOW                      /* skip SQL keyword"FROM" */
+        ARGN_OVERFLOW()                      /* skip SQL keyword"FROM" */
 
         robj               *argv[3];
-        bool                ret   = 1;
+        bool                ret   = 0;
         int                 qcols = 0;
+        uchar               where = 0;
         struct redisClient *rfc   = createFakeClient();
         rfc->argv                 = argv;
         rfc->argv[1]              = c->argv[2];
         if (strchr(clist, '.')) { /* CREATE TABLE AS SELECT JOIN */
-            int j_tbls [MAX_JOIN_INDXS];
-            int j_cols [MAX_JOIN_INDXS];
-            qcols = multiColCheckOrReply(c, clist, j_tbls, j_cols);
-            if (qcols) ret = createTableFromJoin(c, rfc, qcols, j_tbls, j_cols);
+            int   j_indxs[MAX_JOIN_INDXS];
+            int   j_tbls [MAX_JOIN_INDXS], j_cols [MAX_JOIN_INDXS];
+            int   n_ind, sto;
+            robj *range  = NULL, *newname = NULL;
+            where = joinParseReply(c, clist, argn, j_indxs, j_tbls, j_cols,
+                                   &qcols, &sto, &newname, &range, &n_ind);
+            if (range) decrRefCount(range);
+            if (where && qcols)
+                ret = createTableFromJoin(c, rfc, qcols, j_tbls, j_cols);
         } else {
             TABLE_CHECK_OR_REPLY(c->argv[argn]->ptr,);
             int cmatchs[MAX_COLUMN_PER_TABLE];
             qcols = parseColListOrReply(c, tmatch, clist, cmatchs);
-            if (qcols) ret = internalCreateTable(c, rfc, qcols,
-                                                 cmatchs, tmatch);
+            if (qcols) { /* check WHERE clause for syntax */
+                ARGN_OVERFLOW()
+                where = checkSQLWhereClauseOrReply(c, NULL, NULL, NULL, NULL,
+                                                   &argn, tmatch, 0, 1);
+                if (where)
+                    ret = internalCreateTable(c, rfc, qcols, cmatchs, tmatch);
+            }
         }
         freeFakeClient(rfc);
-        if (!ret || !qcols) return;
+        if (!ret || !where || !qcols) return;
 
         createTableAsObjectOperation(c, 1);
 

@@ -634,6 +634,8 @@ function init_bigrow_table() {
 
 function create_table_as_select_customer() {
   $CLI CREATE TABLE copy AS SELECT id,hobby,name,employee FROM customer WHERE hobby BETWEEN a AND z
+  $CLI DESC copy
+  $CLI DUMP copy
 }
 
 function create_table_as_select_join_worker_health() {

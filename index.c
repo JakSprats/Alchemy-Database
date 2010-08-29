@@ -128,19 +128,19 @@ void iAdd(bt *ibtr, robj *i_key, robj *i_val, uchar pktype) {
     } else {
         nbtr = (bt *)(nbt->ptr);
     }
-    int pre_size       = nbtr->malloc_size;
+    ull pre_size  = nbtr->malloc_size;
     btIndNodeAdd(nbtr, i_val, pktype);
-    int post_size      = nbtr->malloc_size;
+    ull post_size = nbtr->malloc_size;
     ibtr->malloc_size += (post_size - pre_size); /* ibtr inherits nbtr */
 }
 
 static void iRem(bt *ibtr, robj *i_key, robj *i_val, int pktype) {
     robj *nbt          = btIndFindVal(ibtr, i_key, ibtr->ktype);
     bt   *nbtr         = (bt *)(nbt->ptr);
-    int   pre_size     = nbtr->malloc_size;
+    ull   pre_size     = nbtr->malloc_size;
     int   n_size       = btIndNodeDelete(nbtr, i_val, pktype);
-    int   post_size    = nbtr->malloc_size;
-    ibtr->malloc_size += (post_size - pre_size); /* ibtr inherits nbtr */
+    ull   post_size    = nbtr->malloc_size;
+    ibtr->malloc_size += (post_size - pre_size); /* inherits nbtr */
     if (!n_size) {
         btIndDelete(ibtr, i_key, ibtr->ktype);
         btRelease(nbtr, NULL);
@@ -577,7 +577,7 @@ void dumpCommand(redisClient *c) {
             ADD_REPLY_BULK(r, buf)
         } else if (!strcasecmp(c->argv[2]->ptr, "RETURN") &&
                    !strcasecmp(c->argv[3]->ptr, "SIZE")      ) {
-            sprintf(buf, "KEYS: %d BT-DATA: %d BT-MALLOC: %d",
+            sprintf(buf, "KEYS: %d BT-DATA: %lld BT-MALLOC: %lld",
                           btr->numkeys, btr->data_size, btr->malloc_size);
             robj *r = createStringObject(buf, strlen(buf));
             addReplyBulk(c, r);
@@ -615,8 +615,8 @@ void dumpCommand(redisClient *c) {
     lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
 }
  
-int get_sum_all_index_size_for_table(redisClient *c, int tmatch) {
-    int isize = 0;
+ull get_sum_all_index_size_for_table(redisClient *c, int tmatch) {
+    ull isize = 0;
     for (int i = 0; i < Num_indx; i++) {
         if (!Index_virt[i] && Index_on_table[i] == tmatch) {
             robj *ind   = Index_obj[i];
@@ -643,13 +643,14 @@ void descCommand(redisClient *c) {
                                         Col_type_defs[Tbl_col_type[tmatch][j]]);
         } else {
             robj *ind    = Index_obj[imatch];
-            int   isize  = 0;
+            ull   isize  = 0;
             if (!Index_virt[imatch]) {
                 robj *ibt  = lookupKey(c->db, ind);
                 bt   *ibtr = (bt *)(ibt->ptr);
                 isize      = ibtr ? ibtr->malloc_size : 0;
             }
-            r->ptr = sdscatprintf(sdsempty(), "%s | %s | INDEX: %s [BYTES: %d]",
+            r->ptr = sdscatprintf(sdsempty(),
+                                        "%s | %s | INDEX: %s [BYTES: %lld]",
                                         (char *)Tbl_col_name[tmatch][j]->ptr,
                                         Col_type_defs[Tbl_col_type[tmatch][j]],
                                         (char *)ind->ptr, 
@@ -659,10 +660,11 @@ void descCommand(redisClient *c) {
         decrRefCount(r);
 	card++;
     }
-    int  index_size = get_sum_all_index_size_for_table(c, tmatch);
+    ull  index_size = get_sum_all_index_size_for_table(c, tmatch);
     bt  *btr        = (bt *)o->ptr;
-    sprintf(buf, "INFO: KEYS: %d BYTES: [BT-DATA: %d BT-TOTAL: %d INDEX: %d]",
-             btr->numkeys, btr->data_size, btr->malloc_size, index_size);
+    sprintf(buf,
+            "INFO: KEYS: %d BYTES: [BT-DATA: %lld BT-TOTAL: %lld INDEX: %lld]",
+            btr->numkeys, btr->data_size, btr->malloc_size, index_size);
     robj *r = createStringObject(buf, strlen(buf));
     addReplyBulk(c, r);
     decrRefCount(r);

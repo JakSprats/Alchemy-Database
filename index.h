@@ -85,6 +85,6 @@ void iupdateAction(redisClient   *c,
                    uint   vlens[],
                    uchar  cmiss[]);
 
-int get_sum_all_index_size_for_table(redisClient *c, int tmatch);
+ull get_sum_all_index_size_for_table(redisClient *c, int tmatch);
 
 #endif /* __INDEX__H */ 

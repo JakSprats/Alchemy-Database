@@ -29,25 +29,26 @@
 
 #include "btree.h"
 
-typedef struct btree { // 2 ptr(16), 5shrt(10), 3uchar(3), 4*int(16) -> 45bytes
+// SIZE: 2ptr(16), 5shrt(10), 3uchar(3), 2LL(24) + 2int(8) -> 53bytes
+typedef struct btree {
     struct btreenode *root;
-    bt_cmp_t          cmp;
+    bt_cmp_t           cmp;
+ 
+    unsigned short     keyoff;
+    unsigned short     nodeptroff;
+    unsigned short     t;
+    unsigned short     textra;
 
-    unsigned short    keyoff;
-    unsigned short    nodeptroff;
-    unsigned short    t;
-    unsigned short    textra;
+    unsigned char      nbits;
+    unsigned char      ktype;
+    unsigned char      is_index;
+    short              num;
 
-    unsigned char     nbits;
-    unsigned char     ktype;
-    unsigned char     is_index;
-    short             num;
+    unsigned long long malloc_size;
+    unsigned long long data_size;
 
-    unsigned int      malloc_size;
-    unsigned int      data_size;
-
-    unsigned int      numkeys;
-    unsigned int      numnodes;
+    unsigned int       numkeys;
+    unsigned int       numnodes;
 } __attribute__ ((packed)) bt;
 
 typedef struct btreenode { // 2 bytes

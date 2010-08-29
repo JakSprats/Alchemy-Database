@@ -327,8 +327,8 @@ void istoreCommit(redisClient *c,
                   char        *col_list,
                   char        *range,
                   robj        *newname) {
-    int sto = -1;
-    CHECK_STORE_TYPE_OR_REPLY(sto_type)
+    int sto;
+    CHECK_STORE_TYPE_OR_REPLY(sto_type,sto,)
     int cmatchs[MAX_COLUMN_PER_TABLE];
     int qcols = parseColListOrReply(c, tmatch, col_list, cmatchs);
     if (!qcols) {

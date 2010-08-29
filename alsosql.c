@@ -386,9 +386,9 @@ void insertCommitReply(redisClient *c,
     if (new_size) {
         char buf[128];
         bt  *btr        = (bt *)o->ptr;
-        int  index_size = get_sum_all_index_size_for_table(c, tmatch);
+        ull  index_size = get_sum_all_index_size_for_table(c, tmatch);
         sprintf(buf,
-                  "INFO: BYTES: [ROW: %d BT-DATA: %d BT-TOTAL: %d INDEX: %d]",
+              "INFO: BYTES: [ROW: %d BT-DATA: %lld BT-TOTAL: %lld INDEX: %lld]",
                    new_size, btr->data_size, btr->malloc_size, index_size);
         robj *r = createStringObject(buf, strlen(buf));
         addReplyBulk(c, r);
@@ -464,7 +464,7 @@ void parseSelectColumnList(redisClient *c, sds *clist, int *argn) {
 
 void selectALSOSQLCommand(redisClient *c) {
     int   argn = 1;
-    int   which = 0; /*used in ARGN_OVERFLOW */
+    int   which = 0; /*used in ARGN_OVERFLOW() */
     robj *pko   = NULL, *range = NULL;
     sds   clist = sdsempty();
 
@@ -474,38 +474,30 @@ void selectALSOSQLCommand(redisClient *c) {
         addReply(c, shared.selectsyntax_nofrom);
         goto sel_cmd_err;
     }
-    ARGN_OVERFLOW
-    sds tbl_list = c->argv[argn]->ptr;
-    bool join = 0;
-    if (strchr(c->argv[argn]->ptr, CCOMMA)) join = 1;
-    if (!join) {
-        ARGN_OVERFLOW
-        if (strcasecmp(c->argv[argn]->ptr, "WHERE")) {
-            join = 1;
-            argn--;
-        }
-    }
+    ARGN_OVERFLOW()
+    sds  tbl_list = c->argv[argn]->ptr;
 
-    if (join) {
-        joinParseReply(c, clist, argn);
+    if (strchr(clist, '.')) {
+        joinReply(c, clist, argn);
     } else {
         TABLE_CHECK_OR_REPLY(tbl_list,);
+        ARGN_OVERFLOW()
 
         int   imatch = -1;
         uchar where  = checkSQLWhereClauseOrReply(c, &pko, &range, &imatch,
-                                                  NULL, &argn, tmatch, 0);
+                                                  NULL, &argn, tmatch, 0, 0);
         if (!where) goto sel_cmd_err;
 
         if (argn < (c->argc - 1)) { /* DENORM e.g.: STORE LPUSH list */
-            ARGN_OVERFLOW
+            ARGN_OVERFLOW()
             if (!strcasecmp(c->argv[argn]->ptr, STORE)) {
                 if (!range) {
                     addReply(c, shared.selectsyntax_store_norange);
                     goto sel_cmd_err;
                 }
-                ARGN_OVERFLOW
+                ARGN_OVERFLOW()
                 int i = argn;
-                ARGN_OVERFLOW
+                ARGN_OVERFLOW()
                 istoreCommit(c, tmatch, imatch, c->argv[i]->ptr, clist,
                              range->ptr, c->argv[argn]);
             } else {
@@ -541,7 +533,7 @@ void deleteCommand(redisClient *c) {
     robj  *pko    = NULL, *range = NULL;
     int    argn   = 3;
     uchar  where  = checkSQLWhereClauseOrReply(c, &pko, &range, &imatch,
-                                               NULL, &argn, tmatch, 1);
+                                               NULL, &argn, tmatch, 1, 0);
     if (!where) return;
 
     if (where == 2) { /* RANGE QUERY */
@@ -578,7 +570,7 @@ void updateCommand(redisClient *c) {
     robj  *pko    = NULL, *range = NULL;
     int    argn   = 4;
     uchar  where  = checkSQLWhereClauseOrReply(c, &pko, &range, &imatch,
-                                               NULL, &argn, tmatch, 2);
+                                               NULL, &argn, tmatch, 2, 0);
     if (!where) goto update_cmd_err;
     if (where == 2) { /* RANGE QUERY */
         iupdateAction(c, range->ptr, tmatch, imatch, ncols, matches, indices,

@@ -30,6 +30,7 @@
 #include "bt.h"
 #include "bt_iterator.h"
 #include "redis.h"
+#include "common.h"
 
 #define RL4 redisLog(4,
 #define RL7 if (iter && iter->which == 0) redisLog(4,
@@ -57,7 +58,7 @@ RL4 "bt_malloc: %d BTR: %d DATA: %d RATIO: %f", size, btr->malloc_size, btr->dat
 #define NODE_SIZE sizeof(struct btreenode) + btr->textra
 static void bt_increment_used_memory(bt *btr, size_t size) {
     //RL4 "ADD:  bt_increment_used_memory: curr: %d size: %d", btr->malloc_size, size);
-    btr->malloc_size += size;
+    btr->malloc_size += (ull)size;
     increment_used_memory(size);
 }
 
@@ -102,7 +103,7 @@ static struct btree *allocbtree(void) {
 
 static void bt_decrement_used_memory(bt *btr, size_t size) {
     //RL4 "LESS: bt_decrement_used_memory: curr: %d size: %d", btr->malloc_size, size);
-    btr->malloc_size -= size;
+    btr->malloc_size -= (ull)size;
     decrement_used_memory(size);
 }
 void bt_free(void *v, bt *btr, int size) {

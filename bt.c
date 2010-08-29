@@ -333,7 +333,7 @@ uint getStreamMallocSize(uchar *stream,
             bt    *btr   = (bt *)*p_ptr;
             vlen = sizeof(void *);
             if (btr) {
-                vlen += btr->malloc_size;
+                vlen += (uint)btr->malloc_size;
             }
         }
     }
