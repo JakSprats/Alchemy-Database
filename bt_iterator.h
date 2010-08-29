@@ -72,6 +72,9 @@ btEntry    *btRangeNext(           btIterator *iter, bool asc);
 void        btReleaseRangeIterator(btIterator *iter);
 //int         btNumRecsRange(bt *ht, void *low, void *high);
 
+bool assignMinKey(bt *btr, robj *key);
+bool assignMaxKey(bt *btr, robj *key);
+
 /* for parallel JOINS */
 btIterator *btGetGenericRangeIterator(robj *o,
                                       void *low,

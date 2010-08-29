@@ -415,12 +415,12 @@ function init_string_third_join_table() {
 }
 
 function test() {
-  init_test_table
+  init_string_test_table
   $CLI INSERT INTO test VALUES \(key1,1,1\)
   $CLI INSERT INTO test VALUES \(key2_____________________________________________________________________________________________________________________________________end,2,2\)
   $CLI CREATE TABLE itest \(id INT,name TEXT\)
-  $CLI INSERT INTO itest \(40,I_40\)
-  $CLI INSERT INTO itest \(35000,I_35000\)
+  $CLI INSERT INTO itest VALUES \(40,I_40\)
+  $CLI INSERT INTO itest VALUES \(35000,I_35000\)
 }
 
 function init_address_table() {

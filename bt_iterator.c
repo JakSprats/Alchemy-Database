@@ -202,19 +202,29 @@ btEntry *btRangeNext(btIterator *iter, bool asc) {
     return NULL; /* never happens */
 }
 
+static robj BtLow, BtHigh;
+
+bool assignMinKey(bt *btr, robj *key) {
+    void *e  = bt_min(btr);
+    if (!e) return 0;
+    assignKeyRobj(e, key);
+    return 1;
+}
+bool assignMaxKey(bt *btr, robj *key) {
+    void *e  = bt_max(btr);
+    if (!e) return 0;
+    assignKeyRobj(e, key);
+    return 1;
+}
+
 //TODO this function and its global vars are hideous - clean this up
 //NOTE: can not NEST this function
-static robj BtLow, BtHigh;
 btIterator *btGetFullRangeIterator(robj *o, bool asc, bool virt) {
     asc = 0; /* compiler warning */
     struct btree *btr  = (struct btree *)(o->ptr);
     //bt_dumptree(btr, btr->ktype, (virt ? REDIS_ROW : REDIS_BTREE));
-    void         *l_e  = bt_min(btr);
-    if (!l_e) return NULL;
-    void         *h_e  = bt_max(btr);
-    if (!h_e) return NULL;
-    assignKeyRobj(l_e, &BtLow);
-    assignKeyRobj(h_e, &BtHigh);
+    if (!assignMinKey(btr, &BtLow))  return NULL;
+    if (!assignMaxKey(btr, &BtHigh)) return NULL;
 
     btIterator   *iter = createIterator(btr, virt, 1);
     if (       btr->ktype == COL_TYPE_STRING) {

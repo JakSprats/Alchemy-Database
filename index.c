@@ -628,8 +628,13 @@ ull get_sum_all_index_size_for_table(redisClient *c, int tmatch) {
     return isize;
 }
 
+static void zero(robj *r) {
+    r->encoding = REDIS_ENCODING_RAW;
+    r->ptr      = 0;
+}
+
 void descCommand(redisClient *c) {
-    char buf[192];
+    char buf[256];
     TABLE_CHECK_OR_REPLY( c->argv[1]->ptr,)
     robj *o = lookupKeyRead(c->db, Tbl_name[tmatch]);
 
@@ -662,9 +667,29 @@ void descCommand(redisClient *c) {
     }
     ull  index_size = get_sum_all_index_size_for_table(c, tmatch);
     bt  *btr        = (bt *)o->ptr;
-    sprintf(buf,
-            "INFO: KEYS: %d BYTES: [BT-DATA: %lld BT-TOTAL: %lld INDEX: %lld]",
-            btr->numkeys, btr->data_size, btr->malloc_size, index_size);
+    robj minkey, maxkey;
+    if (!assignMinKey(btr, &minkey)) zero(&minkey);
+    if (!assignMaxKey(btr, &maxkey)) zero(&maxkey);
+
+    if (minkey.encoding == REDIS_ENCODING_RAW) {
+        if (sdslen(minkey.ptr) > 64) {
+            char *x = (char *)(minkey.ptr);
+            x[64] ='\0';
+        }
+        if (sdslen(maxkey.ptr) > 64) {
+            char *x = (char *)(maxkey.ptr);
+            x[64] ='\0';
+        }
+        sprintf(buf, "INFO: KEYS: [NUM: %d MIN: %s MAX: %s]"\
+                          " BYTES: [BT-DATA: %lld BT-TOTAL: %lld INDEX: %lld]",
+                btr->numkeys, (char *)minkey.ptr, (char *)maxkey.ptr,
+                btr->data_size, btr->malloc_size, index_size);
+    } else {
+        sprintf(buf, "INFO: KEYS: [NUM: %d MIN: %u MAX: %u]"\
+                          " BYTES: [BT-DATA: %lld BT-TOTAL: %lld INDEX: %lld]",
+            btr->numkeys, (uint)(long)minkey.ptr, (uint)(long)maxkey.ptr,
+            btr->data_size, btr->malloc_size, index_size);
+    }
     robj *r = createStringObject(buf, strlen(buf));
     addReplyBulk(c, r);
     decrRefCount(r);
