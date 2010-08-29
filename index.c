@@ -549,15 +549,17 @@ void dumpCommand(redisClient *c) {
 
     LEN_OBJ
 
-    bool to_mysql = 0;
-    if (c->argc > 2) {
+    bool  to_mysql = 0;
+    char *m_tname  = tname;
+    if (c->argc > 3) {
         if (!strcasecmp(c->argv[2]->ptr, "TO") &&
             !strcasecmp(c->argv[3]->ptr, "MYSQL")      ) {
             to_mysql = 1;
+            if (c->argc > 4) m_tname = c->argv[4]->ptr;
             robj *r;
-            sprintf(buf, "DROP TABLE IF EXISTS `%s`;", tname);
+            sprintf(buf, "DROP TABLE IF EXISTS `%s`;", m_tname);
             ADD_REPLY_BULK(r, buf)
-            sprintf(buf, "CREATE TABLE `%s` ( ", tname);
+            sprintf(buf, "CREATE TABLE `%s` ( ", m_tname);
             r = createStringObject(buf, strlen(buf));
             for (int i = 0; i < Tbl_col_count[tmatch]; i++) {
                 bool is_int = (Tbl_col_type[tmatch][i] == COL_TYPE_INT);
@@ -571,7 +573,7 @@ void dumpCommand(redisClient *c) {
             addReplyBulk(c, r);
             decrRefCount(r);
             card++;
-            sprintf(buf, "LOCK TABLES `%s` WRITE;", tname);
+            sprintf(buf, "LOCK TABLES `%s` WRITE;", m_tname);
             ADD_REPLY_BULK(r, buf)
         } else if (!strcasecmp(c->argv[2]->ptr, "RETURN") &&
                    !strcasecmp(c->argv[3]->ptr, "SIZE")      ) {
@@ -594,7 +596,7 @@ void dumpCommand(redisClient *c) {
             addReplyBulk(c, r);
             decrRefCount(r);
         } else {
-            sprintf(buf, "INSERT INTO `%s` VALUES (", tname);
+            sprintf(buf, "INSERT INTO `%s` VALUES (", m_tname);
             robj *ins = createStringObject(buf, strlen(buf));
             ins->ptr  = sdscatlen(ins->ptr, r->ptr, sdslen(r->ptr));
             ins->ptr  = sdscatlen(ins->ptr, ");", 2);
