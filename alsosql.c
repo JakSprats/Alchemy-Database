@@ -108,6 +108,27 @@ int find_column(int tmatch, char *column) {
     return -1;
 }
 
+static char *str_next_unescaped_chr(char *beg, char *s, int x) {
+    char *nextc = s;
+    while ((nextc = strchr(nextc, x))) {
+        if (nextc - beg > 1) { /* handle backslash-escaped commas */
+            if  (*(nextc - 1) == '\\') {
+                char *backslash = nextc - 1;
+                while (backslash >= beg) {
+                    if (*backslash != '\\') break;
+                    backslash--;
+                }
+                int num_backslash = nextc - backslash - 1;
+                if (num_backslash % 2 == 1) {
+                    nextc++;
+                    continue;
+                }
+            }
+        }
+        return nextc;
+    }
+    return NULL;
+}
 static char *parseRowVals(sds    vals,
                           char **pk,
                           int   *pklen,
@@ -119,13 +140,7 @@ static char *parseRowVals(sds    vals,
     int   fieldnum = 0;
     char *token    = vals;
     char *nextc    = vals;
-    while ((nextc = strchr(nextc, CCOMMA))) {
-        uchar num_dbl_qts = 0;
-        for (char *x = token; x < nextc; x++)  if (*x == '"') num_dbl_qts++;
-        if (num_dbl_qts == 1) {
-            nextc++;
-            continue;
-        }
+    while ((nextc = str_next_unescaped_chr(vals, nextc, CCOMMA))) {
         if (!*pk) {
             int   len = (nextc - vals);
             if (!len) return NULL;
@@ -175,16 +190,17 @@ int parseColListOrReply(redisClient   *c,
     return qcols;
 }
 
-int parseUpdateOrReply(redisClient  *c,
-                       int           tmatch,
-                       char         *cname,
-                       int           cmatchs[],
-                       char         *vals   [],
-                       uint          vlens  []) {
-    int   qcols = 0;
+int parseUpdateColListReply(redisClient  *c,
+                            int           tmatch,
+                            char         *cname,
+                            int           cmatchs[],
+                            char         *vals   [],
+                            uint          vlens  []) {
+    char *o_cname = cname;
+    int   qcols   = 0;
     while (1) {
-        char *val   = strchr(cname, CEQUALS);
-        char *nextc = strchr(cname, CCOMMA);
+        char *val   = str_next_unescaped_chr(o_cname, cname, CEQUALS);
+        char *nextc = str_next_unescaped_chr(o_cname, cname, CCOMMA);
         if (val) {
             *val = '\0';
             val++;
@@ -404,8 +420,10 @@ void insertCommand(redisClient *c) {
         return;
     }
 
-    TABLE_CHECK_OR_REPLY(c->argv[2]->ptr,)
-    int ncols = Tbl_col_count[tmatch];
+    int   len   = sdslen(c->argv[2]->ptr);
+    char *t     = rem_backticks(c->argv[2]->ptr, &len); /* Mysql compliance */
+    TABLE_CHECK_OR_REPLY(t,)
+    int   ncols = Tbl_col_count[tmatch];
     MATCH_INDICES(tmatch)
 
     /* TODO column ordering is IGNORED */
@@ -416,7 +434,7 @@ void insertCommand(redisClient *c) {
         return;
     }
 
-    /* NOTE: INSERT only works if (vals,,,,,) has no spaces (CLIENT SIDE REQ) */
+    /* NOTE: INSERT requires (vals,,,,,) to be its own cargv (CLIENT SIDE REQ)*/
     sds vals = c->argv[4]->ptr;
     insertCommitReply(c, vals, ncols, tmatch, matches, indices);
 }
@@ -560,7 +578,8 @@ void updateCommand(redisClient *c) {
     uint   mvlens [MAX_COLUMN_PER_TABLE];
     char  *nvals = c->argv[3]->ptr;
     int    ncols = Tbl_col_count[tmatch];
-    int    qcols = parseUpdateOrReply(c, tmatch, nvals, cmatchs, mvals, mvlens);
+    int    qcols = parseUpdateColListReply(c, tmatch, nvals, cmatchs,
+                                           mvals, mvlens);
     if (!qcols) return;
     MATCH_INDICES(tmatch)
 

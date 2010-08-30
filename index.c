@@ -668,15 +668,15 @@ void descCommand(redisClient *c) {
     ull  index_size = get_sum_all_index_size_for_table(c, tmatch);
     bt  *btr        = (bt *)o->ptr;
     robj minkey, maxkey;
-    if (!assignMinKey(btr, &minkey)) zero(&minkey);
-    if (!assignMaxKey(btr, &maxkey)) zero(&maxkey);
+    if (!btr->numkeys || !assignMinKey(btr, &minkey)) zero(&minkey);
+    if (!btr->numkeys || !assignMaxKey(btr, &maxkey)) zero(&maxkey);
 
     if (minkey.encoding == REDIS_ENCODING_RAW) {
-        if (sdslen(minkey.ptr) > 64) {
+        if (minkey.ptr && sdslen(minkey.ptr) > 64) {
             char *x = (char *)(minkey.ptr);
             x[64] ='\0';
         }
-        if (sdslen(maxkey.ptr) > 64) {
+        if (maxkey.ptr && sdslen(maxkey.ptr) > 64) {
             char *x = (char *)(maxkey.ptr);
             x[64] ='\0';
         }
