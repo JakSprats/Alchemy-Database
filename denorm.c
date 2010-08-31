@@ -30,11 +30,13 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include "denorm.h"
 #include "bt_iterator.h"
 #include "row.h"
+#include "bt.h"
 
 // FROM redis.c
 #define RL4 redisLog(4,
 extern struct sharedObjectsStruct shared;
 
+extern int            Num_tbls;
 extern robj          *Tbl_name     [MAX_NUM_TABLES];
 extern int            Tbl_col_count[MAX_NUM_TABLES];
 extern robj          *Tbl_col_name [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
@@ -247,33 +249,53 @@ void createTableAsObject(redisClient *c) {
 
         addReply(c, shared.ok);
         return;
-    } else {
-        robj *key = c->argv[5];
-        o         = lookupKeyReadOrReply(c, key, shared.nullbulk);
-        if (!o) return;
-
-        if (axs != -1) { /* all ranges are single */
-            cdef = _createStringObject("pk=INT,value=TEXT");
-            single = 1;
-        } else if (o->type == REDIS_LIST) {
-            cdef = _createStringObject("pk=INT,lvalue=TEXT");
-            single = 1;
-        } else if (o->type == REDIS_SET) {
-            cdef = _createStringObject("pk=INT,svalue=TEXT");
-            single = 1;
-        } else if (o->type == REDIS_ZSET) {
-            cdef = _createStringObject("pk=INT,zkey=TEXT,zvalue=TEXT");
-            single = 0;
-        } else if (o->type == REDIS_HASH) {
-            cdef = _createStringObject("pk=INT,hkey=TEXT,hvalue=TEXT");
-            single = 0;
-        } else {
-            addReply(c, shared.createtable_as_on_wrong_type);
-            return;
-        }
     }
 
-    { /* CREATE TABLE */
+    robj *key = c->argv[5];
+    o         = lookupKeyReadOrReply(c, key, shared.nullbulk);
+    if (!o) return;
+
+    bool table_created = 0;
+    if (axs != -1) { /* all ranges are single */
+        cdef = _createStringObject("pk=INT,value=TEXT");
+        single = 1;
+    } else if (o->type == REDIS_BTREE) { /* DUMP one table to another */
+        bt *btr = (bt *)o->ptr;
+        if (btr->is_index != BTREE_TABLE) {
+            addReply(c, shared.createtable_as_index);
+            return;
+        }
+        TABLE_CHECK_OR_REPLY(c->argv[5]->ptr,)
+        int cmatchs[MAX_COLUMN_PER_TABLE];
+        int qcols = parseColListOrReply(c, tmatch, "*", cmatchs);
+
+        robj               *argv[3];
+        struct redisClient *cfc = createFakeClient();
+        cfc->argv               = argv;
+        cfc->argv[1]            = c->argv[2]; /* new tablename */
+
+        bool ret = internalCreateTable(c, cfc, qcols, cmatchs, tmatch);
+        freeFakeClient(cfc);
+        if (!ret) return;
+        table_created = 1;
+    } else if (o->type == REDIS_LIST) {
+        cdef = _createStringObject("pk=INT,lvalue=TEXT");
+        single = 1;
+    } else if (o->type == REDIS_SET) {
+        cdef = _createStringObject("pk=INT,svalue=TEXT");
+        single = 1;
+    } else if (o->type == REDIS_ZSET) {
+        cdef = _createStringObject("pk=INT,zkey=TEXT,zvalue=TEXT");
+        single = 0;
+    } else if (o->type == REDIS_HASH) {
+        cdef = _createStringObject("pk=INT,hkey=TEXT,hvalue=TEXT");
+        single = 0;
+    } else {
+        addReply(c, shared.createtable_as_on_wrong_type);
+        return;
+    }
+
+    if (!table_created) { /* CREATE TABLE */
         robj               *argv[3];
         struct redisClient *fc = createFakeClient();
         fc->argv               = argv;
@@ -326,7 +348,7 @@ void createTableAsObject(redisClient *c) {
                 if (!addDouble(c, dfc, key, val, &instd, 1)) goto cr8tbldmp_err;
             }
             dictReleaseIterator(di);
-        } else {
+        } else if (o->type == REDIS_HASH) {
             hashIterator *hi = hashInitIterator(o);
             while (hashNext(hi) != REDIS_ERR) {
                 robj *key = hashCurrent(hi, REDIS_HASH_KEY);
@@ -334,6 +356,17 @@ void createTableAsObject(redisClient *c) {
                 if (!addDouble(c, dfc, key, val, &instd, 0)) goto cr8tbldmp_err;
             }
             hashReleaseIterator(hi);
+        } else if (o->type == REDIS_BTREE) {
+            btEntry    *be;
+            int         tmatch = Num_tbls - 1; /* table was just created */
+            int         pktype = Tbl_col_type[tmatch][0];
+            robj       *new_o  = lookupKeyWrite(c->db, Tbl_name[tmatch]);
+            btIterator *bi     = btGetFullRangeIterator(o, 0, 1);
+            while ((be = btRangeNext(bi, 0)) != NULL) {      // iterate btree
+                robj *key = be->key;
+                robj *row = be->val;
+                btAdd(new_o, key, row, pktype); /* straight row-to-row copy */
+            }
         }
         addReply(c, shared.ok);
 

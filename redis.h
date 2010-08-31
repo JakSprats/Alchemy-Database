@@ -288,13 +288,15 @@ struct sharedObjectsStruct {
     *updatesyntax_nowhere, *updatesyntax_notpk,   *updatesyntax_noequals,
     *scanselectsyntax,     *scanselectsyntax_noequals,
 
-    *createtable_as_on_wrong_type,
     *whereclause_no_and,
     *selectsyntax_store_norange,
     *joinsyntax_no_tablename,
     *drop_virtual_index,
+
+    *createtable_as_on_wrong_type, *createtable_as_index,
     *create_table_as_function_not_found, *create_table_as_dump_num_args,
     *create_table_as_access_num_args,
+
     *denorm_wildcard_no_star,
 #endif /* ALSOSQL END */
     *outofrangeerr, *plus,

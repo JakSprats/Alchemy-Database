@@ -1843,9 +1843,6 @@ static void createSharedObjects(void) {
     shared.updatesyntax_noequals = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: UPDATE tablename SET col1=val1,col2=val2,,,, WHERE indexed_column = val - \"EQUALS SIGN\" MISSING\r\n"));
 
-    shared.createtable_as_on_wrong_type = createObject(REDIS_STRING,sdsnew(
-        "-ERR TYPE: CREATE TABLE tablename AS X - X must be [LIST,SET,HASH,ZET]\r\n"));
-
     shared.whereclause_no_and = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: WHERE-CLAUSE: WHERE indexed_column BETWEEN start AND finish - \"AND\" MISSING\r\n"));
     shared.selectsyntax_store_norange = createObject(REDIS_STRING,sdsnew(
@@ -1861,6 +1858,11 @@ static void createSharedObjects(void) {
 
     shared.drop_virtual_index = createObject(REDIS_STRING,sdsnew(
         "-ERR MISC: Primary Key Indices can not be dropped\r\n"));
+
+    shared.createtable_as_on_wrong_type = createObject(REDIS_STRING,sdsnew(
+        "-ERR TYPE: CREATE TABLE tablename AS X - X must be [LIST,SET,HASH,ZSET]\r\n"));
+    shared.createtable_as_index = createObject(REDIS_STRING,sdsnew(
+        "-ERR TYPE: CREATE TABLE tablename AS INDEX - not allowed\r\n"));
 
     shared.create_table_as_function_not_found = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: CREATE TABLE tablename AS [DUMP,SELECT,LRANGE,ZRANGE,ZRANGEBYSCORE,ZREVRANGE,HMGET,HKEYS,HVALS,HGETALL,SUNION,SDIFF,SINTER,SMEMBERS,SORT] redis_object - redis function name not recognized\r\n"));
