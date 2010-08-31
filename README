@@ -1,18 +1,18 @@
 
 Alsosql: Is a Hybrid Relational-Database/NOSQL-Datastore.
 
-SQL Tables, SQL Statements and SQL Data-types are supported. Alsosql is built on top of the NOSQL datastore redis and supports normalisation/denormalisation of redis data structures (lists,sets,hash-tables) into/from Alsosql tables, as well as import/export of tables to/from Mysql. It is a data storage Swiss army knife.
+SQL Tables, Statements and Data-types are supported. Alsosql is built on top of the NOSQL datastore redis and supports (de)normalisation of redis data structures (lists,sets,hash-tables) to/from Alsosql tables, as well as import/export of tables to/from Mysql. It is a data storage Swiss Army Knife.
 
-Storing Data in NOSQL and/or SQL and converting to and fro can be done w/ a few straightforward SQL-esque commands. Alsosql is optimised for a OLTP workload and is both extremely fast and extremely memory efficient. Alsosql attains its speed by storing ALL of its data in RAM, periodically snapshot-saving the data to disk and by optimising to the SQL statements commonly used in OLTP workloads.
+Storing Data in NOSQL and/or SQL and converting to and fro can be done w/ a few straightforward SQL-esque commands. Alsosql is optimised for a OLTP workload and is both extremely fast and extremely memory efficient. Alsosql attains its speed by storing ALL of its data in RAM, then periodically snapshot-saving the data to disk and also by optimising to the SQL statements most commonly used in OLTP workloads.
 
-Philosophy of Alsosql: RAM is now affordable enough to be able to put ENTIRE OLTP Databases on a single machine. So Alsosql provides a relational database with very little memory overhead that does the most common OLTP SQL statements amazingly fast and throws in a NOSQL Data-store to further extend the optimisation possibilites.
+Philosophy of Alsosql: RAM is now affordable enough to be able to put ENTIRE OLTP Databases in a single machine's RAM. So Alsosql provides a relational database with very little memory overhead that does the most common OLTP SQL statements amazingly fast and throws in a NOSQL Data-store to further extend the optimisation possibilities.
 
 * FAST (on commodity hardware): Client/Server using 1GbE LAN to/from a single core running at 3.0GHz w/ RAM at 400MHz (PC3200):
   84K INSERT/sec, 81K SELECT/sec, 75K UPDATE/sec, 85K DELETE/sec
-  RangeQuery returning 10 rows:    38K/sec
-  2  Table Join returning 10 rows: 18K/sec
-  3  Table Join returning 10 rows: 12.5K/sec
-  10 Table Join returning 10 rows:  4.5K/sec
+  RangeQueries   returning 10 rows: 38K/sec
+  2  Table Joins returning 10 rows: 18K/sec
+  3  Table Joins returning 10 rows: 12.5K/sec
+  10 Table Joins returning 10 rows:  4.5K/sec
 * MEMORY EFFICIENT:
   Each row has approx. 48 bytes of overhead when stored.
   Benchmarks:
@@ -21,8 +21,10 @@ Philosophy of Alsosql: RAM is now affordable enough to be able to put ENTIRE OLT
     Rows w/ 100 bytes of data,  7 million fit in 1GB RAM 
       (*NOTE: row-size was 130 bytes pre compression, storage has only 18% memory overhead).
   Additionally both INT and TEXT data are packed/compressed using algorithms w/ negligible performance hits.
+  Lastly, Alsosql tables and indices are B+trees, meaning they play very nicely w/ the operating system's swap partition. Meaning if your "active data" fits in RAM, but your "inactive data" (i.e. rarely accessed data) is MUCH bigger, Alsosql will STILL post the benchmark speeds listed above (the inactive data will simply take up swap space).
 * EASY:
-  Its SQL ... you already know it :) And redis commands are even easier to learn :)
+  Its SQL ... you already know it :) And redis commands are even easier to learn :) The commands that morph data to/from Mysql, Alsosql, and redis are a logical combination of SQL and redis and take no time to learn.
+
 
 BUILD:
   Just download the code and type "make"
@@ -31,13 +33,19 @@ RUN:
 CONFIG:
  Config is done in redis: The config file is called "redis.conf"
 
+CLIENTS:
+1.) PHP 5.3 CLIENT: http://github.com/JakSprats/predis (a fork of Predis)
+2.) working on the Ruby client - fork of ezmobius' client
+3.) Many more to come .... (redis supports 15+ and adding on Alsosql is trivial)
+
+
 Additional features:
  1.) Data can be exported to Mysql effortlessly for Data-warehousing.
- 2.) Data can be imported from Mysql effortlessly and if wanted denormalised to NOSQL data structures.
- 3.) No need to worry about being locked in to NOSQL as Alsosql can convert NOSQL data structures to SQL tables.
+ 2.) Data can be imported from Mysql effortlessly and if wanted denormalised to NOSQL data structures (for raw speed).
+ 3.) No need to worry about being locked in to NOSQL as Alsosql can convert NOSQL data structures to SQL tables and dump to Mysql.
  3.) redis: trivial to setup master-slave replication
  4.) redis: Persistence: from time to time data is saved to disk asynchronously (semi persistent mode) or alternatively every change is written into an append only file (fully persistent mode). Redis is able to rebuild the append only file in the background when it gets too big. 
- 5.) redis: Virtual memory - swaps values to disk, retaining keys in RAM, when memory usage is too high
+ 5.) redis: Virtual memory - swaps values to disk, retaining keys in RAM, when memory usage is too high (this is a win for Alsosql if you have rarely accessed tables or indices)
 
 
 SUPPORTED SQL:
@@ -57,30 +65,34 @@ SUPPORTED SQL:
      B.) range queries delete (e.g. WHERE id BETWEEN 30 and 50)
 6.) CREATE and DROP INDEX
 7.) DUMP table to mysql format
-8.) DESC table - provides detailed info on memory usage including index memory usage
+8.) DESC table - provides detailed info on memory usage including index memory usage (and min & max key)
 
 Supported SQL data types are currently UNSIGNED INT and TEXT. FLOAT is coming very soon. TEXT uses variable length storage and compression. UNSIGNED INT stores data using 2 bytes when possible.
 
+
 ALSOSQL Commands
-1.) NORMALIZE wildcard [wildcard2,wildcard3]
+1.) NORM wildcard [wildcard2,wildcard3]
     All redis-keys matching "wildcard" are normalised into a SQL table (star schema normalisation also possible, using wildcard2,3,,,)
-2.) SELECT ..... STORE REDIS-COMMAND
-    A.) SELECT name, salary FROM employee WHERE city = 7 STORE HSET SanFranWorker
-        Creates a redis HashTable named SanFranWorker with all the employess from city 7 (SanFran)
-3.) CREATE TABLE table AS REDIS-DATASTRUCTURE
-    A.) CREATE TABLE san_fran_employee AS SanFranWorker
-        Normalises the redis HashTable SanFranWorker into the Alsosql Table san_fran_employee
+    A.) NORM "user:*"
+        i.)   take ALL string KEYS matching the wildcard "user:*"
+        ii.)  create column_names using the pattern "user:*:column_name"
+        iii.) the pk will be the part matching "*"
+        iv.)  put i-iii together into a single Alsosql table (w/ many rows) named "user".
+2.) SELECT ..... STORE REDIS_COMMAND
+    A.) SELECT name, salary FROM employee WHERE city = "san Francisco" STORE HSET SanFranWorker
+        i.)   create a redis HashTable named SanFranWorker with all the employees from city "San Francisco"
+        ii.)  the values returned from the SELECTed column "name" will be the HashTables keys
+        iii.) the values returned from the SELECTed column "salary" will be the HashTables values
+3.) CREATE TABLE table AS REDIS_COMMAND
+    A.) CREATE TABLE yesterdays_tweets AS ZRANGEBYSCORE tweets $two_days_ago $yesterday
+        NOTE: the ZSET tweets uses timestamp as its score
+        i.)  take the members of the ZSET from two_days_ago until yesterday
+        ii.) store them in a Alsosql table names "yesterdays_tweets" (pk will be auto incremented INT)
+4.) DENORM table denorm_wildcard
+    A.) DENORM user "user:*"
+        i.)  denormalise the "user" table into an individual hash-table per row, named "user:pk" (e.g. user:1, user:2, user:567)
+        ii.) the keys of these hashes will be the column-names of the "user" table.
 
-
-
-UNSUPPORTED SQL: 
-The key longterm goals of Alsqosql are that EACH release Alsqosql will become faster, use less memory, and be more predictable in terms of run-time performance. For these reasons and as Alsosql is an OLTP optimised Database, Alsosql does not support the subset of SQL that results in either unpredictable run time performance behavior or extra server side executions steps. The OLTP best practices of avoiding long running queries must still be practiced in the application, but the programmer will be able to predict exactly how long a query should take for the simple reason that Alsqosql does not have a query planner, it does exactly what you tell it to do. Alsosql will strive to support as much SQL as possible that results in predictable run time performance.
-  1.) nested joins (requires 2+ join steps)
-  2.) joins on columns that are not indexed (which result in full table scans).
-  3.) joins on entire tables (also full table scans), a range must be given
-  4.) GROUP BY, this is mainly a Datawarehouse use-case (can cause sort passes)
-  5.) ORDER BY ... this is on the TODO (but only on a single ndexed column in the where-clause as other cases result in sort passes)
-NOTE: some of these can be done in Alsosql by storing join results in temporary tables and then joining to said temp-tables
 
 
 ABOUT redis: http://code.google.com/p/redis/
@@ -96,21 +108,16 @@ BENCHMARKS:
 5.) Memory Comparison "./redis-benchmark -n 1000000 -r 1000000 -c 200 -A"
 
 
-EXAMPLES: (very alpha)
-The file "bash_functions.sh" has a lot of example SQL statements I used when testing. This is still very alpha :)
-NOTE:
-1.) The functions in "bash_functions.sh" use the unix command line utility "redis-cli" and some characters ("(","*") need to be escaped to avoid shell expansion.
-2.) In order to efficiently transmit data using the redis line protocol, the following SQL requirements are in place:
- A.) INSERT can NOT have spaces in the data section 
-      e.g. INSERT INTO x VALUES (a,b,c) <- no spaces here
- B.) UPDATE can NOT have spaces in the data section 
-      e.g. UPDATE x SET a=123,b=456,c=7890 WHERE id =7
-                        ^-no spaces here-^
-
-CLIENTS:
-1.) working on the PHP client - fork of Rediska
-2.) working on the Ruby client - fork of ezmobius' client
-
+UNSUPPORTED SQL: 
+Why:
+The key longterm goals of Alsqosql are that with EACH release Alsqosql will become faster, use less memory, and be more predictable in terms of run-time performance. For these reasons and as Alsosql is an OLTP optimised Database, Alsosql does not support the subset of SQL that results in either unpredictable run-time-performance behavior or in extra server-side executions steps. The OLTP best practices of avoiding long running queries must still be practiced at the application level, but the programmer will be able to predict exactly how long a query should take for the simple reason that Alsqosql does not have a query planner, it does exactly what you tell it to do. Alsosql plans to support ALL SQL that results in predictable run time performance.
+Not Supported:
+  1.) nested joins (requires 2+ join steps)
+  2.) joins on columns that are not indexed (which result in full table scans).
+  3.) joins on entire tables (also full table scans), a range must be given
+  4.) GROUP BY, this is mainly a Datawarehouse use-case (can cause sort passes)
+  5.) ORDER BY ... this is on the TODO (but only on a single indexed column in the where-clause as other cases result in sort passes)
+NOTE: some of these cases can be done in Alsosql by storing join results in temporary tables and then joining to these temp-tables
 
 
 MIT License
