@@ -39,6 +39,7 @@ CONFIG:
 
 CLIENTS:
 1.) PHP 5.3 CLIENT: http://github.com/JakSprats/predis (a fork of Predis)
+    A.) PHP 5.2 backport of this version is available here: http://allinram.info/alsosql/Predis_v0.6.1-PHP5.2_ALSOSQL_ENABLED.tgz
 2.) working on the Ruby client - fork of ezmobius' client
 3.) Many more to come .... (redis supports 15+ and adding on Alsosql is trivial)
 
