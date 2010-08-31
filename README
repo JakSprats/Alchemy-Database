@@ -7,12 +7,13 @@ Storing Data in NOSQL and/or SQL and converting to and fro can be done w/ a few 
 
 The Philosophy of Alsosql is that RAM is now affordable enough to be able to put ENTIRE OLTP Databases in a single machine's RAM. So Alsosql provides a relational database with very little memory overhead that does the most common OLTP SQL statements amazingly fast and throws in a NOSQL Data-store to further extend the optimisation possibilities.
 
-* FAST (on commodity hardware): Client/Server using 1GbE LAN to/from a single core running at 3.0GHz w/ RAM at 400MHz (PC3200):
-  84K INSERT/sec, 81K SELECT/sec, 75K UPDATE/sec, 85K DELETE/sec
-  RangeQueries   returning 10 rows: 38K/sec
-  2  Table Joins returning 10 rows: 18K/sec
-  3  Table Joins returning 10 rows: 12.5K/sec
-  10 Table Joins returning 10 rows:  4.5K/sec
+* FAST on commodity hardware:
+  Client/Server using 1GbE LAN to/from a single core running at 3.0GHz, RAM PC3200 (400MHz)
+    84K INSERT/sec, 81K SELECT/sec, 75K UPDATE/sec, 85K DELETE/sec
+    RangeQueries   returning 10 rows: 38K/sec
+    2  Table Joins returning 10 rows: 18K/sec
+    3  Table Joins returning 10 rows: 12.5K/sec
+    10 Table Joins returning 10 rows:  4.5K/sec
 * MEMORY EFFICIENT:
   Each row has approx. 48 bytes of overhead when stored.
   Benchmarks:
@@ -25,7 +26,7 @@ The Philosophy of Alsosql is that RAM is now affordable enough to be able to put
 * EASY:
   Its SQL ... you already know it :)
   Redis commands are even easier to learn :)
-  The commands that morph data betwixt Mysql, Alsosql, and redis are a logical combination of SQL and redis and take no time to learn.
+  The commands that morph data betwixt Mysql<->Alsosql<->redis are a logical combination of SQL and redis commands and take no time to learn.
 
 
 BUILD:
