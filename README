@@ -1,138 +1,14 @@
 
-Alsosql: Is a Hybrid Relational-Database/NOSQL-Datastore.
+* NOTE The Alsosql project was moved to https://code.google.com/p/alsosql/*
 
+=Alsosql: A Hybrid Relational-Database/NOSQL-Datastore=
 
-* NOTE this project was moved to https://code.google.com/p/alsosql/*
+===Alsosql is a full RDBMS and a full NOSQL datastore combined into one server===
+In Alsosql, SQL Tables, Statements, and Data-types are supported. Alsosql is built on top of the NOSQL datastore [http://code.google.com/p/redis/ redis], supports all redis data-structures and commands and supports (de)normalisation of these data structures (lists,sets,hash-tables) to/from SQL tables. Alsosql can also easily import/export tables to/from Mysql. Alsosql is more than a data storage Swiss Army Knife, it is also extremely fast and extremely efficient w/ memory.
+
+* NOTE The Alsosql project was moved to https://code.google.com/p/alsosql/*
 
 * The code will still reside in github, but the documentation and issue tracking will be done in google *
-
-
-In Alsosql, SQL Tables, Statements, and Data-types are supported. Alsosql is built on top of the NOSQL datastore redis and supports (de)normalisation of redis data structures (lists,sets,hash-tables) to/from Alsosql tables, as well as import/export of tables to/from Mysql. It is a data storage Swiss Army Knife.
-
-Storing Data in NOSQL and/or SQL and converting to and fro can be done w/ a few straightforward SQL-esque commands. Alsosql is optimised for a OLTP workload and is both extremely fast and extremely memory efficient. Alsosql attains its speed by storing ALL of its data in RAM, then periodically snapshot-saving the data to disk and also by optimising to the SQL statements most commonly used in OLTP workloads.
-
-The Philosophy of Alsosql is that RAM is now affordable enough to be able to put ENTIRE OLTP Databases in a single machine's RAM. So Alsosql provides a relational database with very little memory overhead that does the most common OLTP SQL statements amazingly fast and throws in a NOSQL Data-store to further extend the optimisation possibilities.
-
-* FAST on commodity hardware:
-  Client/Server using 1GbE LAN to/from a single core running at 3.0GHz, RAM PC3200 (400MHz)
-    84K INSERT/sec, 81K SELECT/sec, 75K UPDATE/sec, 85K DELETE/sec
-    RangeQueries   returning 10 rows: 38K/sec
-    2  Table Joins returning 10 rows: 18K/sec
-    3  Table Joins returning 10 rows: 12.5K/sec
-    10 Table Joins returning 10 rows:  4.5K/sec
-* MEMORY EFFICIENT:
-  Each row has approx. 48 bytes of overhead when stored.
-  Benchmarks:
-    Rows w/ 16 bytes   of data,  17 million fit in 1GB RAM
-    Rows w/ 36 bytes   of data,  13 million fit in 1GB RAM
-    Rows w/ 100 bytes* of data,   7 million fit in 1GB RAM
-      (*NOTE: row-size was 130 bytes pre compression -> storage creates only 18% memory overhead).
-  Additionally, both INT and TEXT data are packed/compressed using algorithms w/ negligible performance hits.
-  Lastly, Alsosql tables and indices are B+trees, meaning they play very nicely w/ the operating system's swap partition. So ... if your "active data" fits in RAM, but your "inactive data" (i.e. rarely accessed data) is MUCH bigger, Alsosql will STILL post the benchmark speeds listed above (the inactive data will simply take up swap space on your hard-drive) [a SSD is recommended for in-swap mode].
-* EASY:
-  Its SQL ... you already know it :)
-  Redis commands are even easier to learn :)
-  The commands that morph data betwixt Mysql<->Alsosql<->redis are a logical combination of SQL and redis commands and take no time to learn.
-
-
-BUILD:
-  1.) Download the code (git clone git@github.com:JakSprats/Alsosql.git)
-  2.) type "make"
-RUN:
-  type "./redis-server"
-CONFIG:
- Config is done in redis: The config file is called "redis.conf" and is documented at redis' website
-
-CLIENTS:
-1.) PHP 5.3 CLIENT: http://github.com/JakSprats/predis (a fork of Predis)
-    A.) PHP 5.2 backport of this version is available here:
-        http://allinram.info/alsosql/Predis_v0.6.1-PHP5.2_ALSOSQL_ENABLED.tgz
-2.) working on the Ruby client - fork of ezmobius' client
-3.) Many more to come .... (redis supports 15+ and adding on Alsosql is trivial)
-
-
-Additional features:
- 1.) Data can be exported to Mysql effortlessly for Data-warehousing.
- 2.) Data can be imported from Mysql effortlessly and if wanted denormalised to NOSQL data structures (for raw speed).
- 3.) No need to worry about being locked in to NOSQL as Alsosql can convert NOSQL data structures to Mysql tables (via denormalisaton and dumping)
- 3.) redis: trivial to setup master-slave replication
- 4.) redis: Persistence: from time to time data is saved to disk asynchronously (semi persistent mode) or alternatively every change is written into an append only file (fully persistent mode). Redis is able to rebuild the append only file in the background when it gets too big. 
- 5.) redis: Virtual memory - in redis' main HashTable (its central lookup mechanism) swap values to disk, retaining keys in RAM, when memory usage is too high (this is a win for Alsosql if you have rarely accessed tables or indices)
-
-
-SUPPORTED SQL:
-1.) CREATE and DROP TABLE
-2.) INSERT into table
-3.) SELECT columns FROM table WHERE ...
-     A.) single row lookup (e.g. WHERE id = 12345)
-     B.) multi-row foreign key lookup (e.g. WHERE fk = 44)
-     C.) range queries (e.g. WHERE id BETWEEN 30 and 50)
-     D.) joins (e.g. WHERE tbl1.fk = tbl2.id AND tbl2.id BETWEEN 30 AND 50)
-     E.) full table scans (e.g. WHERE gender = 1)
-4.) UPDATE
-     A.) single row update
-     B.) range queries update (e.g. WHERE id BETWEEN 30 and 50)
-5.) DELETE
-     A.) single row delete
-     B.) range queries delete (e.g. WHERE id BETWEEN 30 and 50)
-6.) CREATE and DROP INDEX (on any column)
-7.) DUMP table to mysql format
-8.) DESC table - additionally provides detailed info on memory usage of table and its indices (and min & max key)
-
-Supported SQL data types are currently UNSIGNED INT and TEXT. FLOAT is coming very soon. TEXT uses variable length storage and compression. UNSIGNED INT stores data using 2 bytes when possible.
-
-
-ALSOSQL Commands
-1.) NORM wildcard [wildcard2,wildcard3]
-    All redis-keys matching "wildcard" are normalised into a SQL table
-    (star schema normalisation also possible, using wildcard2,3,,,)
-    A.) NORM "user:*"
-        i.)   take ALL string KEYS matching the wildcard "user:*"
-        ii.)  create column_names using the pattern "user:*:column_name"
-        iii.) the pk will be the part matching "*"
-        iv.)  put i-iii together into a single Alsosql table (w/ many rows) named "user".
-2.) SELECT ..... STORE REDIS_COMMAND
-    A.) SELECT name, salary FROM employee WHERE city = "san Francisco" STORE HSET SanFranWorker
-        i.)   create a redis HashTable named SanFranWorker with all the employees from city "San Francisco"
-        ii.)  the values returned from the SELECTed column "name" will be the HashTables keys
-        iii.) the values returned from the SELECTed column "salary" will be the HashTables values
-3.) CREATE TABLE table AS REDIS_COMMAND
-    A.) CREATE TABLE yesterdays_tweets AS ZRANGEBYSCORE tweets $two_days_ago $yesterday
-        NOTE: the ZSET tweets uses timestamp as its score
-        i.)  take the members of the ZSET from two_days_ago until yesterday
-        ii.) store them in a Alsosql table named "yesterdays_tweets"
-             (pk will be auto incremented INT)
-4.) DENORM table denorm_wildcard
-    A.) DENORM user "user:*"
-        i.)  denormalise the "user" table into an individual hash-table per row, named "user:pk" (e.g. user:1, user:2)
-        ii.) the keys of these hashes will be the column-names of the "user" table.
-
-
-
-ABOUT redis: http://code.google.com/p/redis/
-Redis is an advanced key-value store. It is similar to memcached but the dataset is not volatile, and values can be strings, exactly like in memcached, but also lists, sets, and ordered sets. All this data types can be manipulated with atomic operations to push/pop elements, add/remove elements, perform server side union, intersection, difference between sets, and so forth. Redis supports different kind of sorting abilities.
-It is possible to think at Redis as a data structures server, it is not just another key-value DB, see all the commands supported by Redis to get the first feeling. Redis supports operations like atomic push and pop of elements on lists, taking ranges of elements from this lists at once, trimming of lists, server-side intersections of sets and even sorting data!
-
-
-BENCHMARKS:
-1.) Range Query       "./Benchmark_Range_Query_Lengths.sh"
-2.) 2 Table Join      "./Benchmark_Range_Query_Lengths.sh JOIN"
-3.) 3 Table Join      "./Benchmark_Range_Query_Lengths.sh 3WAY"
-4.) Speed             "./redis-benchmark -n 1000000 -r 1000000 -c 200 -T"
-5.) Memory Comparison "./redis-benchmark -n 1000000 -r 1000000 -c 200 -A"
-
-
-UNSUPPORTED SQL: 
-Why:
-The key longterm goals of Alsqosql are that with EACH release Alsqosql will become faster, use less memory, and be more predictable in terms of run-time performance. For these reasons and as Alsosql is an OLTP optimised Database, Alsosql does not support the subset of SQL that results in either unpredictable run-time-performance behavior or in extra server-side executions steps. The OLTP best practices of avoiding long running queries must still be practiced at the application level, but the programmer will be able to predict exactly how long a query should take for the simple reason that Alsqosql does not have a query planner, it does exactly what you tell it to do. Alsosql plans to support ALL SQL that results in predictable run time performance.
-Not Supported:
-  1.) nested joins (requires 2+ join steps)
-  2.) joins on columns that are not indexed (which result in full table scans).
-  3.) joins on entire tables (also full table scans), a range must be given
-  4.) GROUP BY, this is mainly a Datawarehouse use-case (can cause sort passes)
-  5.) ORDER BY ... this is on the TODO (but only on a single indexed column in the where-clause as other cases result in sort passes)
-NOTE 1: some of these cases can be done in Alsosql by storing join results in temporary tables and then joining to these temp-tables
-NOTE 2: full table scans are possible using the "SCANSELECT" command, which has been split from the command "SELECT" so developers are fully aware when they code full-table-scans (and when they dont)
 
 
 MIT License
