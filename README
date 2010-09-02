@@ -1,6 +1,12 @@
 
 Alsosql: Is a Hybrid Relational-Database/NOSQL-Datastore.
 
+
+* NOTE this project was moved to https://code.google.com/p/alsosql/*
+
+* The code will still reside in github, but the documentation and issue tracking will be done in google *
+
+
 In Alsosql, SQL Tables, Statements, and Data-types are supported. Alsosql is built on top of the NOSQL datastore redis and supports (de)normalisation of redis data structures (lists,sets,hash-tables) to/from Alsosql tables, as well as import/export of tables to/from Mysql. It is a data storage Swiss Army Knife.
 
 Storing Data in NOSQL and/or SQL and converting to and fro can be done w/ a few straightforward SQL-esque commands. Alsosql is optimised for a OLTP workload and is both extremely fast and extremely memory efficient. Alsosql attains its speed by storing ALL of its data in RAM, then periodically snapshot-saving the data to disk and also by optimising to the SQL statements most commonly used in OLTP workloads.
