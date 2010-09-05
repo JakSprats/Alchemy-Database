@@ -151,8 +151,8 @@ void tscanCommand(redisClient *c) {
         rq_high = pko;
     }
 
-    btEntry    *be;
-    btIterator *bi = btGetFullRangeIterator(o, 0, 1);
+    btEntry          *be;
+    btStreamIterator *bi = btGetFullRangeIterator(o, 0, 1);
     while ((be = btRangeNext(bi, 0)) != NULL) {      // iterate btree
         robj *key = be->key;
         robj *row = be->val;

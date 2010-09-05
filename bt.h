@@ -31,9 +31,14 @@ robj *createBtreeObject(uchar ktype, int num, uchar is_index);
 robj *createEmptyBtreeObject(); /*used for virtual indices */
 void freeBtreeObject(robj *o);
 
-#define BTREE_TABLE      0
-#define BTREE_INDEX      1
-#define BTREE_INDEX_NODE 2
+int btStreamCmp(void *a, void *b);
+
+/* different Btree types */
+#define BTREE_TABLE           0
+#define BTREE_INDEX           1
+#define BTREE_INDEX_NODE      2
+#define BTREE_JOIN_RESULT_SET 3
+
 bt   *btCreate( uchar ctype, int num, uchar is_index);
 void  btRelease(bt *node_btr, bt *btr);
 int   btAdd(    robj *o,       void *key, void *val, int ctype);
@@ -62,8 +67,21 @@ char *createSimKeyFromRaw(void         *key_ptr,
                           unsigned int *ksize);
 void  destroySimKey(char *simkey, bool  med);
 
-//DEBUG
+/* convert stream to robj's */
 void assignKeyRobj(uchar *stream,            robj *key);
 void assignValRobj(uchar *stream, int ctype, robj *val, uchar is_index);
+
+/* JOINS */
+typedef struct joinRowEntry {
+    robj *key;
+    void *val;
+} joinRowEntry;
+
+bt  *createJoinResultSet(uchar pktype);
+int  btJoinAddRow(   bt *jbtr, joinRowEntry *key);
+int  btJoinDeleteRow(bt *jbtr, joinRowEntry *key);
+void btJoinRelease(bt  *jbtr,
+                   int  ncols,
+                   void (*freer)(char *s, int ncols));
 
 #endif /* __ALSO_SQL_BT_H */

@@ -357,11 +357,11 @@ void createTableAsObject(redisClient *c) {
             }
             hashReleaseIterator(hi);
         } else if (o->type == REDIS_BTREE) {
-            btEntry    *be;
-            int         tmatch = Num_tbls - 1; /* table was just created */
-            int         pktype = Tbl_col_type[tmatch][0];
-            robj       *new_o  = lookupKeyWrite(c->db, Tbl_name[tmatch]);
-            btIterator *bi     = btGetFullRangeIterator(o, 0, 1);
+            btEntry          *be;
+            int               tmatch = Num_tbls - 1; /* table just created */
+            int               pktype = Tbl_col_type[tmatch][0];
+            robj             *new_o  = lookupKeyWrite(c->db, Tbl_name[tmatch]);
+            btStreamIterator *bi     = btGetFullRangeIterator(o, 0, 1);
             while ((be = btRangeNext(bi, 0)) != NULL) {      // iterate btree
                 robj *key = be->key;
                 robj *row = be->val;
@@ -404,9 +404,9 @@ void denormCommand(redisClient *c) {
     fc->argv               = argv;
     fc->argc               = 4;
 
-    btEntry    *be;
-    robj       *o  = lookupKeyRead(c->db, Tbl_name[tmatch]);
-    btIterator *bi = btGetFullRangeIterator(o, 0, 1);
+    btEntry          *be;
+    robj             *o  = lookupKeyRead(c->db, Tbl_name[tmatch]);
+    btStreamIterator *bi = btGetFullRangeIterator(o, 0, 1);
     while ((be = btRangeNext(bi, 0)) != NULL) {      // iterate btree
         robj *key = be->key;
         robj *row = be->val;

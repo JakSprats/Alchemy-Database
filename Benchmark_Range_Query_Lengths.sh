@@ -1,7 +1,7 @@
 #!/bin/bash
 
 POP_NUM=1000000
-RQ_NUM=10000
+RQ_NUM=20000
 C=200
 
 DO_MINI=0

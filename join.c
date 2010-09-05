@@ -328,7 +328,8 @@ static void joinAddColsFromInd(robj *o,
                                robj *val,
                                int   j_ind_len[],
                                robj *res_set[],
-                               bool  virt) {
+                               bool  virt,
+                               bt   *jbtr) {
     aobj  col_resp[MAX_JOIN_INDXS];
     int   row_len = 0;
     int   nresp   = 0;
@@ -342,13 +343,13 @@ static void joinAddColsFromInd(robj *o,
         int tmatch  = j_tbls[j];
         if (tmatch == itable) {
             char *dest;
-            col_resp[nresp]  = getColStr(row, j_cols[j], key, tmatch);
+            col_resp[nresp]    = getColStr(row, j_cols[j], key, tmatch);
             // force_string(INT) comes from a buffer, must be copied here
-            char *src         = col_resp[nresp].s;
+            char *src          = col_resp[nresp].s;
             m_strcpy_len(src, col_resp[nresp].len, &dest); //freeD N joinGeneric
-            col_resp[nresp].s = dest; 
+            col_resp[nresp].s  = dest; 
             if (col_resp[nresp].sixbit) free(src);
-            row_len         += col_resp[nresp].len + 1; // +1 for OUTPUT_DELIM
+            row_len           += col_resp[nresp].len + 1; // +1 for OUTPUT_DELIM
             nresp++;
         }
     }
@@ -364,21 +365,38 @@ static void joinAddColsFromInd(robj *o,
         memcpy(ind_row, &col_resp[j].len, UINT_SIZE);
         ind_row  += UINT_SIZE;
     }
-    robj *ind_row_obj = createObject(REDIS_JOINROW, o_ind_row);
 
-    robj      *res_setobj;
-    // find row per index key=jk
-    dictEntry *rde = dictFind(res_set[index]->ptr, jk);
-    if (!rde) {
-        res_setobj = createAppendSetObject();
-        dictAdd(res_set[index]->ptr, jk, res_setobj);
-    } else {
-        res_setobj = dictGetEntryVal(rde);
-        decrRefCount(jk);
+    if (index == 0) { // first joined index is BTREE to be sorted
+        joinRowEntry *jre = (joinRowEntry *)malloc(sizeof(joinRowEntry));
+        jre->key          = jk;
+        jre->val          = o_ind_row;
+        btJoinAddRow(jbtr, jre);
+    } else { // rest of the joined indices are redis SETs for speed
+        robj      *res_setobj;
+        robj      *ind_row_obj = createObject(REDIS_JOINROW, o_ind_row);
+        // find row per index key=jk
+        dictEntry *rde         = dictFind(res_set[index]->ptr, jk);
+        if (!rde) {
+            res_setobj = createAppendSetObject();
+            dictAdd(res_set[index]->ptr, jk, res_setobj);
+        } else {
+            res_setobj = dictGetEntryVal(rde);
+            decrRefCount(jk);
+        }
+
+        // store row per index key=jk
+        dictAdd(res_setobj->ptr, ind_row_obj, NULL);
     }
 
-    // store row per index key=jk
-    dictAdd(res_setobj->ptr, ind_row_obj, NULL);
+}
+
+static void freeIndRow(char *s, int num_cols) {
+    for (int j = 0; j < num_cols; j++) {
+        char **x = (char **)s;
+        char **y = (char **)*x;
+        free(y);
+        s += PTR_SIZE + UINT_SIZE;
+    }
 }
 
 
@@ -410,10 +428,14 @@ void joinGeneric(redisClient *c,
         INIT_LEN_OBJ
     }
 
-    int   j_ind_len [MAX_JOIN_INDXS];
-    int   jind_ncols[MAX_JOIN_INDXS];
-    robj *res_set   [MAX_JOIN_INDXS];
-    for (int i = 0; i < n_ind; i++) {
+    int    j_ind_len [MAX_JOIN_INDXS];
+    int    jind_ncols[MAX_JOIN_INDXS];
+
+    uchar  pktype = Tbl_col_type[Index_on_table[j_indxs[0]]][0];
+    bt    *jbtr   = createJoinResultSet(pktype);
+
+    robj  *res_set   [MAX_JOIN_INDXS];
+    for (int i = 1; i < n_ind; i++) {
         res_set[i] = createValSetObject();
     }
 
@@ -421,28 +443,28 @@ void joinGeneric(redisClient *c,
         btEntry    *be, *nbe;
         j_ind_len[i]       = 0;
 
-        int         itable = Index_on_table[j_indxs[i]];
-        robj       *o      = lookupKeyRead(c->db, Tbl_name[itable]);
-        robj       *ind    = Index_obj [j_indxs[i]];
-        bool        virt   = Index_virt[j_indxs[i]];
-        robj       *bt     = virt ? o : lookupKey(c->db, ind);
-        btIterator *bi     = btGetRangeIterator(bt, low, high, virt);
+        int               itable = Index_on_table[j_indxs[i]];
+        robj             *o      = lookupKeyRead(c->db, Tbl_name[itable]);
+        robj             *ind    = Index_obj [j_indxs[i]];
+        bool              virt   = Index_virt[j_indxs[i]];
+        robj             *bt     = virt ? o : lookupKey(c->db, ind);
+        btStreamIterator *bi     = btGetRangeIterator(bt, low, high, virt);
         while ((be = btRangeNext(bi, 1)) != NULL) {            // iterate btree
             if (virt) {
                 robj *jk  = be->key;
                 robj *val = be->val;
                 joinAddColsFromInd(o, qcols, j_tbls, itable, j_cols, i,
                                    jind_ncols, jk, val, j_ind_len,
-                                   res_set, virt);
+                                   res_set, virt, jbtr);
             } else {
-                robj       *jk  = be->key;
-                robj       *val = be->val;
-                btIterator *nbi = btGetFullRangeIterator(val, 0, 0);
+                robj             *jk  = be->key;
+                robj             *val = be->val;
+                btStreamIterator *nbi = btGetFullRangeIterator(val, 0, 0);
                 while ((nbe = btRangeNext(nbi, 1)) != NULL) { // iterate NodeBT
                     robj *key = nbe->key;
                     joinAddColsFromInd(o, qcols, j_tbls, itable, j_cols, i,
                                        jind_ncols, jk, key, j_ind_len,
-                                       res_set, virt);
+                                       res_set, virt, jbtr);
                 }
                 btReleaseRangeIterator(nbi);
             }
@@ -454,10 +476,13 @@ void joinGeneric(redisClient *c,
 
     /* cant join if one table had ZERO rows */
     bool one_empty = 0;
-    for (int i = 0; i < n_ind; i++) {
-        if (dictSize((dict *)res_set[i]->ptr) == 0) {
-            one_empty = 1;
-            break;
+    if (jbtr->numkeys == 0) one_empty = 1;
+    else {
+        for (int i = 1; i < n_ind; i++) {
+            if (dictSize((dict *)res_set[i]->ptr) == 0) {
+                one_empty = 1;
+                break;
+            }
         }
     }
 
@@ -470,35 +495,32 @@ void joinGeneric(redisClient *c,
     
         char         **rcols  [MAX_JOIN_INDXS][MAX_JOIN_COLS];
         int            rc_lens[MAX_JOIN_INDXS][MAX_JOIN_COLS];
-        dictEntry     *pde;
-        dictIterator  *pdi = dictGetIterator(res_set[0]->ptr);
-        while ((pde = dictNext(pdi)) != NULL) {         // L-join on first index
-            dictEntry    *sde;
-            robj         *jk     = dictGetEntryKey(pde);
-            robj         *setobj = dictGetEntryVal(pde);
-            dictIterator *sdi    = dictGetIterator(setobj->ptr);
-            while ((sde = dictNext(sdi)) != NULL) {
-                robj *sel = sde->key;
-                char *first_entry = (char *)(sel->ptr);
-                for (int j = 0; j < jind_ncols[0]; j++) {
-                    rcols[0][j]  = (char **)first_entry;
-                    first_entry += PTR_SIZE;
-                    memcpy(&rc_lens[0][j], first_entry, UINT_SIZE);
-                    first_entry += UINT_SIZE;
-                }
-    
-                if (!buildJRowReply(c, fc, reply, res_set, 1, n_ind, jk, &card,
-                                    jind_ncols, rcols, rc_lens, sto))     break;
+        joinRowEntry *be;
+        btIterator   *bi = btGetJoinFullRangeIterator(jbtr, pktype);
+        while ((be = btJoinRangeNext(bi, pktype)) != NULL) {
+            robj *jk          = be->key;
+            robj *sel         = be->val;
+            char *first_entry = (char *)(sel);
+            for (int j = 0; j < jind_ncols[0]; j++) {
+                rcols[0][j]  = (char **)first_entry;
+                first_entry += PTR_SIZE;
+                memcpy(&rc_lens[0][j], first_entry, UINT_SIZE);
+                first_entry += UINT_SIZE;
             }
-            dictReleaseIterator(sdi);
+    
+            if (!buildJRowReply(c, fc, reply, res_set, 1, n_ind, jk, &card,
+                                jind_ncols, rcols, rc_lens, sto))     break;
         }
-        dictReleaseIterator(pdi);
+        btReleaseJoinRangeIterator(bi);
+
         free(reply);
     }
 
     // free strdup() from joinAddColsFromInd()
+    btJoinRelease(jbtr, jind_ncols[0], freeIndRow);
+
     dictEntry *de, *ide;
-    for (int i = 0; i < n_ind; i++) {
+    for (int i = 1; i < n_ind; i++) {
         dict         *set = res_set[i]->ptr;
         dictIterator *di  = dictGetIterator(set);
         while((de = dictNext(di)) != NULL) {
@@ -508,19 +530,14 @@ void joinGeneric(redisClient *c,
             while((ide = dictNext(idi)) != NULL) {
                 robj *ikey = dictGetEntryKey(ide);
                 char *s    = (char *)(ikey->ptr);
-                for (int j = 0; j < jind_ncols[i]; j++) {
-                    char **x = (char **)s;
-                    char **y = (char **)*x;
-                    free(y);
-                    s += PTR_SIZE + UINT_SIZE;
-                }
+                freeIndRow(s, jind_ncols[i]);
             }
             dictReleaseIterator(idi);
         }
         dictReleaseIterator(di);
     }
 
-    for (int i = 0; i < n_ind; i++) {
+    for (int i = 1; i < n_ind; i++) {
         decrRefCount(res_set[i]);
     }
 
@@ -596,77 +613,3 @@ void freeValSetObject(robj *o) {
     //RL4 "freeValSetObject: %p", o->ptr);
     dictRelease((dict*) o->ptr);
 }
-
-
-// PARALLEL_JOIN PARALLEL_JOIN PARALLEL_JOIN PARALLEL_JOIN PARALLEL_JOIN
-// PARALLEL_JOIN PARALLEL_JOIN PARALLEL_JOIN PARALLEL_JOIN PARALLEL_JOIN
-#if 0
-static void joinGetColsFromRow(robj *row,
-                               robj *key,
-                               int   itable,
-                               int   qcols, 
-                               int   j_tbls[],
-                               int   j_cols[]) {
-    aobj  col_resp[MAX_JOIN_INDXS];
-    int   nresp   = 0;
-
-    for (int j = 0; j < qcols; j++) {
-        int tmatch  = j_tbls[j];
-        if (tmatch == itable) {
-            // save pointer
-            col_resp[nresp]  = getColStr(row, j_cols[j], key, tmatch);
-            // force_string of INT comes from a buffer, gets overwritten
-            char *x           = col_resp[nresp].s;
-            col_resp[nresp].s = strdup(x); // freeD @end of joinGeneric
-RL4 "%d: tbl: %d col: %d -> (%s)", nresp, itable, j_cols[j], col_resp[nresp].s);
-            if (col_resp[nresp].sixbit) free(x);
-            nresp++;
-        }
-    }
-}
-
-    btIterator *iter[MAX_JOIN_INDXS];
-    for (int i = 0; i < n_ind; i++) {                 // iterate indices
-        int         itable = Index_on_table[j_indxs[i]];
-        robj       *o      = lookupKeyRead(c->db, Tbl_name[itable]);
-        robj       *ind    = Index_obj [j_indxs[i]];
-        bool        virt   = Index_virt[j_indxs[i]];
-        robj       *bt     = virt ? o : lookupKey(c->db, ind);
-        iter[i]            = btGetGenericRangeIterator(bt, low, high, virt, i);
-RL4 "%d: iter: %p", i, iter[i]);
-    }
-
-
-    int curr_ind = 0;
-    while(1) {
-RL4 "curr_ind: %d", curr_ind);
-        int      itable = Index_on_table[j_indxs[curr_ind]];
-        bool     virt   = Index_virt[j_indxs[curr_ind]];
-        btEntry *be     = btRangeNext(iter[curr_ind], 1);
-        if (!be) { /* this index is done */
-            curr_ind++;
-            if (curr_ind == n_ind) break;
-        }
-
-        robj *row;
-        if (virt) {
-            robj *jk  = be->key;
-            row       = be->val;
-            joinGetColsFromRow(row, jk, itable, qcols, j_tbls, j_cols);
-        } else {
-            btEntry    *nbe;
-            robj       *o   = lookupKeyRead(c->db, Tbl_name[itable]);
-            robj       *jk  = be->key;
-            robj       *val = be->val;
-            btIterator *nbi = btGetFullRangeIterator(val, 0, 0);
-            while ((nbe = btRangeNext(nbi, 1)) != NULL) { // iterate NodeBT
-                robj *key = nbe->key;
-                row       = btFindVal(o, key, Tbl_col_type[itable][0]);
-                joinGetColsFromRow(row, jk, itable, qcols, j_tbls, j_cols);
-            }
-        }
-    }
-
-    addReply(c, shared.ok);
-    return;
-#endif

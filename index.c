@@ -327,7 +327,7 @@ void iselectAction(redisClient *c,
     robj       *ind  = Index_obj [imatch];
     bool        virt = Index_virt[imatch];
     robj       *bt   = virt ? o : lookupKey(c->db, ind);
-    btIterator *bi   = btGetRangeIterator(bt, low, high, virt);
+    btStreamIterator *bi   = btGetRangeIterator(bt, low, high, virt);
     while ((be = btRangeNext(bi, 1)) != NULL) {                // iterate btree
         if (virt) {
             robj *pko = be->key;
@@ -338,7 +338,7 @@ void iselectAction(redisClient *c,
             card++;
         } else {
             robj       *val = be->val;
-            btIterator *nbi = btGetFullRangeIterator(val, 0, 0);
+            btStreamIterator *nbi = btGetFullRangeIterator(val, 0, 0);
             while ((nbe = btRangeNext(nbi, 1)) != NULL) {     // iterate NodeBT
                 robj *nkey = nbe->key;
                 selectReply(c, o, nkey, tmatch, cmatchs, qcols);
@@ -381,14 +381,14 @@ void iupdateAction(redisClient   *c,
     bool        virt = Index_virt[imatch];
     robj       *bt   = virt ? o : lookupKey(c->db, ind);
     robj       *uset = createSetObject();
-    btIterator *bi   = btGetRangeIterator(bt, low, high, virt);
+    btStreamIterator *bi   = btGetRangeIterator(bt, low, high, virt);
     while ((be = btRangeNext(bi, 1)) != NULL) {                // iterate btree
         if (virt) {
             robj *nkey = be->key;
             dictAdd(uset->ptr, nkey, NULL);
         } else {
             robj       *val = be->val;
-            btIterator *nbi = btGetFullRangeIterator(val, 0, 0);
+            btStreamIterator *nbi = btGetFullRangeIterator(val, 0, 0);
             while ((nbe = btRangeNext(nbi, 1)) != NULL) {     // iterate NodeBT
                 robj *nkey = nbe->key;
                 robj *cln  = cloneRobj(nkey);
@@ -449,7 +449,7 @@ void ideleteAction(redisClient *c, char *range, int tmatch, int imatch) {
     bool        virt = Index_virt[imatch];
     robj       *dset = createSetObject();
     robj       *bt   = virt ? o : lookupKey(c->db, ind);
-    btIterator *bi   = btGetRangeIterator(bt, low, high, virt);
+    btStreamIterator *bi   = btGetRangeIterator(bt, low, high, virt);
     while ((be = btRangeNext(bi, 1)) != NULL) {                // iterate btree
         if (virt) {
             robj *nkey = be->key;
@@ -457,7 +457,7 @@ void ideleteAction(redisClient *c, char *range, int tmatch, int imatch) {
             dictAdd(dset->ptr, cln, NULL);
         } else {
             robj       *val = be->val;
-            btIterator *nbi = btGetFullRangeIterator(val, 0, 0);
+            btStreamIterator *nbi = btGetFullRangeIterator(val, 0, 0);
             while ((nbe = btRangeNext(nbi, 1)) != NULL) {     // iterate NodeBT
                 robj *nkey = nbe->key;
                 robj *cln  = cloneRobj(nkey);
@@ -503,7 +503,7 @@ void ikeysCommand(redisClient *c) {
     robj       *ind  = Index_obj [imatch];
     bool        virt = Index_virt[imatch];
     robj       *bt   = lookupKey(c->db, ind);
-    btIterator *bi   = btGetRangeIterator(bt, low, high, virt);
+    btStreamIterator *bi   = btGetRangeIterator(bt, low, high, virt);
     while ((be = btRangeNext(bi, 1)) != NULL) {                // iterate btree
         if (virt) {
             robj *pko = be->key;
@@ -511,7 +511,7 @@ void ikeysCommand(redisClient *c) {
             card++;
         } else {
             robj       *val = be->val;
-            btIterator *nbi = btGetFullRangeIterator(val, 0, 0);
+            btStreamIterator *nbi = btGetFullRangeIterator(val, 0, 0);
             while ((nbe = btRangeNext(nbi, 1)) != NULL) {     // iterate NodeBT
                 robj *nkey = nbe->key;
                 addReplyBulk(c, nkey);
@@ -587,7 +587,7 @@ void dumpCommand(redisClient *c) {
     }
 
     btEntry    *be;
-    btIterator *bi = btGetFullRangeIterator(o, 0, 1);
+    btStreamIterator *bi = btGetFullRangeIterator(o, 0, 1);
     while ((be = btRangeNext(bi, 0)) != NULL) {      // iterate btree
         robj *pko = be->key;
         robj *row = be->val;

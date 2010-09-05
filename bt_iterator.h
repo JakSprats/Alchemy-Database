@@ -21,6 +21,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 #include "alsosql.h"
 #include "btreepriv.h"
+#include "bt.h"
 #include "common.h"
 
 typedef struct btEntry {
@@ -38,47 +39,53 @@ typedef struct bTreeLinkedListNode { // 3ptr(24) 2int(8) -> 32 bytes
 
 /* using 16 as 8^16 can hold 2.8e14 elements (8 is min members in a btn)*/
 #define MAX_BTREE_DEPTH 16
-typedef struct btIterator { // 2*ptr(16) int(4) 3*char(3) long(8) ptr(8)
-                            // btEntry(16) 2*robj(?200?)
+typedef struct btIterator { // 2*ptr(16) int(4) 2*char(2) long(8) ptr(8)
                             // int(4) 16*bt_ll_n(512) -> i.e. dont malloc
     bt            *btr;
     bt_ll_n       *bln;
     int            depth;
-    unsigned char  ktype;
-    unsigned char  vtype;
  
     bool           finished;
     unsigned long  high;
     char          *highc;
     unsigned char  num_nodes;
-    int            which;
+    bt_ll_n        nodes[MAX_BTREE_DEPTH];
+} btIterator;
 
+typedef struct btStreamIterator { // btIterator(?500?) 2*char(2) int(1)
+                                  // btEntry(16) 2*robj(?200?) i.e. dont malloc
+    btIterator     x;
+    unsigned char  ktype;
+    unsigned char  vtype;
+    int            which;
     btEntry        be;  /* used to transfrom stream into key&val robj's below */
     robj           key;
     robj           val;
 
-    bt_ll_n        nodes[MAX_BTREE_DEPTH];
-} btIterator;
+} btStreamIterator;
 
 #define RET_LEAF_EXIT  1
 #define RET_ONLY_RIGHT 2
 
 bt_ll_n *get_new_iter_child(btIterator *iter);
 void become_child(btIterator *iter, bt_n* self);
+int init_iterator(bt *btr, bt_data_t simkey, struct btIterator *iter);
+void *btNext(btIterator *iter);
 
-btIterator *btGetRangeIterator(    robj *o, void *low, void *high, bool virt);
-btIterator *btGetFullRangeIterator(robj *o, bool asc, bool virt);
-btEntry    *btRangeNext(           btIterator *iter, bool asc);
-void        btReleaseRangeIterator(btIterator *iter);
-//int         btNumRecsRange(bt *ht, void *low, void *high);
+btStreamIterator *btGetRangeIterator(robj *o, void *low, void *high, bool virt);
+btStreamIterator *btGetFullRangeIterator(robj *o, bool asc, bool virt);
+btEntry    *btRangeNext(           btStreamIterator *iter, bool asc);
+void        btReleaseRangeIterator(btStreamIterator *iter);
 
 bool assignMinKey(bt *btr, robj *key);
 bool assignMaxKey(bt *btr, robj *key);
 
-/* for parallel JOINS */
-btIterator *btGetGenericRangeIterator(robj *o,
-                                      void *low,
-                                      void *high,
-                                      bool  virt,
-                                      int   which);
+/* JOINS */
+bt  *createJoinResultSet(uchar pktype);
+int  btJoinAddRow(bt *jbtr, joinRowEntry *jre);
+
+btIterator *btGetJoinFullRangeIterator(bt *btr, int ktype);
+joinRowEntry *btJoinRangeNext(btIterator *iter, int ktype);
+void btReleaseJoinRangeIterator(btIterator *iter);
+
 #endif /* __BTREE_ITERATOR_H */

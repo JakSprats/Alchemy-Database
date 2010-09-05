@@ -8,6 +8,7 @@
 #include <string.h>
 #include <strings.h>
 #include <assert.h>
+char *strdup(char *);
 
 #include "redis.h"
 #include "bt.h"
@@ -16,10 +17,9 @@
 /* GLOBALS */
 #define RL4 redisLog(4,
 #define RL7 if (iter->which == 0) redisLog(4,
-char *strdup(char *);
 
 /* Currently: BT_Iterators[2] would work UNTIL parallel joining is done, then MAX_NUM_INDICES is needed */
-static btIterator BT_Iterators[MAX_NUM_INDICES]; /* avoid malloc()s */
+static btStreamIterator BT_Iterators[MAX_NUM_INDICES]; /* avoid malloc()s */
 
 bt_ll_n *get_new_iter_child(btIterator *iter) {
     assert(iter->num_nodes < MAX_BTREE_DEPTH);
@@ -79,7 +79,7 @@ static void become_child_recurse(btIterator *iter, bt_n* self) {
     become_child(iter, self);
     if (!iter->bln->self->leaf) { // depth-first
         if (!iter->bln->child) iter->bln->child = get_new_iter_child(iter);
-        struct btree *btr  = iter->btr;
+        struct btree *btr = iter->btr;
         become_child(iter, NODES(btr, iter->bln->self)[iter->bln->in]);
     }
 }
@@ -94,7 +94,7 @@ static void iter_node(btIterator *iter) {
     become_child_recurse(iter, NODES(btr, iter->bln->self)[iter->bln->in]);
 }
 
-static void *btNext(btIterator *iter) {
+void *btNext(btIterator *iter) {
     if (iter->finished) return NULL;
 
     struct btree *btr  = iter->btr;
@@ -104,7 +104,7 @@ static void *btNext(btIterator *iter) {
     return curr;
 }
 
-static int init_iterator(bt *btr, bt_data_t simkey, struct btIterator *iter) {
+int init_iterator(bt *btr, bt_data_t simkey, struct btIterator *iter) {
     int ret = bt_init_iterator(btr, simkey, iter);
     if (ret) { /* range queries, find nearest match */
         int x = btr->cmp(simkey, KEYS(btr, iter->bln->self)[iter->bln->ik]);
@@ -119,49 +119,49 @@ static int init_iterator(bt *btr, bt_data_t simkey, struct btIterator *iter) {
     return 1;
 }
 
-static btIterator *createIterator(bt *btr, bool virt, int which) {
+static btStreamIterator *createIterator(bt *btr, bool virt, int which) {
     assert(which >= 0 || which < MAX_NUM_INDICES);
-    btIterator *iter = &BT_Iterators[which];
-    iter->btr        = btr;
-    iter->ktype      = (unsigned char)btr->ktype;
-    iter->vtype      = (unsigned char)(virt ? REDIS_ROW : REDIS_BTREE);
+    btStreamIterator *iter = &BT_Iterators[which];
 
-    iter->highc      = NULL;
-    iter->key.ptr    = NULL;
-    iter->be.key     = &(iter->key);
-    iter->val.ptr    = NULL;
-    iter->be.val     = &(iter->val);
+    iter->ktype            = (unsigned char)btr->ktype;
+    iter->vtype            = (unsigned char)(virt ? REDIS_ROW : REDIS_BTREE);
+    iter->which            = which;
+    iter->key.ptr          = NULL;
+    iter->be.key           = &(iter->key);
+    iter->val.ptr          = NULL;
+    iter->be.val           = &(iter->val);
 
-    iter->finished   = 0;
-    iter->which      = which;
-    iter->num_nodes  = 0;
-    iter->bln        = &(iter->nodes[iter->num_nodes]);
-    iter->num_nodes++;
-    iter->bln->parent = NULL;
-    iter->bln->self   = btr->root;
-    iter->bln->child  = NULL;
-    iter->depth      = 0;
+    iter->x.btr            = btr;
+    iter->x.highc          = NULL;
+    iter->x.finished       = 0;
+    iter->x.num_nodes      = 0;
+    iter->x.bln            = &(iter->x.nodes[iter->x.num_nodes]);
+    iter->x.num_nodes++;
+    iter->x.bln->parent    = NULL;
+    iter->x.bln->self      = btr->root;
+    iter->x.bln->child     = NULL;
+    iter->x.depth          = 0;
     return iter;
 }
 
 //NOTE: can not NEST this function
-btIterator *btGetGenericRangeIterator(robj *o,
-                                      void *low,
-                                      void *high,
-                                      bool  virt,
-                                      int   which) {
-    struct btree *btr  = (struct btree *)(o->ptr);
+btStreamIterator *btGetRangeIterator(robj *o,
+                                     void *low,
+                                     void *high,
+                                     bool  virt) {
+    int which = 0;
+    struct btree     *btr  = (struct btree *)(o->ptr);
     //bt_dumptree(btr, btr->ktype, (virt ? REDIS_ROW : REDIS_BTREE));
-    btIterator   *iter = createIterator(btr, virt, which);
+    btStreamIterator *iter = createIterator(btr, virt, which);
 
     char *s = (char *)(((robj *)high)->ptr);
-    if (     btr->ktype == COL_TYPE_STRING) iter->highc = strdup(s);
-    else if (btr->ktype == COL_TYPE_INT)    iter->high  = atoi(s);
+    if      (btr->ktype == COL_TYPE_STRING) iter->x.highc = strdup(s);
+    else if (btr->ktype == COL_TYPE_INT)    iter->x.high  = atoi(s);
 
     bool med; uchar sflag; unsigned int ksize;
     char *simkey = createSimKey(low, btr->ktype, &med, &sflag, &ksize); /*FREE*/
     if (!simkey) return NULL;
-    if (!init_iterator(btr, simkey, iter)) {
+    if (!init_iterator(btr, simkey, &(iter->x))) {
         btReleaseRangeIterator(iter);
         iter = NULL;
     }
@@ -169,11 +169,8 @@ btIterator *btGetGenericRangeIterator(robj *o,
 
     return iter;
 }
-btIterator *btGetRangeIterator(robj *o, void *low, void *high, bool virt) {
-    return btGetGenericRangeIterator(o, low, high, virt, 0);
-}
 
-btEntry *btRangeNext(btIterator *iter, bool asc) {
+btEntry *btRangeNext(btStreamIterator *iter, bool asc) {
     asc = 0; /* compiler warning */
     if (!iter) return NULL;
     if (iter->key.ptr && iter->ktype == COL_TYPE_STRING) {
@@ -181,22 +178,22 @@ btEntry *btRangeNext(btIterator *iter, bool asc) {
         iter->key.ptr = NULL;
     }
 
-    void *be = btNext(iter);
+    void *be = btNext(&(iter->x));
     if (!be) return NULL;
     assignKeyRobj(be,              iter->be.key);
-    assignValRobj(be, iter->vtype, iter->be.val, iter->btr->is_index);
+    assignValRobj(be, iter->vtype, iter->be.val, iter->x.btr->is_index);
 
     char *k  = (char *)(((robj *)iter->be.key)->ptr);
 
     if (       iter->ktype == COL_TYPE_INT) {
         unsigned long l = (unsigned long)(k);
         //if (l <= iter->high) RL4 "I: btRangeNext: %p key:%ld", be, l);
-        if (l == iter->high) iter->finished = 1; /* exact match of the high */
-        return ((l <= iter->high) ? &(iter->be) : NULL);
+        if (l == iter->x.high) iter->x.finished = 1; /* exact match of high */
+        return ((l <= iter->x.high) ? &(iter->be) : NULL);
     } else if (iter->ktype == COL_TYPE_STRING) {
-        int r = strcmp(k, iter->highc);
+        int r = strcmp(k, iter->x.highc);
         //if (r <= 0) RL4 "S: btRangeNext: %p key: %s", be, k);
-        if (r == 0) iter->finished = 1; /* exact match of the high */
+        if (r == 0) iter->x.finished = 1; /* exact match of the high */
         return ((r <= 0) ? &(iter->be) : NULL);
     }
     return NULL; /* never happens */
@@ -219,19 +216,19 @@ bool assignMaxKey(bt *btr, robj *key) {
 
 //TODO this function and its global vars are hideous - clean this up
 //NOTE: can not NEST this function
-btIterator *btGetFullRangeIterator(robj *o, bool asc, bool virt) {
+btStreamIterator *btGetFullRangeIterator(robj *o, bool asc, bool virt) {
     asc = 0; /* compiler warning */
     struct btree *btr  = (struct btree *)(o->ptr);
     //bt_dumptree(btr, btr->ktype, (virt ? REDIS_ROW : REDIS_BTREE));
     if (!assignMinKey(btr, &BtLow))  return NULL;
     if (!assignMaxKey(btr, &BtHigh)) return NULL;
 
-    btIterator   *iter = createIterator(btr, virt, 1);
+    btStreamIterator *iter = createIterator(btr, virt, 1);
     if (       btr->ktype == COL_TYPE_STRING) {
-        iter->highc = strdup(BtHigh.ptr);
+        iter->x.highc = strdup(BtHigh.ptr);
     } else if (btr->ktype == COL_TYPE_INT) {
         //RL4 "GetFullRangeIterator: low: %u high: %u", BtLow.ptr, BtHigh.ptr);
-        iter->high  = (long)BtHigh.ptr;
+        iter->x.high  = (long)BtHigh.ptr;
     }
 
     bool med; uchar sflag; unsigned int ksize;
@@ -241,7 +238,7 @@ btIterator *btGetFullRangeIterator(robj *o, bool asc, bool virt) {
                                        &sflag,
                                        &ksize); /* FREE me*/
     if (!simkey) return NULL;
-    if (!init_iterator(btr, simkey, iter)) {
+    if (!init_iterator(btr, simkey, &(iter->x))) {
         btReleaseRangeIterator(iter);
         iter = NULL;
     }
@@ -250,22 +247,76 @@ btIterator *btGetFullRangeIterator(robj *o, bool asc, bool virt) {
     return iter;
 }
 
-void btReleaseRangeIterator(btIterator *iter) {
+void btReleaseRangeIterator(btStreamIterator *iter) {
+    if (iter) {
+        if (iter->x.highc) free(iter->x.highc);
+        iter->x.highc = NULL;
+    }
+}
+
+// JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT
+// JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT
+static btIterator JoinIterator; /* avoid malloc()s */
+
+static btIterator *createJoinIterator(bt *btr) {
+    btIterator *iter  = &JoinIterator;
+    iter->btr         = btr;
+    iter->highc       = NULL;
+    iter->finished    = 0;
+    iter->num_nodes   = 0;
+    iter->bln         = &(iter->nodes[iter->num_nodes]);
+    iter->num_nodes++;
+    iter->bln->parent = NULL;
+    iter->bln->self   = btr->root;
+    iter->bln->child  = NULL;
+    iter->depth       = 0;
+    return iter;
+}
+
+btIterator *btGetJoinRangeIterator(bt           *btr,
+                                   joinRowEntry *low, 
+                                   joinRowEntry *high, 
+                                   int           ktype) {
+    btIterator *iter = createJoinIterator(btr);
+    if (!init_iterator(btr, low, iter)) {
+        btReleaseJoinRangeIterator(iter);
+        return NULL;
+    }
+    robj *hkey = high->key;
+    //RL4 "hkey->ptr: %p", hkey->ptr);
+    if      (ktype == COL_TYPE_STRING) iter->highc = strdup(hkey->ptr);
+    else if (ktype == COL_TYPE_INT)    iter->high  = (int)(long)(hkey->ptr);
+    return iter;
+}
+btIterator *btGetJoinFullRangeIterator(bt *btr, int ktype) {
+    joinRowEntry *low  = bt_min(btr);
+    joinRowEntry *high = bt_max(btr);
+    return btGetJoinRangeIterator(btr, low, high, ktype);
+}
+
+joinRowEntry *btJoinRangeNext(btIterator *iter, int ktype) {
+    if (!iter) return NULL;
+    joinRowEntry *jre = btNext(iter);
+    if (!jre) return NULL;
+
+    char *k = (char *)(jre->key->ptr);
+    if (       ktype == COL_TYPE_INT) {
+        unsigned long l = (unsigned long)(k);
+        //if (l <= iter->high) RL4 "I: btJoinRangeNext: %p key:%ld", k, l);
+        if (l == iter->high) iter->finished = 1; /* exact match of high */
+        return ((l <= iter->high) ? jre : NULL);
+    } else if (ktype == COL_TYPE_STRING) {
+        int r = strcmp(k, iter->highc);
+        //if (r <= 0) RL4 "S: btJoinRangeNext: %p key: %s", k, k);
+        if (r == 0) iter->finished = 1; /* exact match of the high */
+        return ((r <= 0) ? jre : NULL);
+    }
+    return NULL; /* never happens */
+}
+
+void btReleaseJoinRangeIterator(btIterator *iter) {
     if (iter) {
         if (iter->highc) free(iter->highc);
         iter->highc = NULL;
     }
 }
-
-#if 0
-//TODO Update w/ streams (btEntry has been abstracted out)
-int btNumRecsRange(bt *btr, void *low, void *high) {
-    btEntry e, f;
-    e.key = low;
-    f.key = high;
-    int i = bt_find_closest_slot(btr, btr->root, &e);
-    int j = bt_find_closest_slot(btr, btr->root, &f);
-    //redisLog(REDIS_NOTICE,"slots %d ... %d\n\n", i, j);
-    return (j - i);
-}
-#endif

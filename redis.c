@@ -9166,8 +9166,9 @@ static int rewriteAppendOnlyFile(char *filename) {
                             int  qcols = parseColListOrReply(NULL, tmatch, "*",
                                                              cmatchs);
 
-                            btEntry    *be;
-                            btIterator *bi = btGetFullRangeIterator(o, 0, 1);
+                            btEntry          *be;
+                            btStreamIterator *bi =
+                                                btGetFullRangeIterator(o, 0, 1);
                             while ((be = btRangeNext(bi, 1)) != NULL) {
                                 robj *pko = be->key;
                                 robj *row = be->val;

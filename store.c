@@ -356,12 +356,12 @@ void istoreCommit(redisClient *c,
         }
     }
 
-    btEntry      *be, *nbe;
-    unsigned int  stored = 0;
-    robj         *ind    = Index_obj [imatch];
-    bool          virt   = Index_virt[imatch];
-    robj         *bt     = virt ? o : lookupKey(c->db, ind);
-    btIterator   *bi     = btGetRangeIterator(bt, low, high, virt);
+    btEntry            *be, *nbe;
+    unsigned int        stored = 0;
+    robj               *ind    = Index_obj [imatch];
+    bool                virt   = Index_virt[imatch];
+    robj               *bt     = virt ? o : lookupKey(c->db, ind);
+    btStreamIterator   *bi     = btGetRangeIterator(bt, low, high, virt);
     while ((be = btRangeNext(bi, 1)) != NULL) {                // iterate btree
         if (virt) {
             robj *pko = be->key;
@@ -371,8 +371,8 @@ void istoreCommit(redisClient *c,
                 goto istore_err;
             stored++;
         } else {
-            robj       *val = be->val;
-            btIterator *nbi = btGetFullRangeIterator(val, 0, 0);
+            robj             *val = be->val;
+            btStreamIterator *nbi = btGetFullRangeIterator(val, 0, 0);
             while ((nbe = btRangeNext(nbi, 1)) != NULL) {     // iterate NodeBT
                 robj *pko = nbe->key;
                 robj *row = btFindVal(o, pko, Tbl_col_type[tmatch][0]);

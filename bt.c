@@ -7,21 +7,21 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+char *strdup(char *);
 
 #include "redis.h"
 #include "zmalloc.h"
 #include "btree.h"
 #include "row.h"
 #include "common.h"
+#include "bt_iterator.h"
 #include "bt.h"
 
 /* GLOBALS */
 #define RL4 redisLog(4,
 extern char *COLON;
 
-int btStreamCmp(void *a, void *b);
-
-robj *createBtreeObject(uchar ktype, int num, bool is_index) {
+robj *createBtreeObject(uchar ktype, int num, uchar is_index) {
     bt *btr = btCreate(ktype, num, is_index);
     return createObject(REDIS_BTREE, btr);
 }
@@ -89,19 +89,19 @@ static uchar getSflag(uchar b1) {
 }
 
 static inline uint get14BitInt(uchar *s) {
-    uint key  = (uint)(*((unsigned short *)s));
-    key              -= 2;
-    key              /= 4;
+    uint key   = (uint)(*((unsigned short *)s));
+    key       -= 2;
+    key       /= 4;
     return key;
 }
 static inline uint get28BitInt(uchar *s) {
     uint key  = *((uint *)s);
-    key              -= 8;
-    key              /= 16;
+    key      -= 8;
+    key      /= 16;
     return key;
 }
 static inline uint getInt(uchar **s) {
-    *s               = *s + 1;
+    *s       = *s + 1;
     uint key = *((uint *)*s);
     return key;
 }
@@ -112,8 +112,8 @@ static inline uchar *getTinyString(uchar *s, uint *slen) {
 }
 static inline uchar *getString(uchar *s, uint *slen) {
     s++;
-    *slen = *((uint *)s);
-    s += 4;
+    *slen  = *((uint *)s);
+    s     += 4;
     return s;
 }
 
@@ -165,20 +165,20 @@ char *createSimKeyFromRaw(void  *key_ptr,
                           uchar *sflag,
                           uint  *ksize) {
     assert(key_ptr || ktype == COL_TYPE_INT); /* INT can be 0 */
-    uint  data   = 0;
-    char         *simkey;
+    char *simkey;
+    uint  data = 0;
     if (ktype == COL_TYPE_STRING) {
         assert(sdslen(key_ptr) < TWO_POW_32);
         if (sdslen(key_ptr) < TWO_POW_7) {
             *sflag = 1;
             *ksize = sdslen(key_ptr) + 1;
-            data    = sdslen(key_ptr) * 2 + 1;
+            data   = sdslen(key_ptr) * 2 + 1;
             if (1 + sdslen(key_ptr) >= SIMKEY_BUFFER_SIZE) {
                 simkey = malloc(1 + sdslen(key_ptr)); /* MUST be freed soon */
-                *med = 1;
+                *med   = 1;
             } else {
                 simkey = SimKeyBuffer;
-                *med = 0;
+                *med   = 0;
             }
             *simkey = (char)data;
             memcpy(simkey + 1, key_ptr, sdslen(key_ptr));
@@ -187,11 +187,11 @@ char *createSimKeyFromRaw(void  *key_ptr,
             *sflag  = 4;
             *ksize  = sdslen(key_ptr) + 5;
             if (5 + sdslen(key_ptr) >= SIMKEY_BUFFER_SIZE) {
-                simkey  = malloc(5 + sdslen(key_ptr)); /* MUST be freed soon */
-                *med = 1;
+                simkey = malloc(5 + sdslen(key_ptr)); /* MUST be freed soon */
+                *med   = 1;
             } else {
                 simkey = SimKeyBuffer;
-                *med = 0;
+                *med   = 0;
             }
             *simkey = 4;
             data    = len;
@@ -199,9 +199,9 @@ char *createSimKeyFromRaw(void  *key_ptr,
             memcpy(simkey + 5, key_ptr, sdslen(key_ptr));
         }
     } else {     /* COL_TYPE_INT */
-        *med = 0;
-        simkey = SimKeyBuffer;
         unsigned long i = (unsigned long)key_ptr;
+        *med            = 0;
+        simkey          = SimKeyBuffer;
         if (i >= TWO_POW_32) {
             redisLog(REDIS_WARNING, "column value > UINT_MAX");
             return NULL;
@@ -238,15 +238,8 @@ char *createSimKey(const robj *key,
         if (key->encoding == REDIS_ENCODING_INT) ptr = (key->ptr);
         else                                     ptr = (void *)atol(key->ptr);
     } else {
-        if (key->encoding == REDIS_ENCODING_RAW) {
-            ptr = key->ptr;
-        } else {
-assert(!"createSimKey RAW INT");
-            char buf[32];
-            sprintf(buf, "%u", (uint)(unsigned long)key->ptr);
-            tempkey = sdsnew(buf);
-            ptr     = tempkey;
-        }
+        if (key->encoding == REDIS_ENCODING_RAW) ptr = key->ptr;
+        else                                     ptr = NULL;/*compiler warning*/
     }
     char *x = createSimKeyFromRaw(ptr, ktype, med, sflag, ksize);
     if (tempkey) sdsfree(tempkey);
@@ -290,14 +283,14 @@ static uint skipToVal(uchar **stream) {
         getTinyString(*stream, &slen);
         klen = 1 + slen;
     } else if (sflag == 2) { // 14bit INT
-        klen    = 2;
+        klen = 2;
     } else if (sflag == 4) { // STRING
         getString(*stream, &slen);
         klen = 5 + slen;
     } else if (sflag == 8) { // 28bit INT
-        klen    = 4;
+        klen = 4;
     } else {                 // INT
-        klen    = 5;
+        klen = 5;
     }
     *stream += klen;
     return klen;
@@ -321,7 +314,7 @@ uint getStreamMallocSize(uchar *stream,
                          int    vtype,
                          uchar  is_index) {
     uint vlen;
-    uint klen  = skipToVal(&stream);
+    uint klen = skipToVal(&stream);
 
     if (vtype == REDIS_ROW) {
         vlen = getRowMallocSize(stream);
@@ -332,9 +325,7 @@ uint getStreamMallocSize(uchar *stream,
             char **p_ptr = (char **)stream;
             bt    *btr   = (bt *)*p_ptr;
             vlen = sizeof(void *);
-            if (btr) {
-                vlen += (uint)btr->malloc_size;
-            }
+            if (btr) vlen += (uint)btr->malloc_size;
         }
     }
     return klen + vlen;
@@ -378,7 +369,6 @@ static int _bt_del(bt *btr, const robj *key, int ktype, int vtype) {
     return 1;
 }
 
-//TODO split this for the 3 different BTs (table, index, node_bt)
 static uint _bt_insert(bt *btr, robj *key, robj *val, int ktype, int vtype) {
     bool  med; uchar sflag; uint ksize;
     char  *simkey  = createSimKey(key, ktype, &med, &sflag, &ksize);
@@ -466,4 +456,85 @@ int btIndNodeAdd(bt *nbtr, void *key, int ktype) {
 int btIndNodeDelete(bt *nbtr, const void *key, int ktype) {
     _bt_del(nbtr, key, ktype, REDIS_BTREE);
     return nbtr->numkeys;
+}
+
+// JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT
+// JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT
+#define INIT_JOIN_BTREE_BYTES 1024
+void btReleaseJoinRangeIterator(btIterator *iter);
+
+static int intJoinRowCmp(void *a, void *b) {
+    joinRowEntry *ja = (joinRowEntry *)a;
+    joinRowEntry *jb = (joinRowEntry *)b;
+    robj         *ra = ja->key;
+    robj         *rb = jb->key;
+    int ia, ib;
+    if (ra->encoding == REDIS_ENCODING_RAW) ia = atoi(ra->ptr);
+    else                                    ia = (int)(long)ra->ptr;
+    if (rb->encoding == REDIS_ENCODING_RAW) ib = atoi(rb->ptr);
+    else                                    ib = (int)(long)rb->ptr;
+    return (ia == ib) ? 0 : (ia < ib) ? -1 : 1;
+}
+
+static int strJoinRowCmp(void *a, void *b) {
+    joinRowEntry *ja = (joinRowEntry *)a;
+    joinRowEntry *jb = (joinRowEntry *)b;
+    robj         *ra = ja->key;
+    robj         *rb = jb->key;
+    return strcmp(ra->ptr, rb->ptr);
+}
+
+bt *createJoinResultSet(uchar pkt) {
+    bt *btr = (pkt == COL_TYPE_INT) ?
+                  bt_create(intJoinRowCmp,  INIT_JOIN_BTREE_BYTES) :
+                  bt_create(strJoinRowCmp, INIT_JOIN_BTREE_BYTES);
+    return btr;
+}
+
+int btJoinAddRow(bt *jbtr, joinRowEntry *key) {
+    if (bt_find(jbtr, key)) return DICT_ERR;
+    bt_insert(jbtr, key);
+    return DICT_OK;
+}
+
+int btJoinDeleteRow(bt *jbtr, joinRowEntry *key) {
+    bt_delete(jbtr, key);
+    return jbtr->numkeys;
+}
+
+#if 0
+robj *btJoinFind(bt *jbtr, joinRowEntry *key) {
+    if (!key) return NULL;
+    return bt_find(jbtr, key);
+}
+#endif
+
+static void emptyJoinBtNode(bt   *jbtr,
+                            bt_n *n,
+                            int   ncols,
+                            void (*freer)(char *s, int ncols)) {
+    for (int i = 0; i < n->n; i++) {
+        joinRowEntry *be  = KEYS(jbtr, n)[i];
+        robj         *val = be->val;
+        freer((char *)val, ncols);     // free cols,sizes in ind_row
+        free(val);                     // free ind_row
+        decrRefCount(be->key);         // free jk
+        free(be);                      // free jre
+    }
+    if (!n->leaf) {
+        for (int i = 0; i <= n->n; i++) {
+            emptyJoinBtNode(jbtr, NODES(jbtr, n)[i], ncols, freer);
+        }
+    }
+    bt_free_btreenode(n, jbtr); /* memory management in btr */
+}
+
+void btJoinRelease(bt  *jbtr,
+                   int  ncols,
+                   void (*freer)(char *s, int ncols)) {
+    if (jbtr->root) {
+        emptyJoinBtNode(jbtr, jbtr->root, ncols, freer);
+        jbtr->root = NULL;
+        bt_free_btree(jbtr, NULL);
+    }
 }
