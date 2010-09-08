@@ -393,6 +393,13 @@ processdata:
                 // printf("%p) %d elements list\n", c, c->mbulk);
                 /* Leave all the rest in the input buffer */
                 c->ibuf = sdsrange(c->ibuf,(p-c->ibuf)+1,-1);
+
+                /* JAKSPRATS: I thnk this is fixed in redis-2.0.0 */
+                if (!c->mbulk) {
+                    clientDone(c);
+                    return;
+                }
+
                 goto processdata;
             } else {
                 c->ibuf = sdstrim(c->ibuf,"\r\n");

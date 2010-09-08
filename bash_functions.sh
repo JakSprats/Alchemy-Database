@@ -126,7 +126,7 @@ function inserter() {
   insert_external
 }
 
-function SELECTer() {
+function selecter() {
   echo "SELECT"
   echo division -------------------------------------------
   T; $CLI SELECT "*" FROM division WHERE id = 22                 | $T2P; NL
@@ -159,7 +159,7 @@ function updater() {
   $CLI UPDATE employee SET "salary=50000,name=NEWNAME,division=66" WHERE id = 1
   echo SELECT "*" FROM employee WHERE id = 1
   T; $CLI SELECT "*" FROM employee WHERE id = 1                  | $T2P; NL
-  echo UPDATE employee SET id=100 WHERE id = 1
+  echo UPDATE employee SET id=100 WHERE "id = 1"
   $CLI UPDATE employee SET id=100 WHERE id = 1
   echo SELECT "*" FROM employee WHERE id = 100
   T; $CLI SELECT "*" FROM employee WHERE id = 100                | $T2P; NL
@@ -249,7 +249,6 @@ function join_div_wrkr() {
   echo workers
   echo SELECT division.name,division.location,worker.name,worker.salary FROM division,worker WHERE division.id = worker.division AND division.id BETWEEN 11 AND 33
   $CLI SELECT division.name,division.location,worker.name,worker.salary FROM division,worker WHERE division.id = worker.division AND division.id BETWEEN 11 AND 33
-
 }
 
 function join_wrkr_health() {
@@ -292,7 +291,7 @@ function joiner() {
 function works() {
   initer
   inserter
-  SELECTer
+  selecter
   iselecter
   updater
   iselecter_employee
@@ -383,8 +382,21 @@ function jstore_worker_location_table() {
   $CLI dump w_c_tbl
 }
 
-# TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS
-# TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS
+function create_table_as_select_customer() {
+  $CLI CREATE TABLE copy AS SELECT id,hobby,name,employee FROM customer WHERE hobby BETWEEN a AND z
+  $CLI DESC copy
+  $CLI DUMP copy
+}
+
+function create_table_as_select_join_worker_health() {
+  $CLI CREATE TABLE worker_health AS SELECT worker.id,worker.name,worker.salary,healthplan.name FROM worker,healthplan WHERE worker.health = healthplan.id AND healthplan.id BETWEEN 1 AND 5
+  $CLI DESC worker_health
+  $CLI DUMP worker_health
+}
+
+
+# BENCHMARK_HELPERS BENCHMARK_HELPERS BENCHMARK_HELPERS BENCHMARK_HELPERS
+# BENCHMARK_HELPERS BENCHMARK_HELPERS BENCHMARK_HELPERS BENCHMARK_HELPERS
 function init_test_table() {
   $CLI CREATE TABLE test \(id int primary key, field TEXT, name TEXT\)
   #$CLI CREATE INDEX test:name:index  ON \(test.name\)
@@ -405,7 +417,7 @@ function init_ten_join_tables() {
 }
 # STRING_PK STRING_PK STRING_PK STRING_PK STRING_PK STRING_PK STRING_PK
 function init_string_test_table() {
-  $CLI CREATE TABLE test \(id TEXT, field TEXT, name TEXT\)
+  $CLI CREATE TABLE stest \(id TEXT, field TEXT, name TEXT\)
 }
 function init_string_join_table() {
   $CLI CREATE TABLE join \(id TEXT, field TEXT, name TEXT\)
@@ -414,17 +426,135 @@ function init_string_third_join_table() {
   $CLI CREATE TABLE third_join \(id TEXT, field TEXT, name TEXT\)
 }
 
-function test() {
+function init_address_table() {
+  $CLI CREATE TABLE address \(id INT, street TEXT, city TEXT, state INT, zip INT\)
+}
+
+function init_bigrow_table() {
+  $CLI CREATE TABLE bigrow \(id int primary key, field TEXT\)
+}
+
+# TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS
+# TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS
+
+function init_FK_table() {
+  if [ -n "$STRING_OVERRIDE" ]; then
+    echo CREATE TABLE FK \(id TEXT, fk TEXT, value TEXT\)
+    $CLI CREATE TABLE FK \(id TEXT, fk TEXT, value TEXT\)
+  else
+    echo CREATE TABLE FK \(id int primary key, fk int, value TEXT\)
+    $CLI CREATE TABLE FK \(id int primary key, fk int, value TEXT\)
+  fi
+  $CLI CREATE INDEX FK:fk:index ON \(FK.fk\)
+}
+function init_FK2_table() {
+  if [ -n "$STRING_OVERRIDE" ]; then
+    echo CREATE TABLE FK2 \(id TEXT, fk TEXT, value TEXT\)
+    $CLI CREATE TABLE FK2 \(id TEXT, fk TEXT, value TEXT\)
+  else
+    echo CREATE TABLE FK2 \(id int primary key, fk int, value TEXT\)
+    $CLI CREATE TABLE FK2 \(id int primary key, fk int, value TEXT\)
+  fi
+  $CLI CREATE INDEX FK2:fk:index ON \(FK2.fk\)
+}
+
+function test_fk_range_queries() {
+  NUM=1000
+  M=10
+  R=$[${NUM}/${M}]
+  Q=2
+  init_FK_table
+  taskset -c 1 ./redis-benchmark -n $NUM -r $NUM -PF -M $M -c 20
+  taskset -c 1 ./redis-benchmark -n $NUM -r $R -F -Q $Q -c 20
+}
+function test_fk_joins() {
+  NUM=1000
+  M=2
+  R=$[${NUM}/${M}]
+  Q=1
+  echo NUM: $NUM M: $M R: $R Q: $Q
+  init_FK_table
+  init_FK2_table
+  taskset -c 1 ./redis-benchmark -n $NUM -r $NUM -PF  -M $M -c 20
+  taskset -c 1 ./redis-benchmark -n $NUM -r $NUM -PF2 -M $M -c 20
+  taskset -c 1 ./redis-benchmark -n $NUM -r $R -FJ -Q $Q -c 20
+}
+
+function test_fk_all() {
+  test_fk_range_queries
+  test_fk_joins
+}
+
+function secondary_range_query_test() {
   init_string_test_table
-  $CLI INSERT INTO test VALUES \(key1,1,1\)
-  $CLI INSERT INTO test VALUES \(key2_____________________________________________________________________________________________________________________________________end,2,2\)
+  $CLI CREATE INDEX stest:name:index  ON \(stest.name\)
+  $CLI CREATE INDEX stest:field:index ON \(stest.field\)
+  I=1;
+  NUM=3
+  NUM=100
+  while [ $I -le $NUM ] ; do
+    $CLI INSERT INTO stest VALUES \(012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789_$I,F_$I,N_$I\);
+  I=$[${I}+1];
+done
+}
+function secondary_range_query_scan_pk() {
+  $CLI SELECT \* FROM stest WHERE id BETWEEN 012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789_80 AND 012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789_82
+}
+function secondary_range_query_scan_name() {
+  $CLI SELECT \* FROM stest WHERE name BETWEEN N_80 AND N_82
+}
+function secondary_range_query_scan_field() {
+  $CLI SELECT \* FROM stest WHERE field BETWEEN F_80 AND F_82
+}
+function secondary_many_range_query_test() {
+  J=0;
+  K=10;
+  while [ $J -lt 99 ]; do
+    J=$[${K}+3];
+    echo -ne "$K $J: ";
+    $CLI SELECT \* FROM stest WHERE name BETWEEN N_$K AND N_$J | \
+      tr \. "\n" |wc -l;
+    K=$[${K}+1];
+  done
+}
+
+function all_tests() {
+  works
+  scan_external
+  scan_healthpan
+  istore_worker_name_list
+  istore_worker_hash_name_salary
+  jstore_div_subdiv
+  jstore_worker_location_hash
+  jstore_worker_location_table
+
+  create_table_as_select_customer
+  create_table_as_select_join_worker_health
+
+  test_fk_joins
+
+  secondary_range_query_test
+  secondary_range_query_scan_pk
+  secondary_range_query_scan_name
+  secondary_range_query_scan_field
+  secondary_many_range_query_test
+
+  ./Benchmark_Range_Query_Lengths.sh
+  ./Benchmark_Range_Query_Lengths.sh JOIN
+  ./Benchmark_Range_Query_Lengths.sh 3WAY
+  ./Benchmark_Range_Query_Lengths.sh 10WAY
+}
+
+# UNIT_TESTS UNIT_TESTS UNIT_TESTS UNIT_TESTS UNIT_TESTS UNIT_TESTS UNIT_TESTS
+# UNIT_TESTS UNIT_TESTS UNIT_TESTS UNIT_TESTS UNIT_TESTS UNIT_TESTS UNIT_TESTS
+
+function simple_test() {
+  init_string_test_table
+  $CLI INSERT INTO stest VALUES \(key1,1,1\)
+  $CLI INSERT INTO stest VALUES \(key2_____________________________________________________________________________________________________________________________________end,2,2\)
   $CLI CREATE TABLE itest \(id INT,name TEXT\)
   $CLI INSERT INTO itest VALUES \(40,I_40\)
   $CLI INSERT INTO itest VALUES \(35000,I_35000\)
-}
-
-function init_address_table() {
-  $CLI CREATE TABLE address \(id INT, street TEXT, city TEXT, state INT, zip INT\)
 }
 
 function populate_itest() {
@@ -470,80 +600,41 @@ function insert_ints() {
   $CLI INSERT INTO ints VALUES \(300000000,M,3,N,3,O,3\)
 }
 
-function init_FK_table() {
-  if [ -n "$STRING_OVERRIDE" ]; then
-    echo CREATE TABLE FK \(id TEXT, fk TEXT, value TEXT\)
-    $CLI CREATE TABLE FK \(id TEXT, fk TEXT, value TEXT\)
-  else
-    echo CREATE TABLE FK \(id int primary key, fk int, value TEXT\)
-    $CLI CREATE TABLE FK \(id int primary key, fk int, value TEXT\)
-  fi
-  $CLI CREATE INDEX FK:fk:index ON \(FK.fk\)
-}
-function init_FK2_table() {
-  if [ -n "$STRING_OVERRIDE" ]; then
-    echo CREATE TABLE FK2 \(id TEXT, fk TEXT, value TEXT\)
-    $CLI CREATE TABLE FK2 \(id TEXT, fk TEXT, value TEXT\)
-  else
-    echo CREATE TABLE FK2 \(id int primary key, fk int, value TEXT\)
-    $CLI CREATE TABLE FK2 \(id int primary key, fk int, value TEXT\)
-  fi
-  $CLI CREATE INDEX FK2:fk:index ON \(FK2.fk\)
-}
+function populate_join_fk_test() {
+  $CLI CREATE TABLE master     \(id INT, val TEXT\)
 
-function test_fk_range_queries() {
-  NUM=1000
-  M=10
-  R=$[${NUM}/${M}]
-  Q=2
-  init_FK_table
-  taskset -c 1 ./redis-benchmark -n $NUM -r $NUM -PF -M $M
-  taskset -c 1 ./redis-benchmark -n $NUM -r $R -F -Q $Q
-}
-function test_fk_joins() {
-  NUM=10000
-  M=2
-  R=$[${NUM}/${M}]
-  Q=1
-  echo NUM: $NUM M: $M R: $R Q: $Q
-  init_FK_table
-  init_FK2_table
-  taskset -c 1 ./redis-benchmark -n $NUM -r $NUM -PF  -M $M
-  taskset -c 1 ./redis-benchmark -n $NUM -r $NUM -PF2 -M $M
-  taskset -c 1 ./redis-benchmark -n $NUM -r $R -FJ -Q $Q
-}
+  $CLI CREATE TABLE reference1 \(id INT, master_id INT, val TEXT\)
+  $CLI CREATE INDEX reference1:master_id:index ON \(reference1.master_id\)
 
-function secondary_range_query_test() {
-  init_string_test_table
-  $CLI CREATE INDEX test:name:index  ON \(test.name\)
-  $CLI CREATE INDEX test:field:index ON \(test.field\)
-  I=1;
-  NUM=3
-  NUM=100
-  while [ $I -le $NUM ] ; do
-    $CLI INSERT INTO test VALUES \(012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789_$I,F_$I,N_$I\);
-  I=$[${I}+1];
-done
-}
-function secondary_range_query_scan_pk() {
-  $CLI SELECT \* FROM test WHERE id BETWEEN 012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789_80 AND 012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789_82
-}
-function secondary_range_query_scan_name() {
-  $CLI SELECT \* FROM test WHERE name BETWEEN N_80 AND N_82
-}
-function secondary_range_query_scan_field() {
-  $CLI SELECT \* FROM test WHERE field BETWEEN F_80 AND F_82
-}
-function secondary_many_range_query_test() {
-  J=0;
-  K=10;
-  while [ $J -lt 99 ]; do
-    J=$[${K}+3];
-    echo -ne "$K $J: ";
-    $CLI SELECT \* FROM test WHERE name BETWEEN N_$K AND N_$J | \
-      tr \. "\n" |wc -l;
-    K=$[${K}+1];
-  done
+  $CLI CREATE TABLE reference2 \(id INT, master_id INT, val TEXT\)
+  $CLI CREATE INDEX reference2:master_id:index ON \(reference2.master_id\)
+
+  $CLI INSERT INTO master VALUES \(1,"MASTER_ONE"\)
+  $CLI INSERT INTO master VALUES \(2,"MASTER_TWO"\)
+  $CLI INSERT INTO master VALUES \(3,"MASTER_THREE"\)
+
+  $CLI INSERT INTO reference1 VALUES \(1,1,"R1_M_ONE_CHILD_ONE"\)
+  $CLI INSERT INTO reference1 VALUES \(2,1,"R1_M_ONE_CHILD_TWO"\)
+  $CLI INSERT INTO reference1 VALUES \(3,1,"R1_M_ONE_CHILD_THREE"\)
+  $CLI INSERT INTO reference1 VALUES \(4,2,"R1_M_TWO_CHILD_ONE"\)
+  $CLI INSERT INTO reference1 VALUES \(5,2,"R1_M_TWO_CHILD_TWO"\)
+  $CLI INSERT INTO reference1 VALUES \(6,2,"R1_M_TWO_CHILD_THREE"\)
+  $CLI INSERT INTO reference1 VALUES \(7,3,"R1_M_THREE_CHILD_ONE"\)
+  $CLI INSERT INTO reference1 VALUES \(8,3,"R1_M_THREE_CHILD_TWO"\)
+  $CLI INSERT INTO reference1 VALUES \(9,3,"R1_M_THREE_CHILD_THREE"\)
+
+  $CLI INSERT INTO reference2 VALUES \(1,1,"R2_M_ONE_CHILD_ONE"\)
+  $CLI INSERT INTO reference2 VALUES \(2,1,"R2_M_ONE_CHILD_TWO"\)
+  $CLI INSERT INTO reference2 VALUES \(3,1,"R2_M_ONE_CHILD_THREE"\)
+  $CLI INSERT INTO reference2 VALUES \(4,2,"R2_M_TWO_CHILD_ONE"\)
+  $CLI INSERT INTO reference2 VALUES \(5,2,"R2_M_TWO_CHILD_TWO"\)
+  $CLI INSERT INTO reference2 VALUES \(6,2,"R2_M_TWO_CHILD_THREE"\)
+  $CLI INSERT INTO reference2 VALUES \(7,3,"R2_M_THREE_CHILD_ONE"\)
+  $CLI INSERT INTO reference2 VALUES \(8,3,"R2_M_THREE_CHILD_TWO"\)
+  $CLI INSERT INTO reference2 VALUES \(9,3,"R2_M_THREE_CHILD_THREE"\)
+
+  echo SELECT reference1.val, reference2.val FROM reference1, reference2 WHERE reference1.master_id = reference2.master_id AND reference1.master_id BETWEEN 1 AND 3
+  $CLI SELECT reference1.val, reference2.val FROM reference1, reference2 WHERE reference1.master_id = reference2.master_id AND reference1.master_id BETWEEN 1 AND 3
 }
 
 function index_size_test() {
@@ -589,58 +680,5 @@ function pk_tester() {
   $CLI INSERT INTO pktest_string VALUES \("USHRTXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXUSHRT","USHRTXXXXXXAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXUSHRT"\)
   echo PK LEN 300
     $CLI INSERT INTO pktest_string VALUES \("USHRTXXXXXXAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXUSHRT","USHRTXXXXXXAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXUSHRT"\)
-}
-
-function populate_join_fk_test() {
-  $CLI CREATE TABLE master     \(id INT, val TEXT\)
-
-  $CLI CREATE TABLE reference1 \(id INT, master_id INT, val TEXT\)
-  $CLI CREATE INDEX reference1:master_id:index ON \(reference1.master_id\)
-
-  $CLI CREATE TABLE reference2 \(id INT, master_id INT, val TEXT\)
-  $CLI CREATE INDEX reference2:master_id:index ON \(reference2.master_id\)
-
-  $CLI INSERT INTO master VALUES \(1,"MASTER_ONE"\)
-  $CLI INSERT INTO master VALUES \(2,"MASTER_TWO"\)
-  $CLI INSERT INTO master VALUES \(3,"MASTER_THREE"\)
-
-  $CLI INSERT INTO reference1 VALUES \(1,1,"R1_M_ONE_CHILD_ONE"\)
-  $CLI INSERT INTO reference1 VALUES \(2,1,"R1_M_ONE_CHILD_TWO"\)
-  $CLI INSERT INTO reference1 VALUES \(3,1,"R1_M_ONE_CHILD_THREE"\)
-  $CLI INSERT INTO reference1 VALUES \(4,2,"R1_M_TWO_CHILD_ONE"\)
-  $CLI INSERT INTO reference1 VALUES \(5,2,"R1_M_TWO_CHILD_TWO"\)
-  $CLI INSERT INTO reference1 VALUES \(6,2,"R1_M_TWO_CHILD_THREE"\)
-  $CLI INSERT INTO reference1 VALUES \(7,3,"R1_M_THREE_CHILD_ONE"\)
-  $CLI INSERT INTO reference1 VALUES \(8,3,"R1_M_THREE_CHILD_TWO"\)
-  $CLI INSERT INTO reference1 VALUES \(9,3,"R1_M_THREE_CHILD_THREE"\)
-
-  $CLI INSERT INTO reference2 VALUES \(1,1,"R2_M_ONE_CHILD_ONE"\)
-  $CLI INSERT INTO reference2 VALUES \(2,1,"R2_M_ONE_CHILD_TWO"\)
-  $CLI INSERT INTO reference2 VALUES \(3,1,"R2_M_ONE_CHILD_THREE"\)
-  $CLI INSERT INTO reference2 VALUES \(4,2,"R2_M_TWO_CHILD_ONE"\)
-  $CLI INSERT INTO reference2 VALUES \(5,2,"R2_M_TWO_CHILD_TWO"\)
-  $CLI INSERT INTO reference2 VALUES \(6,2,"R2_M_TWO_CHILD_THREE"\)
-  $CLI INSERT INTO reference2 VALUES \(7,3,"R2_M_THREE_CHILD_ONE"\)
-  $CLI INSERT INTO reference2 VALUES \(8,3,"R2_M_THREE_CHILD_TWO"\)
-  $CLI INSERT INTO reference2 VALUES \(9,3,"R2_M_THREE_CHILD_THREE"\)
-
-  echo SELECT reference1.val, reference2.val FROM reference1, reference2 WHERE reference1.master_id = reference2.master_id AND reference1.master_id BETWEEN 1 AND 3
-  $CLI SELECT reference1.val, reference2.val FROM reference1, reference2 WHERE reference1.master_id = reference2.master_id AND reference1.master_id BETWEEN 1 AND 3
-}
-
-function init_bigrow_table() {
-  $CLI CREATE TABLE bigrow \(id int primary key, field TEXT\)
-}
-
-function create_table_as_select_customer() {
-  $CLI CREATE TABLE copy AS SELECT id,hobby,name,employee FROM customer WHERE hobby BETWEEN a AND z
-  $CLI DESC copy
-  $CLI DUMP copy
-}
-
-function create_table_as_select_join_worker_health() {
-  $CLI CREATE TABLE worker_health AS SELECT worker.id,worker.name,worker.salary,healthplan.name FROM worker,healthplan WHERE worker.health = healthplan.id AND healthplan.id BETWEEN 1 AND 5
-  $CLI DESC worker_health
-  $CLI DUMP worker_health
 }
 
