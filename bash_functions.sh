@@ -543,19 +543,27 @@ function secondary_many_range_query_test() {
   done
 }
 
+function istorer() {
+  istore_worker_name_list
+  istore_customer_hobby_denorm_to_many_lists
+  istore_emp_div_sal_denorm_to_many_zset
+  istore_worker_hash_name_salary
+}
+
+function jstorer() {
+  jstore_div_subdiv
+  jstore_worker_location_hash
+  jstore_worker_location_table
+  jstore_city_wrkr_denorm_to_many_hash
+}
+
 function all_tests() {
   works
   scan_external
   scan_healthpan
 
-  istore_worker_name_list
-  istore_customer_hobby_denorm_to_many_lists
-  istore_emp_div_sal_denorm_to_many_zset
-  istore_worker_hash_name_salary
-  jstore_div_subdiv
-  jstore_worker_location_hash
-  jstore_worker_location_table
-  jstore_city_wrkr_denorm_to_many_hash
+  istorer
+  jstorer
 
   create_table_as_select_customer
   create_table_as_select_join_worker_health
@@ -567,7 +575,10 @@ function all_tests() {
   secondary_range_query_scan_name
   secondary_range_query_scan_field
   secondary_many_range_query_test
+}
 
+function all_tests_and_benchmarks() {
+  all_tests
   ./Benchmark_Range_Query_Lengths.sh
   ./Benchmark_Range_Query_Lengths.sh JOIN
   ./Benchmark_Range_Query_Lengths.sh 3WAY

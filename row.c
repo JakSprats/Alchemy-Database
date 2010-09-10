@@ -507,17 +507,17 @@ static robj *createStringObjectFromAobj(aobj *a) {
 }
 
 //TODO simultaneous PK and normal update
-bool updateRow(redisClient   *c,
-               robj          *o,
-               robj          *okey,
-               robj          *orow,
-               int            tmatch,
-               int            ncols,
-               int            matches,
-               int            indices[],
-               char          *vals[],
-               uint   vlens[],
-               uchar  cmiss[]) {
+bool updateRow(redisClient *c,
+               robj        *o,
+               robj        *okey,
+               robj        *orow,
+               int          tmatch,
+               int          ncols,
+               int          matches,
+               int          indices[],
+               char        *vals[],
+               uint         vlens[],
+               uchar        cmiss[]) {
     uint col_ofsts[MAX_COLUMN_PER_TABLE];
     aobj         avals    [MAX_COLUMN_PER_TABLE];
     flag         sflags   [MAX_COLUMN_PER_TABLE];

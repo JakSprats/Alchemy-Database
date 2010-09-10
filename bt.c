@@ -505,13 +505,6 @@ int btJoinDeleteRow(bt *jbtr, joinRowEntry *key) {
     return jbtr->numkeys;
 }
 
-#if 0
-robj *btJoinFind(bt *jbtr, joinRowEntry *key) {
-    if (!key) return NULL;
-    return bt_find(jbtr, key);
-}
-#endif
-
 static void emptyJoinBtNode(bt   *jbtr,
                             bt_n *n,
                             int   ncols,
@@ -519,7 +512,7 @@ static void emptyJoinBtNode(bt   *jbtr,
     for (int i = 0; i < n->n; i++) {
         joinRowEntry *be  = KEYS(jbtr, n)[i];
         list         *val = be->val;
-        freer((char *)val, ncols);     // free list of ind_rows (cols,sizes)
+        freer(val, ncols);             // free list of ind_rows (cols,sizes)
         decrRefCount(be->key);         // free jk
         free(be);                      // free jre
     }

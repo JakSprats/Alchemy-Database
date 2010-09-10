@@ -336,15 +336,18 @@ void istoreCommit(redisClient *c,
     bool sub_pk    = (StorageCommands[sto].argc < 0);
     int  nargc     = abs(StorageCommands[sto].argc);
     sds  last_argv = c->argv[c->argc - 1]->ptr;
-    if (last_argv[sdslen(last_argv) -1] == '$') {
-        sub_pk = 1;
-        nargc++;
-        last_argv[sdslen(last_argv) -1] = '\0';
-        sdsupdatelen(last_argv);
-    }
-    if (StorageCommands[sto].argc && nargc != qcols) {
-        addReply(c, shared.storagenumargsmismatch);
-        return;
+    if (nargc) { /* if NOT INSERT check nargc */
+        if (last_argv[sdslen(last_argv) -1] == '$') {
+            sub_pk = 1;
+            nargc++;
+            last_argv[sdslen(last_argv) -1] = '\0';
+            sdsupdatelen(last_argv);
+        }
+        if (nargc != qcols) {
+            addReply(c, shared.storagenumargsmismatch);
+            return;
+        }
+        if (sub_pk) nargc--;
     }
     RANGE_CHECK_OR_REPLY(range)
     robj *o = lookupKeyRead(c->db, Tbl_name[tmatch]);
