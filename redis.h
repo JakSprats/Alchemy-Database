@@ -269,8 +269,7 @@ struct sharedObjectsStruct {
     *indexedalready,      *nonexistenttable,    *insertcolumnmismatch,
     *columntoolarge,      *nonexistentcolumn,   *nonexistentindex,
     *invalidrange,        *toofewindicesinjoin, *toomanyindicesinjoin,
-    *invalidupdatestring, *indexordermismatchcolumndeclaration,
-    *badindexedcolumnsyntax,
+    *invalidupdatestring, *badindexedcolumnsyntax,
 
     *joinindexedcolumnlisterror, *joincolumnlisterror, *join_on_multi_col,
     *join_requires_range,

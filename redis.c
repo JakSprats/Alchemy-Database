@@ -1782,8 +1782,6 @@ static void createSharedObjects(void) {
         "-ERR SELECT: JOIN: Too few indexed columns in join(min=2)\r\n"));
     shared.toomanyindicesinjoin = createObject(REDIS_STRING,sdsnew(
         "-ERR SELECT: JOIN: MAX indices in JOIN reached(64)\r\n"));
-    shared.indexordermismatchcolumndeclaration = createObject(REDIS_STRING,sdsnew(
-        "-ERR SELECT: JOIN: Strict ordering in declaration necessary. Join Index declaration must match Table.column declaration (in SAME order)\r\n"));
     shared.joinindexedcolumnlisterror = createObject(REDIS_STRING,sdsnew(
         "-ERR SELECT: JOIN: error on indexed columns (join columns)\r\n"));
     shared.joincolumnlisterror = createObject(REDIS_STRING,sdsnew(
