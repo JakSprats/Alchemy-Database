@@ -79,9 +79,10 @@ typedef struct joinRowEntry {
 
 bt  *createJoinResultSet(uchar pktype);
 int  btJoinAddRow(   bt *jbtr, joinRowEntry *key);
+void *btJoinFindVal( bt *jbtr, joinRowEntry *key);
 int  btJoinDeleteRow(bt *jbtr, joinRowEntry *key);
 void btJoinRelease(bt  *jbtr,
                    int  ncols,
-                   void (*freer)(char *s, int ncols));
+                   void (*freer)(list *s, int ncols));
 
 #endif /* __ALSO_SQL_BT_H */

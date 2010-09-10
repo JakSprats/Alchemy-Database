@@ -491,6 +491,9 @@ bt *createJoinResultSet(uchar pkt) {
     return btr;
 }
 
+void *btJoinFindVal(bt *jbtr, joinRowEntry *key) {
+    return bt_find(jbtr, key);
+}
 int btJoinAddRow(bt *jbtr, joinRowEntry *key) {
     if (bt_find(jbtr, key)) return DICT_ERR;
     bt_insert(jbtr, key);
@@ -512,12 +515,11 @@ robj *btJoinFind(bt *jbtr, joinRowEntry *key) {
 static void emptyJoinBtNode(bt   *jbtr,
                             bt_n *n,
                             int   ncols,
-                            void (*freer)(char *s, int ncols)) {
+                            void (*freer)(list *s, int ncols)) {
     for (int i = 0; i < n->n; i++) {
         joinRowEntry *be  = KEYS(jbtr, n)[i];
-        robj         *val = be->val;
-        freer((char *)val, ncols);     // free cols,sizes in ind_row
-        free(val);                     // free ind_row
+        list         *val = be->val;
+        freer((char *)val, ncols);     // free list of ind_rows (cols,sizes)
         decrRefCount(be->key);         // free jk
         free(be);                      // free jre
     }
@@ -531,7 +533,7 @@ static void emptyJoinBtNode(bt   *jbtr,
 
 void btJoinRelease(bt  *jbtr,
                    int  ncols,
-                   void (*freer)(char *s, int ncols)) {
+                   void (*freer)(list *s, int ncols)) {
     if (jbtr->root) {
         emptyJoinBtNode(jbtr, jbtr->root, ncols, freer);
         jbtr->root = NULL;
