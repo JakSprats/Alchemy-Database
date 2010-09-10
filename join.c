@@ -193,6 +193,9 @@ int parseIndexedColumnListOrReply(redisClient *c, char *ilist, int j_indxs[]) {
 
 // JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN
 // JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN
+
+//TODO only var:lvl changes here, the rest could be in a single struct
+//     which avoids copying values on recursive function calls
 static bool jRowReply(redisClient  *c,
                       redisClient  *fc,
                       char         *reply,
@@ -200,12 +203,14 @@ static bool jRowReply(redisClient  *c,
                       int           jind_ncols[],
                       char        **rcols[][MAX_JOIN_COLS],
                       int           rc_lens[][MAX_JOIN_COLS],
-                      int           sto) {
+                      int           sto,
+                      bool          sub_pk,
+                      int           nargc,
+                      robj         *newname) {
     if (sto != -1 && StorageCommands[sto].argc) { // not INSERT
         robj **argv = fc->argv;
-        if (StorageCommands[sto].argc < 0) { // pk =argv[1]:rcols[0][0]
-            char *pre    = c->argv[2]->ptr;
-            argv[1]      = createStringObject(pre, sdslen(pre));
+        argv[1]     = cloneRobj(newname);
+        if (sub_pk) { // pk =argv[1]:rcols[0][0]
             argv[1]->ptr = sdscatlen(argv[1]->ptr, COLON,   1);
             argv[1]->ptr = sdscatlen(argv[1]->ptr, *rcols[0][0], rc_lens[0][0]);
             if (!lvl) {
@@ -213,17 +218,14 @@ static bool jRowReply(redisClient  *c,
             } else if (lvl == 1) {
                 argv[2]  = createStringObject(*rcols[1][0], rc_lens[1][0]);
             }
-            if (StorageCommands[sto].argc == -3) {
-                int n    = jind_ncols[lvl] - 1;
-                argv[3]  = createStringObject(*rcols[lvl][n], rc_lens[lvl][n]);
-            }
         } else {
             argv[2] = createStringObject(*rcols[0][0], rc_lens[0][0]);
-            if (StorageCommands[sto].argc == 2) {
-                int n   = jind_ncols[lvl] - 1;
-                argv[3] = createStringObject(*rcols[lvl][n], rc_lens[lvl][n]);
-            }
         }
+        if (nargc > 1) {
+            int n    = jind_ncols[lvl] - 1;
+            argv[3]  = createStringObject(*rcols[lvl][n], rc_lens[lvl][n]);
+        }
+
         if (!performStoreCmdOrReply(c, fc, sto)) return 0;
     } else {
         int slot = 0;
@@ -243,6 +245,7 @@ static bool jRowReply(redisClient  *c,
         }
         robj *resp = createStringObject(reply, slot -1);
         if (sto != -1) { // insert
+            fc->argv[1] = cloneRobj(newname);
             fc->argv[2] = resp;
             if (!performStoreCmdOrReply(c, fc, sto)) return 0;
         } else {
@@ -253,7 +256,7 @@ static bool jRowReply(redisClient  *c,
     return 1;
 }
 
-//TODO only var:lvl changes here, the rest could be global vars
+//TODO only var:lvl changes here, the rest could be in a single struct
 //     which avoids copying values on recursive function calls
 static bool buildJRowReply(redisClient    *c,
                            redisClient    *fc,
@@ -266,7 +269,10 @@ static bool buildJRowReply(redisClient    *c,
                            int             jind_ncols[],
                            char          **rcols[][MAX_JOIN_COLS],
                            int             rc_lens[][MAX_JOIN_COLS],
-                           int             sto) {
+                           int             sto,
+                           bool            sub_pk,
+                           int             nargc,
+                           robj           *newname) {
     dictIterator *iter;
     dictEntry    *rde = dictFind(res_set[lvl]->ptr, jk);
     if (rde) {
@@ -279,10 +285,13 @@ static bool buildJRowReply(redisClient    *c,
         }
         if (lvl + 1 < qcols) {
             if(!buildJRowReply(c, fc, reply, res_set, lvl + 1, qcols, jk, card,
-                               jind_ncols, rcols, rc_lens, sto)) return 0;
+                               jind_ncols, rcols, rc_lens,
+                               sto, sub_pk, nargc, newname))
+                                   return 0;
         } else {
             if (!jRowReply(c, fc, reply, lvl, jind_ncols, 
-                           rcols, rc_lens, sto)) return 0;
+                           rcols, rc_lens, sto, sub_pk, nargc, newname))
+                              return 0;
             *card = *card + 1;
         }
         return 1;
@@ -300,10 +309,13 @@ static bool buildJRowReply(redisClient    *c,
         }
         if (lvl + 1 < qcols) {
             if (!buildJRowReply(c, fc, reply, res_set, lvl + 1, qcols, jk, card,
-                                jind_ncols, rcols, rc_lens, sto)) return 0;
+                                jind_ncols, rcols, rc_lens,
+                                sto, sub_pk, nargc, newname))
+                                    return 0;
         } else {
             if (!jRowReply(c, fc, reply, lvl, jind_ncols,
-                           rcols, rc_lens, sto)) return 0;;
+                           rcols, rc_lens, sto, sub_pk, nargc, newname))
+                               return 0;;
             *card = *card + 1;
         }
     }
@@ -370,6 +382,7 @@ static void joinAddColsFromInd(robj *o,
         joinRowEntry *jre = (joinRowEntry *)malloc(sizeof(joinRowEntry));
         jre->key          = jk;
         jre->val          = o_ind_row;
+        // TODO this is wrong, this replaces -> it should queue
         btJoinAddRow(jbtr, jre);
     } else { // rest of the joined indices are redis SETs for speed
         robj      *res_setobj;
@@ -385,6 +398,7 @@ static void joinAddColsFromInd(robj *o,
         }
 
         // store row per index key=jk
+        // TODO this is wrong, this replaces -> it should queue
         dictAdd(res_setobj->ptr, ind_row_obj, NULL);
     }
 
@@ -409,7 +423,10 @@ void joinGeneric(redisClient *c,
                  int          qcols,
                  robj        *low,
                  robj        *high,
-                 int          sto) {
+                 int          sto,
+                 bool         sub_pk,
+                 int          nargc,
+                 robj        *newname) {
     // check for STRICT ordering of ilist and [table.column] list
     int col = 0;
     for (int i = 0; i < n_ind; i++) {
@@ -509,7 +526,9 @@ void joinGeneric(redisClient *c,
             }
     
             if (!buildJRowReply(c, fc, reply, res_set, 1, n_ind, jk, &card,
-                                jind_ncols, rcols, rc_lens, sto))     break;
+                                jind_ncols, rcols, rc_lens,
+                                sto, sub_pk, nargc, newname))
+                                   break;
         }
         btReleaseJoinRangeIterator(bi);
 
@@ -564,7 +583,8 @@ void legacyJoinCommand(redisClient *c) {
     }
     RANGE_CHECK_OR_REPLY(c->argv[3]->ptr)
 
-    joinGeneric(c, NULL, j_indxs, j_tbls, j_cols, n_ind, qcols, low, high, -1);
+    joinGeneric(c, NULL, j_indxs, j_tbls, j_cols, n_ind, qcols, low, high,
+                -1, 0, 0, NULL);
 }
 
 void jstoreCommit(redisClient *c,
@@ -579,21 +599,32 @@ void jstoreCommit(redisClient *c,
     robj               *argv[STORAGE_MAX_ARGC + 1];
     struct redisClient *fc = createFakeClient();
     fc->argv               = argv;
-    fc->argv[1]            = newname;
-    if (StorageCommands[sto].argc && abs(StorageCommands[sto].argc) != qcols) {
+
+    bool sub_pk    = (StorageCommands[sto].argc < 0);
+    int  nargc     = abs(StorageCommands[sto].argc);
+    sds  last_argv = c->argv[c->argc - 1]->ptr;
+    if (last_argv[sdslen(last_argv) -1] == '$') {
+        sub_pk = 1; 
+        nargc++;
+        last_argv[sdslen(last_argv) -1] = '\0';
+        sdsupdatelen(last_argv);
+    }
+    if (StorageCommands[sto].argc && nargc != qcols) {
         addReply(c, shared.storagenumargsmismatch);
         return;
     }
     RANGE_CHECK_OR_REPLY(range->ptr)
 
     if (!StorageCommands[sto].argc) { // create table first if needed
+        fc->argv[1] = cloneRobj(newname);
         if (!createTableFromJoin(c, fc, qcols, j_tbls, j_cols)) {
             freeFakeClient(fc);
             return;
         }
     }
 
-    joinGeneric(c, fc, j_indxs, j_tbls, j_cols, n_ind, qcols, low, high, sto);
+    joinGeneric(c, fc, j_indxs, j_tbls, j_cols, n_ind, qcols, low, high, sto,
+                sub_pk, nargc, newname);
 
     freeFakeClient(fc);
 }

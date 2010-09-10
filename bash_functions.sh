@@ -100,7 +100,7 @@ function insert_worker() {
   $CLI INSERT INTO worker VALUES \(2,22,1,30000.33,"jack"\)
   $CLI INSERT INTO worker VALUES \(3,33,4,90000.99,"bob"\)
   $CLI INSERT INTO worker VALUES \(4,44,3,70000.77,"bill"\)
-  $CLI INSERT INTO worker VALUES \(6,66,1,10000.99,"jan"\)
+  $CLI INSERT INTO worker VALUES \(6,66,1,12000.99,"jan"\)
   $CLI INSERT INTO worker VALUES \(7,66,1,11000.99,"beth"\)
   $CLI INSERT INTO worker VALUES \(8,11,2,68888.99,"mac"\)
   $CLI INSERT INTO worker VALUES \(9,22,1,31111.99,"ken"\)
@@ -287,10 +287,13 @@ function joiner() {
   join_div_sub_wrkr
 }
 
-
-function works() {
+function populate() {
   initer
   inserter
+}
+
+function works() {
+  populate
   selecter
   iselecter
   updater
@@ -349,30 +352,45 @@ function scan_healthpan() {
 function istore_worker_name_list() {
   echo SELECT name FROM worker WHERE division BETWEEN 11 AND 33 STORE RPUSH l_worker_name
   $CLI SELECT name FROM worker WHERE division BETWEEN 11 AND 33 STORE RPUSH l_worker_name
-  echo lrange l_worker_name 0 10
-  $CLI lrange l_worker_name 0 10
+  echo LRANGE l_worker_name 0 -1
+  $CLI LRANGE l_worker_name 0 -1
 }
+
+function istore_customer_hobby_denorm_to_many_lists() {
+  echo SELECT employee, hobby FROM customer WHERE employee BETWEEN 3 aND 6 STORE RPUSH employee_hobby_list$
+  $CLI SELECT employee, hobby FROM customer WHERE employee BETWEEN 3 aND 6 STORE RPUSH employee_hobby_list$
+  echo LRANGE employee_hobby_list:4 0 -1
+  $CLI LRANGE employee_hobby_list:4 0 -1
+}
+
+function istore_emp_div_sal_denorm_to_many_zset() {
+  echo select division, salary, name FROM worker WHERE id BETWEEN 1 AND 8 STORE ZADD worker_div$
+  $CLI select division, salary, name FROM worker WHERE id BETWEEN 1 AND 8 STORE ZADD worker_div$
+  echo ZRANGE worker_div:66 0 -1
+  $CLI ZRANGE worker_div:66 0 -1
+}
+
+
 
 function istore_worker_hash_name_salary() {
   echo SELECT name,salary FROM worker WHERE division BETWEEN 11 AND 33 STORE HSET h_worker_name_to_salary
   $CLI SELECT name,salary FROM worker WHERE division BETWEEN 11 AND 33 STORE HSET h_worker_name_to_salary
-  $CLI HKEYS h_worker_name_to_salary
-  $CLI HVALS h_worker_name_to_salary
+  echo HGETALL h_worker_name_to_salary
+  $CLI HGETALL h_worker_name_to_salary
 }
 
 function jstore_div_subdiv() {
   echo SELECT subdivision.id,subdivision.name,division.name FROM subdivision,division WHERE subdivision.division = division.id AND division.id BETWEEN 11 AND 44 STORE INSERT normal_div_subdiv
   $CLI SELECT subdivision.id,subdivision.name,division.name FROM subdivision,division WHERE subdivision.division = division.id AND division.id BETWEEN 11 AND 44 STORE INSERT normal_div_subdiv
-  $CLI dump normal_div_subdiv
+  echo DUMP normal_div_subdiv
+  $CLI DUMP normal_div_subdiv
 }
 
 function jstore_worker_location_hash() {
-  echo SELECT external.name,division.location FROM external,division WHERE external.division=division.id AND division.id BETWEEN 11 AND 80 STORE HSET worker_city_hash
-  $CLI SELECT external.name,division.location FROM external,division WHERE external.division=division.id AND division.id BETWEEN 11 AND 80 STORE HSET worker_city_hash
-  echo HKEYS worker_city_hash
-  $CLI HKEYS worker_city_hash
-  echo HVALS worker_city_hash
-  $CLI HVALS worker_city_hash
+  echo SELECT worker.name,division.location FROM worker,division WHERE worker.division=division.id AND division.id BETWEEN 11 AND 80 STORE HSET worker_city_hash
+  $CLI SELECT worker.name,division.location FROM worker,division WHERE worker.division=division.id AND division.id BETWEEN 11 AND 80 STORE HSET worker_city_hash
+  echo HGETALL worker_city_hash
+  $CLI HGETALL worker_city_hash
 }
 
 function jstore_worker_location_table() {
@@ -380,6 +398,13 @@ function jstore_worker_location_table() {
   $CLI SELECT external.name,division.location FROM external,division WHERE external.division=division.id AND division.id BETWEEN 11 AND 80 STORE INSERT w_c_tbl
   echo dump w_c_tbl
   $CLI dump w_c_tbl
+}
+
+function jstore_city_wrkr_denorm_to_many_hash() {
+  echo SELECT division.location, worker.name, worker.salary FROM worker,division WHERE division.id=worker.division AND worker.division BETWEEN 11 AND 66 STORE HSET city_wrkr$
+  $CLI SELECT division.location, worker.name, worker.salary FROM worker,division WHERE division.id=worker.division AND worker.division BETWEEN 11 AND 66 STORE HSET city_wrkr$
+  echo HGETALL city_wrkr:Dubai
+  $CLI HGETALL city_wrkr:Dubai
 }
 
 function create_table_as_select_customer() {
@@ -522,11 +547,15 @@ function all_tests() {
   works
   scan_external
   scan_healthpan
+
   istore_worker_name_list
+  istore_customer_hobby_denorm_to_many_lists
+  istore_emp_div_sal_denorm_to_many_zset
   istore_worker_hash_name_salary
   jstore_div_subdiv
   jstore_worker_location_hash
   jstore_worker_location_table
+  jstore_city_wrkr_denorm_to_many_hash
 
   create_table_as_select_customer
   create_table_as_select_join_worker_health

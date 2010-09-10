@@ -256,13 +256,15 @@ bool performStoreCmdOrReply(redisClient *c, redisClient *fc, int sto) {
 
 static bool istoreAction(redisClient *c,
                          redisClient *fc,
-                         int tmatch,
-                         int cmatchs[],
-                         int qcols,
-                         int sto,
-                         robj *pko,
-                         robj *row,
-                         robj *newname) {
+                         int          tmatch,
+                         int          cmatchs[],
+                         int          qcols,
+                         int          sto,
+                         robj        *pko,
+                         robj        *row,
+                         robj        *newname,
+                         bool         sub_pk,
+                         uint         nargc) {
     aobj  cols[MAX_COLUMN_PER_TABLE];
     int   totlen = 0;
     for (int i = 0; i < qcols; i++) {
@@ -273,29 +275,25 @@ static bool istoreAction(redisClient *c,
     char *newrow = NULL;
     int   rowlen = 0;
     fc->argc     = qcols + 1;
+    fc->argv[1]  = cloneRobj(newname); /* the NEW Stored Objects NAME */
     //argv[0] NOT NEEDED
     if (StorageCommands[sto].argc) { // not INSERT
+        int    n    = 0;
         robj **argv = fc->argv;
-        if (StorageCommands[sto].argc < 0) { // pk =argv[1]:cols[0]
-            char *pre    = c->argv[2]->ptr;
-            argv[1]      = createStringObject(pre, sdslen(pre));
+        if (sub_pk) { /* overwrite pk=newname:cols[0] */
             argv[1]->ptr = sdscatlen(argv[1]->ptr, COLON,   1);
             argv[1]->ptr = sdscatlen(argv[1]->ptr, cols[0].s, cols[0].len);
-            argv[2]      = createStringObject(cols[1].s, cols[1].len);
-            if (StorageCommands[sto].argc == -3) {
-                argv[3]  = createStringObject(cols[2].s, cols[2].len);
-            }
-        } else {
-            argv[2] = createStringObject(cols[0].s, cols[0].len);
-            if (StorageCommands[sto].argc == 2) {
-                argv[3] = createStringObject(cols[1].s, cols[1].len);
-            }
+            n++;
+        }
+        argv[2] = createStringObject(cols[n].s, cols[n].len);
+        if (nargc > 1) {
+            n++;
+            argv[3]  = createStringObject(cols[n].s, cols[n].len);
         }
         for (int i = 0; i < qcols; i++) {
             if (cols[i].sixbit) free(cols[i].s);
         }
     } else {                         // INSERT
-        fc->argv[1] = newname;
         //TODO this can be done simpler w/ sdscatlen()
         int len = totlen + qcols -1;
         if (len > rowlen) {
@@ -335,8 +333,16 @@ void istoreCommit(redisClient *c,
         addReply(c, shared.nullbulk);
         return;
     }
-    if (StorageCommands[sto].argc &&
-        abs(StorageCommands[sto].argc) != qcols) {
+    bool sub_pk    = (StorageCommands[sto].argc < 0);
+    int  nargc     = abs(StorageCommands[sto].argc);
+    sds  last_argv = c->argv[c->argc - 1]->ptr;
+    if (last_argv[sdslen(last_argv) -1] == '$') {
+        sub_pk = 1;
+        nargc++;
+        last_argv[sdslen(last_argv) -1] = '\0';
+        sdsupdatelen(last_argv);
+    }
+    if (StorageCommands[sto].argc && nargc != qcols) {
         addReply(c, shared.storagenumargsmismatch);
         return;
     }
@@ -346,8 +352,8 @@ void istoreCommit(redisClient *c,
     robj               *argv[STORAGE_MAX_ARGC + 1];
     struct redisClient *fc = createFakeClient();
     fc->argv               = argv;
-    fc->argv[1]            = newname; /* the NEW Stored Objects NAME */
     if (!StorageCommands[sto].argc) { // create table first if needed
+        fc->argv[1] = cloneRobj(newname);
         if (!internalCreateTable(c, fc, qcols, cmatchs, tmatch)) {
             freeFakeClient(fc);
             decrRefCount(low);
@@ -367,7 +373,7 @@ void istoreCommit(redisClient *c,
             robj *pko = be->key;
             robj *row = be->val;
             if (!istoreAction(c, fc, tmatch, cmatchs, qcols, sto,
-                              pko, row, newname))
+                              pko, row, newname, sub_pk, nargc))
                 goto istore_err;
             stored++;
         } else {
@@ -377,7 +383,7 @@ void istoreCommit(redisClient *c,
                 robj *pko = nbe->key;
                 robj *row = btFindVal(o, pko, Tbl_col_type[tmatch][0]);
                 if (!istoreAction(c, fc, tmatch, cmatchs, qcols, sto,
-                                  pko, row, newname)) {
+                                  pko, row, newname, sub_pk, nargc)) {
                     btReleaseRangeIterator(nbi);
                     goto istore_err;
                 }

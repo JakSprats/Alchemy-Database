@@ -41,7 +41,10 @@ void joinGeneric(redisClient *c,
                  int          qcols, 
                  robj        *low,  
                  robj        *high, 
-                 int          sto);
+                 int          sto,
+                 bool         sub_pk,
+                 int          nargc,
+                 robj        *newname);
 
 void jstoreCommit(redisClient *c,
                   int          sto,

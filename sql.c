@@ -485,7 +485,7 @@ void joinReply(redisClient *c, sds clist, int argn) {
         } else {
             RANGE_CHECK_OR_REPLY(range->ptr);
             joinGeneric(c, NULL, j_indxs, j_tbls, j_cols, n_ind, qcols,
-                        low, high, -1);
+                        low, high, -1, 0 , 0, NULL);
         }
     }
     if (range) decrRefCount(range);

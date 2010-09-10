@@ -2081,16 +2081,16 @@ static void initServer() {
     StorageCommands[6].argc  = 0;
     StorageCommands[7].func  = setCommand;
     StorageCommands[7].name  = "SET";
-    StorageCommands[7].argc  = -2;        // < 0 means combine 1st arg w/ name
+    StorageCommands[7].argc  = -1;      /* < 0 means combine 1st arg w/ name */
     StorageCommands[8].func  = setnxCommand;
     StorageCommands[8].name  = "SETNX";
-    StorageCommands[8].argc  = -2;
+    StorageCommands[8].argc  = -1;      /* < 0 means combine 1st arg w/ name */
     StorageCommands[9].func  = appendCommand;
     StorageCommands[9].name  = "APPEND";
-    StorageCommands[9].argc  = -2;
+    StorageCommands[9].argc  = -1;      /* < 0 means combine 1st arg w/ name */
     StorageCommands[10].func = setexCommand;
     StorageCommands[10].name = "SETEX";
-    StorageCommands[10].argc = -3;
+    StorageCommands[10].argc = -2;      /* < 0 means combine 1st arg w/ name */
 //#define STORAGE_MAX_ARGC 3
 
     //#define ACCESS_SELECT_COMMAND_NUM 0
