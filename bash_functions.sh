@@ -370,6 +370,32 @@ function istore_emp_div_sal_denorm_to_many_zset() {
   $CLI ZRANGE worker_div:66 0 -1
 }
 
+function init_actionlist() {
+  $CLI CREATE TABLE actionlist \(id INT PRIMARY KEY, user_id INT, timestamp INT, action TEXT\)
+}
+function insert_actionlist() {
+  $CLI INSERT INTO actionlist VALUES \(1,1,12345,"account created"\)
+  $CLI INSERT INTO actionlist VALUES \(2,1,12346,"first login"\)
+  $CLI INSERT INTO actionlist VALUES \(3,1,12347,"became paid member"\)
+  $CLI INSERT INTO actionlist VALUES \(4,1,12348,"posted picture"\)
+  $CLI INSERT INTO actionlist VALUES \(5,1,12349,"filled in profile"\)
+  $CLI INSERT INTO actionlist VALUES \(6,1,12350,"signed out"\)
+  $CLI INSERT INTO actionlist VALUES \(7,2,22345,"signed in"\)
+  $CLI INSERT INTO actionlist VALUES \(8,2,22346,"updated picture"\)
+  $CLI INSERT INTO actionlist VALUES \(9,2,22347,"checked email"\)
+  $CLI INSERT INTO actionlist VALUES \(10,2,22348,"signed in"\)
+  $CLI INSERT INTO actionlist VALUES \(11,3,32348,"signed in"\)
+  $CLI INSERT INTO actionlist VALUES \(12,3,32349,"contacted customer care"\)
+  $CLI INSERT INTO actionlist VALUES \(13,3,32350,"upgraded account"\)
+  $CLI INSERT INTO actionlist VALUES \(14,3,32351,"uploaded video"\)
+}
+function denorm_actionlist_to_many_zsets() {
+  echo select user_id, timestamp, action FROM actionlist WHERE id BETWEEN 1 AND 20 STORE ZADD user_action_zset$
+  $CLI select user_id, timestamp, action FROM actionlist WHERE id BETWEEN 1 AND 20 STORE ZADD user_action_zset$
+  echo ZREVRANGE user_action_zset:1 0 1
+  $CLI ZREVRANGE user_action_zset:1 0 1
+}
+
 
 
 function istore_worker_hash_name_salary() {
