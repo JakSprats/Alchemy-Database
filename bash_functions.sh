@@ -1,6 +1,6 @@
 #!/bin/bash 
 
-CLI="./redis-cli"
+CLI="./alsosql-cli"
 
 T2P="tr \, \| "
 
@@ -515,8 +515,8 @@ function test_fk_range_queries() {
   R=$[${NUM}/${M}]
   Q=2
   init_FK_table
-  taskset -c 1 ./redis-benchmark -n $NUM -r $NUM -PF -M $M -c 20
-  taskset -c 1 ./redis-benchmark -n $NUM -r $R -F -Q $Q -c 20
+  taskset -c 1 ./alsosql-benchmark -n $NUM -r $NUM -PF -M $M -c 20
+  taskset -c 1 ./alsosql-benchmark -n $NUM -r $R -F -Q $Q -c 20
 }
 function test_fk_joins() {
   NUM=1000
@@ -526,9 +526,9 @@ function test_fk_joins() {
   echo NUM: $NUM M: $M R: $R Q: $Q
   init_FK_table
   init_FK2_table
-  taskset -c 1 ./redis-benchmark -n $NUM -r $NUM -PF  -M $M -c 20
-  taskset -c 1 ./redis-benchmark -n $NUM -r $NUM -PF2 -M $M -c 20
-  taskset -c 1 ./redis-benchmark -n $NUM -r $R -FJ -Q $Q -c 20
+  taskset -c 1 ./alsosql-benchmark -n $NUM -r $NUM -PF  -M $M -c 20
+  taskset -c 1 ./alsosql-benchmark -n $NUM -r $NUM -PF2 -M $M -c 20
+  taskset -c 1 ./alsosql-benchmark -n $NUM -r $R -FJ -Q $Q -c 20
 }
 
 function test_fk_all() {
@@ -748,3 +748,56 @@ function pk_tester() {
     $CLI INSERT INTO pktest_string VALUES \("USHRTXXXXXXAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXUSHRT","USHRTXXXXXXAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXUSHRT"\)
 }
 
+
+# MYSQL
+function dump_alsosql_table_to_mysql() {
+  if [ -z "$2" ]; then
+    echo "Usage: $0 database-name table-name"
+    return 2;
+  fi
+
+  DB="$1"
+  TBL="$2"
+
+  $CLI dump "$TBL" TO MYSQL| tr \; "\n" | cut -b 4- | \
+  while read a; do
+    echo "$a;"
+  done | mysql -uroot ${DB}
+}
+
+function dump_mysql_table_to_alsosql() {
+  if [ -z "$2" ]; then
+    echo "Usage: $0 database-name table-name"
+    return 2;
+  fi
+
+  DB="$1"
+  TBL="$2"
+  (
+    I=0
+    mysqldump -d --compact -uroot "$DB" "$TBL" | \
+        grep -v \; | tr -d \` | grep -v "PRIMARY KEY" | \
+        cut -f 1 -d \( | tr -d \, | sed "s/varchar/text/g" | \
+    while read a; do
+      if [ $I -eq 0 ]; then
+        echo -ne "${a} (";
+      elif [ $I -eq 1 ]; then
+        echo -ne "${a}";
+      else
+        echo -ne ",${a}";
+      fi
+      I=$[${I}+1]
+    done
+    echo ")"
+  ) | $CLI
+
+  (
+    mysqldump -t --compact -uroot "$DB" "$TBL" | \
+       tr \) "\n" | cut -f 2- -d \( | tr -d \' | while read a; do
+      if [ "$a" != ";" ]; then
+        echo "INSERT INTO $TBL VALUES ("${a}")"
+      fi
+    done
+  ) | $CLI
+  
+}

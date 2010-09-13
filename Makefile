@@ -21,13 +21,13 @@ CLIOBJ = anet.o sds.o adlist.o redis-cli.o zmalloc.o linenoise.o
 CHECKDUMPOBJ = redis-check-dump.o lzf_c.o lzf_d.o
 CHECKAOFOBJ = redis-check-aof.o
 
-PRGNAME = redis-server
-BENCHPRGNAME = redis-benchmark
-CLIPRGNAME = redis-cli
-CHECKDUMPPRGNAME = redis-check-dump
-CHECKAOFPRGNAME = redis-check-aof
+PRGNAME = alsosql-server
+BENCHPRGNAME = alsosql-benchmark
+CLIPRGNAME = alsosql-cli
+CHECKDUMPPRGNAME = alsosql-check-dump
+CHECKAOFPRGNAME = alsosql-check-aof
 
-all: redis-server redis-benchmark redis-cli redis-check-dump redis-check-aof
+all: alsosql-server alsosql-benchmark alsosql-cli alsosql-check-dump alsosql-check-aof
 
 # Deps (use make dep to generate this)
 adlist.o: adlist.c adlist.h zmalloc.h
@@ -74,19 +74,19 @@ sql.o: redis.h sql.h bt_iterator.h
 denorm.o: redis.h denorm.h bt_iterator.h
 scan.o: alsosql.h bt_iterator.h
 
-redis-server: $(OBJ)
+alsosql-server: $(OBJ)
 	$(CC) -o $(PRGNAME) $(CCOPT) $(DEBUG) $(OBJ)
 
-redis-benchmark: $(BENCHOBJ)
+alsosql-benchmark: $(BENCHOBJ)
 	$(CC) -o $(BENCHPRGNAME) $(CCOPT) $(DEBUG) $(BENCHOBJ)
 
-redis-cli: $(CLIOBJ)
+alsosql-cli: $(CLIOBJ)
 	$(CC) -o $(CLIPRGNAME) $(CCOPT) $(DEBUG) $(CLIOBJ)
 
-redis-check-dump: $(CHECKDUMPOBJ)
+alsosql-check-dump: $(CHECKDUMPOBJ)
 	$(CC) -o $(CHECKDUMPPRGNAME) $(CCOPT) $(DEBUG) $(CHECKDUMPOBJ)
 
-redis-check-aof: $(CHECKAOFOBJ)
+alsosql-check-aof: $(CHECKAOFOBJ)
 	$(CC) -o $(CHECKAOFPRGNAME) $(CCOPT) $(DEBUG) $(CHECKAOFOBJ)
 
 .c.o:
@@ -105,7 +105,7 @@ test:
 	tclsh8.5 tests/test_helper.tcl
 
 bench:
-	./redis-benchmark
+	./alsosql-benchmark
 
 log:
 	git log '--pretty=format:%ad %s (%cn)' --date=short > Changelog
