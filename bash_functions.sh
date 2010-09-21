@@ -429,8 +429,8 @@ function jstore_worker_location_table() {
 function jstore_city_wrkr_denorm_to_many_hash() {
   echo SELECT division.location, worker.name, worker.salary FROM worker,division WHERE division.id=worker.division AND worker.division BETWEEN 11 AND 66 STORE HSET city_wrkr$
   $CLI SELECT division.location, worker.name, worker.salary FROM worker,division WHERE division.id=worker.division AND worker.division BETWEEN 11 AND 66 STORE HSET city_wrkr$
-  echo HGETALL city_wrkr:Dubai
-  $CLI HGETALL city_wrkr:Dubai
+  echo HGETALL city_wrkr:N.Y.C
+  $CLI HGETALL city_wrkr:N.Y.C
 }
 
 function create_table_as_select_customer() {
@@ -581,6 +581,18 @@ function jstorer() {
   jstore_worker_location_hash
   jstore_worker_location_table
   jstore_city_wrkr_denorm_to_many_hash
+}
+
+function basic_tests() {
+  works
+  scan_external
+  scan_healthpan
+
+  istorer
+  jstorer
+
+  create_table_as_select_customer
+  create_table_as_select_join_worker_health
 }
 
 function all_tests() {

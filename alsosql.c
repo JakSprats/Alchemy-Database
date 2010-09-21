@@ -73,6 +73,8 @@ extern int    Indexed_column[MAX_NUM_INDICES];
 extern uchar  Index_type    [MAX_NUM_INDICES];
 extern bool   Index_virt    [MAX_NUM_INDICES];
 
+sds   Curr_range;
+
 // HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS
 // HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS
 robj *cloneRobj(robj *r) { // must be decrRefCount()ed
@@ -101,6 +103,18 @@ int find_column(int tmatch, char *column) {
     for (int j = 0; j < Tbl_col_count[tmatch]; j++) {
         if (Tbl_col_name[tmatch][j]) {
             if (!strcmp(column, (char *)Tbl_col_name[tmatch][j]->ptr)) {
+                return j;
+            }
+        }
+    }
+    return -1;
+}
+
+static int find_column_n(int tmatch, char *column, int len) {
+    if (!Tbl_name[tmatch]) return -1;
+    for (int j = 0; j < Tbl_col_count[tmatch]; j++) {
+        if (Tbl_col_name[tmatch][j]) {
+            if (!strncmp(column, (char *)Tbl_col_name[tmatch][j]->ptr, len)) {
                 return j;
             }
         }
@@ -202,18 +216,18 @@ int parseUpdateColListReply(redisClient  *c,
         char *val   = str_next_unescaped_chr(o_cname, cname, CEQUALS);
         char *nextc = str_next_unescaped_chr(o_cname, cname, CCOMMA);
         if (val) {
-            *val = '\0';
+            //*val = '\0';
             val++;
         } else {
             addReply(c, shared.invalidupdatestring);
             return 0;
         }
         if (nextc) {
-            *nextc = '\0';
+            //*nextc = '\0';
             nextc++;
         }
 
-        int cmatch = find_column(tmatch, cname);
+        int cmatch = find_column_n(tmatch, cname, (val -cname - 1));
         if (cmatch == -1) {
             addReply(c, shared.nonexistentcolumn);
             return 0;
@@ -388,6 +402,8 @@ void insertCommitReply(redisClient *c,
     robj *nrow = createRow(c, tmatch, ncols, vals, cofsts);
     if (!nrow) return;
     int   len  = btAdd(o, pko, nrow, pktype); /* copy[pk & val] */
+    sdsfree(Curr_range); /* used by InSwapMode */
+    Curr_range = sdsdup(pko->ptr);
     decrRefCount(pko);
     decrRefCount(nrow);
     zfree(pk);
@@ -467,10 +483,9 @@ void parseSelectColumnList(redisClient *c, sds *clist, int *argn) {
         }
         char *nextc = y;
         while ((nextc = strrchr(nextc, CCOMMA))) {
-            *nextc = '\0';
             nextc++;
             if (sdslen(*clist)) *clist  = sdscatlen(*clist, COMMA, 1);
-            *clist  = sdscat(*clist, y);
+            *clist  = sdscatlen(*clist, y, nextc - y - 1);
             y      = nextc;
         }
         if (*y) {
@@ -554,9 +569,12 @@ void deleteCommand(redisClient *c) {
                                                NULL, &argn, tmatch, 1, 0);
     if (!where) return;
 
+    sdsfree(Curr_range);
     if (where == 2) { /* RANGE QUERY */
+        Curr_range = sdsdup(range->ptr);
         ideleteAction(c, range->ptr, tmatch, imatch);
     } else {
+        Curr_range = sdsdup(pko->ptr);
         MATCH_INDICES(tmatch)
         deleteRow(c, tmatch, pko, matches, indices) ? addReply(c, shared.cone) :
                                                       addReply(c, shared.czero);
@@ -591,10 +609,14 @@ void updateCommand(redisClient *c) {
     uchar  where  = checkSQLWhereClauseOrReply(c, &pko, &range, &imatch,
                                                NULL, &argn, tmatch, 2, 0);
     if (!where) goto update_cmd_err;
+
+    sdsfree(Curr_range);
     if (where == 2) { /* RANGE QUERY */
+        Curr_range = sdsdup(range->ptr);
         iupdateAction(c, range->ptr, tmatch, imatch, ncols, matches, indices,
                       vals, vlens, cmiss);
     } else {
+        Curr_range = sdsdup(pko->ptr);
         robj *o   = lookupKeyRead(c->db, Tbl_name[tmatch]);
         robj *row = btFindVal(o, pko, Tbl_col_type[tmatch][0]);
         if (!row) {

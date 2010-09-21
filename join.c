@@ -276,6 +276,7 @@ static bool jRowReply(jrow_reply_t  *r, int lvl) {
         }
         robj *resp = createStringObject(r->reply, slot -1);
         if (r->sto != -1) { // insert
+            r->fc->argc    = 3;
             r->fc->argv[1] = cloneRobj(r->newname);
             r->fc->argv[2] = resp;
             if (!performStoreCmdOrReply(r->c, r->fc, r->sto)) return 0;

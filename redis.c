@@ -81,12 +81,12 @@
 #include "bt.h"           /* ALSOSQL B-trees */
 #include "bt_iterator.h"  /* ALSOSQL B-tree Iterators */
 #include "alsosql.h"      /* ALSOSQL */
-#include "sixbit.h"       /* six-bit-string packing */
-#include "rdb_alsosql.h"  /* save alsosql datastructures to rdb */
-#include "join.h"         /* relational join in alsosql */
-#include "row.h"          /* alsosql's bit-packed rows */
-#include "index.h"        /* alsosql's indices */
-#include "common.h"       /* alsosql's common definitions */
+#include "sixbit.h"       /* ALSOSQL six-bit-string packing */
+#include "rdb_alsosql.h"  /* save ALSOSQL datastructures to rdb */
+#include "join.h"         /* relational join in ALSOSQL */
+#include "row.h"          /* ALSOSQL's bit-packed rows */
+#include "index.h"        /* ALSOSQL's indices */
+#include "common.h"       /* ALSOSQL's common definitions */
 
 /* ALSOSQL commands (table,index,insert/(i)select/(i)update/(i)delete,join) */
 #define ALSOSQL
@@ -963,6 +963,8 @@ extern unsigned char  Tbl_col_type  [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
 extern robj          *Index_obj     [MAX_NUM_INDICES];
 extern int            Indexed_column[MAX_NUM_INDICES];
 extern bool           Index_virt    [MAX_NUM_INDICES];
+
+extern sds            Curr_range;
 #endif /* ALSOSQL END */
 
 /*============================ Utility functions ============================ */
@@ -1709,6 +1711,7 @@ static void beforeSleep(struct aeEventLoop *eventLoop) {
     }
     /* Write the AOF buffer on disk */
     flushAppendOnlyFile();
+    
 }
 
 static void createSharedObjects(void) {
@@ -1941,6 +1944,9 @@ static void initServerConfig() {
     server.glueoutputbuf = 1;
     server.daemonize = 0;
     server.appendonly = 0;
+    /* ALSOSQL START */
+    Curr_range                   = sdsempty();
+    /* ALSOSQL END */
     server.appendfsync = APPENDFSYNC_EVERYSEC;
     server.lastfsync = time(NULL);
     server.appendfd = -1;
@@ -2049,6 +2055,7 @@ static void initServer() {
         }
     }
 
+
     if (server.vm_enabled) vmInit();
 
 #ifdef ALSOSQL
@@ -2073,22 +2080,22 @@ static void initServer() {
     StorageCommands[5].func  = hsetCommand;
     StorageCommands[5].name  = "HSET";
     StorageCommands[5].argc  = 2;
-//#define STO_FUNC_INSERT 6
-    StorageCommands[6].func  = legacyInsertCommand;
-    StorageCommands[6].name  = "INSERT";
-    StorageCommands[6].argc  = 0;
-    StorageCommands[7].func  = setCommand;
-    StorageCommands[7].name  = "SET";
+    StorageCommands[6].func  = setCommand;
+    StorageCommands[6].name  = "SET";
+    StorageCommands[6].argc  = -1;      /* < 0 means combine 1st arg w/ name */
+    StorageCommands[7].func  = setnxCommand;
+    StorageCommands[7].name  = "SETNX";
     StorageCommands[7].argc  = -1;      /* < 0 means combine 1st arg w/ name */
-    StorageCommands[8].func  = setnxCommand;
-    StorageCommands[8].name  = "SETNX";
+    StorageCommands[8].func  = appendCommand;
+    StorageCommands[8].name  = "APPEND";
     StorageCommands[8].argc  = -1;      /* < 0 means combine 1st arg w/ name */
-    StorageCommands[9].func  = appendCommand;
-    StorageCommands[9].name  = "APPEND";
-    StorageCommands[9].argc  = -1;      /* < 0 means combine 1st arg w/ name */
-    StorageCommands[10].func = setexCommand;
-    StorageCommands[10].name = "SETEX";
-    StorageCommands[10].argc = -2;      /* < 0 means combine 1st arg w/ name */
+    StorageCommands[9].func = setexCommand;
+    StorageCommands[9].name = "SETEX";
+    StorageCommands[9].argc = -2;      /* < 0 means combine 1st arg w/ name */
+//#define STO_FUNC_INSERT 10
+    StorageCommands[10].func  = legacyInsertCommand;
+    StorageCommands[10].name  = "INSERT";
+    StorageCommands[10].argc  = 0;
 //#define STORAGE_MAX_ARGC 3
 
     //#define ACCESS_SELECT_COMMAND_NUM 0
@@ -2630,13 +2637,15 @@ static void call(redisClient *c, struct redisCommand *cmd) {
     cmd->proc(c);
     dirty = server.dirty-dirty;
 
-    if (server.appendonly && dirty)
+    if (dirty && server.appendonly) 
         feedAppendOnlyFile(cmd,c->db->id,c->argv,c->argc);
     if ((dirty || cmd->flags & REDIS_CMD_FORCE_REPLICATION) &&
-        listLength(server.slaves))
+        listLength(server.slaves)) {
         replicationFeedSlaves(server.slaves,c->db->id,c->argv,c->argc);
-    if (listLength(server.monitors))
+    }
+    if (listLength(server.monitors)) {
         replicationFeedMonitors(server.monitors,c->db->id,c->argv,c->argc);
+    }
     server.stat_numcommands++;
 }
 
@@ -8002,8 +8011,9 @@ static void execCommandReplicateMulti(redisClient *c) {
     robj *multistring = createStringObject("MULTI",5);
 
     cmd = lookupCommand("multi");
-    if (server.appendonly)
+    if (server.appendonly) {
         feedAppendOnlyFile(cmd,c->db->id,&multistring,1);
+    }
     if (listLength(server.slaves))
         replicationFeedSlaves(server.slaves,c->db->id,&multistring,1);
     decrRefCount(multistring);
@@ -8702,8 +8712,7 @@ static void flushAppendOnlyFile(void) {
     now = time(NULL);
     if (server.appendfsync == APPENDFSYNC_ALWAYS ||
         (server.appendfsync == APPENDFSYNC_EVERYSEC &&
-         now-server.lastfsync > 1))
-    {
+         now-server.lastfsync > 1)) {
         /* aof_fsync is defined as fdatasync() for Linux in order to avoid
          * flushing metadata. */
         aof_fsync(server.appendfd); /* Let's try to get this data on the disk */
@@ -8744,7 +8753,11 @@ static sds catAppendOnlyExpireAtCommand(sds buf, robj *key, robj *seconds) {
     return buf;
 }
 
-static void feedAppendOnlyFile(struct redisCommand *cmd, int dictid, robj **argv, int argc) {
+
+static void feedAppendOnlyFile(struct redisCommand  *cmd,
+                               int                   dictid,
+                               robj                **argv,
+                               int                   argc) {
     sds buf = sdsempty();
     robj *tmpargv[3];
 
@@ -8756,7 +8769,7 @@ static void feedAppendOnlyFile(struct redisCommand *cmd, int dictid, robj **argv
         snprintf(seldb,sizeof(seldb),"%d",dictid);
 #ifdef ALSOSQL
         buf = sdscatprintf(buf,"*2\r\n$8\r\nCHANGEDB\r\n$%lu\r\n%s\r\n",
-            (unsigned long)strlen(seldb),seldb);
+                                (unsigned long)strlen(seldb),seldb);
 #else
         buf = sdscatprintf(buf,"*2\r\n$6\r\nSELECT\r\n$%lu\r\n%s\r\n",
             (unsigned long)strlen(seldb),seldb);
@@ -8776,13 +8789,13 @@ static void feedAppendOnlyFile(struct redisCommand *cmd, int dictid, robj **argv
         decrRefCount(tmpargv[0]);
         buf = catAppendOnlyExpireAtCommand(buf,argv[1],argv[2]);
     } else {
-        buf = catAppendOnlyGenericCommand(buf,argc,argv);
+        buf = catAppendOnlyGenericCommand(buf, argc, argv);
     }
 
     /* Append to the AOF buffer. This will be flushed on disk just before
      * of re-entering the event loop, so before the client will get a
      * positive reply about the operation performed. */
-    server.aofbuf = sdscatlen(server.aofbuf,buf,sdslen(buf));
+    server.aofbuf     = sdscatlen(server.aofbuf,     buf, sdslen(buf));
 
     /* If a background append only file rewriting is in progress we want to
      * accumulate the differences between the child DB and the current one
@@ -8981,6 +8994,71 @@ static int fwriteBulkLong(FILE *fp, long l) {
     return 1;
 }
 
+static bool appendOnlyDumpIndices(FILE *fp, int tmatch) {
+    sds tname  = Tbl_name[tmatch]->ptr;
+    char cmd3[]="*3\r\n$11\r\nLEGACYINDEX\r\n";
+    MATCH_INDICES(tmatch)
+    for (int i = 0; i < matches; i++) {
+        int inum = indices[i];
+        if (Index_virt[inum]) continue;
+        if (!(fwrite(cmd3, sizeof(cmd3) - 1, 1, fp))) goto awerr;
+        sds s    = Index_obj[inum]->ptr;
+        if (fwriteBulkString(fp, s, sdslen(s)) == -1) goto awerr;
+        s        = sdsnewlen(tname, sdslen(tname));
+        s        = sdscatlen(s, PERIOD, 1);
+        int icol = Indexed_column[inum];
+        sds t    = Tbl_col_name[tmatch][icol]->ptr;
+        s        = sdscatlen(s, t, sdslen(t));
+        if (fwriteBulkString(fp, s, sdslen(s)) == -1) goto awerr;
+        sdsfree(s);
+    }
+    return 1;
+awerr:
+    return 0;
+}
+
+static bool appendOnlyDumpTable(FILE *fp, robj *o, bt *btr, int tmatch) {
+    sds tname  = Tbl_name[tmatch]->ptr;
+    /* Dump Table definition */
+    char cmd[]="*3\r\n$11\r\nLEGACYTABLE\r\n";
+    if (fwrite(cmd,sizeof(cmd)-1,1,fp) == 0) goto atwerr;
+    if (fwriteBulkString(fp, tname, sdslen(tname)) == -1) goto atwerr;
+
+    sds s = sdsempty();
+    for (int i = 0; i < Tbl_col_count[tmatch]; i++) {
+        if (i) s = sdscatlen(s, ",", 1);
+        s = sdscatlen(s, Tbl_col_name[tmatch][i]->ptr,
+                      sdslen(Tbl_col_name[tmatch][i]->ptr));
+        s = sdscatlen(s, EQUALS, 1);
+        s = sdscat(s, Col_type_defs[Tbl_col_type[tmatch][i]]);
+    }
+    if (fwriteBulkString(fp, s, sdslen(s)) == -1) goto atwerr;
+    sdsfree(s);
+
+    /* Dump Table DATA */
+    if (btr->numkeys) {
+        char cmd2[]="*3\r\n$12\r\nLEGACYINSERT\r\n";
+        int  cmatchs[MAX_COLUMN_PER_TABLE];
+        int  qcols = parseColListOrReply(NULL, tmatch, "*", cmatchs);
+
+        btEntry          *be;
+        btStreamIterator *bi = btGetFullRangeIterator(o, 0, 1);
+        while ((be = btRangeNext(bi, 1)) != NULL) {
+            robj *pko = be->key;
+            robj *row = be->val;
+            robj *r   = outputRow(row, qcols, cmatchs, pko, tmatch, 0);
+            if (!fwrite(cmd2, sizeof(cmd2) - 1, 1, fp)) goto atwerr;
+            if (fwriteBulkString(fp, tname, sdslen(tname)) == -1) goto atwerr;
+            if (fwriteBulkString(fp, r->ptr, sdslen(r->ptr)) == -1) goto atwerr;
+            decrRefCount(r);
+        }
+        btReleaseRangeIterator(bi);
+    }
+    return 1;
+atwerr:
+    return 0;
+}
+
 /* Write a sequence of commands able to fully rebuild the dataset into
  * "filename". Used both by REWRITEAOF and BGREWRITEAOF. */
 static int rewriteAppendOnlyFile(char *filename) {
@@ -9135,75 +9213,14 @@ static int rewriteAppendOnlyFile(char *filename) {
                 }
             //TODO break this out into a function
             } else if (o->type == REDIS_BTREE) {
-                bt  *btr    = (struct btree *)(o->ptr);
-                if (btr) { /* virtual indices have NULLs */
-                    if (btr->is_index == BTREE_TABLE) {
-                        int tmatch = btr->num;
-                        sds tname  = Tbl_name[tmatch]->ptr;
-                        /* Dump Table definition */
-                        char cmd[]="*3\r\n$11\r\nLEGACYTABLE\r\n";
-                        if (fwrite(cmd,sizeof(cmd)-1,1,fp) == 0) goto werr;
-                        if (fwriteBulkString(fp, tname, sdslen(tname)) == -1)
-                            goto werr;
+                bt  *btr  = (struct btree *)(o->ptr);
+                if (!btr) continue; /* virtual indices have NULLs */
+                if (btr->is_index == BTREE_TABLE) {
+                    int tmatch = btr->num;
+                    if (!appendOnlyDumpTable(fp, o, btr, tmatch)) goto werr;
 
-                        sds s = sdsempty();
-                        for (int i = 0; i < Tbl_col_count[tmatch]; i++) {
-                            if (i) s = sdscatlen(s, ",", 1);
-                            s = sdscatlen(s, Tbl_col_name[tmatch][i]->ptr,
-                                          sdslen(Tbl_col_name[tmatch][i]->ptr));
-                            s = sdscatlen(s, EQUALS, 1);
-                            s = sdscat(s, Col_type_defs[Tbl_col_type[tmatch][i]]);
-                        }
-                        if (fwriteBulkString(fp, s, sdslen(s)) == -1) goto werr;
-                        sdsfree(s);
-
-                        /* Dump Table DATA */
-                        if (btr->numkeys) {
-                            char cmd2[]="*3\r\n$12\r\nLEGACYINSERT\r\n";
-                            int  cmatchs[MAX_COLUMN_PER_TABLE];
-                            int  qcols = parseColListOrReply(NULL, tmatch, "*",
-                                                             cmatchs);
-
-                            btEntry          *be;
-                            btStreamIterator *bi =
-                                                btGetFullRangeIterator(o, 0, 1);
-                            while ((be = btRangeNext(bi, 1)) != NULL) {
-                                robj *pko = be->key;
-                                robj *row = be->val;
-                                robj *r   = outputRow(row, qcols, cmatchs, pko,
-                                                      tmatch, 0);
-                                if (fwrite(cmd2, sizeof(cmd2) - 1, 1, fp) == 0)
-                                    goto werr;
-                                if (fwriteBulkString(fp, tname, sdslen(tname))
-                                     == -1) goto werr;
-                                if (fwriteBulkString(fp, r->ptr, sdslen(r->ptr))
-                                     == -1) goto werr;
-                                decrRefCount(r);
-                            }
-                            btReleaseRangeIterator(bi);
-                        }
-
-                        /* Dump ALL Table's Index definitions */
-                        char cmd3[]="*3\r\n$11\r\nLEGACYINDEX\r\n";
-                        MATCH_INDICES(tmatch)
-                        for (int i = 0; i < matches; i++) {
-                            int inum = indices[i];
-                            if (Index_virt[inum]) continue;
-                            if (fwrite(cmd3, sizeof(cmd3) - 1, 1, fp) == 0)
-                                goto werr;
-                            sds s    = Index_obj[inum]->ptr;
-                            if (fwriteBulkString(fp, s, sdslen(s)) == -1)
-                                goto werr;
-                            s = sdsnewlen(tname, sdslen(tname));
-                            s = sdscatlen(s, PERIOD, 1);
-                            int icol = Indexed_column[inum];
-                            sds t = Tbl_col_name[tmatch][icol]->ptr;
-                            s = sdscatlen(s, t, sdslen(t));
-                            if (fwriteBulkString(fp, s, sdslen(s)) == -1)
-                                goto werr;
-                            sdsfree(s);
-                        }
-                    }
+                    /* Dump ALL Table's Index definitions */
+                    if (!appendOnlyDumpIndices(fp, tmatch)) goto werr;
                 }
             } else {
                 redisPanic("Unknown object type");
@@ -9340,6 +9357,8 @@ static void aofRemoveTempFile(pid_t childpid) {
  * This basically is almost as simple of a blocking VM, but almost as parallel
  * as a fully non-blocking VM.
  */
+
+//TODO JAKSPRATS RUSS stopInSwapAppendOnly and startInSwapAppendOnly
 
 /* Called when the user switches from "appendonly yes" to "appendonly no"
  * at runtime using the CONFIG command. */
