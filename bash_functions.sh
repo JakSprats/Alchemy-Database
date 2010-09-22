@@ -1,6 +1,6 @@
 #!/bin/bash 
 
-CLI="./alsosql-cli"
+CLI="./redisql-cli"
 
 T2P="tr \, \| "
 
@@ -515,8 +515,8 @@ function test_fk_range_queries() {
   R=$[${NUM}/${M}]
   Q=2
   init_FK_table
-  taskset -c 1 ./alsosql-benchmark -n $NUM -r $NUM -PF -M $M -c 20
-  taskset -c 1 ./alsosql-benchmark -n $NUM -r $R -F -Q $Q -c 20
+  taskset -c 1 ./redisql-benchmark -n $NUM -r $NUM -PF -M $M -c 20
+  taskset -c 1 ./redisql-benchmark -n $NUM -r $R -F -Q $Q -c 20
 }
 function test_fk_joins() {
   NUM=1000
@@ -526,9 +526,9 @@ function test_fk_joins() {
   echo NUM: $NUM M: $M R: $R Q: $Q
   init_FK_table
   init_FK2_table
-  taskset -c 1 ./alsosql-benchmark -n $NUM -r $NUM -PF  -M $M -c 20
-  taskset -c 1 ./alsosql-benchmark -n $NUM -r $NUM -PF2 -M $M -c 20
-  taskset -c 1 ./alsosql-benchmark -n $NUM -r $R -FJ -Q $Q -c 20
+  taskset -c 1 ./redisql-benchmark -n $NUM -r $NUM -PF  -M $M -c 20
+  taskset -c 1 ./redisql-benchmark -n $NUM -r $NUM -PF2 -M $M -c 20
+  taskset -c 1 ./redisql-benchmark -n $NUM -r $R -FJ -Q $Q -c 20
 }
 
 function test_fk_all() {
@@ -762,7 +762,7 @@ function pk_tester() {
 
 
 # MYSQL
-function dump_alsosql_table_to_mysql() {
+function dump_redisql_table_to_mysql() {
   if [ -z "$2" ]; then
     echo "Usage: $0 database-name table-name"
     return 2;
@@ -777,7 +777,7 @@ function dump_alsosql_table_to_mysql() {
   done | mysql -uroot ${DB}
 }
 
-function dump_mysql_table_to_alsosql() {
+function dump_mysql_table_to_redisql() {
   if [ -z "$2" ]; then
     echo "Usage: $0 database-name table-name"
     return 2;

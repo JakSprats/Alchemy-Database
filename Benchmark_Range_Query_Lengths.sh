@@ -20,7 +20,7 @@ elif [ "$1" == "3WAY" ]; then
 elif [ "$1" == "10WAY" ]; then
   JOIN=10
 fi
-CLI="./alsosql-cli"
+CLI="./redisql-cli"
 
 ACT_OPT="-R"
 
@@ -50,18 +50,18 @@ fi
 
 #POPULATE DATA
 if [ $JOIN -eq 10 ]; then
-  echo taskset -c 1 ./alsosql-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PJ10
-  taskset -c 1 ./alsosql-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PJ10 >/dev/null
+  echo taskset -c 1 ./redisql-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PJ10
+  taskset -c 1 ./redisql-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PJ10 >/dev/null
 else
-  echo ./alsosql-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PT 
-  taskset -c 1 ./alsosql-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PT >/dev/null
+  echo ./redisql-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PT 
+  taskset -c 1 ./redisql-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PT >/dev/null
   if [ $JOIN -gt 0 ]; then
-    echo ./alsosql-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PJ
-    taskset -c 1 ./alsosql-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PJ >/dev/null
+    echo ./redisql-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PJ
+    taskset -c 1 ./redisql-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PJ >/dev/null
   fi
   if [ $JOIN -eq 3 ]; then
-    echo ./alsosql-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PJ3
-    taskset -c 1 ./alsosql-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PJ3 >/dev/null
+    echo ./redisql-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PJ3
+    taskset -c 1 ./redisql-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PJ3 >/dev/null
   fi
 fi
 
@@ -69,7 +69,7 @@ MAX=20;
 I=2;
 while [ $I -lt $MAX ]; do
   echo -ne "$I: ";
-  taskset -c 1 ./alsosql-benchmark -n $RQ_NUM -r $POP_NUM -c $C  "${ACT_OPT}" -Q $I | grep "requests per second"| tail -n1;
+  taskset -c 1 ./redisql-benchmark -n $RQ_NUM -r $POP_NUM -c $C  "${ACT_OPT}" -Q $I | grep "requests per second"| tail -n1;
    I=$[${I}+1];
 done
 
@@ -77,7 +77,7 @@ MAX=50;
 I=20;
 while [ $I -lt $MAX ]; do
   echo -ne "$I: ";
-  taskset -c 1 ./alsosql-benchmark -n $RQ_NUM -r $POP_NUM -c $C  "${ACT_OPT}" -Q $I | grep "requests per second"| tail -n1;
+  taskset -c 1 ./redisql-benchmark -n $RQ_NUM -r $POP_NUM -c $C  "${ACT_OPT}" -Q $I | grep "requests per second"| tail -n1;
   I=$[${I}+5];
 done
 
@@ -87,7 +87,7 @@ MAX=200;
 I=50;
 while [ $I -lt $MAX ]; do
   echo -ne "$I: ";
-  taskset -c 1 ./alsosql-benchmark -n $RQ_NUM -r $POP_NUM -c $C  "${ACT_OPT}" -Q $I | grep "requests per second"| tail -n1;
+  taskset -c 1 ./redisql-benchmark -n $RQ_NUM -r $POP_NUM -c $C  "${ACT_OPT}" -Q $I | grep "requests per second"| tail -n1;
   I=$[${I}+10];
 done
 
@@ -97,7 +97,7 @@ MAX=500;
 I=200;
 while [ $I -lt $MAX ]; do
   echo -ne "$I: ";
-  taskset -c 1 ./alsosql-benchmark -n $RQ_NUM -r $POP_NUM -c $C  "${ACT_OPT}" -Q $I | grep "requests per second"| tail -n1;
+  taskset -c 1 ./redisql-benchmark -n $RQ_NUM -r $POP_NUM -c $C  "${ACT_OPT}" -Q $I | grep "requests per second"| tail -n1;
   I=$[${I}+100];
 done
 
@@ -107,7 +107,7 @@ MAX=5000;
 I=500;
 while [ $I -lt $MAX ]; do
   echo -ne "$I: ";
-  taskset -c 1 ./alsosql-benchmark -n $RQ_NUM -r $POP_NUM -c $C  "${ACT_OPT}" -Q $I | grep "requests per second"| tail -n1;
+  taskset -c 1 ./redisql-benchmark -n $RQ_NUM -r $POP_NUM -c $C  "${ACT_OPT}" -Q $I | grep "requests per second"| tail -n1;
   I=$[${I}+500];
 done
 
@@ -117,6 +117,6 @@ MAX=50000;
 I=5000;
 while [ $I -le $MAX ]; do
   echo -ne "$I: ";
-  taskset -c 1 ./alsosql-benchmark -n $RQ_NUM -r $POP_NUM -c $C  "${ACT_OPT}" -Q $I | grep "requests per second"| tail -n1;
+  taskset -c 1 ./redisql-benchmark -n $RQ_NUM -r $POP_NUM -c $C  "${ACT_OPT}" -Q $I | grep "requests per second"| tail -n1;
   I=$[${I}+5000];
 done
