@@ -27,15 +27,16 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 // FROM redis.c
 #define RL4 redisLog(4,
+extern struct redisServer server;
 
-extern int            Num_tbls;
+extern int            Num_tbls     [MAX_NUM_TABLES];
 extern robj          *Tbl_name     [MAX_NUM_TABLES];
 extern int            Tbl_col_count[MAX_NUM_TABLES];
 extern robj          *Tbl_col_name [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
 extern unsigned char  Tbl_col_type [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
 extern int            Tbl_virt_indx[MAX_NUM_TABLES];
 
-extern int            Num_indx;
+extern int            Num_indx      [MAX_NUM_INDICES];
 extern robj          *Index_obj     [MAX_NUM_INDICES];
 extern int            Index_on_table[MAX_NUM_INDICES];
 extern int            Indexed_column[MAX_NUM_INDICES];
@@ -150,7 +151,9 @@ robj *rdbLoadBT(FILE *fp, redisDb *db) {
                                               (char *)Tbl_col_name[num][0]->ptr,
                                               COLON, INDEX_DELIM);
         dictAdd(db->dict, Index_obj[inum], NULL);
-        if (Num_indx < (inum + 1)) Num_indx = inum + 1;
+        if (Num_indx[server.curr_db_id] < (inum + 1)) {
+            Num_indx[server.curr_db_id] = inum + 1;
+        }
 
         unsigned char ktype;
         if (fread(&ktype,    1, 1, fp) == 0) return NULL;
@@ -165,7 +168,9 @@ robj *rdbLoadBT(FILE *fp, redisDb *db) {
             if (rdbLoadRow(fp, btr) == -1) return NULL;
         }
 
-        if (Num_tbls < (num + 1)) Num_tbls = num + 1;
+        if (Num_tbls[server.curr_db_id] < (num + 1)) {
+             Num_tbls[server.curr_db_id] = num + 1;
+        }
     } else { /* BTREE_INDEX */
         if (!(Index_obj[num] = rdbLoadStringObject(fp))) return NULL;
         if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)   return NULL;
@@ -178,7 +183,9 @@ robj *rdbLoadBT(FILE *fp, redisDb *db) {
         if (fread(&ktype,    1, 1, fp) == 0) return NULL;
         o = createBtreeObject(ktype, num, is_index);
         Index_virt[num] = 0;
-        if (Num_indx < (num + 1)) Num_indx = num + 1;
+        if (Num_indx[server.curr_db_id] < (num + 1)) {
+            Num_indx[server.curr_db_id] = num + 1;
+        }
     }
     return o;
 }
@@ -211,7 +218,7 @@ int buildIndex(bt *btr, bt_n *x, bt *ibtr, int icol, int itbl) {
 }
 
 void rdbLoadFinished(redisDb *db) {
-    for (int i = 0; i < Num_indx; i++) {
+    for (int i = 0; i < Num_indx[server.curr_db_id]; i++) {
         if (Index_virt[i]) continue;
         robj *ind  = Index_obj[i];
         if (!ind) continue;

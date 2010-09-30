@@ -51,7 +51,7 @@ extern uchar  Tbl_col_type [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
 extern int    Tbl_virt_indx[MAX_NUM_TABLES];
 
 // GLOBALS
-int Num_indx;
+int    Num_indx      [MAX_NUM_INDICES];
 //TODO make these 4 a struct
 robj  *Index_obj     [MAX_NUM_INDICES];
 int    Index_on_table[MAX_NUM_INDICES];
@@ -62,7 +62,7 @@ bool   Index_virt    [MAX_NUM_INDICES];
 // HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS
 // HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS
 int find_index(int tmatch, int cmatch) {
-    for (int i = 0; i < Num_indx; i++) {
+    for (int i = 0; i < Num_indx[server.curr_db_id]; i++) {
         if (Index_obj[i]) {
             if (Index_on_table[i] == tmatch &&
                 Indexed_column[i] == cmatch) {
@@ -75,7 +75,7 @@ int find_index(int tmatch, int cmatch) {
 
 int match_index(int tmatch, int indices[]) {
     int matches = 0;
-    for (int i = 0; i < Num_indx; i++) {
+    for (int i = 0; i < Num_indx[server.curr_db_id]; i++) {
         if (Index_obj[i]) {
             if (Index_on_table[i] == tmatch) {
                 indices[matches] = i;
@@ -87,7 +87,7 @@ int match_index(int tmatch, int indices[]) {
 }
 
 int match_index_name(char *iname) {
-    for (int i = 0; i < Num_indx; i++) {
+    for (int i = 0; i < Num_indx[server.curr_db_id]; i++) {
         if (Index_obj[i]) {
             if (!strcmp(iname, (char *)Index_obj[i]->ptr)) {
                 return i;
@@ -202,28 +202,29 @@ void updateIndex(redisDb *db,
 // SIMPLE_COMMANDS SIMPLE_COMMANDS SIMPLE_COMMANDS SIMPLE_COMMANDS
 void newIndex(redisClient *c, char *iname, int tmatch, int cmatch, bool virt) {
     // commit index definition
-    robj *ind                = createStringObject(iname, strlen(iname));
-    Index_obj     [Num_indx] = ind;
-    Index_on_table[Num_indx] = tmatch;
-    Indexed_column[Num_indx] = cmatch;
-    Index_type    [Num_indx] = Tbl_col_type[tmatch][cmatch];
-    Index_virt    [Num_indx] = virt;
+    robj *ind             = createStringObject(iname, strlen(iname));
+    int   nindx           = Num_indx[server.curr_db_id];
+    Index_obj     [nindx] = ind;
+    Index_on_table[nindx] = tmatch;
+    Indexed_column[nindx] = cmatch;
+    Index_type    [nindx] = Tbl_col_type[tmatch][cmatch];
+    Index_virt    [nindx] = virt;
 
     robj *ibt;
     if (virt) {
         ibt                   = createEmptyBtreeObject();
-        Tbl_virt_indx[tmatch] = Num_indx;
+        Tbl_virt_indx[tmatch] = nindx;
     } else {
         int ctype = Tbl_col_type[tmatch][cmatch];
-        ibt       = createBtreeObject(ctype, Num_indx, BTREE_INDEX);
+        ibt       = createBtreeObject(ctype, nindx, BTREE_INDEX);
     }
     //store BtreeObject in HashTable key: indexname
     dictAdd(c->db->dict, ind, ibt);
-    Num_indx++;
+    Num_indx[server.curr_db_id]++;
 }
 
 static void indexCommit(redisClient *c, char *iname, char *trgt) {
-    if (Num_indx >= MAX_NUM_INDICES) {
+    if (Num_indx[server.curr_db_id] >= MAX_NUM_INDICES) {
         addReply(c, shared.toomanyindices);
         return;
     }
@@ -253,7 +254,7 @@ static void indexCommit(redisClient *c, char *iname, char *trgt) {
         goto ind_commit_err;
     }
 
-    for (int i = 0; i < Num_indx; i++) { /* check if already indexed */
+    for (int i = 0; i < Num_indx[server.curr_db_id]; i++) { /* check already indxd */
         if (Index_on_table[i] == tmatch &&
             Indexed_column[i] == cmatch) {
             addReply(c, shared.indexedalready);
@@ -267,7 +268,7 @@ static void indexCommit(redisClient *c, char *iname, char *trgt) {
     robj *o   = lookupKeyRead(c->db, Tbl_name[tmatch]);
     bt   *btr = (bt *)o->ptr;
     if (btr->numkeys > 0) { /* table has rows - loop thru and populate index */
-        robj *ind  = Index_obj[Num_indx - 1];
+        robj *ind  = Index_obj[Num_indx[server.curr_db_id] - 1];
         robj *ibt  = lookupKey(c->db, ind);
         buildIndex(btr, btr->root, ibt->ptr, cmatch, tmatch);
     }
@@ -539,10 +540,6 @@ void dumpCommand(redisClient *c) {
     robj *o = lookupKeyRead(c->db, Tbl_name[tmatch]);
 
     bt *btr = (bt *)o->ptr;
-    if (!btr->numkeys) {
-        addReply(c, shared.czero);
-        return;
-    }
     int   cmatchs[MAX_COLUMN_PER_TABLE];
     int   qcols = parseColListOrReply(c, tmatch, "*", cmatchs);
     char *tname = Tbl_name[tmatch]->ptr;
@@ -550,6 +547,7 @@ void dumpCommand(redisClient *c) {
     LEN_OBJ
 
     bool  to_mysql = 0;
+    bool  ret_size = 0;
     char *m_tname  = tname;
     if (c->argc > 3) {
         if (!strcasecmp(c->argv[2]->ptr, "TO") &&
@@ -577,6 +575,7 @@ void dumpCommand(redisClient *c) {
             ADD_REPLY_BULK(r, buf)
         } else if (!strcasecmp(c->argv[2]->ptr, "RETURN") &&
                    !strcasecmp(c->argv[3]->ptr, "SIZE")      ) {
+            ret_size = 1;
             sprintf(buf, "KEYS: %d BT-DATA: %lld BT-MALLOC: %lld",
                           btr->numkeys, btr->data_size, btr->malloc_size);
             robj *r = createStringObject(buf, strlen(buf));
@@ -586,26 +585,28 @@ void dumpCommand(redisClient *c) {
         }
     }
 
-    btEntry    *be;
-    btStreamIterator *bi = btGetFullRangeIterator(o, 0, 1);
-    while ((be = btRangeNext(bi, 0)) != NULL) {      // iterate btree
-        robj *pko = be->key;
-        robj *row = be->val;
-        robj *r   = outputRow(row, qcols, cmatchs, pko, tmatch, to_mysql);
-        if (!to_mysql) {
-            addReplyBulk(c, r);
-            decrRefCount(r);
-        } else {
-            sprintf(buf, "INSERT INTO `%s` VALUES (", m_tname);
-            robj *ins = createStringObject(buf, strlen(buf));
-            ins->ptr  = sdscatlen(ins->ptr, r->ptr, sdslen(r->ptr));
-            ins->ptr  = sdscatlen(ins->ptr, ");", 2);
-            addReplyBulk(c, ins);
-            decrRefCount(ins);
+    if (btr->numkeys) {
+        btEntry    *be;
+        btStreamIterator *bi = btGetFullRangeIterator(o, 0, 1);
+        while ((be = btRangeNext(bi, 0)) != NULL) {      // iterate btree
+            robj *pko = be->key;
+            robj *row = be->val;
+            robj *r   = outputRow(row, qcols, cmatchs, pko, tmatch, to_mysql);
+            if (!to_mysql) {
+                addReplyBulk(c, r);
+                decrRefCount(r);
+            } else {
+                sprintf(buf, "INSERT INTO `%s` VALUES (", m_tname);
+                robj *ins = createStringObject(buf, strlen(buf));
+                ins->ptr  = sdscatlen(ins->ptr, r->ptr, sdslen(r->ptr));
+                ins->ptr  = sdscatlen(ins->ptr, ");", 2);
+                addReplyBulk(c, ins);
+                decrRefCount(ins);
+            }
+            card++;
         }
-        card++;
+        btReleaseRangeIterator(bi);
     }
-    btReleaseRangeIterator(bi);
 
     if (to_mysql) {
         robj *r;
@@ -617,7 +618,7 @@ void dumpCommand(redisClient *c) {
  
 ull get_sum_all_index_size_for_table(redisClient *c, int tmatch) {
     ull isize = 0;
-    for (int i = 0; i < Num_indx; i++) {
+    for (int i = 0; i < Num_indx[server.curr_db_id]; i++) {
         if (!Index_virt[i] && Index_on_table[i] == tmatch) {
             robj *ind   = Index_obj[i];
             robj *ibt   = lookupKey(c->db, ind);

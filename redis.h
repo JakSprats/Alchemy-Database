@@ -413,6 +413,9 @@ struct redisServer {
     FILE *devnull;
     unsigned char big_endian;
     unsigned char psize;
+#ifdef ALSOSQL
+    int curr_db_id;
+#endif   
 };
 
 /* Structure to hold hash iteration abstration. Note that iteration over

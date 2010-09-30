@@ -36,7 +36,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 extern struct sharedObjectsStruct shared;
 
 // GLOBALS
-extern int Num_tbls;
+extern int Num_tbls[MAX_NUM_TABLES];
 
 extern char  CCOMMA;
 extern char  CEQUALS;

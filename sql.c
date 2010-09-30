@@ -32,6 +32,7 @@ char *strcasestr(const char *haystack, const char *needle); /*compiler warning*/
 // FROM redis.c
 #define RL4 redisLog(4,
 extern struct sharedObjectsStruct shared;
+extern struct redisServer server;
 
 // GLOBALS
 extern char  CCOMMA;
@@ -41,7 +42,7 @@ extern char  CMINUS;
 extern char *COMMA;
 extern char *STORE;
 
-extern int Num_tbls;
+extern int Num_tbls[MAX_NUM_TABLES];
 extern robj  *Tbl_col_name [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
 extern uchar  Tbl_col_type [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
 
@@ -168,10 +169,11 @@ bool parseCreateTable(redisClient *c,
             }
 
             /* in 2nd word search for INT (but not BIGINT) */
+            int ntbls = Num_tbls[server.curr_db_id];
             if (strcasestr(tkn, "INT") && !strcasestr(tkn, "BIGINT")) {
-                Tbl_col_type[Num_tbls][*ccount] = COL_TYPE_INT;
+                Tbl_col_type[ntbls][*ccount] = COL_TYPE_INT;
             } else {
-                Tbl_col_type[Num_tbls][*ccount] = COL_TYPE_STRING;
+                Tbl_col_type[ntbls][*ccount] = COL_TYPE_STRING;
             }
             *ccount = *ccount + 1;
         }

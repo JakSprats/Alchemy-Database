@@ -35,8 +35,9 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 // FROM redis.c
 #define RL4 redisLog(4,
 extern struct sharedObjectsStruct shared;
+extern struct redisServer server;
 
-extern int            Num_tbls;
+extern int            Num_tbls     [MAX_NUM_TABLES];
 extern robj          *Tbl_name     [MAX_NUM_TABLES];
 extern int            Tbl_col_count[MAX_NUM_TABLES];
 extern robj          *Tbl_col_name [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
@@ -358,7 +359,8 @@ void createTableAsObject(redisClient *c) {
             hashReleaseIterator(hi);
         } else if (o->type == REDIS_BTREE) {
             btEntry          *be;
-            int               tmatch = Num_tbls - 1; /* table just created */
+            /* table just created */
+            int               tmatch = Num_tbls[server.curr_db_id] - 1;
             int               pktype = Tbl_col_type[tmatch][0];
             robj             *new_o  = lookupKeyWrite(c->db, Tbl_name[tmatch]);
             btStreamIterator *bi     = btGetFullRangeIterator(o, 0, 1);

@@ -34,9 +34,10 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 // FROM redis.c
 #define RL4 redisLog(4,
 extern struct sharedObjectsStruct shared;
+extern struct redisServer server;
 
 // GLOBALS
-extern int Num_tbls;
+extern int Num_tbls[MAX_NUM_TABLES];
 
 extern char  CCOMMA;
 extern char  CEQUALS;
@@ -73,7 +74,7 @@ void legacyInsertCommand(redisClient *c) {
 }
 
 void legacyTableCommand(redisClient *c) {
-    if (Num_tbls >= MAX_NUM_TABLES) {
+    if (Num_tbls[server.curr_db_id] >= MAX_NUM_TABLES) {
         addReply(c,shared.toomanytables);
         return;
     }
@@ -105,7 +106,7 @@ void legacyTableCommand(redisClient *c) {
         unsigned char miss = 1;
         for (unsigned char j = 0; j < NUM_COL_TYPES; j++) {
             if (!strcmp(type, Col_type_defs[j])) {
-                Tbl_col_type[Num_tbls][col_count] = j;
+                Tbl_col_type[Num_tbls[server.curr_db_id]][col_count] = j;
                 miss = 0;
                 break;
             }

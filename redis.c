@@ -948,8 +948,8 @@ static struct redisCommand cmdTable[] = {
 };
 
 #ifdef ALSOSQL
-extern int            Num_tbls;
-extern int            Num_indx;
+extern int            Num_tbls[MAX_NUM_TABLES];
+extern int            Num_indx[MAX_NUM_INDICES];
 extern stor_cmd       StorageCommands[];
 extern stor_cmd       AccessCommands[];
 extern char          *EQUALS;
@@ -2059,8 +2059,8 @@ static void initServer() {
     if (server.vm_enabled) vmInit();
 
 #ifdef ALSOSQL
-    Num_indx    = 0;
-    Num_tbls    = 0;
+    bzero(&Num_tbls, sizeof(int) * MAX_NUM_TABLES);
+    bzero(&Num_indx, sizeof(int) * MAX_NUM_INDICES);
 
     StorageCommands[0].func  = lpushCommand;
     StorageCommands[0].name  = "LPUSH";
@@ -2166,6 +2166,10 @@ static long long emptyDb() {
         removed += dictSize(server.db[j].dict);
         dictEmpty(server.db[j].dict);
         dictEmpty(server.db[j].expires);
+#ifdef ALSOSQL
+        Num_indx[j] = 0;
+        Num_tbls[j] = 0;
+#endif
     }
     return removed;
 }
@@ -3081,8 +3085,9 @@ static int selectDb(redisClient *c, int id) {
     if (id < 0 || id > server.dbnum)
         return REDIS_ERR;
 
-    c->db     = &server.db[id];
-    c->dictid = id;
+    c->db             = &server.db[id];
+    c->dictid         = id;
+    server.curr_db_id = id;
     return REDIS_OK;
 }
 
@@ -7277,8 +7282,8 @@ static void flushdbCommand(redisClient *c) {
     dictEmpty(c->db->dict);
     dictEmpty(c->db->expires);
 #ifdef ALSOSQL
-    Num_indx = 0;
-    Num_tbls = 0;
+    Num_indx[c->db->id] = 0;
+    Num_tbls[c->db->id] = 0;
 #endif
     addReply(c,shared.ok);
 }

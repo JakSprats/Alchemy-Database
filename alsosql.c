@@ -40,8 +40,8 @@ extern struct sharedObjectsStruct shared;
 extern struct redisServer server;
 
 // GLOBALS
-int Num_tbls;
-extern int Num_indx;
+int Num_tbls[MAX_NUM_TABLES];
+extern int Num_indx[MAX_NUM_INDICES];
 
 char  CCOMMA       = ',';
 char  CEQUALS      = '=';
@@ -88,7 +88,7 @@ robj *cloneRobj(robj *r) { // must be decrRefCount()ed
 }
 
 int find_table(char *tname) {
-    for (int i = 0; i < Num_tbls; i++) {
+    for (int i = 0; i < Num_tbls[server.curr_db_id]; i++) {
         if (Tbl_name[i]) {
             if (!strcmp(tname, (char *)Tbl_name[i]->ptr)) {
                 return i;
@@ -280,26 +280,26 @@ void createTableCommitReply(redisClient *c,
     addReply(c, shared.ok);
     // commit table definition
     for (int i = 0; i < ccount; i++) {
-        Tbl_col_name[Num_tbls][i] = createStringObject(cnames[i],
+        Tbl_col_name[Num_tbls[server.curr_db_id]][i] = createStringObject(cnames[i],
                                                        strlen(cnames[i]));
     }
     robj *tbl               = createStringObject(tname, strlen(tname));
-    Tbl_col_count[Num_tbls] = ccount;
-    Tbl_name     [Num_tbls] = tbl;
-    robj *bt                = createBtreeObject(Tbl_col_type[Num_tbls][0],
-                                                Num_tbls, BTREE_TABLE);
+    Tbl_col_count[Num_tbls[server.curr_db_id]] = ccount;
+    Tbl_name     [Num_tbls[server.curr_db_id]] = tbl;
+    robj *bt                = createBtreeObject(Tbl_col_type[Num_tbls[server.curr_db_id]][0],
+                                                Num_tbls[server.curr_db_id], BTREE_TABLE);
     dictAdd(c->db->dict, tbl, bt);
     // BTREE implies an index on "tbl:pk:index" -> autogenerate
     robj *iname = createStringObject(tname, strlen(tname));
     iname->ptr  = sdscatprintf(iname->ptr, "%s%s%s%s",
                                        COLON, cnames[0], COLON, INDEX_DELIM);
-    newIndex(c, iname->ptr, Num_tbls, 0, 1);
+    newIndex(c, iname->ptr, Num_tbls[server.curr_db_id], 0, 1);
     decrRefCount(iname);
-    Num_tbls++;
+    Num_tbls[server.curr_db_id]++;
 }
 
 void createTable(redisClient *c) {
-    if (Num_tbls >= MAX_NUM_TABLES) {
+    if (Num_tbls[server.curr_db_id] >= MAX_NUM_TABLES) {
         addReply(c, shared.toomanytables);
         return;
     }
