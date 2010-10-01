@@ -38,10 +38,7 @@ extern struct sharedObjectsStruct shared;
 extern struct redisServer server;
 
 extern int            Num_tbls     [MAX_NUM_TABLES];
-extern robj          *Tbl_name     [MAX_NUM_TABLES];
-extern int            Tbl_col_count[MAX_NUM_TABLES];
-extern robj          *Tbl_col_name [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
-extern unsigned char  Tbl_col_type [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
+extern r_tbl_t  Tbl[MAX_NUM_TABLES];
 
 stor_cmd AccessCommands[NUM_ACCESS_TYPES];
 char *DUMP = "DUMP";
@@ -361,8 +358,8 @@ void createTableAsObject(redisClient *c) {
             btEntry          *be;
             /* table just created */
             int               tmatch = Num_tbls[server.curr_db_id] - 1;
-            int               pktype = Tbl_col_type[tmatch][0];
-            robj             *new_o  = lookupKeyWrite(c->db, Tbl_name[tmatch]);
+            int               pktype = Tbl[tmatch].col_type[0];
+            robj             *new_o  = lookupKeyWrite(c->db, Tbl[tmatch].name);
             btStreamIterator *bi     = btGetFullRangeIterator(o, 0, 1);
             while ((be = btRangeNext(bi, 0)) != NULL) {      // iterate btree
                 robj *key = be->key;
@@ -407,7 +404,7 @@ void denormCommand(redisClient *c) {
     fc->argc               = 4;
 
     btEntry          *be;
-    robj             *o  = lookupKeyRead(c->db, Tbl_name[tmatch]);
+    robj             *o  = lookupKeyRead(c->db, Tbl[tmatch].name);
     btStreamIterator *bi = btGetFullRangeIterator(o, 0, 1);
     while ((be = btRangeNext(bi, 0)) != NULL) {      // iterate btree
         robj *key = be->key;
@@ -422,9 +419,9 @@ void denormCommand(redisClient *c) {
         fc->argv[1] = createStringObject(hname, sdslen(hname));
         sdsfree(hname);
 
-        for (int i = 1; i < Tbl_col_count[tmatch]; i++) { /* PK is in name */
+        for (int i = 1; i < Tbl[tmatch].col_count; i++) { /* PK is in name */
             robj *r     = createColObjFromRow(row, i, key, tmatch);
-            sds tname   = Tbl_col_name[tmatch][i]->ptr;
+            sds tname   = Tbl[tmatch].col_name[i]->ptr;
             fc->argv[2] = createStringObject(tname, sdslen(tname));
             sds cname   = r->ptr;
             fc->argv[3] = createStringObject(cname, sdslen(cname));

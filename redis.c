@@ -956,10 +956,8 @@ extern char          *EQUALS;
 extern char          *PERIOD;
 extern char          *Col_type_defs[];
 
-extern robj          *Tbl_name      [MAX_NUM_TABLES];
-extern int            Tbl_col_count [MAX_NUM_TABLES];
-extern robj          *Tbl_col_name  [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
-extern unsigned char  Tbl_col_type  [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
+extern r_tbl_t Tbl[MAX_NUM_TABLES];
+
 extern robj          *Index_obj     [MAX_NUM_INDICES];
 extern int            Indexed_column[MAX_NUM_INDICES];
 extern bool           Index_virt    [MAX_NUM_INDICES];
@@ -2147,12 +2145,11 @@ static void initServer() {
     AccessCommands[13].name  = "SORT";
     AccessCommands[13].argc  = 2;
 
-
-    //RUSS JAKSPRATS 
-
     init_six_bit_strings();
 
-    bzero(Tbl_name, sizeof(robj *) * MAX_NUM_TABLES);
+    for (int i = 0; i < MAX_NUM_TABLES; i++) {
+        Tbl[i].name = NULL;
+    }
     bzero(Index_obj, sizeof(robj *) * MAX_NUM_INDICES);
 #endif /* ALSOSQL END */
 }
@@ -9007,7 +9004,7 @@ static int fwriteBulkLong(FILE *fp, long l) {
 }
 
 static bool appendOnlyDumpIndices(FILE *fp, int tmatch) {
-    sds tname  = Tbl_name[tmatch]->ptr;
+    sds tname  = Tbl[tmatch].name->ptr;
     char cmd3[]="*3\r\n$11\r\nLEGACYINDEX\r\n";
     MATCH_INDICES(tmatch)
     for (int i = 0; i < matches; i++) {
@@ -9019,7 +9016,7 @@ static bool appendOnlyDumpIndices(FILE *fp, int tmatch) {
         s        = sdsnewlen(tname, sdslen(tname));
         s        = sdscatlen(s, PERIOD, 1);
         int icol = Indexed_column[inum];
-        sds t    = Tbl_col_name[tmatch][icol]->ptr;
+        sds t    = Tbl[tmatch].col_name[icol]->ptr;
         s        = sdscatlen(s, t, sdslen(t));
         if (fwriteBulkString(fp, s, sdslen(s)) == -1) goto awerr;
         sdsfree(s);
@@ -9030,19 +9027,19 @@ awerr:
 }
 
 static bool appendOnlyDumpTable(FILE *fp, robj *o, bt *btr, int tmatch) {
-    sds tname  = Tbl_name[tmatch]->ptr;
+    sds tname  = Tbl[tmatch].name->ptr;
     /* Dump Table definition */
     char cmd[]="*3\r\n$11\r\nLEGACYTABLE\r\n";
     if (fwrite(cmd,sizeof(cmd)-1,1,fp) == 0) goto atwerr;
     if (fwriteBulkString(fp, tname, sdslen(tname)) == -1) goto atwerr;
 
     sds s = sdsempty();
-    for (int i = 0; i < Tbl_col_count[tmatch]; i++) {
+    for (int i = 0; i < Tbl[tmatch].col_count; i++) {
         if (i) s = sdscatlen(s, ",", 1);
-        s = sdscatlen(s, Tbl_col_name[tmatch][i]->ptr,
-                      sdslen(Tbl_col_name[tmatch][i]->ptr));
+        s = sdscatlen(s, Tbl[tmatch].col_name[i]->ptr,
+                      sdslen(Tbl[tmatch].col_name[i]->ptr));
         s = sdscatlen(s, EQUALS, 1);
-        s = sdscat(s, Col_type_defs[Tbl_col_type[tmatch][i]]);
+        s = sdscat(s, Col_type_defs[Tbl[tmatch].col_type[i]]);
     }
     if (fwriteBulkString(fp, s, sdslen(s)) == -1) goto atwerr;
     sdsfree(s);

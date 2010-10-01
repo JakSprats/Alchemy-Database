@@ -31,6 +31,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include "bt_iterator.h"
 #include "row.h"
 #include "common.h"
+#include "alsosql.h"
 #include "rdb_alsosql.h"
 #include "index.h"
 
@@ -39,16 +40,10 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 extern struct sharedObjectsStruct shared;
 extern struct redisServer server;
 
-extern char  CMINUS;
-extern char  CPERIOD;
-
-extern char *Col_type_defs[];
-
-extern robj  *Tbl_name     [MAX_NUM_TABLES];
-extern int    Tbl_col_count[MAX_NUM_TABLES];
-extern robj  *Tbl_col_name [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
-extern uchar  Tbl_col_type [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
-extern int    Tbl_virt_indx[MAX_NUM_TABLES];
+extern char     CMINUS;
+extern char     CPERIOD;
+extern char    *Col_type_defs[];
+extern r_tbl_t  Tbl[MAX_NUM_TABLES];
 
 // GLOBALS
 int    Num_indx      [MAX_NUM_INDICES];
@@ -157,7 +152,8 @@ void addToIndex(redisDb *db, robj *pko, char *vals, uint cofsts[], int inum) {
     int   end        = cofsts[j];
     int   len        = cofsts[i] - end - 1;
     robj *col_key    = createStringObject(vals + end, len); /* freeME */
-    int   pktype     = Tbl_col_type[Index_on_table[inum]][0];
+    int   itm        = Index_on_table[inum];
+    int   pktype     = Tbl[itm].col_type[0];
 
     iAdd(ibtr, col_key, pko, pktype);
     decrRefCount(col_key);
@@ -170,7 +166,8 @@ void delFromIndex(redisDb *db, robj *old_pk, robj *row, int inum, int tmatch) {
     robj *ibt     = lookupKey(db, ind);
     bt   *ibtr    = (bt *)(ibt->ptr);
     robj *old_val = createColObjFromRow(row, cmatch, old_pk, tmatch); //freeME
-    int   pktype  = Tbl_col_type[Index_on_table[inum]][0];
+    int   itm     = Index_on_table[inum];
+    int   pktype  = Tbl[itm].col_type[0];
 
     iRem(ibtr, old_val, old_pk, pktype);
     decrRefCount(old_val);
@@ -190,7 +187,8 @@ void updateIndex(redisDb *db,
     robj *ibt     = lookupKey(db, ind);
     bt   *ibtr    = (bt *)(ibt->ptr);
     robj *old_val = createColObjFromRow(row, cmatch, old_pk, tmatch); //freeME
-    int   pktype  = Tbl_col_type[Index_on_table[inum]][0];
+    int   itm     = Index_on_table[inum];
+    int   pktype  = Tbl[itm].col_type[0];
 
     iRem(ibtr, old_val, old_pk, pktype);
     if (pk_update) iAdd(ibtr, old_val, new_pk, pktype);
@@ -207,15 +205,15 @@ void newIndex(redisClient *c, char *iname, int tmatch, int cmatch, bool virt) {
     Index_obj     [nindx] = ind;
     Index_on_table[nindx] = tmatch;
     Indexed_column[nindx] = cmatch;
-    Index_type    [nindx] = Tbl_col_type[tmatch][cmatch];
+    Index_type    [nindx] = Tbl[tmatch].col_type[cmatch];
     Index_virt    [nindx] = virt;
 
     robj *ibt;
     if (virt) {
         ibt                   = createEmptyBtreeObject();
-        Tbl_virt_indx[tmatch] = nindx;
+        Tbl[tmatch].virt_indx = nindx;
     } else {
-        int ctype = Tbl_col_type[tmatch][cmatch];
+        int ctype = Tbl[tmatch].col_type[cmatch];
         ibt       = createBtreeObject(ctype, nindx, BTREE_INDEX);
     }
     //store BtreeObject in HashTable key: indexname
@@ -265,7 +263,7 @@ static void indexCommit(redisClient *c, char *iname, char *trgt) {
     newIndex(c, iname, tmatch, cmatch, 0);
     addReply(c, shared.ok);
 
-    robj *o   = lookupKeyRead(c->db, Tbl_name[tmatch]);
+    robj *o   = lookupKeyRead(c->db, Tbl[tmatch].name);
     bt   *btr = (bt *)o->ptr;
     if (btr->numkeys > 0) { /* table has rows - loop thru and populate index */
         robj *ind  = Index_obj[Num_indx[server.curr_db_id] - 1];
@@ -321,7 +319,7 @@ void iselectAction(redisClient *c,
         return;
     }
     RANGE_CHECK_OR_REPLY(range)
-    robj *o = lookupKeyRead(c->db, Tbl_name[tmatch]);
+    robj *o = lookupKeyRead(c->db, Tbl[tmatch].name);
     LEN_OBJ
 
     btEntry    *be, *nbe;
@@ -377,7 +375,7 @@ void iupdateAction(redisClient   *c,
                    uchar  cmiss[]) {
     RANGE_CHECK_OR_REPLY(range)
     btEntry    *be, *nbe;
-    robj       *o    = lookupKeyRead(c->db, Tbl_name[tmatch]);
+    robj       *o    = lookupKeyRead(c->db, Tbl[tmatch].name);
     robj       *ind  = Index_obj [imatch];
     bool        virt = Index_virt[imatch];
     robj       *bt   = virt ? o : lookupKey(c->db, ind);
@@ -407,7 +405,7 @@ void iupdateAction(redisClient   *c,
     dictIterator  *udi     = dictGetIterator(uset->ptr);
     while ((ude = dictNext(udi)) != NULL) {                    // iterate uset
         robj *nkey = ude->key;
-        robj *row  = btFindVal(o, nkey, Tbl_col_type[tmatch][0]);
+        robj *row  = btFindVal(o, nkey, Tbl[tmatch].col_type[0]);
         updateRow(c, o, nkey, row, tmatch, ncols, matches, indices,
                   vals, vlens, cmiss);
         updated++;
@@ -423,7 +421,7 @@ void iupdateCommand(redisClient *c) {
     int   imatch = checkIndexedColumnOrReply(c, c->argv[1]->ptr);
     if (imatch == -1) return;
     int   tmatch = Index_on_table[imatch];
-    int   ncols   = Tbl_col_count [tmatch];
+    int   ncols   = Tbl[tmatch]._col_count;
 
     int   cmatchs  [MAX_COLUMN_PER_TABLE];
     char *mvals    [MAX_COLUMN_PER_TABLE];
@@ -445,7 +443,7 @@ void ideleteAction(redisClient *c, char *range, int tmatch, int imatch) {
     MATCH_INDICES(tmatch)
 
     btEntry    *be,  *nbe;
-    robj       *o    = lookupKeyRead(c->db, Tbl_name[tmatch]);
+    robj       *o    = lookupKeyRead(c->db, Tbl[tmatch].name);
     robj       *ind  = Index_obj [imatch];
     bool        virt = Index_virt[imatch];
     robj       *dset = createSetObject();
@@ -537,12 +535,12 @@ void ikeysCommand(redisClient *c) {
 void dumpCommand(redisClient *c) {
     char buf[192];
     TABLE_CHECK_OR_REPLY(c->argv[1]->ptr,)
-    robj *o = lookupKeyRead(c->db, Tbl_name[tmatch]);
+    robj *o = lookupKeyRead(c->db, Tbl[tmatch].name);
 
     bt *btr = (bt *)o->ptr;
     int   cmatchs[MAX_COLUMN_PER_TABLE];
     int   qcols = parseColListOrReply(c, tmatch, "*", cmatchs);
-    char *tname = Tbl_name[tmatch]->ptr;
+    char *tname = Tbl[tmatch].name->ptr;
 
     LEN_OBJ
 
@@ -559,11 +557,11 @@ void dumpCommand(redisClient *c) {
             ADD_REPLY_BULK(r, buf)
             sprintf(buf, "CREATE TABLE `%s` ( ", m_tname);
             r = createStringObject(buf, strlen(buf));
-            for (int i = 0; i < Tbl_col_count[tmatch]; i++) {
-                bool is_int = (Tbl_col_type[tmatch][i] == COL_TYPE_INT);
+            for (int i = 0; i < Tbl[tmatch].col_count; i++) {
+                bool is_int = (Tbl[tmatch].col_type[i] == COL_TYPE_INT);
                 r->ptr = sdscatprintf(r->ptr, "%s %s %s%s",
                           (i == 0) ? ""        : ",",
-                          (char *)Tbl_col_name[tmatch][i]->ptr,
+                          (char *)Tbl[tmatch].col_name[i]->ptr,
                           is_int ? "INT" : (i == 0) ? "VARCHAR(512)" : "TEXT",
                           (i == 0) ? " PRIMARY KEY" : "");
             }
@@ -637,16 +635,16 @@ static void zero(robj *r) {
 void descCommand(redisClient *c) {
     char buf[256];
     TABLE_CHECK_OR_REPLY( c->argv[1]->ptr,)
-    robj *o = lookupKeyRead(c->db, Tbl_name[tmatch]);
+    robj *o = lookupKeyRead(c->db, Tbl[tmatch].name);
 
     LEN_OBJ;
-    for (int j = 0; j < Tbl_col_count[tmatch]; j++) {
+    for (int j = 0; j < Tbl[tmatch].col_count; j++) {
         robj *r      = createObject(REDIS_STRING, NULL);
         int   imatch = find_index(tmatch, j);
         if (imatch == -1) {
             r->ptr  = sdscatprintf(sdsempty(), "%s | %s ",
-                                        (char *)Tbl_col_name[tmatch][j]->ptr,
-                                        Col_type_defs[Tbl_col_type[tmatch][j]]);
+                                        (char *)Tbl[tmatch].col_name[j]->ptr,
+                                        Col_type_defs[Tbl[tmatch].col_type[j]]);
         } else {
             robj *ind    = Index_obj[imatch];
             ull   isize  = 0;
@@ -657,8 +655,8 @@ void descCommand(redisClient *c) {
             }
             r->ptr = sdscatprintf(sdsempty(),
                                         "%s | %s | INDEX: %s [BYTES: %lld]",
-                                        (char *)Tbl_col_name[tmatch][j]->ptr,
-                                        Col_type_defs[Tbl_col_type[tmatch][j]],
+                                        (char *)Tbl[tmatch].col_name[j]->ptr,
+                                        Col_type_defs[Tbl[tmatch].col_type[j]],
                                         (char *)ind->ptr, 
                                         isize);
         }

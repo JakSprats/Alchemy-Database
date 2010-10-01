@@ -30,16 +30,16 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include "bt.h"
 #include "index.h"
 #include "common.h"
+#include "alsosql.h"
 #include "row.h"
 
 // FROM redis.c
 #define RL4 redisLog(4,
 extern struct redisServer server;
 
-extern char *OUTPUT_DELIM;
-extern robj          *Tbl_name     [MAX_NUM_TABLES];
-extern uchar  Tbl_col_type [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
-extern int            Indexed_column[];
+extern char    *OUTPUT_DELIM;
+extern r_tbl_t  Tbl[MAX_NUM_TABLES];
+extern int      Indexed_column[];
 
 #define RFLAG_1BYTE_INT        1
 #define RFLAG_2BYTE_INT        2
@@ -206,7 +206,7 @@ robj *createRow(redisClient *c,
     uint n_6b_s  = 0;
     bool         can_six = 1;
     for (int i = 1; i < ncols; i++) {       // check can_six, create sixbitstr
-        if (Tbl_col_type[tmatch][i] == COL_TYPE_STRING) {
+        if (Tbl[tmatch].col_type[i] == COL_TYPE_STRING) {
             uint   s_len;
             uint   len   = col_ofsts[i] - col_ofsts[i - 1] - 1;
             char          *start = vals + col_ofsts[i - 1];
@@ -227,7 +227,7 @@ robj *createRow(redisClient *c,
     for (int i = 1; i < ncols; i++) { // modify cofsts (INTs are binary streams)
         int   len   = col_ofsts[i] - col_ofsts[i - 1] - 1;
         int   diff  = 0;
-        if (Tbl_col_type[tmatch][i] == COL_TYPE_INT) {
+        if (Tbl[tmatch].col_type[i] == COL_TYPE_INT) {
             char         *start = vals + col_ofsts[i - 1];
             uint  clen  = createICol(c, start, len, &sflags[i], &icols[i]);
             if (!clen) return NULL;
@@ -250,7 +250,7 @@ robj *createRow(redisClient *c,
 
     k = 0;
     for (int i = 1; i < ncols; i++) { // SET data      (size+=rlen)
-        if (Tbl_col_type[tmatch][i] == COL_TYPE_INT) {
+        if (Tbl[tmatch].col_type[i] == COL_TYPE_INT) {
             writeUIntCol(&row, sflags[i], icols[i]);
         } else {
             if (can_six) {
@@ -386,7 +386,7 @@ static aobj getRawCol(robj *r,
         next = *i;
     }
 
-    if (Tbl_col_type[tmatch][o_cmatch] == COL_TYPE_INT) {
+    if (Tbl[tmatch].col_type[o_cmatch] == COL_TYPE_INT) {
         uint clen;
         a.type              = COL_TYPE_INT;
         uchar *data = row + start;
@@ -418,7 +418,7 @@ static aobj getRawCol(robj *r,
 }
 
 aobj getColStr(robj *r, int cmatch, robj *okey, int tmatch) {
-    bool  icol   = (Tbl_col_type[tmatch][cmatch] == COL_TYPE_INT);
+    bool  icol   = (Tbl[tmatch].col_type[cmatch] == COL_TYPE_INT);
     return getRawCol(r, cmatch, okey, tmatch, NULL, icol, 1);
 }
 
@@ -477,15 +477,15 @@ int deleteRow(redisClient *c,
               robj        *pko,
               int          matches,
               int          indices[]) {
-    robj *o   = lookupKeyRead(c->db, Tbl_name[tmatch]);
-    robj *row = btFindVal(o, pko, Tbl_col_type[tmatch][0]);
+    robj *o   = lookupKeyRead(c->db, Tbl[tmatch].name);
+    robj *row = btFindVal(o, pko, Tbl[tmatch].col_type[0]);
     if (!row) return 0;
     if (matches) { // indices
         for (int i = 0; i < matches; i++) {         // delete indices
             delFromIndex(c->db, pko, row, indices[i], tmatch);
         }
     }
-    btDelete(o, pko, Tbl_col_type[tmatch][0]);
+    btDelete(o, pko, Tbl[tmatch].col_type[0]);
     server.dirty++;
     return 1;
 }
@@ -524,12 +524,12 @@ bool updateRow(redisClient *c,
     uint rlen = 0;
     for (int i = 0; i < ncols; i++) {
         avals[i].len = 0;
-        bool icol = (Tbl_col_type[tmatch][i] == COL_TYPE_INT);
+        bool icol = (Tbl[tmatch].col_type[i] == COL_TYPE_INT);
         if (cmiss[i]) {
             avals[i] = getRawCol(orow, i, okey, tmatch, &sflags[i], icol, 0);
         } else {
             avals[i].sixbit = 0;
-            if (Tbl_col_type[tmatch][i] == COL_TYPE_INT) {
+            if (Tbl[tmatch].col_type[i] == COL_TYPE_INT) {
                 long l   = atol(vals[i]);
                 if (l >= TWO_POW_32) {
                     addReply(c, shared.col_uint_too_big);
@@ -548,7 +548,7 @@ bool updateRow(redisClient *c,
                 avals[i].enc  = COL_TYPE_STRING;
             }
         }
-        if (i && Tbl_col_type[tmatch][i] == COL_TYPE_INT) {
+        if (i && Tbl[tmatch].col_type[i] == COL_TYPE_INT) {
             avals[i].len = _createICol(avals[i].i, &sflags[i], &(avals[i].s_i));
         }
         col_ofsts[i]  = rlen + avals[i].len;
@@ -560,7 +560,7 @@ bool updateRow(redisClient *c,
     uint  n_6b_s  = 0;
     bool can_six = 1;
     for (int i = 1; i < ncols; i++) {       // check can_six, create sixbitstr
-        if (Tbl_col_type[tmatch][i] == COL_TYPE_STRING) {
+        if (Tbl[tmatch].col_type[i] == COL_TYPE_STRING) {
             uint   s_len;
             uint   len   = avals[i].len;
             char          *start = avals[i].s;
@@ -585,7 +585,7 @@ bool updateRow(redisClient *c,
         for (int i = 1; i < ncols; i++) { // modify cofsts for SixBitStrings
             uint len  = avals[i].len;
             uint diff = 0;
-            if (Tbl_col_type[tmatch][i] == COL_TYPE_STRING) {
+            if (Tbl[tmatch].col_type[i] == COL_TYPE_STRING) {
                 diff     = (len - sixbitlen[k]);
                 k++;
             }
@@ -604,7 +604,7 @@ bool updateRow(redisClient *c,
 
     uint k = 0;
     for (int i = 1; i < ncols; i++) {       // SET data
-        if (Tbl_col_type[tmatch][i] == COL_TYPE_INT) {
+        if (Tbl[tmatch].col_type[i] == COL_TYPE_INT) {
             writeUIntCol(&row, sflags[i], avals[i].s_i);
         } else {
            if (can_six) {
@@ -626,8 +626,8 @@ bool updateRow(redisClient *c,
             updateIndex(c->db, okey, npk, NULL, orow, indices[i], 1, tmatch);
         }
         // delete then add
-        btDelete(o, okey,    Tbl_col_type[tmatch][0]);
-        btAdd(   o, npk,  r, Tbl_col_type[tmatch][0]);
+        btDelete(o, okey,    Tbl[tmatch].col_type[0]);
+        btAdd(   o, npk,  r, Tbl[tmatch].col_type[0]);
         decrRefCount(npk);
     } else if (matches) {
         robj *npk = createStringObjectFromAobj(&avals[0]);
@@ -642,7 +642,7 @@ bool updateRow(redisClient *c,
         }
         decrRefCount(npk);
         // overwrite w/ new row
-        btReplace(o, okey, r, Tbl_col_type[tmatch][0]);
+        btReplace(o, okey, r, Tbl[tmatch].col_type[0]);
     }
     decrRefCount(r);
     server.dirty++;

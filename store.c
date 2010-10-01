@@ -49,10 +49,7 @@ extern char *PERIOD;
 
 extern char *Col_type_defs[];
 
-extern robj          *Tbl_name     [MAX_NUM_TABLES];
-extern int            Tbl_col_count[MAX_NUM_TABLES];
-extern robj          *Tbl_col_name [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
-extern unsigned char  Tbl_col_type [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
+extern r_tbl_t  Tbl[MAX_NUM_TABLES];
 
 extern robj          *Index_obj     [MAX_NUM_INDICES];
 extern bool           Index_virt    [MAX_NUM_INDICES];
@@ -66,7 +63,7 @@ stor_cmd StorageCommands[NUM_STORAGE_TYPES];
 
 void legacyInsertCommand(redisClient *c) {
     TABLE_CHECK_OR_REPLY(c->argv[1]->ptr,)
-    int ncols = Tbl_col_count[tmatch];
+    int ncols = Tbl[tmatch].col_count;
     MATCH_INDICES(tmatch)
 
     char *vals   = c->argv[2]->ptr;
@@ -106,7 +103,7 @@ void legacyTableCommand(redisClient *c) {
         unsigned char miss = 1;
         for (unsigned char j = 0; j < NUM_COL_TYPES; j++) {
             if (!strcmp(type, Col_type_defs[j])) {
-                Tbl_col_type[Num_tbls[server.curr_db_id]][col_count] = j;
+                Tbl[Num_tbls[server.curr_db_id]].col_type[col_count] = j;
                 miss = 0;
                 break;
             }
@@ -156,9 +153,9 @@ static void cpyColDef(char *cdefs,
                       int   loop,
                       bool  has_conflicts,
                       bool  cname_cflix[]) {
-    robj *col = Tbl_col_name[tmatch][cmatch];
+    robj *col = Tbl[tmatch].col_name[cmatch];
     if (has_conflicts && cname_cflix[loop]) { // prepend tbl_name
-        robj *tbl = Tbl_name[tmatch];
+        robj *tbl = Tbl[tmatch].name;
         memcpy(cdefs + *slot, tbl->ptr, sdslen(tbl->ptr));  
         *slot        += sdslen(tbl->ptr);        // tblname
         memcpy(cdefs + *slot, PERIOD, 1);
@@ -168,7 +165,7 @@ static void cpyColDef(char *cdefs,
     *slot        += sdslen(col->ptr);            // colname
     memcpy(cdefs + *slot, EQUALS, 1);
     *slot = *slot + 1;
-    char *ctype   = Col_type_defs[Tbl_col_type[tmatch][cmatch]];
+    char *ctype   = Col_type_defs[Tbl[tmatch].col_type[cmatch]];
     int   ctlen   = strlen(ctype);               // [INT,STRING]
     memcpy(cdefs + *slot, ctype, ctlen);
     *slot        += ctlen;
@@ -230,8 +227,8 @@ bool createTableFromJoin(redisClient *c,
     for (int i = 0; i < qcols; i++) {
         for (int j = 0; j < qcols; j++) {
             if (i == j) continue;
-            if (!strcmp(Tbl_col_name[j_tbls[i]][j_cols[i]]->ptr,
-                        Tbl_col_name[j_tbls[j]][j_cols[j]]->ptr)) {
+            if (!strcmp(Tbl[j_tbls[i]].col_name[j_cols[i]]->ptr,
+                        Tbl[j_tbls[j]].col_name[j_cols[j]]->ptr)) {
                 cname_cflix[i] = 1;
                 break;
             } else {
@@ -351,7 +348,7 @@ void istoreCommit(redisClient *c,
         if (sub_pk) nargc--;
     }
     RANGE_CHECK_OR_REPLY(range)
-    robj *o = lookupKeyRead(c->db, Tbl_name[tmatch]);
+    robj *o = lookupKeyRead(c->db, Tbl[tmatch].name);
 
     robj               *argv[STORAGE_MAX_ARGC + 1];
     struct redisClient *fc = rsql_createFakeClient();
@@ -385,7 +382,7 @@ void istoreCommit(redisClient *c,
             btStreamIterator *nbi = btGetFullRangeIterator(val, 0, 0);
             while ((nbe = btRangeNext(nbi, 1)) != NULL) {     // iterate NodeBT
                 robj *pko = nbe->key;
-                robj *row = btFindVal(o, pko, Tbl_col_type[tmatch][0]);
+                robj *row = btFindVal(o, pko, Tbl[tmatch].col_type[0]);
                 if (!istoreAction(c, fc, tmatch, cmatchs, qcols, sto,
                                   pko, row, newname, sub_pk, nargc)) {
                     btReleaseRangeIterator(nbi);

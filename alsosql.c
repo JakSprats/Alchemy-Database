@@ -60,12 +60,8 @@ char *STORE        = "STORE";
 
 char *Col_type_defs[] = {"TEXT", "INT" };
 
-//TODO make these 4 a struct
-robj   *Tbl_name     [MAX_NUM_TABLES];
-int     Tbl_col_count[MAX_NUM_TABLES];
-robj   *Tbl_col_name [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
-uchar   Tbl_col_type [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
-int     Tbl_virt_indx[MAX_NUM_TABLES];
+// Redisql table information is stored here
+r_tbl_t Tbl[MAX_NUM_TABLES];
 
 extern robj  *Index_obj     [MAX_NUM_INDICES];
 extern int    Index_on_table[MAX_NUM_INDICES];
@@ -89,8 +85,8 @@ robj *cloneRobj(robj *r) { // must be decrRefCount()ed
 
 int find_table(char *tname) {
     for (int i = 0; i < Num_tbls[server.curr_db_id]; i++) {
-        if (Tbl_name[i]) {
-            if (!strcmp(tname, (char *)Tbl_name[i]->ptr)) {
+        if (Tbl[i].name) {
+            if (!strcmp(tname, (char *)Tbl[i].name->ptr)) {
                 return i;
             }
         }
@@ -99,10 +95,10 @@ int find_table(char *tname) {
 }
 
 int find_column(int tmatch, char *column) {
-    if (!Tbl_name[tmatch]) return -1;
-    for (int j = 0; j < Tbl_col_count[tmatch]; j++) {
-        if (Tbl_col_name[tmatch][j]) {
-            if (!strcmp(column, (char *)Tbl_col_name[tmatch][j]->ptr)) {
+    if (!Tbl[tmatch].name) return -1;
+    for (int j = 0; j < Tbl[tmatch].col_count; j++) {
+        if (Tbl[tmatch].col_name[j]) {
+            if (!strcmp(column, (char *)Tbl[tmatch].col_name[j]->ptr)) {
                 return j;
             }
         }
@@ -111,10 +107,10 @@ int find_column(int tmatch, char *column) {
 }
 
 static int find_column_n(int tmatch, char *column, int len) {
-    if (!Tbl_name[tmatch]) return -1;
-    for (int j = 0; j < Tbl_col_count[tmatch]; j++) {
-        if (Tbl_col_name[tmatch][j]) {
-            if (!strncmp(column, (char *)Tbl_col_name[tmatch][j]->ptr, len)) {
+    if (!Tbl[tmatch].name) return -1;
+    for (int j = 0; j < Tbl[tmatch].col_count; j++) {
+        if (Tbl[tmatch].col_name[j]) {
+            if (!strncmp(column, (char *)Tbl[tmatch].col_name[j]->ptr, len)) {
                 return j;
             }
         }
@@ -182,10 +178,10 @@ int parseColListOrReply(redisClient   *c,
                         char          *clist,
                         int            cmatchs[]) {
     if (*clist == '*') {
-        for (int i = 0; i < Tbl_col_count[tmatch]; i++) {
+        for (int i = 0; i < Tbl[tmatch].col_count; i++) {
             cmatchs[i] = i;
         }
-        return Tbl_col_count[tmatch];
+        return Tbl[tmatch].col_count;
     }
 
     int   qcols  = 0;
@@ -276,18 +272,19 @@ void createTableCommitReply(redisClient *c,
             }
         }
     }
+    int ntbls = Num_tbls[server.curr_db_id];
 
     addReply(c, shared.ok);
     // commit table definition
     for (int i = 0; i < ccount; i++) {
-        Tbl_col_name[Num_tbls[server.curr_db_id]][i] = createStringObject(cnames[i],
-                                                       strlen(cnames[i]));
+        Tbl[ntbls].col_name[i] = createStringObject(cnames[i],
+                                                    strlen(cnames[i]));
     }
-    robj *tbl               = createStringObject(tname, strlen(tname));
-    Tbl_col_count[Num_tbls[server.curr_db_id]] = ccount;
-    Tbl_name     [Num_tbls[server.curr_db_id]] = tbl;
-    robj *bt                = createBtreeObject(Tbl_col_type[Num_tbls[server.curr_db_id]][0],
-                                                Num_tbls[server.curr_db_id], BTREE_TABLE);
+    robj *tbl            = createStringObject(tname, strlen(tname));
+    Tbl[ntbls].col_count = ccount;
+    Tbl[ntbls].name      = tbl;
+    robj *bt             = createBtreeObject(Tbl[ntbls].col_type[0],
+                                             ntbls, BTREE_TABLE);
     dictAdd(c->db->dict, tbl, bt);
     // BTREE implies an index on "tbl:pk:index" -> autogenerate
     robj *iname = createStringObject(tname, strlen(tname));
@@ -371,8 +368,8 @@ void insertCommitReply(redisClient *c,
         return;
     }
 
-    int   pktype = Tbl_col_type[tmatch][0];
-    robj *o      = lookupKeyWrite(c->db, Tbl_name[tmatch]);
+    int   pktype = Tbl[tmatch].col_type[0];
+    robj *o      = lookupKeyWrite(c->db, Tbl[tmatch].name);
 
     robj *pko = createStringObject(pk, pklen);
     if (pktype == COL_TYPE_INT) {
@@ -439,7 +436,7 @@ void insertCommand(redisClient *c) {
     int   len   = sdslen(c->argv[2]->ptr);
     char *t     = rem_backticks(c->argv[2]->ptr, &len); /* Mysql compliance */
     TABLE_CHECK_OR_REPLY(t,)
-    int   ncols = Tbl_col_count[tmatch];
+    int   ncols = Tbl[tmatch].col_count;
     MATCH_INDICES(tmatch)
 
     /* TODO column ordering is IGNORED */
@@ -461,7 +458,7 @@ void selectReply(redisClient  *c,
                  int           tmatch,
                  int           cmatchs[],
                  int           qcols) {
-    robj *row = btFindVal(o, pko, Tbl_col_type[tmatch][0]);
+    robj *row = btFindVal(o, pko, Tbl[tmatch].col_type[0]);
     if (!row) {
         addReply(c, shared.nullbulk);
         return;
@@ -543,7 +540,7 @@ void selectALSOSQLCommand(redisClient *c) {
             int qcols = parseColListOrReply(c, tmatch, clist, cmatchs);
             if (!qcols) goto sel_cmd_err;
     
-            robj *o = lookupKeyRead(c->db, Tbl_name[tmatch]);
+            robj *o = lookupKeyRead(c->db, Tbl[tmatch].name);
             selectReply(c, o, pko, tmatch, cmatchs, qcols);
         }
     }
@@ -595,7 +592,7 @@ void updateCommand(redisClient *c) {
     char  *mvals  [MAX_COLUMN_PER_TABLE];
     uint   mvlens [MAX_COLUMN_PER_TABLE];
     char  *nvals = c->argv[3]->ptr;
-    int    ncols = Tbl_col_count[tmatch];
+    int    ncols = Tbl[tmatch].col_count;
     int    qcols = parseUpdateColListReply(c, tmatch, nvals, cmatchs,
                                            mvals, mvlens);
     if (!qcols) return;
@@ -617,8 +614,8 @@ void updateCommand(redisClient *c) {
                       vals, vlens, cmiss);
     } else {
         Curr_range = sdsdup(pko->ptr);
-        robj *o   = lookupKeyRead(c->db, Tbl_name[tmatch]);
-        robj *row = btFindVal(o, pko, Tbl_col_type[tmatch][0]);
+        robj *o   = lookupKeyRead(c->db, Tbl[tmatch].name);
+        robj *row = btFindVal(o, pko, Tbl[tmatch].col_type[0]);
         if (!row) {
             addReply(c, shared.czero);
             goto update_cmd_err;
@@ -657,13 +654,13 @@ static void dropTable(redisClient *c) {
         //TODO shuffle indices to make space for deleted indices
     }
 
-    deleteKey(c->db, Tbl_name[tmatch]);
-    Tbl_name[tmatch] = NULL;
+    deleteKey(c->db, Tbl[tmatch].name);
+    Tbl[tmatch].name = NULL;
     deleted++;
 
-    for (int j = 0; j < Tbl_col_count[tmatch]; j++) {
-        decrRefCount(Tbl_col_name[tmatch][j]);
-        Tbl_col_name[tmatch][j] = NULL;
+    for (int j = 0; j < Tbl[tmatch].col_count; j++) {
+        decrRefCount(Tbl[tmatch].col_name[j]);
+        Tbl[tmatch].col_name[j] = NULL;
     }
     //TODO shuffle tables to make space for deleted indices
 

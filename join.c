@@ -49,9 +49,7 @@ extern char *COLON;
 extern char *COMMA;
 extern char *PERIOD;
 
-extern robj          *Tbl_name     [MAX_NUM_TABLES];
-extern int            Tbl_col_count[MAX_NUM_TABLES];
-extern unsigned char  Tbl_col_type [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
+extern r_tbl_t  Tbl[MAX_NUM_TABLES];
 
 extern robj          *Index_obj     [MAX_NUM_INDICES];
 extern int            Index_on_table[MAX_NUM_INDICES];
@@ -119,7 +117,7 @@ int multiColCheckOrReply(redisClient *c,
         }
         int tmatch       = find_table(col_list);
         if (*nextp == '*') {
-            for (int i = 0; i < Tbl_col_count[tmatch]; i++) {
+            for (int i = 0; i < Tbl[tmatch].col_count; i++) {
                 j_tbls[qcols]  = tmatch;
                 j_cols[qcols] = i;
                 qcols++;
@@ -365,7 +363,7 @@ static void joinAddColsFromInd(join_add_cols_t *a, robj *rset[]) {
     int   row_len = 0;
     int   nresp   = 0;
     robj *row     = a->virt ? a->val :
-                            btFindVal(a->o, a->val, Tbl_col_type[a->itable][0]);
+                            btFindVal(a->o, a->val, Tbl[a->itable].col_type[0]);
     robj *key     = a->virt ? a->jk  : a->val;
 
     // Alsosql understands INT encoding where redis doesnt(dict.c)
@@ -514,7 +512,7 @@ void joinGeneric(redisClient *c,
     int    j_ind_len [MAX_JOIN_INDXS];
     int    jind_ncols[MAX_JOIN_INDXS];
 
-    uchar  pktype = Tbl_col_type[Index_on_table[j_indxs[0]]][0];
+    uchar  pktype = Tbl[Index_on_table[j_indxs[0]]].col_type[0];
     bt    *jbtr   = createJoinResultSet(pktype);
 
     robj  *rset[MAX_JOIN_INDXS];
@@ -536,7 +534,7 @@ void joinGeneric(redisClient *c,
         jac.index     = i;
 
         jac.itable     = Index_on_table[j_indxs[i]];
-        jac.o          = lookupKeyRead(c->db, Tbl_name[jac.itable]);
+        jac.o          = lookupKeyRead(c->db, Tbl[jac.itable].name);
         robj *ind      = Index_obj [j_indxs[i]];
         jac.virt       = Index_virt[j_indxs[i]];
         robj *bt       = jac.virt ? jac.o : lookupKey(c->db, ind);

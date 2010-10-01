@@ -38,8 +38,7 @@ extern char  CCOMMA;
 extern char  CMINUS;
 extern char *COMMA;
 
-extern robj          *Tbl_name     [MAX_NUM_TABLES];
-extern unsigned char  Tbl_col_type [MAX_NUM_TABLES][MAX_COLUMN_PER_TABLE];
+extern r_tbl_t  Tbl[MAX_NUM_TABLES];
 
 // HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS
 // HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS
@@ -79,7 +78,7 @@ static void condSelectReply(redisClient   *c,
     }
 
     unsigned char hit = 0;
-    int type = Tbl_col_type[tmatch][cmatch];
+    int type = Tbl[tmatch].col_type[cmatch];
     if (col_cmp(s, low->ptr,  type) >= 0 &&
         col_cmp(s, high->ptr, type) <= 0) {
         hit = 1;
@@ -138,7 +137,7 @@ void tscanCommand(redisClient *c) {
                                                        0, 0);
     if (!where) goto tscan_cmd_err;
 
-    robj *o = lookupKeyRead(c->db, Tbl_name[tmatch]);
+    robj *o = lookupKeyRead(c->db, Tbl[tmatch].name);
     LEN_OBJ
     bool rq = (where == 2); /* RANGE QUERY */
     robj *rq_low, *rq_high;

@@ -21,6 +21,14 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include "redis.h"
 #include "common.h"
 
+typedef struct r_tbl {
+    robj   *name;
+    int     col_count;
+    robj   *col_name[MAX_COLUMN_PER_TABLE];
+    uchar   col_type[MAX_COLUMN_PER_TABLE];
+    int     virt_indx;
+} r_tbl_t;
+
 robj *cloneRobj(robj *r);
 
 int find_table(char *tname);
