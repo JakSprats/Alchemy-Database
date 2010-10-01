@@ -254,7 +254,7 @@ static void indexCommit(redisClient *c, char *iname, char *trgt) {
         goto ind_commit_err;
     }
 
-    for (int i = 0; i < Num_indx[server.curr_db_id]; i++) { /* check already indxd */
+    for (int i = 0; i < Num_indx[server.curr_db_id]; i++) { /* already indxd? */
         if (Index_on_table[i] == tmatch &&
             Indexed_column[i] == cmatch) {
             addReply(c, shared.indexedalready);

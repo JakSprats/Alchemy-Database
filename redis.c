@@ -3439,7 +3439,7 @@ void decrRefCount(void *obj) {
     if (--(o->refcount) == 0) {
         if (server.vm_enabled && o->storage == REDIS_VM_SWAPPING)
             vmCancelThreadedIOJob(obj);
-//RL4 "decrRefCount type: %d", o->type);
+        //RL4 "decrRefCount type: %d", o->type);
         switch(o->type) {
         case REDIS_STRING:     freeStringObject(o);    break;
         case REDIS_LIST:       freeListObject(o);      break;
@@ -8831,6 +8831,13 @@ struct redisClient *createFakeClient(void) {
     listSetDupMethod(c->reply,dupClientReplyValue);
     initClientMultiState(c);
     return c;
+}
+
+struct redisClient *rsql_createFakeClient(void) {
+    int                 curr_db_id = server.curr_db_id;
+    struct redisClient *fc         = createFakeClient();
+    selectDb(fc, curr_db_id);
+    return fc;
 }
 
 void freeFakeClient(struct redisClient *c) {

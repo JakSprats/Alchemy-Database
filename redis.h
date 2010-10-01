@@ -259,7 +259,7 @@ struct sharedObjectsStruct {
     *colon, *nullbulk, *nullmultibulk, *queued,
     *emptymultibulk, *wrongtypeerr, *nokeyerr, *syntaxerr, *sameobjecterr,
 
-#ifdef ALSOSQL
+#ifdef ALSOSQL /* ALSOSQL START */
     *toomanytables,       *undefinedcolumntype, *missingcolumntype,
     *toomanycolumns,      *columnnametoobig,    *insertcannotoverwrite,
     *uint_pk_too_big,     *uint_no_negative_values,
@@ -507,5 +507,9 @@ typedef struct storage_command {
     char *name;
     int   argc;
 } stor_cmd;
+
+#ifdef ALSOSQL
+struct redisClient *rsql_createFakeClient(void);
+#endif
 
 #endif

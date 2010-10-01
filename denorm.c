@@ -122,13 +122,13 @@ static bool addDouble(redisClient *c,
 /* NOTE: this function implements a fakeClient pipe */
 void createTableAsObjectOperation(redisClient *c, bool is_insert) {
     robj               *wargv[3];
-    struct redisClient *wfc    = createFakeClient(); /* one client to write */
+    struct redisClient *wfc    = rsql_createFakeClient(); /* client to write */
     wfc->argc                  = 3;
     wfc->argv                  = wargv;
     wfc->argv[1]               = c->argv[2]; /* table name */
 
     robj               **rargv = malloc(sizeof(robj *) * c->argc);
-    struct redisClient *rfc    = createFakeClient(); /* one client to read */
+    struct redisClient *rfc    = rsql_createFakeClient(); /* client to read */
     rfc->argv                  = rargv;
     for (int i = 5; i < c->argc; i++) {
         rfc->argv[i - 4] = c->argv[i];
@@ -218,7 +218,7 @@ void createTableAsObject(redisClient *c) {
         bool                ret   = 0;
         int                 qcols = 0;
         uchar               where = 0;
-        struct redisClient *rfc   = createFakeClient();
+        struct redisClient *rfc   = rsql_createFakeClient();
         rfc->argv                 = argv;
         rfc->argv[1]              = c->argv[2];
         if (strchr(clist, '.')) { /* CREATE TABLE AS SELECT JOIN */
@@ -271,7 +271,7 @@ void createTableAsObject(redisClient *c) {
         int qcols = parseColListOrReply(c, tmatch, "*", cmatchs);
 
         robj               *argv[3];
-        struct redisClient *cfc = createFakeClient();
+        struct redisClient *cfc = rsql_createFakeClient();
         cfc->argv               = argv;
         cfc->argv[1]            = c->argv[2]; /* new tablename */
 
@@ -298,7 +298,7 @@ void createTableAsObject(redisClient *c) {
 
     if (!table_created) { /* CREATE TABLE */
         robj               *argv[3];
-        struct redisClient *fc = createFakeClient();
+        struct redisClient *fc = rsql_createFakeClient();
         fc->argv               = argv;
         fc->argv[1]            = c->argv[2];
         fc->argv[2]            = cdef;
@@ -318,7 +318,7 @@ void createTableAsObject(redisClient *c) {
         createTableAsObjectOperation(c, 0);
     } else {
         robj               *argv[3];
-        struct redisClient *dfc    = createFakeClient();
+        struct redisClient *dfc    = rsql_createFakeClient();
         dfc->argv                  = argv;
         dfc->argv[1]               = c->argv[2]; /* table name */
         long                instd = 1;          /* ZER0 as PK can be bad */
@@ -402,7 +402,7 @@ void denormCommand(redisClient *c) {
     *fmt           = 'd';
 
     robj               *argv[4];
-    struct redisClient *fc = createFakeClient();
+    struct redisClient *fc = rsql_createFakeClient();
     fc->argv               = argv;
     fc->argc               = 4;
 

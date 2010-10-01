@@ -238,7 +238,7 @@ void normCommand(redisClient *c) {
     }
 
     robj               *argv[STORAGE_MAX_ARGC + 1];
-    struct redisClient *fc = createFakeClient();
+    struct redisClient *fc = rsql_createFakeClient();
     fc->argv               = argv;
 
     LEN_OBJ

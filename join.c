@@ -680,7 +680,7 @@ void jstoreCommit(redisClient *c,
                   int          n_ind,
                   int          qcols) {
     robj               *argv[STORAGE_MAX_ARGC + 1];
-    struct redisClient *fc = createFakeClient();
+    struct redisClient *fc = rsql_createFakeClient();
     fc->argv               = argv;
 
     bool sub_pk    = (StorageCommands[sto].argc < 0);

@@ -354,7 +354,7 @@ void istoreCommit(redisClient *c,
     robj *o = lookupKeyRead(c->db, Tbl_name[tmatch]);
 
     robj               *argv[STORAGE_MAX_ARGC + 1];
-    struct redisClient *fc = createFakeClient();
+    struct redisClient *fc = rsql_createFakeClient();
     fc->argv               = argv;
     if (!StorageCommands[sto].argc) { // create table first if needed
         fc->argv[1] = cloneRobj(newname);
