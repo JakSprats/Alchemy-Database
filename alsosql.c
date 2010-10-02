@@ -41,7 +41,8 @@ extern struct redisServer server;
 
 // GLOBALS
 int Num_tbls[MAX_NUM_DB];
-extern int Num_indx[MAX_NUM_INDICES];
+// Redisql table information is stored here
+r_tbl_t Tbl[MAX_NUM_DB][MAX_NUM_TABLES];
 
 char  CCOMMA       = ',';
 char  CEQUALS      = '=';
@@ -60,14 +61,9 @@ char *STORE        = "STORE";
 
 char *Col_type_defs[] = {"TEXT", "INT" };
 
-// Redisql table information is stored here
-r_tbl_t Tbl[MAX_NUM_DB][MAX_NUM_TABLES];
 
-extern robj  *Index_obj     [MAX_NUM_INDICES];
-extern int    Index_on_table[MAX_NUM_INDICES];
-extern int    Indexed_column[MAX_NUM_INDICES];
-extern uchar  Index_type    [MAX_NUM_INDICES];
-extern bool   Index_virt    [MAX_NUM_INDICES];
+extern int     Num_indx[MAX_NUM_DB];
+extern r_ind_t Index   [MAX_NUM_DB][MAX_NUM_INDICES];
 
 sds   Curr_range;
 
@@ -632,29 +628,28 @@ update_cmd_err:
     if (range) decrRefCount(range);
 }
 
-static void dropTable(redisClient *c) {
-    char *tname = c->argv[2]->ptr;
-    TABLE_CHECK_OR_REPLY(tname,)
+
+unsigned long tableEmpty(redisDb *db, int tmatch) {
     MATCH_INDICES(tmatch)
     unsigned long deleted = 0;
     if (matches) { // delete indices first
         robj *index_del_list[MAX_COLUMN_PER_TABLE];
         for (int i = 0; i < matches; i++) { // build list of robj's to delete
             int inum          = indices[i];
-            index_del_list[i] = Index_obj[inum];
+            index_del_list[i] = Index[server.dbid][inum].obj;
         }
         for (int i = 0; i < matches; i++) { //delete index robj's
-            deleteKey(c->db, index_del_list[i]);
-            int inum             = indices[i];
-            Index_obj     [inum] = NULL;
-            Index_on_table[inum] = -1;
-            Indexed_column[inum] = -1;
+            deleteKey(db, index_del_list[i]);
+            int inum                        = indices[i];
+            Index[server.dbid][inum].obj    = NULL;
+            Index[server.dbid][inum].table  = -1;
+            Index[server.dbid][inum].column = -1;
             deleted++;
         }
         //TODO shuffle indices to make space for deleted indices
     }
 
-    deleteKey(c->db, Tbl[server.dbid][tmatch].name);
+    deleteKey(db, Tbl[server.dbid][tmatch].name);
     Tbl[server.dbid][tmatch].name = NULL;
     deleted++;
 
@@ -664,6 +659,13 @@ static void dropTable(redisClient *c) {
     }
     //TODO shuffle tables to make space for deleted indices
 
+    return deleted;
+}
+
+static void dropTable(redisClient *c) {
+    char *tname           = c->argv[2]->ptr;
+    TABLE_CHECK_OR_REPLY(tname,)
+    unsigned long deleted = tableEmpty(c->db, tmatch);
     addReplyLongLong(c, deleted);
     server.dirty++;
 }

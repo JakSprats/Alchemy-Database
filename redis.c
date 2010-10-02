@@ -504,7 +504,6 @@ struct redisCommand {
     int vm_firstkey; /* The first argument that's a key (0 = no keys) */
     int vm_lastkey;  /* THe last argument that's a key */
     int vm_keystep;  /* The step between first and last key */
-    int alsosql; //TODO throwout
 };
 #endif
 
@@ -948,21 +947,18 @@ static struct redisCommand cmdTable[] = {
 };
 
 #ifdef ALSOSQL
-extern int            Num_tbls[MAX_NUM_TABLES];
-extern int            Num_indx[MAX_NUM_INDICES];
-extern stor_cmd       StorageCommands[];
-extern stor_cmd       AccessCommands[];
-extern char          *EQUALS;
-extern char          *PERIOD;
-extern char          *Col_type_defs[];
+extern int       Num_tbls[MAX_NUM_DB];
+extern r_tbl_t   Tbl     [MAX_NUM_DB][MAX_NUM_TABLES];
+extern int       Num_indx[MAX_NUM_DB];
+extern r_ind_t   Index   [MAX_NUM_DB][MAX_NUM_INDICES];
 
-extern r_tbl_t Tbl[MAX_NUM_DB][MAX_NUM_TABLES];
+extern stor_cmd  StorageCommands[];
+extern stor_cmd  AccessCommands[];
+extern char     *EQUALS;
+extern char     *PERIOD;
+extern char     *Col_type_defs[];
 
-extern robj          *Index_obj     [MAX_NUM_INDICES];
-extern int            Indexed_column[MAX_NUM_INDICES];
-extern bool           Index_virt    [MAX_NUM_INDICES];
-
-extern sds            Curr_range;
+extern sds       Curr_range;
 #endif /* ALSOSQL END */
 
 /*============================ Utility functions ============================ */
@@ -2057,8 +2053,8 @@ static void initServer() {
     if (server.vm_enabled) vmInit();
 
 #ifdef ALSOSQL
-    bzero(&Num_tbls, sizeof(int) * MAX_NUM_TABLES);
-    bzero(&Num_indx, sizeof(int) * MAX_NUM_INDICES);
+    bzero(&Num_tbls, sizeof(int) * MAX_NUM_DB);
+    bzero(&Num_indx, sizeof(int) * MAX_NUM_DB);
 
     StorageCommands[0].func  = lpushCommand;
     StorageCommands[0].name  = "LPUSH";
@@ -2150,7 +2146,9 @@ static void initServer() {
     for (int i = 0; i < MAX_NUM_TABLES; i++) {
         Tbl[server.dbid][i].name = NULL;
     }
-    bzero(Index_obj, sizeof(robj *) * MAX_NUM_INDICES);
+    for (int i = 0; i < MAX_NUM_TABLES; i++) {
+        Index[server.dbid][i].obj = NULL;
+    }
 #endif /* ALSOSQL END */
 }
 
@@ -2161,12 +2159,19 @@ static long long emptyDb() {
 
     for (j = 0; j < server.dbnum; j++) {
         removed += dictSize(server.db[j].dict);
+#ifdef ALSOSQL
+        server.dbid           = j;
+        for (int k = 0; k < Num_tbls[server.dbid]; k++) {
+            tableEmpty(&server.db[j], k);
+        }
+        Num_tbls[server.dbid] = 0;
+        for (int k = 0; k < Num_indx[server.dbid]; k++) {
+            indexEmpty(&server.db[j], k);
+        }
+        Num_indx[server.dbid] = 0;
+#endif
         dictEmpty(server.db[j].dict);
         dictEmpty(server.db[j].expires);
-#ifdef ALSOSQL
-        Num_indx[j] = 0;
-        Num_tbls[j] = 0;
-#endif
     }
     return removed;
 }
@@ -3079,11 +3084,9 @@ static void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mas
 }
 
 static int selectDb(redisClient *c, int id) {
-    if (id < 0 || id > server.dbnum)
-        return REDIS_ERR;
-
-    c->db             = &server.db[id];
-    c->dictid         = id;
+    if (id < 0 || id > server.dbnum) return REDIS_ERR;
+    c->db       = &server.db[id];
+    c->dictid   = id;
     server.dbid = id;
     return REDIS_OK;
 }
@@ -4105,6 +4108,7 @@ static int rdbSave(char *filename) {
     for (j = 0; j < server.dbnum; j++) {
         redisDb *db = server.db+j;
         dict *d = db->dict;
+        server.dbid = j;
 
         dictEntry *(*funcNext)(dictIterator *iter) = dictNext;
         dictIterator *(*funcGetIterator)(dict *d)  = dictGetIterator;
@@ -9009,13 +9013,13 @@ static bool appendOnlyDumpIndices(FILE *fp, int tmatch) {
     MATCH_INDICES(tmatch)
     for (int i = 0; i < matches; i++) {
         int inum = indices[i];
-        if (Index_virt[inum]) continue;
+        if (Index[server.dbid][inum].virt) continue;
         if (!(fwrite(cmd3, sizeof(cmd3) - 1, 1, fp))) goto awerr;
-        sds s    = Index_obj[inum]->ptr;
+        sds s    = Index[server.dbid][inum].obj->ptr;
         if (fwriteBulkString(fp, s, sdslen(s)) == -1) goto awerr;
         s        = sdsnewlen(tname, sdslen(tname));
         s        = sdscatlen(s, PERIOD, 1);
-        int icol = Indexed_column[inum];
+        int icol = Index[server.dbid][inum].column;
         sds t    = Tbl[server.dbid][tmatch].col_name[icol]->ptr;
         s        = sdscatlen(s, t, sdslen(t));
         if (fwriteBulkString(fp, s, sdslen(s)) == -1) goto awerr;
@@ -9095,6 +9099,7 @@ static int rewriteAppendOnlyFile(char *filename) {
 #endif
         redisDb *db = server.db+j;
         dict *d = db->dict;
+        server.dbid = j;
 
         dictEntry *(*funcNext)(dictIterator *iter) = dictNext;
         dictIterator *(*funcGetIterator)(dict *d)  = dictGetIterator;
@@ -9220,7 +9225,6 @@ static int rewriteAppendOnlyFile(char *filename) {
                     }
                     dictReleaseIterator(di);
                 }
-            //TODO break this out into a function
             } else if (o->type == REDIS_BTREE) {
                 bt  *btr  = (struct btree *)(o->ptr);
                 if (!btr) continue; /* virtual indices have NULLs */
@@ -9366,8 +9370,6 @@ static void aofRemoveTempFile(pid_t childpid) {
  * This basically is almost as simple of a blocking VM, but almost as parallel
  * as a fully non-blocking VM.
  */
-
-//TODO JAKSPRATS RUSS stopInSwapAppendOnly and startInSwapAppendOnly
 
 /* Called when the user switches from "appendonly yes" to "appendonly no"
  * at runtime using the CONFIG command. */

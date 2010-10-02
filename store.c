@@ -49,10 +49,8 @@ extern char *PERIOD;
 
 extern char *Col_type_defs[];
 
-extern r_tbl_t  Tbl[MAX_NUM_DB][MAX_NUM_TABLES];
-
-extern robj          *Index_obj     [MAX_NUM_INDICES];
-extern bool           Index_virt    [MAX_NUM_INDICES];
+extern r_tbl_t  Tbl   [MAX_NUM_DB][MAX_NUM_TABLES];
+extern r_ind_t  Index [MAX_NUM_DB][MAX_NUM_INDICES];
 
 #define MAX_TBL_DEF_SIZE     1024
 
@@ -365,8 +363,8 @@ void istoreCommit(redisClient *c,
 
     btEntry            *be, *nbe;
     unsigned int        stored = 0;
-    robj               *ind    = Index_obj [imatch];
-    bool                virt   = Index_virt[imatch];
+    robj               *ind    = Index[server.dbid][imatch].obj;
+    bool                virt   = Index[server.dbid][imatch].virt;
     robj               *bt     = virt ? o : lookupKey(c->db, ind);
     btStreamIterator   *bi     = btGetRangeIterator(bt, low, high, virt);
     while ((be = btRangeNext(bi, 1)) != NULL) {                // iterate btree
@@ -408,7 +406,7 @@ istore_err:
 void istoreCommand(redisClient *c) {
     int imatch = checkIndexedColumnOrReply(c, c->argv[3]->ptr);
     if (imatch == -1) return;
-    int tmatch = Index_on_table[imatch];
+    int tmatch = Index[server.dbid][imatch].table;
     istoreCommit(c, tmatch, imatch, c->argv[1]->ptr, c->argv[5]->ptr,
                  c->argv[4]->ptr, c->argv[2]);
 }

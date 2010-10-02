@@ -50,11 +50,9 @@ extern char *COLON;
 extern char *COMMA;
 extern char *PERIOD;
 
-extern r_tbl_t  Tbl[MAX_NUM_DB][MAX_NUM_TABLES];
+extern r_tbl_t  Tbl   [MAX_NUM_DB][MAX_NUM_TABLES];
+extern r_ind_t  Index [MAX_NUM_DB][MAX_NUM_INDICES];
 
-extern robj          *Index_obj     [MAX_NUM_INDICES];
-extern int            Index_on_table[MAX_NUM_INDICES];
-extern bool           Index_virt    [MAX_NUM_INDICES];
 
 extern stor_cmd StorageCommands[NUM_STORAGE_TYPES];
 
@@ -483,7 +481,7 @@ void joinGeneric(redisClient *c,
     jqo_t col_sort_order [MAX_COLUMN_PER_TABLE];
     for (int i = 0; i < qcols; i++) {
         for (int j = 0; j < n_ind; j++) {
-            if (j_tbls[i] == Index_on_table[j_indxs[j]]) {
+            if (j_tbls[i] == Index[server.dbid][j_indxs[j]].table) {
                 col_sort_order[i].t = j_tbls[i];
                 col_sort_order[i].i = j;
                 col_sort_order[i].c = j_cols[i];
@@ -514,7 +512,8 @@ void joinGeneric(redisClient *c,
     int    j_ind_len [MAX_JOIN_INDXS];
     int    jind_ncols[MAX_JOIN_INDXS];
 
-    uchar  pktype = Tbl[server.dbid][Index_on_table[j_indxs[0]]].col_type[0];
+    uchar  pktype = Tbl[server.dbid]
+                       [Index[server.dbid][j_indxs[0]].table].col_type[0];
     bt    *jbtr   = createJoinResultSet(pktype);
 
     robj  *rset[MAX_JOIN_INDXS];
@@ -535,10 +534,10 @@ void joinGeneric(redisClient *c,
         j_ind_len[i] = 0;
         jac.index    = i;
 
-        jac.itable    = Index_on_table[j_indxs[i]];
+        jac.itable    = Index[server.dbid][j_indxs[i]].table;
         jac.o         = lookupKeyRead(c->db, Tbl[server.dbid][jac.itable].name);
-        robj *ind     = Index_obj [j_indxs[i]];
-        jac.virt      = Index_virt[j_indxs[i]];
+        robj *ind     = Index[server.dbid][j_indxs[i]].obj;
+        jac.virt      = Index[server.dbid][j_indxs[i]].virt;
         robj *bt      = jac.virt ? jac.o : lookupKey(c->db, ind);
         btStreamIterator *bi = btGetRangeIterator(bt, low, high, jac.virt);
         while ((be = btRangeNext(bi, 1)) != NULL) {            // iterate btree

@@ -29,6 +29,14 @@ typedef struct r_tbl {
     int     virt_indx;
 } r_tbl_t;
 
+typedef struct r_ind {
+    robj  *obj;
+    int    table;
+    int    column;
+    uchar  type;
+    bool   virt;
+} r_ind_t;
+
 robj *cloneRobj(robj *r);
 
 int find_table(char *tname);
@@ -119,5 +127,8 @@ void insertCommitReply(redisClient *c,
                        int          tmatch,
                        int          matches,
                        int          indices[]);
+
+unsigned long tableEmpty(redisDb *db, int tmatch);
+void          indexEmpty(redisDb *db, int inum);
 
 #endif /*__ALSOSQL__H */ 

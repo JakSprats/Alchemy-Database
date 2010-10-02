@@ -38,8 +38,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 extern struct redisServer server;
 
 extern char    *OUTPUT_DELIM;
-extern r_tbl_t  Tbl[MAX_NUM_DB][MAX_NUM_TABLES];
-extern int      Indexed_column[];
+extern r_tbl_t  Tbl     [MAX_NUM_DB][MAX_NUM_TABLES];
+extern r_ind_t  Index   [MAX_NUM_DB][MAX_NUM_INDICES];
 
 #define RFLAG_1BYTE_INT        1
 #define RFLAG_2BYTE_INT        2
@@ -633,7 +633,7 @@ bool updateRow(redisClient *c,
         robj *npk = createStringObjectFromAobj(&avals[0]);
         for (int i = 0; i < matches; i++) { //redo ALL affected indices
             int inum   = indices[i];
-            int cmatch = Indexed_column[inum];
+            int cmatch = Index[server.dbid][inum].column;
             if (!cmiss[cmatch]) {
                 robj *new_val = createStringObjectFromAobj(&avals[cmatch]);
                 updateIndex(c->db, okey, npk, new_val, orow, inum, 0, tmatch);

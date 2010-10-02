@@ -46,21 +46,16 @@ extern char    *Col_type_defs[];
 extern r_tbl_t  Tbl[MAX_NUM_DB][MAX_NUM_TABLES];
 
 // GLOBALS
-int    Num_indx      [MAX_NUM_INDICES];
-//TODO make these 4 a struct
-robj  *Index_obj     [MAX_NUM_INDICES];
-int    Index_on_table[MAX_NUM_INDICES];
-int    Indexed_column[MAX_NUM_INDICES];
-uchar  Index_type    [MAX_NUM_INDICES];
-bool   Index_virt    [MAX_NUM_INDICES];
+int     Num_indx[MAX_NUM_DB];
+r_ind_t Index   [MAX_NUM_DB][MAX_NUM_INDICES];
 
 // HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS
 // HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS
 int find_index(int tmatch, int cmatch) {
     for (int i = 0; i < Num_indx[server.dbid]; i++) {
-        if (Index_obj[i]) {
-            if (Index_on_table[i] == tmatch &&
-                Indexed_column[i] == cmatch) {
+        if (Index[server.dbid][i].obj) {
+            if (Index[server.dbid][i].table  == tmatch &&
+                Index[server.dbid][i].column == cmatch) {
                 return i;
             }
         }
@@ -71,8 +66,8 @@ int find_index(int tmatch, int cmatch) {
 int match_index(int tmatch, int indices[]) {
     int matches = 0;
     for (int i = 0; i < Num_indx[server.dbid]; i++) {
-        if (Index_obj[i]) {
-            if (Index_on_table[i] == tmatch) {
+        if (Index[server.dbid][i].obj) {
+            if (Index[server.dbid][i].table == tmatch) {
                 indices[matches] = i;
                 matches++;
             }
@@ -83,8 +78,8 @@ int match_index(int tmatch, int indices[]) {
 
 int match_index_name(char *iname) {
     for (int i = 0; i < Num_indx[server.dbid]; i++) {
-        if (Index_obj[i]) {
-            if (!strcmp(iname, (char *)Index_obj[i]->ptr)) {
+        if (Index[server.dbid][i].obj) {
+            if (!strcmp(iname, (char *)Index[server.dbid][i].obj->ptr)) {
                 return i;
             }
         }
@@ -143,16 +138,16 @@ static void iRem(bt *ibtr, robj *i_key, robj *i_val, int pktype) {
 }
 
 void addToIndex(redisDb *db, robj *pko, char *vals, uint cofsts[], int inum) {
-    if (Index_virt[inum]) return;
-    robj *ind        = Index_obj[inum];
+    if (Index[server.dbid][inum].virt) return;
+    robj *ind        = Index[server.dbid][inum].obj;
     robj *ibt        = lookupKey(db, ind);
     bt   *ibtr       = (bt *)(ibt->ptr);
-    int   i          = Indexed_column[inum];
+    int   i          = Index[server.dbid][inum].column;
     int   j          = i - 1;
     int   end        = cofsts[j];
     int   len        = cofsts[i] - end - 1;
     robj *col_key    = createStringObject(vals + end, len); /* freeME */
-    int   itm        = Index_on_table[inum];
+    int   itm        = Index[server.dbid][inum].table;
     int   pktype     = Tbl[server.dbid][itm].col_type[0];
 
     iAdd(ibtr, col_key, pko, pktype);
@@ -160,13 +155,13 @@ void addToIndex(redisDb *db, robj *pko, char *vals, uint cofsts[], int inum) {
 }
 
 void delFromIndex(redisDb *db, robj *old_pk, robj *row, int inum, int tmatch) {
-    if (Index_virt[inum]) return;
-    robj *ind     = Index_obj     [inum];
-    int   cmatch  = Indexed_column[inum];
+    if (Index[server.dbid][inum].virt) return;
+    robj *ind     = Index[server.dbid][inum].obj;
+    int   cmatch  = Index[server.dbid][inum].column;
     robj *ibt     = lookupKey(db, ind);
     bt   *ibtr    = (bt *)(ibt->ptr);
     robj *old_val = createColObjFromRow(row, cmatch, old_pk, tmatch); //freeME
-    int   itm     = Index_on_table[inum];
+    int   itm     = Index[server.dbid][inum].table;
     int   pktype  = Tbl[server.dbid][itm].col_type[0];
 
     iRem(ibtr, old_val, old_pk, pktype);
@@ -181,13 +176,13 @@ void updateIndex(redisDb *db,
                  int       inum,
                  uchar     pk_update,
                  int       tmatch) {
-    if (Index_virt[inum]) return;
-    int   cmatch  = Indexed_column[inum];
-    robj *ind     = Index_obj     [inum];
+    if (Index[server.dbid][inum].virt) return;
+    int   cmatch  = Index[server.dbid][inum].column;
+    robj *ind     = Index[server.dbid][inum].obj;
     robj *ibt     = lookupKey(db, ind);
     bt   *ibtr    = (bt *)(ibt->ptr);
     robj *old_val = createColObjFromRow(row, cmatch, old_pk, tmatch); //freeME
-    int   itm     = Index_on_table[inum];
+    int   itm     = Index[server.dbid][inum].table;
     int   pktype  = Tbl[server.dbid][itm].col_type[0];
 
     iRem(ibtr, old_val, old_pk, pktype);
@@ -200,21 +195,21 @@ void updateIndex(redisDb *db,
 // SIMPLE_COMMANDS SIMPLE_COMMANDS SIMPLE_COMMANDS SIMPLE_COMMANDS
 void newIndex(redisClient *c, char *iname, int tmatch, int cmatch, bool virt) {
     // commit index definition
-    robj *ind             = createStringObject(iname, strlen(iname));
-    int   nindx           = Num_indx[server.dbid];
-    Index_obj     [nindx] = ind;
-    Index_on_table[nindx] = tmatch;
-    Indexed_column[nindx] = cmatch;
-    Index_type    [nindx] = Tbl[server.dbid][tmatch].col_type[cmatch];
-    Index_virt    [nindx] = virt;
+    robj *ind              = createStringObject(iname, strlen(iname));
+    int   imatch           = Num_indx[server.dbid];
+    Index[server.dbid][imatch].obj      = ind;
+    Index[server.dbid][imatch].table = tmatch;
+    Index[server.dbid][imatch].column   = cmatch;
+    Index[server.dbid][imatch].type     = Tbl[server.dbid][tmatch].col_type[cmatch];
+    Index[server.dbid][imatch].virt     = virt;
 
     robj *ibt;
     if (virt) {
         ibt                   = createEmptyBtreeObject();
-        Tbl[server.dbid][tmatch].virt_indx = nindx;
+        Tbl[server.dbid][tmatch].virt_indx = imatch;
     } else {
         int ctype = Tbl[server.dbid][tmatch].col_type[cmatch];
-        ibt       = createBtreeObject(ctype, nindx, BTREE_INDEX);
+        ibt       = createBtreeObject(ctype, imatch, BTREE_INDEX);
     }
     //store BtreeObject in HashTable key: indexname
     dictAdd(c->db->dict, ind, ibt);
@@ -253,8 +248,8 @@ static void indexCommit(redisClient *c, char *iname, char *trgt) {
     }
 
     for (int i = 0; i < Num_indx[server.dbid]; i++) { /* already indxd? */
-        if (Index_on_table[i] == tmatch &&
-            Indexed_column[i] == cmatch) {
+        if (Index[server.dbid][i].table == tmatch &&
+            Index[server.dbid][i].column == cmatch) {
             addReply(c, shared.indexedalready);
             goto ind_commit_err;
         }
@@ -266,7 +261,7 @@ static void indexCommit(redisClient *c, char *iname, char *trgt) {
     robj *o   = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
     bt   *btr = (bt *)o->ptr;
     if (btr->numkeys > 0) { /* table has rows - loop thru and populate index */
-        robj *ind  = Index_obj[Num_indx[server.dbid] - 1];
+        robj *ind  = Index[server.dbid][Num_indx[server.dbid] - 1].obj;
         robj *ibt  = lookupKey(c->db, ind);
         buildIndex(btr, btr->root, ibt->ptr, cmatch, tmatch);
     }
@@ -287,21 +282,26 @@ void legacyIndexCommand(redisClient *c) {
 }
 #endif
 
+void indexEmpty(redisDb *db, int inum) {
+    robj *ind                       = Index[server.dbid][inum].obj;
+    Index[server.dbid][inum].table  = -1;
+    Index[server.dbid][inum].column = -1;
+    Index[server.dbid][inum].obj    = NULL;
+    deleteKey(db, ind);
+    server.dirty++;
+    //TODO shuffle indices to make space for deleted indices
+}
+
 void dropIndex(redisClient *c) {
-    char *iname          = c->argv[2]->ptr;
-    int   inum           = match_index_name(iname);
-    robj *ind            = Index_obj[inum];
-    if (Index_virt[inum]) {
+    char *iname  = c->argv[2]->ptr;
+    int   inum   = match_index_name(iname);
+
+    if (Index[server.dbid][inum].virt) {
         addReply(c, shared.drop_virtual_index);
         return;
     }
 
-    Index_on_table[inum] = -1;
-    Indexed_column[inum] = -1;
-    Index_obj     [inum] = NULL;
-    deleteKey(c->db, ind);
-    server.dirty++;
-    //TODO shuffle indices to make space for deleted indices
+    indexEmpty(c->db, inum);
     addReply(c, shared.cone);
 }
 
@@ -323,8 +323,8 @@ void iselectAction(redisClient *c,
     LEN_OBJ
 
     btEntry    *be, *nbe;
-    robj       *ind  = Index_obj [imatch];
-    bool        virt = Index_virt[imatch];
+    robj       *ind  = Index[server.dbid][imatch].obj;
+    bool        virt = Index[server.dbid][imatch].virt;
     robj       *bt   = virt ? o : lookupKey(c->db, ind);
     btStreamIterator *bi   = btGetRangeIterator(bt, low, high, virt);
     while ((be = btRangeNext(bi, 1)) != NULL) {                // iterate btree
@@ -357,7 +357,7 @@ void iselectAction(redisClient *c,
 void iselectCommand(redisClient *c) {
     int imatch = checkIndexedColumnOrReply(c, c->argv[1]->ptr);
     if (imatch == -1) return;
-    int tmatch = Index_on_table[imatch];
+    int tmatch = Index[server.dbid][imatch].table;
 
     iselectAction(c, c->argv[2]->ptr, tmatch, imatch, c->argv[3]->ptr);
 }
@@ -376,8 +376,8 @@ void iupdateAction(redisClient   *c,
     RANGE_CHECK_OR_REPLY(range)
     btEntry    *be, *nbe;
     robj       *o    = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
-    robj       *ind  = Index_obj [imatch];
-    bool        virt = Index_virt[imatch];
+    robj       *ind  = Index[server.dbid][imatch].obj;
+    bool        virt = Index[server.dbid][imatch].virt;
     robj       *bt   = virt ? o : lookupKey(c->db, ind);
     robj       *uset = createSetObject();
     btStreamIterator *bi   = btGetRangeIterator(bt, low, high, virt);
@@ -420,7 +420,7 @@ void iupdateAction(redisClient   *c,
 void iupdateCommand(redisClient *c) {
     int   imatch = checkIndexedColumnOrReply(c, c->argv[1]->ptr);
     if (imatch == -1) return;
-    int   tmatch = Index_on_table[imatch];
+    int   tmatch = Index[server.dbid][imatch].table;
     int   ncols   = Tbl[server.dbid][tmatch]._col_count;
 
     int   cmatchs  [MAX_COLUMN_PER_TABLE];
@@ -444,8 +444,8 @@ void ideleteAction(redisClient *c, char *range, int tmatch, int imatch) {
 
     btEntry    *be,  *nbe;
     robj       *o    = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
-    robj       *ind  = Index_obj [imatch];
-    bool        virt = Index_virt[imatch];
+    robj       *ind  = Index[server.dbid][imatch].obj;
+    bool        virt = Index[server.dbid][imatch].virt;
     robj       *dset = createSetObject();
     robj       *bt   = virt ? o : lookupKey(c->db, ind);
     btStreamIterator *bi   = btGetRangeIterator(bt, low, high, virt);
@@ -487,7 +487,7 @@ void ideleteAction(redisClient *c, char *range, int tmatch, int imatch) {
 void ideleteCommand(redisClient *c) {
     int   imatch = checkIndexedColumnOrReply(c, c->argv[1]->ptr);
     if (imatch == -1) return;
-    int   tmatch = Index_on_table[imatch];
+    int   tmatch = Index[server.dbid][imatch].table;
     ideleteAction(c, c->argv[2]->ptr, tmatch, imatch);
 }
 #endif
@@ -499,8 +499,8 @@ void ikeysCommand(redisClient *c) {
     LEN_OBJ
 
     btEntry    *be, *nbe;
-    robj       *ind  = Index_obj [imatch];
-    bool        virt = Index_virt[imatch];
+    robj       *ind  = Index[server.dbid][imatch].obj;
+    bool        virt = Index[server.dbid][imatch].virt;
     robj       *bt   = lookupKey(c->db, ind);
     btStreamIterator *bi   = btGetRangeIterator(bt, low, high, virt);
     while ((be = btRangeNext(bi, 1)) != NULL) {                // iterate btree
@@ -618,8 +618,8 @@ void dumpCommand(redisClient *c) {
 ull get_sum_all_index_size_for_table(redisClient *c, int tmatch) {
     ull isize = 0;
     for (int i = 0; i < Num_indx[server.dbid]; i++) {
-        if (!Index_virt[i] && Index_on_table[i] == tmatch) {
-            robj *ind   = Index_obj[i];
+        if (!Index[server.dbid][i].virt && Index[server.dbid][i].table == tmatch) {
+            robj *ind   = Index[server.dbid][i].obj;
             robj *ibt   = lookupKey(c->db, ind);
             bt   *ibtr  = (bt *)(ibt->ptr);
             isize      += ibtr->malloc_size;
@@ -647,9 +647,9 @@ void descCommand(redisClient *c) {
                            (char *)Tbl[server.dbid][tmatch].col_name[j]->ptr,
                            Col_type_defs[Tbl[server.dbid][tmatch].col_type[j]]);
         } else {
-            robj *ind    = Index_obj[imatch];
+            robj *ind    = Index[server.dbid][imatch].obj;
             ull   isize  = 0;
-            if (!Index_virt[imatch]) {
+            if (!Index[server.dbid][imatch].virt) {
                 robj *ibt  = lookupKey(c->db, ind);
                 bt   *ibtr = (bt *)(ibt->ptr);
                 isize      = ibtr ? ibtr->malloc_size : 0;
