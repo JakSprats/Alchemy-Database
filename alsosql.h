@@ -26,7 +26,7 @@ typedef struct r_tbl {
     int     col_count;
     robj   *col_name[MAX_COLUMN_PER_TABLE];
     uchar   col_type[MAX_COLUMN_PER_TABLE];
-    int     virt_indx;
+    int     virt_indx; /* TODO is this still used? */
 } r_tbl_t;
 
 typedef struct r_ind {

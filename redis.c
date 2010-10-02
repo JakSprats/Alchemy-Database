@@ -1838,6 +1838,10 @@ static void createSharedObjects(void) {
         "-ERR SYNTAX: UPDATE tablename SET col1=val1,col2=val2,,,, WHERE indexed_column = val - Column must be indexed\r\n"));
     shared.updatesyntax_noequals = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: UPDATE tablename SET col1=val1,col2=val2,,,, WHERE indexed_column = val - \"EQUALS SIGN\" MISSING\r\n"));
+    shared.update_pk_range_query = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: UPDATE of PK not allowed with Range Query\r\n"));
+    shared.update_pk_overwrite = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: UPDATE of PK would overwrite existing row - disallowed\r\n"));
 
     shared.whereclause_no_and = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: WHERE-CLAUSE: WHERE indexed_column BETWEEN start AND finish - \"AND\" MISSING\r\n"));
@@ -2162,14 +2166,11 @@ static long long emptyDb() {
         removed += dictSize(server.db[j].dict);
 #ifdef ALSOSQL
         server.dbid           = j;
-        for (int k = 0; k < Num_tbls[server.dbid]; k++) {
-            tableEmpty(&server.db[j], k);
+        for (int k = 0; k < Num_tbls[j]; k++) {
+            tableEmpty(&server.db[j], k); /* deletes indices also */
         }
-        Num_tbls[server.dbid] = 0;
-        for (int k = 0; k < Num_indx[server.dbid]; k++) {
-            indexEmpty(&server.db[j], k);
-        }
-        Num_indx[server.dbid] = 0;
+        Num_tbls[j] = 0;
+        Num_indx[j] = 0;
 #endif
         dictEmpty(server.db[j].dict);
         dictEmpty(server.db[j].expires);
@@ -7281,12 +7282,15 @@ static void convertToRealHash(robj *o) {
 
 static void flushdbCommand(redisClient *c) {
     server.dirty += dictSize(c->db->dict);
+#ifdef ALSOSQL
+    for (int k = 0; k < Num_tbls[server.dbid]; k++) {
+        tableEmpty(&server.db[server.dbid], k); /* deletes indices also */
+    }
+    Num_tbls[c->db->id] = 0;
+    Num_indx[c->db->id] = 0;
+#endif
     dictEmpty(c->db->dict);
     dictEmpty(c->db->expires);
-#ifdef ALSOSQL
-    Num_indx[c->db->id] = 0;
-    Num_tbls[c->db->id] = 0;
-#endif
     addReply(c,shared.ok);
 }
 

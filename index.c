@@ -284,10 +284,12 @@ void legacyIndexCommand(redisClient *c) {
 
 void indexEmpty(redisDb *db, int inum) {
     robj *ind                       = Index[server.dbid][inum].obj;
+    deleteKey(db, ind);
     Index[server.dbid][inum].table  = -1;
     Index[server.dbid][inum].column = -1;
+    Index[server.dbid][inum].type   = 0;
+    Index[server.dbid][inum].virt   = 0;
     Index[server.dbid][inum].obj    = NULL;
-    deleteKey(db, ind);
     server.dirty++;
     //TODO shuffle indices to make space for deleted indices
 }

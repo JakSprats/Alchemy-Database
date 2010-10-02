@@ -599,6 +599,13 @@ void updateCommand(redisClient *c) {
     int    qcols = parseUpdateColListReply(c, tmatch, nvals, cmatchs,
                                            mvals, mvlens);
     if (!qcols) return;
+    int pk_up_col = -1;
+    for (int i = 0; i < qcols; i++) {
+        if (!cmatchs[i]) {
+            pk_up_col = i;
+            break;
+        }
+    }
     MATCH_INDICES(tmatch)
 
     ASSIGN_UPDATE_HITS_AND_MISSES
@@ -612,16 +619,30 @@ void updateCommand(redisClient *c) {
 
     sdsfree(Curr_range);
     if (where == 2) { /* RANGE QUERY */
+        if (pk_up_col != -1) {
+            addReply(c, shared.update_pk_range_query);
+            goto update_cmd_err;
+        }
         Curr_range = sdsdup(range->ptr);
         iupdateAction(c, range->ptr, tmatch, imatch, ncols, matches, indices,
                       vals, vlens, cmiss);
     } else {
         Curr_range = sdsdup(pko->ptr);
-        robj *o   = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
+        robj *o    = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
         robj *row = btFindVal(o, pko, Tbl[server.dbid][tmatch].col_type[0]);
         if (!row) {
             addReply(c, shared.czero);
             goto update_cmd_err;
+        }
+        if (pk_up_col != -1) { /* disallow pk updts that overwrite other rows */
+            robj *xo   = createStringObject(mvals[pk_up_col],
+                                            strlen(mvals[pk_up_col]));
+            robj *xrow = btFindVal(o, xo, Tbl[server.dbid][tmatch].col_type[0]);
+            decrRefCount(xo);
+            if (xrow) {
+                addReply(c, shared.update_pk_overwrite);
+                goto update_cmd_err;
+            }
         }
 
         if (!updateRow(c, o, pko, row, tmatch, ncols, matches, indices, 
@@ -646,24 +667,30 @@ unsigned long tableEmpty(redisDb *db, int tmatch) {
             index_del_list[i] = Index[server.dbid][inum].obj;
         }
         for (int i = 0; i < matches; i++) { //delete index robj's
-            deleteKey(db, index_del_list[i]);
             int inum                        = indices[i];
             Index[server.dbid][inum].obj    = NULL;
             Index[server.dbid][inum].table  = -1;
             Index[server.dbid][inum].column = -1;
+            Index[server.dbid][inum].type   = 0;
+            Index[server.dbid][inum].virt   = 0;
+            deleteKey(db, index_del_list[i]);
             deleted++;
         }
         //TODO shuffle indices to make space for deleted indices
     }
 
-    deleteKey(db, Tbl[server.dbid][tmatch].name);
-    Tbl[server.dbid][tmatch].name = NULL;
-    deleted++;
 
+    deleteKey(db, Tbl[server.dbid][tmatch].name);
     for (int j = 0; j < Tbl[server.dbid][tmatch].col_count; j++) {
         decrRefCount(Tbl[server.dbid][tmatch].col_name[j]);
         Tbl[server.dbid][tmatch].col_name[j] = NULL;
+        Tbl[server.dbid][tmatch].col_type[j] = -1;
     }
+    Tbl[server.dbid][tmatch].name      = NULL;
+    Tbl[server.dbid][tmatch].col_count = 0;
+    Tbl[server.dbid][tmatch].virt_indx = -1;
+
+    deleted++;
     //TODO shuffle tables to make space for deleted indices
 
     return deleted;
