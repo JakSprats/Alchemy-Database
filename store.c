@@ -37,7 +37,7 @@ extern struct sharedObjectsStruct shared;
 extern struct redisServer server;
 
 // GLOBALS
-extern int Num_tbls[MAX_NUM_TABLES];
+extern int Num_tbls[MAX_NUM_DB];
 
 extern char  CCOMMA;
 extern char  CEQUALS;
@@ -49,7 +49,7 @@ extern char *PERIOD;
 
 extern char *Col_type_defs[];
 
-extern r_tbl_t  Tbl[MAX_NUM_TABLES];
+extern r_tbl_t  Tbl[MAX_NUM_DB][MAX_NUM_TABLES];
 
 extern robj          *Index_obj     [MAX_NUM_INDICES];
 extern bool           Index_virt    [MAX_NUM_INDICES];
@@ -63,7 +63,7 @@ stor_cmd StorageCommands[NUM_STORAGE_TYPES];
 
 void legacyInsertCommand(redisClient *c) {
     TABLE_CHECK_OR_REPLY(c->argv[1]->ptr,)
-    int ncols = Tbl[tmatch].col_count;
+    int ncols = Tbl[server.dbid][tmatch].col_count;
     MATCH_INDICES(tmatch)
 
     char *vals   = c->argv[2]->ptr;
@@ -71,7 +71,7 @@ void legacyInsertCommand(redisClient *c) {
 }
 
 void legacyTableCommand(redisClient *c) {
-    if (Num_tbls[server.curr_db_id] >= MAX_NUM_TABLES) {
+    if (Num_tbls[server.dbid] >= MAX_NUM_TABLES) {
         addReply(c,shared.toomanytables);
         return;
     }
@@ -103,7 +103,7 @@ void legacyTableCommand(redisClient *c) {
         unsigned char miss = 1;
         for (unsigned char j = 0; j < NUM_COL_TYPES; j++) {
             if (!strcmp(type, Col_type_defs[j])) {
-                Tbl[Num_tbls[server.curr_db_id]].col_type[col_count] = j;
+                Tbl[server.dbid][Num_tbls[server.dbid]].col_type[col_count] = j;
                 miss = 0;
                 break;
             }
@@ -153,9 +153,9 @@ static void cpyColDef(char *cdefs,
                       int   loop,
                       bool  has_conflicts,
                       bool  cname_cflix[]) {
-    robj *col = Tbl[tmatch].col_name[cmatch];
+    robj *col = Tbl[server.dbid][tmatch].col_name[cmatch];
     if (has_conflicts && cname_cflix[loop]) { // prepend tbl_name
-        robj *tbl = Tbl[tmatch].name;
+        robj *tbl = Tbl[server.dbid][tmatch].name;
         memcpy(cdefs + *slot, tbl->ptr, sdslen(tbl->ptr));  
         *slot        += sdslen(tbl->ptr);        // tblname
         memcpy(cdefs + *slot, PERIOD, 1);
@@ -165,7 +165,7 @@ static void cpyColDef(char *cdefs,
     *slot        += sdslen(col->ptr);            // colname
     memcpy(cdefs + *slot, EQUALS, 1);
     *slot = *slot + 1;
-    char *ctype   = Col_type_defs[Tbl[tmatch].col_type[cmatch]];
+    char *ctype   = Col_type_defs[Tbl[server.dbid][tmatch].col_type[cmatch]];
     int   ctlen   = strlen(ctype);               // [INT,STRING]
     memcpy(cdefs + *slot, ctype, ctlen);
     *slot        += ctlen;
@@ -227,8 +227,8 @@ bool createTableFromJoin(redisClient *c,
     for (int i = 0; i < qcols; i++) {
         for (int j = 0; j < qcols; j++) {
             if (i == j) continue;
-            if (!strcmp(Tbl[j_tbls[i]].col_name[j_cols[i]]->ptr,
-                        Tbl[j_tbls[j]].col_name[j_cols[j]]->ptr)) {
+            if (!strcmp(Tbl[server.dbid][j_tbls[i]].col_name[j_cols[i]]->ptr,
+                        Tbl[server.dbid][j_tbls[j]].col_name[j_cols[j]]->ptr)) {
                 cname_cflix[i] = 1;
                 break;
             } else {
@@ -348,7 +348,7 @@ void istoreCommit(redisClient *c,
         if (sub_pk) nargc--;
     }
     RANGE_CHECK_OR_REPLY(range)
-    robj *o = lookupKeyRead(c->db, Tbl[tmatch].name);
+    robj *o = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
 
     robj               *argv[STORAGE_MAX_ARGC + 1];
     struct redisClient *fc = rsql_createFakeClient();
@@ -382,7 +382,8 @@ void istoreCommit(redisClient *c,
             btStreamIterator *nbi = btGetFullRangeIterator(val, 0, 0);
             while ((nbe = btRangeNext(nbi, 1)) != NULL) {     // iterate NodeBT
                 robj *pko = nbe->key;
-                robj *row = btFindVal(o, pko, Tbl[tmatch].col_type[0]);
+                robj *row = btFindVal(o, pko,
+                                      Tbl[server.dbid][tmatch].col_type[0]);
                 if (!istoreAction(c, fc, tmatch, cmatchs, qcols, sto,
                                   pko, row, newname, sub_pk, nargc)) {
                     btReleaseRangeIterator(nbi);

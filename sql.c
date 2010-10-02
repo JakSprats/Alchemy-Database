@@ -42,8 +42,8 @@ extern char  CMINUS;
 extern char *COMMA;
 extern char *STORE;
 
-extern int Num_tbls[MAX_NUM_TABLES];
-extern r_tbl_t  Tbl[MAX_NUM_TABLES];
+extern int     Num_tbls[MAX_NUM_DB];
+extern r_tbl_t Tbl[MAX_NUM_DB][MAX_NUM_TABLES];
 
 extern stor_cmd StorageCommands[NUM_STORAGE_TYPES];
 
@@ -168,11 +168,11 @@ bool parseCreateTable(redisClient *c,
             }
 
             /* in 2nd word search for INT (but not BIGINT) */
-            int ntbls = Num_tbls[server.curr_db_id];
+            int ntbls = Num_tbls[server.dbid];
             if (strcasestr(tkn, "INT") && !strcasestr(tkn, "BIGINT")) {
-                Tbl[ntbls].col_type[*ccount] = COL_TYPE_INT;
+                Tbl[server.dbid][ntbls].col_type[*ccount] = COL_TYPE_INT;
             } else {
-                Tbl[ntbls].col_type[*ccount] = COL_TYPE_STRING;
+                Tbl[server.dbid][ntbls].col_type[*ccount] = COL_TYPE_STRING;
             }
             *ccount = *ccount + 1;
         }
@@ -260,7 +260,8 @@ unsigned char checkSQLWhereClauseOrReply(redisClient  *c,
     int   tok_cmatch = find_column(tmatch, token);
     int   im         = find_index( tmatch, tok_cmatch); 
     if (imatch) *imatch = im;
-    if (strcasecmp(token, Tbl[tmatch].col_name[0]->ptr)) { /* not PK */
+    if (strcasecmp(token,
+                   Tbl[server.dbid][tmatch].col_name[0]->ptr)) { /* not PK */
         if (im != -1) { /* FK query */
             is_fk = 1;
         } else {

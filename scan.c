@@ -32,13 +32,14 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 // FROM redis.c
 #define RL4 redisLog(4,
 extern struct sharedObjectsStruct shared;
+extern struct redisServer server;
 
 // GLOBALS
 extern char  CCOMMA;
 extern char  CMINUS;
 extern char *COMMA;
 
-extern r_tbl_t  Tbl[MAX_NUM_TABLES];
+extern r_tbl_t  Tbl[MAX_NUM_DB][MAX_NUM_TABLES];
 
 // HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS
 // HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS
@@ -78,7 +79,7 @@ static void condSelectReply(redisClient   *c,
     }
 
     unsigned char hit = 0;
-    int type = Tbl[tmatch].col_type[cmatch];
+    int type = Tbl[server.dbid][tmatch].col_type[cmatch];
     if (col_cmp(s, low->ptr,  type) >= 0 &&
         col_cmp(s, high->ptr, type) <= 0) {
         hit = 1;
@@ -137,7 +138,7 @@ void tscanCommand(redisClient *c) {
                                                        0, 0);
     if (!where) goto tscan_cmd_err;
 
-    robj *o = lookupKeyRead(c->db, Tbl[tmatch].name);
+    robj *o = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
     LEN_OBJ
     bool rq = (where == 2); /* RANGE QUERY */
     robj *rq_low, *rq_high;

@@ -414,7 +414,7 @@ struct redisServer {
     unsigned char big_endian;
     unsigned char psize;
 #ifdef ALSOSQL
-    int curr_db_id;
+    int dbid;
 #endif   
 };
 

@@ -34,9 +34,10 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 // FROM redis.c
 #define RL4 redisLog(4,
 extern struct sharedObjectsStruct shared;
+extern struct redisServer server;
 
 // GLOBALS
-extern int Num_tbls[MAX_NUM_TABLES];
+extern int Num_tbls[MAX_NUM_DB];
 
 extern char  CCOMMA;
 extern char  CEQUALS;
@@ -49,7 +50,7 @@ extern char *COLON;
 extern char *COMMA;
 extern char *PERIOD;
 
-extern r_tbl_t  Tbl[MAX_NUM_TABLES];
+extern r_tbl_t  Tbl[MAX_NUM_DB][MAX_NUM_TABLES];
 
 extern robj          *Index_obj     [MAX_NUM_INDICES];
 extern int            Index_on_table[MAX_NUM_INDICES];
@@ -117,7 +118,7 @@ int multiColCheckOrReply(redisClient *c,
         }
         int tmatch       = find_table(col_list);
         if (*nextp == '*') {
-            for (int i = 0; i < Tbl[tmatch].col_count; i++) {
+            for (int i = 0; i < Tbl[server.dbid][tmatch].col_count; i++) {
                 j_tbls[qcols]  = tmatch;
                 j_cols[qcols] = i;
                 qcols++;
@@ -363,7 +364,8 @@ static void joinAddColsFromInd(join_add_cols_t *a, robj *rset[]) {
     int   row_len = 0;
     int   nresp   = 0;
     robj *row     = a->virt ? a->val :
-                            btFindVal(a->o, a->val, Tbl[a->itable].col_type[0]);
+                             btFindVal(a->o, a->val,
+                                       Tbl[server.dbid][a->itable].col_type[0]);
     robj *key     = a->virt ? a->jk  : a->val;
 
     // Alsosql understands INT encoding where redis doesnt(dict.c)
@@ -512,7 +514,7 @@ void joinGeneric(redisClient *c,
     int    j_ind_len [MAX_JOIN_INDXS];
     int    jind_ncols[MAX_JOIN_INDXS];
 
-    uchar  pktype = Tbl[Index_on_table[j_indxs[0]]].col_type[0];
+    uchar  pktype = Tbl[server.dbid][Index_on_table[j_indxs[0]]].col_type[0];
     bt    *jbtr   = createJoinResultSet(pktype);
 
     robj  *rset[MAX_JOIN_INDXS];
@@ -530,14 +532,14 @@ void joinGeneric(redisClient *c,
     
     for (int i = 0; i < n_ind; i++) {                 // iterate indices
         btEntry    *be, *nbe;
-        j_ind_len[i]  = 0;
-        jac.index     = i;
+        j_ind_len[i] = 0;
+        jac.index    = i;
 
-        jac.itable     = Index_on_table[j_indxs[i]];
-        jac.o          = lookupKeyRead(c->db, Tbl[jac.itable].name);
-        robj *ind      = Index_obj [j_indxs[i]];
-        jac.virt       = Index_virt[j_indxs[i]];
-        robj *bt       = jac.virt ? jac.o : lookupKey(c->db, ind);
+        jac.itable    = Index_on_table[j_indxs[i]];
+        jac.o         = lookupKeyRead(c->db, Tbl[server.dbid][jac.itable].name);
+        robj *ind     = Index_obj [j_indxs[i]];
+        jac.virt      = Index_virt[j_indxs[i]];
+        robj *bt      = jac.virt ? jac.o : lookupKey(c->db, ind);
         btStreamIterator *bi = btGetRangeIterator(bt, low, high, jac.virt);
         while ((be = btRangeNext(bi, 1)) != NULL) {            // iterate btree
             if (jac.virt) {

@@ -30,8 +30,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #define RL4 redisLog(4,
 extern struct redisServer server;
 
-extern int            Num_tbls     [MAX_NUM_TABLES];
-extern r_tbl_t  Tbl[MAX_NUM_TABLES];
+extern int      Num_tbls     [MAX_NUM_TABLES];
+extern r_tbl_t  Tbl[MAX_NUM_DB][MAX_NUM_TABLES];
 
 extern int            Num_indx      [MAX_NUM_INDICES];
 extern robj          *Index_obj     [MAX_NUM_INDICES];
@@ -72,15 +72,16 @@ int rdbSaveBT(FILE *fp, robj *o) {
 
     int tmatch = btr->num;
     if (btr->is_index == BTREE_TABLE) {
+        int dbid = server.dbid;
         //RL4 "%d: saving table: %s virt_index: %d",
-             //tmatch, Tbl[tmatch].name->ptr, Tbl[tmatch].virt_indx);
-        if (rdbSaveLen(fp, Tbl[tmatch].virt_indx) == -1) return -1;
-        if (rdbSaveStringObject(fp, Tbl[tmatch].name) == -1) return -1;
-        if (rdbSaveLen(fp, Tbl[tmatch].col_count) == -1) return -1;
-        for (int i = 0; i < Tbl[tmatch].col_count; i++) {
-            if (rdbSaveStringObject(fp, Tbl[tmatch].col_name[i]) == -1)
+            //tmatch, Tbl[dbid][tmatch].name->ptr, Tbl[dbid][tmatch].virt_indx);
+        if (rdbSaveLen(fp, Tbl[dbid][tmatch].virt_indx) == -1) return -1;
+        if (rdbSaveStringObject(fp, Tbl[dbid][tmatch].name) == -1) return -1;
+        if (rdbSaveLen(fp, Tbl[dbid][tmatch].col_count) == -1) return -1;
+        for (int i = 0; i < Tbl[dbid][tmatch].col_count; i++) {
+            if (rdbSaveStringObject(fp, Tbl[dbid][tmatch].col_name[i]) == -1)
                 return -1;
-            if (rdbSaveLen(fp, (int)Tbl[tmatch].col_type[i]) == -1)
+            if (rdbSaveLen(fp, (int)Tbl[dbid][tmatch].col_type[i]) == -1)
                 return -1;
         }
         if (fwrite(&(btr->ktype),    1, 1, fp) == 0) return -1;
@@ -122,34 +123,35 @@ robj *rdbLoadBT(FILE *fp, redisDb *db) {
 
     if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR) return NULL;
     int tmatch = (int)u;
+    int dbid = server.dbid;
 
     if (is_index == BTREE_TABLE) {
         if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR) return NULL;
         int inum = u;
-        Tbl[tmatch].virt_indx  = inum;
+        Tbl[dbid][tmatch].virt_indx  = inum;
         Index_virt    [inum]   = 1;
         Index_on_table[inum]   = tmatch;
         Indexed_column[inum]   = 0;
-        if (!(Tbl[tmatch].name = rdbLoadStringObject(fp))) return NULL;
+        if (!(Tbl[dbid][tmatch].name = rdbLoadStringObject(fp))) return NULL;
         if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR) return NULL;
-        Tbl[tmatch].col_count = u;
-        for (int i = 0; i < Tbl[tmatch].col_count; i++) {
-            if (!(Tbl[tmatch].col_name[i] = rdbLoadStringObject(fp)))
+        Tbl[dbid][tmatch].col_count = u;
+        for (int i = 0; i < Tbl[dbid][tmatch].col_count; i++) {
+            if (!(Tbl[dbid][tmatch].col_name[i] = rdbLoadStringObject(fp)))
                 return NULL;
             if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR) return NULL;
-            Tbl[tmatch].col_type[i] = (unsigned char)u;
+            Tbl[dbid][tmatch].col_type[i] = (unsigned char)u;
         }
 
-        Index_type[inum]     = Tbl[tmatch].col_type[0];
-        Index_obj [inum]     = createStringObject(Tbl[tmatch].name->ptr,
-                                                 sdslen(Tbl[tmatch].name->ptr));
+        Index_type[inum]     = Tbl[dbid][tmatch].col_type[0];
+        Index_obj [inum]     = createStringObject(Tbl[dbid][tmatch].name->ptr,
+                                           sdslen(Tbl[dbid][tmatch].name->ptr));
         Index_obj[inum]->ptr = sdscatprintf(Index_obj[inum]->ptr,
-                                           "%s%s%s%s", COLON, 
-                                           (char *)Tbl[tmatch].col_name[0]->ptr,
-                                           COLON, INDEX_DELIM);
+                                     "%s%s%s%s", COLON, 
+                                     (char *)Tbl[dbid][tmatch].col_name[0]->ptr,
+                                     COLON, INDEX_DELIM);
         dictAdd(db->dict, Index_obj[inum], NULL);
-        if (Num_indx[server.curr_db_id] < (inum + 1)) {
-            Num_indx[server.curr_db_id] = inum + 1;
+        if (Num_indx[dbid] < (inum + 1)) {
+            Num_indx[dbid] = inum + 1;
         }
 
         unsigned char ktype;
@@ -165,8 +167,8 @@ robj *rdbLoadBT(FILE *fp, redisDb *db) {
             if (rdbLoadRow(fp, btr) == -1) return NULL;
         }
 
-        if (Num_tbls[server.curr_db_id] < (tmatch + 1)) {
-             Num_tbls[server.curr_db_id] = tmatch + 1;
+        if (Num_tbls[dbid] < (tmatch + 1)) {
+             Num_tbls[dbid] = tmatch + 1;
         }
     } else { /* BTREE_INDEX */
         if (!(Index_obj[tmatch] = rdbLoadStringObject(fp))) return NULL;
@@ -180,8 +182,8 @@ robj *rdbLoadBT(FILE *fp, redisDb *db) {
         if (fread(&ktype,    1, 1, fp) == 0) return NULL;
         o = createBtreeObject(ktype, tmatch, is_index);
         Index_virt[tmatch] = 0;
-        if (Num_indx[server.curr_db_id] < (tmatch + 1)) {
-            Num_indx[server.curr_db_id] = tmatch + 1;
+        if (Num_indx[dbid] < (tmatch + 1)) {
+            Num_indx[dbid] = tmatch + 1;
         }
     }
     return o;
@@ -193,7 +195,7 @@ static void makeIndexFromStream(uchar *stream, bt *ibtr, int icol, int itbl) {
     assignValRobj(stream, REDIS_ROW, &val, ibtr->is_index);
     //get the pk and the fk and then call iAdd()
     robj *fk = createColObjFromRow(&val, icol, &key, itbl); // freeME
-    iAdd(ibtr, fk, &key, Tbl[itbl].col_type[0]);
+    iAdd(ibtr, fk, &key, Tbl[server.dbid][itbl].col_type[0]);
     decrRefCount(fk);
     if (key.encoding == REDIS_ENCODING_RAW) {
         sdsfree(key.ptr); /* free from assignKeyRobj sflag[1,4] */
@@ -215,7 +217,7 @@ int buildIndex(bt *btr, bt_n *x, bt *ibtr, int icol, int itbl) {
 }
 
 void rdbLoadFinished(redisDb *db) {
-    for (int i = 0; i < Num_indx[server.curr_db_id]; i++) {
+    for (int i = 0; i < Num_indx[server.dbid]; i++) {
         if (Index_virt[i]) continue;
         robj *ind  = Index_obj[i];
         if (!ind) continue;
@@ -223,7 +225,7 @@ void rdbLoadFinished(redisDb *db) {
         bt   *ibtr = (struct btree *)(ibt->ptr);
         int   itbl = Index_on_table[i];
         int   icol = Indexed_column[i];
-        robj *o    = lookupKey(db, Tbl[itbl].name);
+        robj *o    = lookupKey(db, Tbl[server.dbid][itbl].name);
         bt   *btr  = (struct btree *)(o->ptr);
         buildIndex(btr, btr->root, ibtr, icol, itbl);
 #if 0

@@ -956,7 +956,7 @@ extern char          *EQUALS;
 extern char          *PERIOD;
 extern char          *Col_type_defs[];
 
-extern r_tbl_t Tbl[MAX_NUM_TABLES];
+extern r_tbl_t Tbl[MAX_NUM_DB][MAX_NUM_TABLES];
 
 extern robj          *Index_obj     [MAX_NUM_INDICES];
 extern int            Indexed_column[MAX_NUM_INDICES];
@@ -2148,7 +2148,7 @@ static void initServer() {
     init_six_bit_strings();
 
     for (int i = 0; i < MAX_NUM_TABLES; i++) {
-        Tbl[i].name = NULL;
+        Tbl[server.dbid][i].name = NULL;
     }
     bzero(Index_obj, sizeof(robj *) * MAX_NUM_INDICES);
 #endif /* ALSOSQL END */
@@ -3084,7 +3084,7 @@ static int selectDb(redisClient *c, int id) {
 
     c->db             = &server.db[id];
     c->dictid         = id;
-    server.curr_db_id = id;
+    server.dbid = id;
     return REDIS_OK;
 }
 
@@ -8831,7 +8831,7 @@ struct redisClient *createFakeClient(void) {
 }
 
 struct redisClient *rsql_createFakeClient(void) {
-    int                 curr_db_id = server.curr_db_id;
+    int                 curr_db_id = server.dbid;
     struct redisClient *fc         = createFakeClient();
     selectDb(fc, curr_db_id);
     return fc;
@@ -9004,7 +9004,7 @@ static int fwriteBulkLong(FILE *fp, long l) {
 }
 
 static bool appendOnlyDumpIndices(FILE *fp, int tmatch) {
-    sds tname  = Tbl[tmatch].name->ptr;
+    sds tname  = Tbl[server.dbid][tmatch].name->ptr;
     char cmd3[]="*3\r\n$11\r\nLEGACYINDEX\r\n";
     MATCH_INDICES(tmatch)
     for (int i = 0; i < matches; i++) {
@@ -9016,7 +9016,7 @@ static bool appendOnlyDumpIndices(FILE *fp, int tmatch) {
         s        = sdsnewlen(tname, sdslen(tname));
         s        = sdscatlen(s, PERIOD, 1);
         int icol = Indexed_column[inum];
-        sds t    = Tbl[tmatch].col_name[icol]->ptr;
+        sds t    = Tbl[server.dbid][tmatch].col_name[icol]->ptr;
         s        = sdscatlen(s, t, sdslen(t));
         if (fwriteBulkString(fp, s, sdslen(s)) == -1) goto awerr;
         sdsfree(s);
@@ -9027,19 +9027,19 @@ awerr:
 }
 
 static bool appendOnlyDumpTable(FILE *fp, robj *o, bt *btr, int tmatch) {
-    sds tname  = Tbl[tmatch].name->ptr;
+    sds tname  = Tbl[server.dbid][tmatch].name->ptr;
     /* Dump Table definition */
     char cmd[]="*3\r\n$11\r\nLEGACYTABLE\r\n";
     if (fwrite(cmd,sizeof(cmd)-1,1,fp) == 0) goto atwerr;
     if (fwriteBulkString(fp, tname, sdslen(tname)) == -1) goto atwerr;
 
     sds s = sdsempty();
-    for (int i = 0; i < Tbl[tmatch].col_count; i++) {
+    for (int i = 0; i < Tbl[server.dbid][tmatch].col_count; i++) {
         if (i) s = sdscatlen(s, ",", 1);
-        s = sdscatlen(s, Tbl[tmatch].col_name[i]->ptr,
-                      sdslen(Tbl[tmatch].col_name[i]->ptr));
+        s = sdscatlen(s, Tbl[server.dbid][tmatch].col_name[i]->ptr,
+                      sdslen(Tbl[server.dbid][tmatch].col_name[i]->ptr));
         s = sdscatlen(s, EQUALS, 1);
-        s = sdscat(s, Col_type_defs[Tbl[tmatch].col_type[i]]);
+        s = sdscat(s, Col_type_defs[Tbl[server.dbid][tmatch].col_type[i]]);
     }
     if (fwriteBulkString(fp, s, sdslen(s)) == -1) goto atwerr;
     sdsfree(s);
