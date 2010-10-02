@@ -422,9 +422,11 @@ void insertCommitReply(redisClient *c,
         addReply(c, shared.ok);
     }
 
-    /* write back in final ")" for AOF and slaves */
-    sds l_argv = c->argv[4]->ptr;
-    l_argv[sdslen(l_argv) - 1] = ')';
+    if (c->argc > 4) { /* do not do for legacyInsert */
+        /* write back in final ")" for AOF and slaves */
+        sds l_argv = c->argv[4]->ptr;
+        l_argv[sdslen(l_argv) - 1] = ')';
+    }
 
 }
 
