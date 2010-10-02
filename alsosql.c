@@ -496,6 +496,10 @@ void parseSelectColumnList(redisClient *c, sds *clist, int *argn) {
 }
 
 void selectALSOSQLCommand(redisClient *c) {
+    if (c->argc == 2) { /* this is a REDIS "select DB" command" */
+        selectCommand(c);
+        return;
+    }
     int   argn = 1;
     int   which = 0; /*used in ARGN_OVERFLOW() */
     robj *pko   = NULL, *range = NULL;

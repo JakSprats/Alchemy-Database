@@ -88,7 +88,6 @@
 #include "index.h"        /* ALSOSQL's indices */
 #include "common.h"       /* ALSOSQL's common definitions */
 
-/* ALSOSQL commands (table,index,insert/(i)select/(i)update/(i)delete,join) */
 #define ALSOSQL
 
 #if 0
@@ -684,8 +683,6 @@ static void incrbyCommand(redisClient *c);
 static void decrbyCommand(redisClient *c);
 #ifdef ALSOSQL
 static void changedbCommand(redisClient *c);
-#else
-static void selectCommand(redisClient *c);
 #endif
 static void randomkeyCommand(redisClient *c);
 static void keysCommand(redisClient *c);
@@ -929,7 +926,7 @@ static struct redisCommand cmdTable[] = {
     {"dump",         dumpCommand,          -2,REDIS_CMD_INLINE,NULL,1,1,1,1},
 
     {"insert",       insertCommand,        -5,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
-    {"select",       selectALSOSQLCommand, -4,REDIS_CMD_INLINE,NULL,1,1,1,1},
+    {"select",       selectALSOSQLCommand, -2,REDIS_CMD_INLINE,NULL,1,1,1,1},
     {"update",       updateCommand,        -4,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
     {"delete",       deleteCommand,        -3,REDIS_CMD_INLINE,NULL,1,1,1,1},
 
@@ -4989,11 +4986,7 @@ static void existsCommand(redisClient *c) {
     }
 }
 
-#ifdef ALSOSQL
-static void changedbCommand(redisClient *c) {
-#else
-static void selectCommand(redisClient *c) {
-#endif /* ALSOSQL END */
+void selectCommand(redisClient *c) {
     int id = atoi(c->argv[1]->ptr);
 
     if (selectDb(c,id) == REDIS_ERR) {
@@ -5002,6 +4995,11 @@ static void selectCommand(redisClient *c) {
         addReply(c,shared.ok);
     }
 }
+#ifdef ALSOSQL
+static void changedbCommand(redisClient *c) {
+    selectCommand(c);
+}
+#endif /* ALSOSQL END */
 
 static void randomkeyCommand(redisClient *c) {
     dictEntry *de;

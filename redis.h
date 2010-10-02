@@ -501,6 +501,7 @@ struct redisCommand {
 };
 
 void hsetCommand(redisClient *c);
+void selectCommand(redisClient *c);
 
 /* ALSOSQL */
 typedef struct storage_command {
