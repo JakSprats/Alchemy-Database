@@ -276,11 +276,11 @@ void createIndex(redisClient *c) {
     }
     indexCommit(c, c->argv[2]->ptr, c->argv[4]->ptr);
 }
-#if 0
+
 void legacyIndexCommand(redisClient *c) {
     indexCommit(c, c->argv[1]->ptr, c->argv[2]->ptr);
 }
-#endif
+
 
 void indexEmpty(redisDb *db, int inum) {
     robj *ind                       = Index[server.dbid][inum].obj;

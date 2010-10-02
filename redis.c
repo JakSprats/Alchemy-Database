@@ -942,6 +942,7 @@ static struct redisCommand cmdTable[] = {
     {"legacyjoin",   legacyJoinCommand,     4,REDIS_CMD_INLINE,NULL,1,1,1,1},
     {"legacytable",  legacyTableCommand,   -3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
     {"legacyinsert", legacyInsertCommand,  -3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
+    {"legacyindex",  legacyIndexCommand,    3,REDIS_CMD_INLINE,NULL,1,1,1,1},
 #endif /* ALSOSQL END */
     {NULL,NULL,0,0,NULL,0,0,0,0}
 };

@@ -393,6 +393,12 @@ void istoreCommit(redisClient *c,
         }
     }
 
+    if (sub_pk) { /* write back in "$" for AOF and Slaves */
+        sds l_argv = sdscatprintf(sdsempty(), "%s$",
+                                             (char *)c->argv[c->argc - 1]->ptr);
+        sdsfree(c->argv[c->argc - 1]->ptr);
+        c->argv[c->argc - 1]->ptr = l_argv;
+    }
 istore_err:
     btReleaseRangeIterator(bi);
     decrRefCount(low);

@@ -35,6 +35,7 @@ int checkIndexedColumnOrReply(redisClient *c, char *curr_tname);
 
 void newIndex(redisClient *c, char *iname, int tmatch, int cmatch, bool virt);
 void createIndex(redisClient *c);
+void legacyIndexCommand(redisClient *c);
 
 void iAdd(bt *btr, robj *i_key, robj *i_val, uchar pktype);
 

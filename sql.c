@@ -484,6 +484,11 @@ void joinReply(redisClient *c, sds clist, int argn) {
         if (newname) {
             jstoreCommit(c, sto, range, newname,
                          j_indxs, j_tbls, j_cols, n_ind, qcols);
+            /* write back in "$" for AOF and Slaves */
+            sds l_argv = sdscatprintf(sdsempty(), "%s$", 
+                                             (char *)c->argv[c->argc - 1]->ptr);
+            sdsfree(c->argv[c->argc - 1]->ptr);
+            c->argv[c->argc - 1]->ptr = l_argv;
         } else {
             RANGE_CHECK_OR_REPLY(range->ptr);
             joinGeneric(c, NULL, j_indxs, j_tbls, j_cols, n_ind, qcols,
