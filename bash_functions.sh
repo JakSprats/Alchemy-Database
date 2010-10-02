@@ -13,34 +13,34 @@ function NL() {
 
 function init_external() {
   $CLI CREATE TABLE external \(id int primary key, division int, health int, salary TEXT, name TEXT\)
-  $CLI CREATE INDEX external:division:index ON \(external.division\)
-  $CLI CREATE INDEX external:health:index   ON \(external.health\)
+  $CLI CREATE INDEX external:division:index ON external \(division\)
+  $CLI CREATE INDEX external:health:index   ON external \(health\)
 }
 function init_healthplan() {
   $CLI CREATE TABLE healthplan \(id int primary key, name TEXT\)
 }
 function init_division() {
   $CLI CREATE TABLE division \(id int primary key, name TEXT, location TEXT\)
-  $CLI CREATE INDEX division:name:index ON \(division.name\)
+  $CLI CREATE INDEX division:name:index ON division \(name\)
 }
 function init_subdivision() {
   $CLI CREATE TABLE subdivision \(id int primary key, division int, name TEXT\)
-  $CLI CREATE INDEX subdivision:division:index ON \(subdivision.division\)
+  $CLI CREATE INDEX subdivision:division:index ON subdivision \(division\)
 }
 function init_employee() {
   $CLI CREATE TABLE employee \(id int primary key, division int, salary TEXT, name TEXT\)
-  $CLI CREATE INDEX employee:name:index     ON \(employee.name\)
-  $CLI CREATE INDEX employee:division:index ON \(employee.division\)
+  $CLI CREATE INDEX employee:name:index     ON employee \(name\)
+  $CLI CREATE INDEX employee:division:index ON employee \(division\)
 }
 function init_customer() {
   $CLI CREATE TABLE customer \(id int primary key, employee int, name TEXT, hobby TEXT\)
-  $CLI CREATE INDEX customer:employee:index ON \(customer.employee\)
-  $CLI CREATE INDEX customer:hobby:index    ON \(customer.hobby\)
+  $CLI CREATE INDEX customer:employee:index ON customer \(employee\)
+  $CLI CREATE INDEX customer:hobby:index    ON customer \(hobby\)
 }
 function init_worker() {
   $CLI CREATE TABLE worker \(id int primary key, division int, health int, salary TEXT, name TEXT\)
-  $CLI CREATE INDEX worker:division:index ON \(worker.division\)
-  $CLI CREATE INDEX worker:health:index   ON \(worker.health\)
+  $CLI CREATE INDEX worker:division:index ON worker \(division\)
+  $CLI CREATE INDEX worker:health:index   ON worker \(health\)
 }
 
 function insert_external() {
@@ -450,8 +450,6 @@ function create_table_as_select_join_worker_health() {
 # BENCHMARK_HELPERS BENCHMARK_HELPERS BENCHMARK_HELPERS BENCHMARK_HELPERS
 function init_test_table() {
   $CLI CREATE TABLE test \(id int primary key, field TEXT, name TEXT\)
-  #$CLI CREATE INDEX test:name:index  ON \(test.name\)
-  #$CLI CREATE INDEX test:field:index ON \(test.field\)
 }
 function init_join_table() {
   $CLI CREATE TABLE join \(id int primary key, field TEXT, name TEXT\)
@@ -496,7 +494,7 @@ function init_FK_table() {
     echo CREATE TABLE FK \(id int primary key, fk int, value TEXT\)
     $CLI CREATE TABLE FK \(id int primary key, fk int, value TEXT\)
   fi
-  $CLI CREATE INDEX FK:fk:index ON \(FK.fk\)
+  $CLI CREATE INDEX FK:fk:index ON FK \(fk\)
 }
 function init_FK2_table() {
   if [ -n "$STRING_OVERRIDE" ]; then
@@ -506,7 +504,7 @@ function init_FK2_table() {
     echo CREATE TABLE FK2 \(id int primary key, fk int, value TEXT\)
     $CLI CREATE TABLE FK2 \(id int primary key, fk int, value TEXT\)
   fi
-  $CLI CREATE INDEX FK2:fk:index ON \(FK2.fk\)
+  $CLI CREATE INDEX FK2:fk:index ON FK2 \(fk\)
 }
 
 function test_fk_range_queries() {
@@ -538,8 +536,8 @@ function test_fk_all() {
 
 function secondary_range_query_test() {
   init_string_test_table
-  $CLI CREATE INDEX stest:name:index  ON \(stest.name\)
-  $CLI CREATE INDEX stest:field:index ON \(stest.field\)
+  $CLI CREATE INDEX stest:name:index  ON stest \(name\)
+  $CLI CREATE INDEX stest:field:index ON stest \(field\)
   I=1;
   NUM=3
   NUM=100
@@ -652,7 +650,7 @@ function populate_itest() {
 
 function size_test() {
   $CLI CREATE TABLE size_test \(id int primary key, num int, str TEXT\)
-  #$CLI CREATE INDEX size_test:num:index ON \(size_test.num\)
+  #$CLI CREATE INDEX size_test:num:index ON size_test \(num\)
   I=1;
   N=100000;
   J=0;
@@ -682,10 +680,10 @@ function populate_join_fk_test() {
   $CLI CREATE TABLE master     \(id INT, val TEXT\)
 
   $CLI CREATE TABLE reference1 \(id INT, master_id INT, val TEXT\)
-  $CLI CREATE INDEX reference1:master_id:index ON \(reference1.master_id\)
+  $CLI CREATE INDEX reference1:master_id:index ON reference1 \(master_id\)
 
   $CLI CREATE TABLE reference2 \(id INT, master_id INT, val TEXT\)
-  $CLI CREATE INDEX reference2:master_id:index ON \(reference2.master_id\)
+  $CLI CREATE INDEX reference2:master_id:index ON reference2 \(master_id\)
 
   $CLI INSERT INTO master VALUES \(1,"MASTER_ONE"\)
   $CLI INSERT INTO master VALUES \(2,"MASTER_TWO"\)
@@ -717,8 +715,8 @@ function populate_join_fk_test() {
 
 function index_size_test() {
   $CLI CREATE TABLE istest \(id INT, fk1 INT, fk2 INT, val TEXT\)
-  $CLI CREATE INDEX istest:fk1:index ON \(istest.fk1\)
-  $CLI CREATE INDEX istest:fk2:index ON \(istest.fk2\)
+  $CLI CREATE INDEX istest:fk1:index ON istest \(fk1\)
+  $CLI CREATE INDEX istest:fk2:index ON istest \(fk2\)
   $CLI desc istest
   $CLI INSERT INTO istest VALUES \(1,101,201,"ONE"\)
   $CLI desc istest

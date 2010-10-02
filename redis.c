@@ -1747,6 +1747,9 @@ static void createSharedObjects(void) {
         "-ERR Index on Tablename.columnname target error\r\n"));
     shared.indexedalready = createObject(REDIS_STRING,sdsnew(
         "-ERR Tablename.Columnname is ALREADY indexed)\r\n"));
+    shared.index_wrong_num_args = createObject(REDIS_STRING,sdsnew(
+        "-ERR wrong number of arguments for 'CREATE INDEX' command\r\n"));
+
     shared.nonexistenttable = createObject(REDIS_STRING,sdsnew(
         "-ERR Table does not exist\r\n"));
     shared.insertcolumnmismatch = createObject(REDIS_STRING,sdsnew(

@@ -268,13 +268,20 @@ static void indexCommit(redisClient *c, char *iname, char *trgt) {
 ind_commit_err:
     sdsfree(o_target);
 }
+
 void createIndex(redisClient *c) {
-    if (c->argc < 5) {
-        addReplySds(c, sdscatprintf(sdsempty(),
-              "-ERR wrong number of arguments for 'CREATE INDEX' command\r\n"));
+    if (c->argc < 6) {
+        addReply(c, shared.index_wrong_num_args);
         return;
     }
-    indexCommit(c, c->argv[2]->ptr, c->argv[4]->ptr);
+
+    /* TODO lazy programming, change legacyIndex syntax */
+    sds legacy_column       = sdstrim(c->argv[5]->ptr, "()");
+    sds legacy_index_syntax = sdscatprintf(sdsempty(), "%s.%s",
+                                           (char *)c->argv[4]->ptr,
+                                           (char *)legacy_column);
+    indexCommit(c, c->argv[2]->ptr, legacy_index_syntax);
+    sdsfree(legacy_index_syntax);
 }
 
 void legacyIndexCommand(redisClient *c) {
