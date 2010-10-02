@@ -658,6 +658,8 @@ update_cmd_err:
 
 
 unsigned long tableEmpty(redisDb *db, int tmatch) {
+    if (!Tbl[server.dbid][tmatch].name) return 0; /* already deleted */
+
     MATCH_INDICES(tmatch)
     unsigned long deleted = 0;
     if (matches) { // delete indices first
@@ -686,9 +688,9 @@ unsigned long tableEmpty(redisDb *db, int tmatch) {
         Tbl[server.dbid][tmatch].col_name[j] = NULL;
         Tbl[server.dbid][tmatch].col_type[j] = -1;
     }
-    Tbl[server.dbid][tmatch].name      = NULL;
     Tbl[server.dbid][tmatch].col_count = 0;
     Tbl[server.dbid][tmatch].virt_indx = -1;
+    Tbl[server.dbid][tmatch].name      = NULL;
 
     deleted++;
     //TODO shuffle tables to make space for deleted indices

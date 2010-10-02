@@ -7285,6 +7285,7 @@ static void convertToRealHash(robj *o) {
 
 static void flushdbCommand(redisClient *c) {
     server.dirty += dictSize(c->db->dict);
+    server.dbid   = c->db->id;
 #ifdef ALSOSQL
     for (int k = 0; k < Num_tbls[server.dbid]; k++) {
         tableEmpty(&server.db[server.dbid], k); /* deletes indices also */
