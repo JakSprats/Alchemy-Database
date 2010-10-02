@@ -68,7 +68,8 @@ static void condSelectReply(redisClient   *c,
                             int            cmatchs[],
                             robj          *low,
                             robj          *high,
-                            unsigned long *card) {
+                            unsigned long *card,
+                            bool           no_w_c) {
     char *s;
     robj *r = NULL;
     if (!cmatch) {
@@ -79,10 +80,14 @@ static void condSelectReply(redisClient   *c,
     }
 
     unsigned char hit = 0;
-    int type = Tbl[server.dbid][tmatch].col_type[cmatch];
-    if (col_cmp(s, low->ptr,  type) >= 0 &&
-        col_cmp(s, high->ptr, type) <= 0) {
+    if (no_w_c) {
         hit = 1;
+    } else {
+        int type = Tbl[server.dbid][tmatch].col_type[cmatch];
+        if (col_cmp(s, low->ptr,  type) >= 0 &&
+            col_cmp(s, high->ptr, type) <= 0) {
+            hit = 1;
+        }
     }
 
     if (hit) {
@@ -97,7 +102,7 @@ void tscanCommand(redisClient *c) {
     int   which = 3; /*used in ARGN_OVERFLOW() */
     robj *pko   = NULL, *range  = NULL;
     sds   clist = sdsempty();
-    for (argn = 1; argn < c->argc; argn++) {
+    for (argn = 1; argn < c->argc; argn++) { /* parse col_list */
         sds y = c->argv[argn]->ptr;
         if (!strcasecmp(y, "FROM")) break;
 
@@ -126,30 +131,42 @@ void tscanCommand(redisClient *c) {
     ARGN_OVERFLOW()
 
     TABLE_CHECK_OR_REPLY(c->argv[argn]->ptr,)
-    ARGN_OVERFLOW()
+
+    bool no_w_c = 0; /* NO WHERE CLAUSE */
+    if (argn == (c->argc - 1)) no_w_c = 1;
+
+    if (!no_w_c) {
+        ARGN_OVERFLOW()
+    }
 
     int cmatchs[MAX_COLUMN_PER_TABLE];
     int qcols = parseColListOrReply(c, tmatch, clist, cmatchs);
     if (!qcols) goto tscan_cmd_err;
 
-    int            imatch = -1,    cmatch = -1;
-    unsigned char  where  = checkSQLWhereClauseOrReply(c, &pko, &range, &imatch,
-                                                       &cmatch, &argn, tmatch,
-                                                       0, 0);
-    if (!where) goto tscan_cmd_err;
+    int    imatch = -1;
+    int    cmatch = -1;
+    robj *rq_low  = NULL;
+    robj *rq_high = NULL;
+    bool  rq      = 0;
+
+    if (!no_w_c) {
+        unsigned char where = 
+          checkSQLWhereClauseOrReply(c, &pko, &range, &imatch, &cmatch, &argn,
+                                     tmatch, 0, 0);
+        if (!where) goto tscan_cmd_err;
+        if (where == 2) { /* RANGE QUERY */
+            RANGE_CHECK_OR_REPLY(range->ptr)
+            rq_low  = low;
+            rq_high = high;
+            rq      = 1;
+        } else {
+            rq_low  = pko;
+            rq_high = pko;
+        }
+    }
 
     robj *o = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
     LEN_OBJ
-    bool rq = (where == 2); /* RANGE QUERY */
-    robj *rq_low, *rq_high;
-    if (rq) {
-        RANGE_CHECK_OR_REPLY(range->ptr)
-        rq_low  = low;
-        rq_high = high;
-    } else {
-        rq_low  = pko;
-        rq_high = pko;
-    }
 
     btEntry          *be;
     btStreamIterator *bi = btGetFullRangeIterator(o, 0, 1);
@@ -157,15 +174,17 @@ void tscanCommand(redisClient *c) {
         robj *key = be->key;
         robj *row = be->val;
         condSelectReply(c, o, key, row, tmatch, cmatch,
-                        qcols, cmatchs, rq_low, rq_high, &card);
+                        qcols, cmatchs, rq_low, rq_high, &card, no_w_c);
     }
     btReleaseRangeIterator(bi);
+
     if (rq) {
         decrRefCount(rq_low);
         decrRefCount(rq_high);
     }
 
     lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
+
 tscan_cmd_err:
     sdsfree(clist);
     if (pko)   decrRefCount(pko);
