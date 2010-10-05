@@ -5072,7 +5072,12 @@ static void typeCommand(redisClient *c) {
 
     o = lookupKeyRead(c->db,c->argv[1]);
     if (o == NULL) {
-        type = "+none";
+        /* TODO a virtual index should exist but its ptr should be NULL */
+        if (match_index_name(c->argv[1]->ptr) != -1 ) {
+            type = "+index";
+        } else {
+            type = "+none";
+        }
     } else {
         switch(o->type) {
         case REDIS_STRING: type = "+string"; break;
@@ -5081,8 +5086,8 @@ static void typeCommand(redisClient *c) {
         case REDIS_ZSET: type = "+zset"; break;
         case REDIS_HASH: type = "+hash"; break;
         case REDIS_BTREE: {
-            if (!o->ptr) { /* virtual index */
-                type = "+index";
+           if (!o->ptr) { /* virtual index */
+               type = "+index";
             } else {
                 bt *btr = o->ptr;
                 if (btr->is_index == BTREE_TABLE) {
