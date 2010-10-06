@@ -787,7 +787,7 @@ void descCommand(redisClient *c);
 void dumpCommand(redisClient *c);
 
 void insertCommand(redisClient *c);
-void selectALSOSQLCommand(redisClient *c);
+void selectRedisqlCommand(redisClient *c);
 void updateCommand(redisClient *c);
 void deleteCommand(redisClient *c);
 
@@ -926,7 +926,7 @@ static struct redisCommand cmdTable[] = {
     {"dump",         dumpCommand,          -2,REDIS_CMD_INLINE,NULL,1,1,1,1},
 
     {"insert",       insertCommand,        -5,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
-    {"select",       selectALSOSQLCommand, -2,REDIS_CMD_INLINE,NULL,1,1,1,1},
+    {"select",       selectRedisqlCommand, -2,REDIS_CMD_INLINE,NULL,1,1,1,1},
     {"update",       updateCommand,        -4,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
     {"delete",       deleteCommand,        -3,REDIS_CMD_INLINE,NULL,1,1,1,1},
 
@@ -1788,6 +1788,12 @@ static void createSharedObjects(void) {
         "-ERR SELECT: JOIN: Only SINGLE index joins are supported\r\n"));
     shared.join_requires_range = createObject(REDIS_STRING,sdsnew(
         "-ERR SELECT: JOIN: A range must be specified when joining (e.g. tbl.col BETWEEN x AND Y) -> Full Table Scans when joining are purposefully prohibited\r\n"));
+    shared.join_order_by_tbl = createObject(REDIS_STRING,sdsnew(
+        "-ERR SELECT: JOIN: ORDER BY tablename.columname - table does not exist\r\n"));
+    shared.join_order_by_col = createObject(REDIS_STRING,sdsnew(
+        "-ERR SELECT: JOIN: ORDER BY tablename.columname - column does not exist\r\n"));
+    shared.join_table_not_in_query = createObject(REDIS_STRING,sdsnew(
+        "-ERR SELECT: JOIN: ORDER BY tablename.columname - table not in SELECT *\r\n"));
 
     shared.storagetypeunkown = createObject(REDIS_STRING,sdsnew(
         "-ERR STORE: StorageType must be write commands (LPUSH,SADD,ZADD,INSERT,SET,etc...)\r\n"));
@@ -1805,10 +1811,19 @@ static void createSharedObjects(void) {
         "-ERR SYNTAX: INSERT INTO tablename VALUES (vals,,,,)\r\n"));
     shared.insertsyntax_no_into = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: INSERT INTO tablename VALUES (vals,,,,) - \"INTO\" keyword MISSING\r\n"));
-    shared.insertsyntax_col_declaration = createObject(REDIS_STRING,sdsnew(
+    shared.insertsyntax_col_decl = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: INSERT INTO tablename VALUES (vals,,,,) - Column Declaration not supported\r\n"));
     shared.insertsyntax_no_values = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: INSERT INTO tablename VALUES (vals,,,,) - \"VALUES\" keyword MISSING\r\n"));
+    shared.insert_ret_cname_err = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: INSERT INTO tablename VALUES (vals,,,,) RETURN column_name \"column_name\" not found\r\n"));
+
+    shared.whereclause_in_directive = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: WHERE id IN (...) - \"IN\" NOT YET SUPORTED\r\n"));
+    shared.whereclause_orderby_directive = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: WHERE ... ORDER BY col - \"ORDER BY\" NOT YET SUPORTED\r\n"));
+    shared.whereclause_orderby_no_by = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: WHERE ... ORDER BY col - \"BY\" MISSING\r\n"));
 
     shared.selectsyntax = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: SELECT col,,,, FROM tablename WHERE indexed_column = val || WHERE indexed_column BETWEEN x AND y\r\n"));
@@ -2098,7 +2113,7 @@ static void initServer() {
 //#define STORAGE_MAX_ARGC 3
 
     //#define ACCESS_SELECT_COMMAND_NUM 0
-    AccessCommands[0].func   = selectALSOSQLCommand;
+    AccessCommands[0].func   = selectRedisqlCommand;
     AccessCommands[0].name   = "SELECT";
     AccessCommands[0].argc   = 4;
 
@@ -3412,6 +3427,7 @@ static void freeHashObject(robj *o) {
 void incrRefCount(robj *o) {
     o->refcount++;
 }
+
 
 void decrRefCount(void *obj) {
     robj *o = obj;

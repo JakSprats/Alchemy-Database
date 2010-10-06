@@ -91,7 +91,10 @@ static void condSelectReply(redisClient   *c,
     }
 
     if (hit) {
-        selectReply(c, o, key, tmatch, cmatchs, qcols);
+        robj *row = btFindVal(o, key, Tbl[server.dbid][tmatch].col_type[0]);
+        robj *r   = outputRow(row, qcols, cmatchs, key, tmatch, 0);
+        addReplyBulk(c, r);
+        decrRefCount(r);
         *card = *card + 1;
     }
     if (r) decrRefCount(r);
@@ -99,7 +102,7 @@ static void condSelectReply(redisClient   *c,
 
 void tscanCommand(redisClient *c) {
     int   argn;
-    int   which = 3; /*used in ARGN_OVERFLOW() */
+    uchar sop   = 3; /*used in ARGN_OVERFLOW() */
     robj *pko   = NULL, *range  = NULL;
     sds   clist = sdsempty();
     for (argn = 1; argn < c->argc; argn++) { /* parse col_list */
@@ -150,9 +153,13 @@ void tscanCommand(redisClient *c) {
     bool  rq      = 0;
 
     if (!no_w_c) {
-        unsigned char where = 
-          checkSQLWhereClauseOrReply(c, &pko, &range, &imatch, &cmatch, &argn,
-                                     tmatch, 0, 0);
+        bool  bdum;
+        int   obc   = -1; /* ORDER BY col */
+        bool  asc   = 1;
+        int   lim   = -1;
+        uchar where = checkSQLWhereClauseReply(c, &pko, &range, &imatch,
+                                               &cmatch, &argn, tmatch, 0, 0,
+                                               &obc, &asc, &lim, &bdum);
         if (!where) goto tscan_cmd_err;
         if (where == 2) { /* RANGE QUERY */
             RANGE_CHECK_OR_REPLY(range->ptr)

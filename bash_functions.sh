@@ -74,9 +74,9 @@ function insert_division() {
 }
 function insert_employee() {
   $CLI INSERT INTO employee VALUES \(1,11,10000.99,"jim"\)
-  $CLI INSERT INTO employee VALUES \(2,22,2000.99,"jack"\)
+  $CLI INSERT INTO employee VALUES \(2,22,12000.99,"jack"\)
   $CLI INSERT INTO employee VALUES \(3,33,30000.99,"bob"\)
-  $CLI INSERT INTO employee VALUES \(4,22,3000.99,"bill"\)
+  $CLI INSERT INTO employee VALUES \(4,22,23000.99,"bill"\)
   $CLI INSERT INTO employee VALUES \(5,22,5000.99,"tim"\)
   $CLI INSERT INTO employee VALUES \(6,66,60000.99,"jan"\)
   $CLI INSERT INTO employee VALUES \(7,77,7000.99,"beth"\)
@@ -273,6 +273,20 @@ function join_div_sub_wrkr() {
   $CLI SELECT division.name,division.location,subdivision.name,worker.name,worker.salary FROM division,subdivision,worker WHERE division.id = subdivision.division AND division.id = worker.division AND division.id BETWEEN 11 AND 33
 }
 
+function order_by_test() {
+  echo "ORDER BY TEST"
+  echo SELECT id,name,salary,division FROM employee WHERE id BETWEEN 4 AND 9 ORDER BY id LIMIT 4;
+  $CLI SELECT id,name,salary,division FROM employee WHERE id BETWEEN 4 AND 9 ORDER BY id LIMIT 4;
+  echo SELECT id,name,salary,division FROM employee WHERE id BETWEEN 4 AND 9 ORDER BY name LIMIT 4;
+  $CLI SELECT id,name,salary,division FROM employee WHERE id BETWEEN 4 AND 9 ORDER BY name LIMIT 4;
+  echo SELECT id,name,salary,division FROM employee WHERE division BETWEEN 22 AND 77 ORDER BY division LIMIT 4;
+  $CLI SELECT id,name,salary,division FROM employee WHERE division BETWEEN 22 AND 77 ORDER BY division LIMIT 4;
+  echo SELECT id,name,salary,division FROM employee WHERE division BETWEEN 22 AND 77 ORDER BY name LIMIT 4
+  $CLI SELECT id,name,salary,division FROM employee WHERE division BETWEEN 22 AND 77 ORDER BY name LIMIT 4
+  echo SELECT id,name,salary,division FROM employee WHERE division BETWEEN 22 AND 77 ORDER BY name DESC LIMIT 4
+  $CLI SELECT id,name,salary,division FROM employee WHERE division BETWEEN 22 AND 77 ORDER BY name DESC LIMIT 4
+}
+
 function joiner() {
   echo "JOINS"
   echo
@@ -304,6 +318,7 @@ function works() {
   iselecter_customer
   ideleter_customer
   iselecter_customer_employee
+  order_by_test
   joiner
 }
 
@@ -357,10 +372,10 @@ function istore_worker_name_list() {
 }
 
 function istore_customer_hobby_denorm_to_many_lists() {
-  echo SELECT employee, hobby FROM customer WHERE employee BETWEEN 3 aND 6 STORE RPUSH employee_hobby_list$
-  $CLI SELECT employee, hobby FROM customer WHERE employee BETWEEN 3 aND 6 STORE RPUSH employee_hobby_list$
-  echo LRANGE employee_hobby_list:4 0 -1
-  $CLI LRANGE employee_hobby_list:4 0 -1
+  echo SELECT employee, hobby FROM customer WHERE employee BETWEEN 3 AND 6 STORE RPUSH employee_hobby_list$
+  $CLI SELECT employee, hobby FROM customer WHERE employee BETWEEN 3 AND 6 STORE RPUSH employee_hobby_list$
+  echo LRANGE employee_hobby_list:6 0 -1
+  $CLI LRANGE employee_hobby_list:6 0 -1
 }
 
 function istore_emp_div_sal_denorm_to_many_zset() {

@@ -341,13 +341,13 @@ static aobj getPk(robj *okey, bool icol, bool force_string) {
 char RawCols[MAX_COLUMN_PER_TABLE][32];
 
 //IMPORTANT: do not modify buffer(meta) here [READ-OP]
-static aobj getRawCol(robj *r,
-                      int   cmatch,
-                      robj *okey,
-                      int   tmatch,
-                      flag *cflag,
-                      bool  icol,
-                      bool  force_string) {
+aobj getRawCol(robj *r,
+               int   cmatch,
+               robj *okey,
+               int   tmatch,
+               flag *cflag,
+               bool  icol,
+               bool  force_string) {
     if (!cmatch) { // PK is stored ONLY in KEY not in ROW -> echo it
         return getPk(okey, icol, force_string);
     }

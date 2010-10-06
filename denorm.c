@@ -201,7 +201,7 @@ void createTableAsObject(redisClient *c) {
     bool  single;
     robj *o  = NULL;
     if (axs == ACCESS_SELECT_COMMAND_NUM) {
-        int   which = 0; /*used in ARGN_OVERFLOW() */
+        uchar sop   = 0; /*used in ARGN_OVERFLOW() */
         int   argn  = 5;
         sds   clist = sdsempty();
 
@@ -221,10 +221,13 @@ void createTableAsObject(redisClient *c) {
         if (strchr(clist, '.')) { /* CREATE TABLE AS SELECT JOIN */
             int   j_indxs[MAX_JOIN_INDXS];
             int   j_tbls [MAX_JOIN_INDXS], j_cols [MAX_JOIN_INDXS];
-            int   n_ind, sto;
-            robj *range  = NULL, *newname = NULL;
+            int   idum;
+            bool  bdum;
+            robj *range   = NULL;
+            robj *newname = NULL;
             where = joinParseReply(c, clist, argn, j_indxs, j_tbls, j_cols,
-                                   &qcols, &sto, &newname, &range, &n_ind);
+                                   &qcols, &idum, &newname, &range, &idum,
+                                   &idum, &idum, &bdum, &idum);
             if (range) decrRefCount(range);
             if (where && qcols)
                 ret = createTableFromJoin(c, rfc, qcols, j_tbls, j_cols);
@@ -233,9 +236,14 @@ void createTableAsObject(redisClient *c) {
             int cmatchs[MAX_COLUMN_PER_TABLE];
             qcols = parseColListOrReply(c, tmatch, clist, cmatchs);
             if (qcols) { /* check WHERE clause for syntax */
+                bool bdum;
+                int  obc = -1; /* ORDER BY col */
+                bool asc = 1;
+                int  lim = -1;
                 ARGN_OVERFLOW()
-                where = checkSQLWhereClauseOrReply(c, NULL, NULL, NULL, NULL,
-                                                   &argn, tmatch, 0, 1);
+                where = checkSQLWhereClauseReply(c, NULL, NULL, NULL, NULL,
+                                                 &argn, tmatch, 0, 1,
+                                                 &obc, &asc, &lim, &bdum);
                 if (where)
                     ret = internalCreateTable(c, rfc, qcols, cmatchs, tmatch);
             }

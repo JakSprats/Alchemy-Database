@@ -94,7 +94,8 @@ int find_column(int tmatch, char *column) {
     if (!Tbl[server.dbid][tmatch].name) return -1;
     for (int j = 0; j < Tbl[server.dbid][tmatch].col_count; j++) {
         if (Tbl[server.dbid][tmatch].col_name[j]) {
-            if (!strcmp(column, (char *)Tbl[server.dbid][tmatch].col_name[j]->ptr)) {
+            if (!strcmp(column,
+                        (char *)Tbl[server.dbid][tmatch].col_name[j]->ptr)) {
                 return j;
             }
         }
@@ -397,15 +398,19 @@ void insertCommitReply(redisClient *c,
     int   len  = btAdd(o, pko, nrow, pktype); /* copy[pk & val] */
     sdsfree(Curr_range); /* used by InSwapMode */
     Curr_range = sdsdup(pko->ptr);
-    decrRefCount(pko);
-    decrRefCount(nrow);
-    zfree(pk);
 
-    int new_size = 0;
-    if (c->argc > 5 &&
-        !strcasecmp(c->argv[5]->ptr, "RETURN") &&
-        !strcasecmp(c->argv[6]->ptr, "SIZE")      ) {
-        new_size = len;
+    int new_size   = 0;
+    int ret_cmatch = -1;
+    if (c->argc > 5 && !strcasecmp(c->argv[5]->ptr, "RETURN")) {
+        if (!strcasecmp(c->argv[6]->ptr, "SIZE")) {
+            new_size = len;
+        } else { /* used for AUTO_INCREMENT cols - atomic return val */
+            ret_cmatch = find_column(tmatch, c->argv[6]->ptr);
+            if (ret_cmatch == -1) {
+                addReply(c, shared.insert_ret_cname_err);
+                goto insert_commit_err;
+            }
+        }
     }
 
     if (new_size) {
@@ -418,6 +423,10 @@ void insertCommitReply(redisClient *c,
         robj *r = createStringObject(buf, strlen(buf));
         addReplyBulk(c, r);
         decrRefCount(r);
+    } else if (ret_cmatch != -1) {
+        robj *r = createColObjFromRow(nrow, ret_cmatch, pko, tmatch);
+        addReplyBulk(c, r);
+        decrRefCount(r);
     } else {
         addReply(c, shared.ok);
     }
@@ -427,6 +436,11 @@ void insertCommitReply(redisClient *c,
         sds l_argv = c->argv[4]->ptr;
         l_argv[sdslen(l_argv) - 1] = ')';
     }
+
+insert_commit_err:
+    zfree(pk);
+    decrRefCount(pko);
+    decrRefCount(nrow);
 
 }
 
@@ -445,7 +459,7 @@ void insertCommand(redisClient *c) {
     /* TODO column ordering is IGNORED */
     if (strcasecmp(c->argv[3]->ptr, "VALUES")) {
         char *x = c->argv[3]->ptr;
-        if (*x == '(') addReply(c, shared.insertsyntax_col_declaration);
+        if (*x == '(') addReply(c, shared.insertsyntax_col_decl);
         else           addReply(c, shared.insertsyntax_no_values);
         return;
     }
@@ -455,12 +469,12 @@ void insertCommand(redisClient *c) {
     insertCommitReply(c, vals, ncols, tmatch, matches, indices);
 }
 
-void selectReply(redisClient  *c,
-                 robj         *o,
-                 robj         *pko,
-                 int           tmatch,
-                 int           cmatchs[],
-                 int           qcols) {
+static void selectReply(redisClient  *c,
+                        robj         *o,
+                        robj         *pko,
+                        int           tmatch,
+                        int           cmatchs[],
+                        int           qcols) {
     robj *row = btFindVal(o, pko, Tbl[server.dbid][tmatch].col_type[0]);
     if (!row) {
         addReply(c, shared.nullbulk);
@@ -495,15 +509,15 @@ void parseSelectColumnList(redisClient *c, sds *clist, int *argn) {
     }
 }
 
-void selectALSOSQLCommand(redisClient *c) {
+void selectRedisqlCommand(redisClient *c) {
     if (c->argc == 2) { /* this is a REDIS "select DB" command" */
         selectCommand(c);
         return;
     }
-    int   argn = 1;
-    int   which = 0; /*used in ARGN_OVERFLOW() */
-    robj *pko   = NULL, *range = NULL;
-    sds   clist = sdsempty();
+    int    argn  = 1;
+    uchar  sop   = 0; /*used in ARGN_OVERFLOW() */
+    robj  *pko   = NULL, *range = NULL;
+    sds    clist = sdsempty();
 
     parseSelectColumnList(c, &clist, &argn);
 
@@ -520,28 +534,28 @@ void selectALSOSQLCommand(redisClient *c) {
         TABLE_CHECK_OR_REPLY(tbl_list,);
         ARGN_OVERFLOW()
 
+        int   idum;
         int   imatch = -1;
-        uchar where  = checkSQLWhereClauseOrReply(c, &pko, &range, &imatch,
-                                                  NULL, &argn, tmatch, 0, 0);
+        int   obc    = -1; /* ORDER BY col */
+        bool  asc    = 1;
+        int   lim    = -1;
+        bool  store  = 0;
+        uchar where  = checkSQLWhereClauseReply(c, &pko, &range, &imatch, &idum,
+                                                &argn, tmatch, 0, 0,
+                                                &obc, &asc, &lim, &store);
         if (!where) goto sel_cmd_err;
 
-        if (argn < (c->argc - 1)) { /* DENORM e.g.: STORE LPUSH list */
-            ARGN_OVERFLOW()
-            if (!strcasecmp(c->argv[argn]->ptr, STORE)) {
-                if (!range) {
-                    addReply(c, shared.selectsyntax_store_norange);
-                    goto sel_cmd_err;
-                }
-                ARGN_OVERFLOW()
-                int i = argn;
-                ARGN_OVERFLOW()
-                istoreCommit(c, tmatch, imatch, c->argv[i]->ptr, clist,
-                             range->ptr, c->argv[argn]);
-            } else {
-                addReply(c, shared.selectsyntax);
+        if (store) { /* DENORM e.g.: STORE LPUSH list */
+            if (!range) {
+                addReply(c, shared.selectsyntax_store_norange);
+                goto sel_cmd_err;
             }
+            int i = argn;
+            ARGN_OVERFLOW()
+            istoreCommit(c, tmatch, imatch, c->argv[i]->ptr, clist,
+                         range->ptr, c->argv[argn], obc, asc);
         } else if (where == 2) { /* RANGE QUERY */
-            iselectAction(c, range->ptr, tmatch, imatch, clist);
+            iselectAction(c, range->ptr, tmatch, imatch, clist, obc, asc, lim);
         } else {
             int cmatchs[MAX_COLUMN_PER_TABLE];
             int qcols = parseColListOrReply(c, tmatch, clist, cmatchs);
@@ -566,11 +580,16 @@ void deleteCommand(redisClient *c) {
 
     TABLE_CHECK_OR_REPLY(c->argv[2]->ptr,)
 
+    int idum; bool bdum;
     int    imatch = -1;
+    int    obc    = -1; /* ORDER BY col */
+    bool   asc    = 1;
+    int    lim    = -1;
     robj  *pko    = NULL, *range = NULL;
     int    argn   = 3;
-    uchar  where  = checkSQLWhereClauseOrReply(c, &pko, &range, &imatch,
-                                               NULL, &argn, tmatch, 1, 0);
+    uchar  where  = checkSQLWhereClauseReply(c, &pko, &range, &imatch, &idum,
+                                             &argn, tmatch, 1, 0,
+                                             &obc, &asc, &lim, &bdum);
     if (!where) return;
 
     sdsfree(Curr_range);
@@ -614,11 +633,16 @@ void updateCommand(redisClient *c) {
 
     ASSIGN_UPDATE_HITS_AND_MISSES
 
+    int idum; bool bdum;
+    int    obc    = -1; /* ORDER BY col */
+    bool   asc    = 1;
+    int    lim    = -1;
     int    imatch = -1;
     robj  *pko    = NULL, *range = NULL;
     int    argn   = 4;
-    uchar  where  = checkSQLWhereClauseOrReply(c, &pko, &range, &imatch,
-                                               NULL, &argn, tmatch, 2, 0);
+    uchar  where  = checkSQLWhereClauseReply(c, &pko, &range, &imatch, &idum,
+                                             &argn, tmatch, 2, 0,
+                                             &obc, &asc, &lim, &bdum);
     if (!where) goto update_cmd_err;
 
     sdsfree(Curr_range);

@@ -62,16 +62,16 @@ bt.o: bt.c btree.h btreepriv.h redis.h row.h bt.h common.h
 bt_code.o: bt_code.c btree.h btreepriv.h redis.h
 bt_output.o: bt_output.c btree.h btreepriv.h redis.h
 alsosql.o: redis.h alsosql.h bt_iterator.h index.h bt.h sixbit.h row.h common.h denorm.h
-index.o: redis.h index.h common.h bt_iterator.h
+index.o: redis.h index.h common.h bt_iterator.h alsosql.h
 bt_iterator.o: redis.h bt_iterator.h btree.h btreepriv.h
 norm.o: redis.h sql.h bt_iterator.h
-join.o: redis.h join.h bt_iterator.h
-store.o: redis.h store.h bt_iterator.h
-rdb_alsosql.o: redis.h rdb_alsosql.h common.h bt_iterator.h
+join.o: redis.h join.h bt_iterator.h alsosql.h
+store.o: redis.h store.h bt_iterator.h alsosql.h
+rdb_alsosql.o: redis.h rdb_alsosql.h common.h bt_iterator.h alsosql.h
 sixbit.o: sixbit.h
-row.o: row.h common.h
+row.o: row.h common.h alsosql.h
 sql.o: redis.h sql.h bt_iterator.h
-denorm.o: redis.h denorm.h bt_iterator.h
+denorm.o: redis.h denorm.h bt_iterator.h alsosql.h
 scan.o: alsosql.h bt_iterator.h
 
 redisql-server: $(OBJ)

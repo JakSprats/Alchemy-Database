@@ -320,7 +320,10 @@ void istoreCommit(redisClient *c,
                   char        *sto_type,
                   char        *col_list,
                   char        *range,
-                  robj        *newname) {
+                  robj        *newname,
+                  int          obc, 
+                  bool         asc) {
+    //RL4 "istoreCommit ORDER BY ignoring: obc: %d asc: %d", obc, asc);
     int sto;
     CHECK_STORE_TYPE_OR_REPLY(sto_type,sto,)
     int cmatchs[MAX_COLUMN_PER_TABLE];

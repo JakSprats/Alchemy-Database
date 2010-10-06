@@ -26,6 +26,8 @@ typedef struct r_tbl {
     int     col_count;
     robj   *col_name[MAX_COLUMN_PER_TABLE];
     uchar   col_type[MAX_COLUMN_PER_TABLE];
+    /* col_flags -> current usage only AUTO_INCREMENT */
+    uchar   col_flags[MAX_COLUMN_PER_TABLE];
     int     virt_indx; /* TODO is this still used? */
 } r_tbl_t;
 
@@ -85,13 +87,6 @@ int parseColListOrReply(redisClient   *c,
         }                                           \
         cmiss[i] = miss;                            \
     }
-
-void selectReply(redisClient  *c,
-                 robj         *o,    
-                 robj         *pko,  
-                 int           tmatch,
-                 int           cmatchs[],
-                 int           qcols);
 
 void parseSelectColumnList(redisClient *c, sds *clist, int *argn);
 

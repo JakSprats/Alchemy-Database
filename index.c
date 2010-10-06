@@ -26,6 +26,9 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <limits.h>
 
 #include "redis.h"
+#include "zmalloc.h"
+#include "adlist.h"
+
 #include "bt.h"
 #include "btreepriv.h"
 #include "bt_iterator.h"
@@ -314,13 +317,107 @@ void dropIndex(redisClient *c) {
     addReply(c, shared.cone);
 }
 
+typedef struct order_by_sort_element {
+    void *val;
+    void *row;
+} obsl_t;
+
+
+static int intOrderBySort(const void *s1, const void *s2) {
+    obsl_t *o1 = (obsl_t *)s1;
+    obsl_t *o2 = (obsl_t *)s2;
+    int    *i1 = (int *)(o1->val);
+    int    *i2 = (int *)(long)(o2->val);
+    return *i1 - *i2;
+}
+static int intOrderByRevSort(const void *s1, const void *s2) {
+    obsl_t *o1 = (obsl_t *)s1;
+    obsl_t *o2 = (obsl_t *)s2;
+    int    *i1 = (int *)(o1->val);
+    int    *i2 = (int *)(long)(o2->val);
+    return *i2 - *i1;
+}
+
+static int stringOrderBySort(const void *s1, const void *s2) {
+    obsl_t  *o1 = (obsl_t *)s1;
+    obsl_t  *o2 = (obsl_t *)s2;
+    char   **c1 = (char **)(o1->val);
+    char   **c2 = (char **)(o2->val);
+    return strcmp(*c1, *c2);
+}
+static int stringOrderByRevSort(const void *s1, const void *s2) {
+    obsl_t  *o1 = (obsl_t *)s1;
+    obsl_t  *o2 = (obsl_t *)s2;
+    char   **c1 = (char **)(o1->val);
+    char   **c2 = (char **)(o2->val);
+    return strcmp(*c2, *c1);
+}
+
+static void addRowToRangeQueryList(list *list,
+                                   robj *r,
+                                   robj *row,
+                                   int   obc,
+                                   robj *pko,
+                                   int   tmatch,
+                                   bool  icol) {
+    flag cflag;
+    obsl_t *ob = (obsl_t *)zmalloc(sizeof(obsl_t));
+    aobj    ao = getRawCol(row, obc, pko, tmatch, &cflag, icol, 0);
+    if (icol) {
+        ob->val    = (void *)(long)ao.i;
+    } else {
+        char *s = malloc(ao.len + 1);
+        memcpy(s, ao.s, ao.len);
+        s[ao.len] = '\0';
+        ob->val   = s;
+    }
+    ob->row    = cloneRobj(r);
+    listAddNodeTail(list, ob);
+}
+
+static void sortOrderByAndReply(redisClient *c,
+                                list        *list,
+                                bool         icol,
+                                int          lim,
+                                bool         asc) {
+        listNode  *ln;
+        listIter   li;
+        int        vlen   = listLength(list);
+        obsl_t   **vector = malloc(sizeof(obsl_t *) * vlen);
+        int        j      = 0;
+        listRewind(list, &li);
+        while((ln = listNext(&li))) {
+            vector[j] = (obsl_t *)ln->value;
+            j++;
+        }
+        if (icol) {
+            asc ? qsort(vector, vlen, sizeof(obsl_t *), intOrderBySort)
+                : qsort(vector, vlen, sizeof(obsl_t *), intOrderByRevSort);
+        } else {
+            asc ? qsort(vector, vlen, sizeof(obsl_t *), stringOrderBySort)
+                : qsort(vector, vlen, sizeof(obsl_t *), stringOrderByRevSort);
+        }
+        for (int k = 0; k < vlen; k++) {
+            if (lim != -1 && k == lim) break;
+            obsl_t *ob = vector[k];
+            addReplyBulk(c, ob->row);
+        }
+        /* TODO free vector[j]->val IFF !icol && sixbit */
+        free(vector);
+        listRelease(list);
+        /* TODO triple check for MEMORY LEAKS */
+}
+
 // INDEX_COMMANDS INDEX_COMMANDS INDEX_COMMANDS INDEX_COMMANDS INDEX_COMMANDS
 // INDEX_COMMANDS INDEX_COMMANDS INDEX_COMMANDS INDEX_COMMANDS INDEX_COMMANDS
 void iselectAction(redisClient *c,
                    char        *range,
                    int          tmatch,
                    int          imatch,
-                   char        *col_list) {
+                   char        *col_list,
+                   int          obc,
+                   bool         asc,
+                   int          lim) {
     int cmatchs[MAX_COLUMN_PER_TABLE];
     int qcols = parseColListOrReply(c, tmatch, col_list, cmatchs);
     if (!qcols) {
@@ -331,25 +428,48 @@ void iselectAction(redisClient *c,
     robj *o = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
     LEN_OBJ
 
-    btEntry    *be, *nbe;
-    robj       *ind  = Index[server.dbid][imatch].obj;
-    bool        virt = Index[server.dbid][imatch].virt;
-    robj       *bt   = virt ? o : lookupKey(c->db, ind);
+    list *list = NULL;
+    bool  icol = 0;
+    if (obc != -1) {
+        list = listCreate();
+        icol = (Tbl[server.dbid][tmatch].col_type[obc] == COL_TYPE_INT);
+    }
+
+    btEntry          *be, *nbe;
+    robj             *ind  = Index[server.dbid][imatch].obj;
+    bool              virt = Index[server.dbid][imatch].virt;
+    robj             *bt   = virt ? o : lookupKey(c->db, ind);
     btStreamIterator *bi   = btGetRangeIterator(bt, low, high, virt);
     while ((be = btRangeNext(bi, 1)) != NULL) {                // iterate btree
         if (virt) {
+            if (obc == 0 && (uint)lim == card) break;
             robj *pko = be->key;
             robj *row = be->val;
             robj *r   = outputRow(row, qcols, cmatchs, pko, tmatch, 0);
-            addReplyBulk(c, r);
-            decrRefCount(r);
+            if (obc != -1 && obc != 0) { /* obc == 0 is already sorted */
+                addRowToRangeQueryList(list, r, row, obc, pko, tmatch, icol);
+            } else {
+                addReplyBulk(c, r);
+                decrRefCount(r);
+            }
             card++;
         } else {
-            robj       *val = be->val;
+            int               ind_col = (int)Index[server.dbid][imatch].column;
+            robj             *val     = be->val;
             btStreamIterator *nbi = btGetFullRangeIterator(val, 0, 0);
             while ((nbe = btRangeNext(nbi, 1)) != NULL) {     // iterate NodeBT
+                if (obc != -1 && obc == ind_col && (uint)lim == card) break;
                 robj *nkey = nbe->key;
-                selectReply(c, o, nkey, tmatch, cmatchs, qcols);
+                robj *row  = btFindVal(o, nkey,
+                                      Tbl[server.dbid][tmatch].col_type[0]);
+                robj *r    = outputRow(row, qcols, cmatchs, nkey, tmatch, 0);
+                if (obc != -1) {
+                    addRowToRangeQueryList(list, r, row, obc, nkey,
+                                           tmatch, icol);
+                } else {
+                    addReplyBulk(c, r);
+                    decrRefCount(r);
+                }
                 card++;
             }
             btReleaseRangeIterator(nbi);
@@ -357,8 +477,13 @@ void iselectAction(redisClient *c,
     }
     btReleaseRangeIterator(bi);
 
+    if (obc != -1) {
+        sortOrderByAndReply(c, list, icol, lim, asc);
+    }
     decrRefCount(low);
     decrRefCount(high);
+
+    if (lim != -1) card = lim;
     lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
 }
 

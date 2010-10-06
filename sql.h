@@ -29,28 +29,32 @@ bool parseCreateTable(redisClient *c,
                       int          *parsed_argn,
                       char         *o_token[]);
 
-#define CHECK_WHERE_CLAUSE_ERROR_REPLY(ret)                    \
-    if      (which == 0) addReply(c, shared.selectsyntax);     \
-    else if (which == 1) addReply(c, shared.deletesyntax);     \
-    else if (which == 2) addReply(c, shared.updatesyntax);     \
-    else                 addReply(c, shared.scanselectsyntax); \
+#define WHERE_CLAUSE_ERROR_REPLY(ret)                        \
+    if      (sop == 0) addReply(c, shared.selectsyntax);     \
+    else if (sop == 1) addReply(c, shared.deletesyntax);     \
+    else if (sop == 2) addReply(c, shared.updatesyntax);     \
+    else               addReply(c, shared.scanselectsyntax); \
     return ret;
 
-#define ARGN_OVERFLOW(ret)                  \
-    argn++;                                 \
-    if (argn == c->argc) {                  \
-        CHECK_WHERE_CLAUSE_ERROR_REPLY(ret) \
+#define ARGN_OVERFLOW(ret)            \
+    argn++;                           \
+    if (argn == c->argc) {            \
+        WHERE_CLAUSE_ERROR_REPLY(ret) \
     }
 
-unsigned char checkSQLWhereClauseOrReply(redisClient  *c,
-                                          robj       **key, 
-                                          robj       **range,
-                                          int         *imatch,
-                                          int         *cmatch,
-                                          int         *argn, 
-                                          int          tmatch,
-                                          bool         which,
-                                          bool         just_parse);
+unsigned char checkSQLWhereClauseReply(redisClient  *c,
+                                       robj       **key, 
+                                       robj       **range,
+                                       int         *imatch,
+                                       int         *cmatch,
+                                       int         *argn, 
+                                       int          tmatch,
+                                       bool         sop,
+                                       bool         just_parse,
+                                       int         *oba,
+                                       bool        *asc,
+                                       int         *lim,
+                                       bool        *store);
 
 bool joinParseReply(redisClient  *c,
                     sds           clist,
@@ -62,7 +66,11 @@ bool joinParseReply(redisClient  *c,
                     int          *sto,
                     robj        **newname,
                     robj        **range,
-                    int          *n_ind);
+                    int          *n_ind,
+                    int          *obt,
+                    int          *obc,
+                    bool         *asc,
+                    int          *lim);
 
 void joinReply(redisClient *c, sds clist, int argn);
 

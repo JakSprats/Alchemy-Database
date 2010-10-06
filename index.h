@@ -73,7 +73,10 @@ void iselectAction(redisClient *c,
                    char        *range,
                    int          tmatch,
                    int          i_match,
-                   char        *col_list);
+                   char        *col_list,
+                   int          obc,
+                   bool         asc,
+                   int          lim);
 void ideleteAction(redisClient *c, char *range, int tmatch, int imatch);
 void iupdateAction(redisClient   *c,
                    char          *range,

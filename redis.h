@@ -146,6 +146,7 @@ void dictRedisObjectDestructor(void *privdata, void *val);
   #define REDIS_VAL_SET         9
   #define REDIS_FULL_SET       10
   #define REDIS_INT            11
+  #define REDIS_GENERIC        12
 #endif
 
 typedef struct redisDb {
@@ -274,19 +275,23 @@ struct sharedObjectsStruct {
 
     *joinindexedcolumnlisterror, *joincolumnlisterror, *join_on_multi_col,
     *join_requires_range,
+    *join_order_by_syntax, *join_order_by_tbl, *join_order_by_col,
+    *join_table_not_in_query,
 
     *storagetypeunkown, *storagenumargsmismatch, *erronstoretotable,
 
     *createsyntax, *dropsyntax,
-    *insertsyntax,         *insertsyntax_no_into, *insertsyntax_col_declaration,
-    *insertsyntax_no_values,
-    *selectsyntax,         *selectsyntax_nofrom,
-    *selectsyntax_nowhere, *selectsyntax_notpk,    *selectsyntax_noequals,
+    *insertsyntax,           *insertsyntax_no_into,  *insertsyntax_col_decl,
+    *insertsyntax_no_values, *insert_ret_cname_err,
+    *whereclause_in_directive,
+    *whereclause_orderby_directive, *whereclause_orderby_no_by,
+    *selectsyntax,           *selectsyntax_nofrom,
+    *selectsyntax_nowhere,   *selectsyntax_notpk,    *selectsyntax_noequals,
     *deletesyntax,
-    *deletesyntax_nowhere, *deletesyntax_notpk,    *deletesyntax_noequals,
-    *updatesyntax,         *update_pk_range_query, *update_pk_overwrite,
-    *updatesyntax_nowhere, *updatesyntax_notpk,    *updatesyntax_noequals,
-    *scanselectsyntax,     *scanselectsyntax_noequals,
+    *deletesyntax_nowhere,   *deletesyntax_notpk,    *deletesyntax_noequals,
+    *updatesyntax,           *update_pk_range_query, *update_pk_overwrite,
+    *updatesyntax_nowhere,   *updatesyntax_notpk,    *updatesyntax_noequals,
+    *scanselectsyntax,       *scanselectsyntax_noequals,
 
     *whereclause_no_and,
     *selectsyntax_store_norange,

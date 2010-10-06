@@ -40,6 +40,8 @@ void freeRowObject(robj *o);
 
 uint getRowMallocSize(uchar *stream);
 
+aobj getRawCol(robj *r,     int   cmatch, robj *okey,        int   tmatch,
+               flag *cflag, bool  icol,   bool  force_string);
 aobj getColStr(robj *r, int cmatch, robj *okey, int tmatch);
 
 robj *createColObjFromRow(robj *r, int cmatch, robj *okey, int tmatch);
