@@ -69,7 +69,7 @@ static robj *createNormRespStringObject(sds nt, robj *cdef) {
     resp->ptr    = sdscatlen(resp->ptr, nt, sdslen(nt));
     resp->ptr    = sdscatlen(resp->ptr, " (", 2);
     sds sql_cdef = sdsnewlen(cdef->ptr, sdslen(cdef->ptr));
-    for (uint i = 0; i < sdslen(sql_cdef); i++) {
+    for (uint32 i = 0; i < sdslen(sql_cdef); i++) {
         if (sql_cdef[i] == CEQUALS) sql_cdef[i] = ' ';
     }
     resp->ptr    = sdscatlen(resp->ptr, sql_cdef, sdslen(sql_cdef));
@@ -140,12 +140,12 @@ static void assignPkAndColToRow(robj *pko,
 
 #define MAX_NUM_NORM_TBLS 16
 void normCommand(redisClient *c) {
-    robj *new_tbls[MAX_NUM_NORM_TBLS];
-    robj *ext_patt[MAX_NUM_NORM_TBLS];
-    uint  ext_len [MAX_NUM_NORM_TBLS];
-    sds   pattern = c->argv[1]->ptr;
-    int   plen    = sdslen(pattern);
-    int   n_ep    = 0;
+    robj   *new_tbls[MAX_NUM_NORM_TBLS];
+    robj   *ext_patt[MAX_NUM_NORM_TBLS];
+    uint32  ext_len [MAX_NUM_NORM_TBLS];
+    sds     pattern = c->argv[1]->ptr;
+    int     plen    = sdslen(pattern);
+    int     n_ep    = 0;
 
     /* First: create wildcards and their destination tablenames */
     if (c->argc > 2) {

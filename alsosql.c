@@ -136,11 +136,11 @@ static char *str_next_unescaped_chr(char *beg, char *s, int x) {
     }
     return NULL;
 }
-static char *parseRowVals(sds    vals,
-                          char **pk,
-                          int   *pklen,
-                          int    ncols,
-                          uint   cofsts[]) {
+static char *parseRowVals(sds      vals,
+                          char   **pk,
+                          int     *pklen,
+                          int      ncols,
+                          uint32   cofsts[]) {
     if (vals[sdslen(vals) - 1] == ')') vals[sdslen(vals) - 1] = '\0';
     if (*vals == '(') vals++;
 
@@ -202,7 +202,7 @@ int parseUpdateColListReply(redisClient  *c,
                             char         *cname,
                             int           cmatchs[],
                             char         *vals   [],
-                            uint          vlens  []) {
+                            uint32        vlens  []) {
     char *o_cname = cname;
     int   qcols   = 0;
     while (1) {
@@ -226,7 +226,7 @@ int parseUpdateColListReply(redisClient  *c,
             return 0;
         }
 
-        uint val_len   = nextc ?  nextc - val - 1 : (uint)strlen(val);
+        uint32 val_len = nextc ?  nextc - val - 1 : (uint32)strlen(val);
         cmatchs[qcols] = cmatch;
         vals   [qcols] = val;
         vlens  [qcols] = val_len;
@@ -240,7 +240,7 @@ int parseUpdateColListReply(redisClient  *c,
 
 // SIMPLE_COMMANDS SIMPLE_COMMANDS SIMPLE_COMMANDS SIMPLE_COMMANDS
 // SIMPLE_COMMANDS SIMPLE_COMMANDS SIMPLE_COMMANDS SIMPLE_COMMANDS
-bool cCpyOrReply(redisClient *c, char *src, char *dest, uint len) {
+bool cCpyOrReply(redisClient *c, char *src, char *dest, uint32 len) {
     if (len >= MAX_COLUMN_NAME_SIZE) {
         addReply(c, shared.columnnametoobig);
         return 0;
@@ -356,10 +356,10 @@ void insertCommitReply(redisClient *c,
                        int          tmatch,
                        int          matches,
                        int          indices[]) {
-    uint  cofsts[MAX_COLUMN_PER_TABLE];
-    char *pk     = NULL;
-    int   pklen  = 0; /* init avoids compiler warning*/
-    vals         = parseRowVals(vals, &pk, &pklen, ncols, cofsts);
+    uint32  cofsts[MAX_COLUMN_PER_TABLE];
+    char   *pk     = NULL;
+    int     pklen  = 0; /* init avoids compiler warning*/
+    vals           = parseRowVals(vals, &pk, &pklen, ncols, cofsts);
     if (!vals) {
         addReply(c, shared.insertcolumnmismatch);
         return;
@@ -614,13 +614,13 @@ void updateCommand(redisClient *c) {
         return;
     }
 
-    int    cmatchs[MAX_COLUMN_PER_TABLE];
-    char  *mvals  [MAX_COLUMN_PER_TABLE];
-    uint   mvlens [MAX_COLUMN_PER_TABLE];
-    char  *nvals = c->argv[3]->ptr;
-    int    ncols = Tbl[server.dbid][tmatch].col_count;
-    int    qcols = parseUpdateColListReply(c, tmatch, nvals, cmatchs,
-                                           mvals, mvlens);
+    int      cmatchs[MAX_COLUMN_PER_TABLE];
+    char    *mvals  [MAX_COLUMN_PER_TABLE];
+    uint32   mvlens [MAX_COLUMN_PER_TABLE];
+    char    *nvals = c->argv[3]->ptr;
+    int      ncols = Tbl[server.dbid][tmatch].col_count;
+    int      qcols = parseUpdateColListReply(c, tmatch, nvals, cmatchs,
+                                             mvals, mvlens);
     if (!qcols) return;
     int pk_up_col = -1;
     for (int i = 0; i < qcols; i++) {

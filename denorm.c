@@ -148,8 +148,8 @@ void createTableAsObjectOperation(redisClient *c, bool is_insert) {
         if (*s == '*' || *s == '\r') continue;
         if (*s == '-')               break; /* error */
         if (*s == '$') { /* parse doubles which are w/in this list element */
-            char *x = strchr(s, '\r');
-            uint line_len = x - s;
+            char   *x        = strchr(s, '\r');
+            uint32  line_len = x - s;
             if (line_len + 2 < sdslen(s)) { /* got a double */
                 x += 2; /* move past \r\n */
                 char *y = strchr(x, '\r'); /* kill the final \r\n */
@@ -390,21 +390,21 @@ void denormCommand(redisClient *c) {
         return;
     }
 
-    uint wlen = sdslen(wildcard);
-    uint spot = 0;
-    for (uint i = 0; i < wlen; i++) {
+    uint32 wlen = sdslen(wildcard);
+    uint32 spot = 0;
+    for (uint32 i = 0; i < wlen; i++) {
         if (wildcard[i] == '*') {
             spot = i;
             break;
         }
     }
-    uint  restlen  = (spot < wlen - 2) ? wlen - spot - 1: 0;
-    sds   s_wldcrd = sdsnewlen(wildcard, spot);
-    s_wldcrd       = sdscatlen(s_wldcrd, "%s", 2);
+    uint32  restlen  = (spot < wlen - 2) ? wlen - spot - 1: 0;
+    sds     s_wldcrd = sdsnewlen(wildcard, spot);
+    s_wldcrd         = sdscatlen(s_wldcrd, "%s", 2);
     if (restlen) s_wldcrd = sdscatlen(s_wldcrd, &wildcard[spot + 1], restlen);
-    sds   d_wldcrd = sdsdup(s_wldcrd);
-    char *fmt      = strstr(d_wldcrd, "%s") + 1;
-    *fmt           = 'd';
+    sds     d_wldcrd = sdsdup(s_wldcrd);
+    char   *fmt      = strstr(d_wldcrd, "%s") + 1;
+    *fmt             = 'd';
 
     robj               *argv[4];
     struct redisClient *fc = rsql_createFakeClient();

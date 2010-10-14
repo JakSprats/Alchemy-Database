@@ -260,7 +260,7 @@ static bool istoreAction(redisClient *c,
                          robj        *row,
                          robj        *newname,
                          bool         sub_pk,
-                         uint         nargc) {
+                         uint32       nargc) {
     aobj  cols[MAX_COLUMN_PER_TABLE];
     int   totlen = 0;
     for (int i = 0; i < qcols; i++) {

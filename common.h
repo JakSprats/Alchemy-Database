@@ -19,9 +19,9 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #ifndef __ALSOSQL_COMMON__H
 #define __ALSOSQL_COMMON__H
 
-#define uint  unsigned int
-#define uchar unsigned char
-#define ull   unsigned long long
+#define uint32 unsigned int
+#define uchar  unsigned char
+#define ull    unsigned long long
 
 #define bool unsigned char
 #define flag unsigned char

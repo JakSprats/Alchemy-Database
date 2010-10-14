@@ -7,7 +7,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-char *strdup(char *);
+
+#ifdef _ANSI_SOURCE
+  char *strdup(char *);
+#endif
 
 #include "redis.h"
 #include "zmalloc.h"
@@ -88,31 +91,31 @@ static uchar getSflag(uchar b1) {
     else              assert(!"getSflag programming error");
 }
 
-static inline uint get14BitInt(uchar *s) {
-    uint key   = (uint)(*((unsigned short *)s));
-    key       -= 2;
-    key       /= 4;
+static inline uint32 get14BitInt(uchar *s) {
+    uint32 key   = (uint32)(*((unsigned short *)s));
+    key         -= 2;
+    key         /= 4;
     return key;
 }
-static inline uint get28BitInt(uchar *s) {
-    uint key  = *((uint *)s);
-    key      -= 8;
-    key      /= 16;
+static inline uint32 get28BitInt(uchar *s) {
+    uint32 key  = *((uint32 *)s);
+    key        -= 8;
+    key        /= 16;
     return key;
 }
-static inline uint getInt(uchar **s) {
-    *s       = *s + 1;
-    uint key = *((uint *)*s);
+static inline uint32 getInt(uchar **s) {
+    *s         = *s + 1;
+    uint32 key = *((uint32 *)*s);
     return key;
 }
-static inline uchar *getTinyString(uchar *s, uint *slen) {
+static inline uchar *getTinyString(uchar *s, uint32 *slen) {
     *slen = ((int)*s / 2);
     s++;
     return s;
 }
-static inline uchar *getString(uchar *s, uint *slen) {
+static inline uchar *getString(uchar *s, uint32 *slen) {
     s++;
-    *slen  = *((uint *)s);
+    *slen  = *((uint32 *)s);
     s     += 4;
     return s;
 }
@@ -125,7 +128,7 @@ int btStreamCmp(void *a, void *b) {
     uchar  sflag2 = getSflag(*s2);
 
     if (sflag1 == 1 || sflag1 == 4) { // STRING
-        uint slen1, slen2;
+        uint32 slen1, slen2;
         slen1 = slen2 = 0; /* compiler warning */
         if (sflag1 == 1)      s1 = getTinyString(s1, &slen1);
         else if (sflag1 == 4) s1 = getString(    s1, &slen1);
@@ -139,7 +142,7 @@ int btStreamCmp(void *a, void *b) {
             return (ret == 0) ? ((slen1 < slen2) ? -1 : 1) : ret;
         }
     } else {                          // INT
-        uint key1, key2;
+        uint32 key1, key2;
         if (sflag1 == 2)      key1  = get14BitInt(s1);
         else if (sflag1 == 8) key1  = get28BitInt(s1);
         else                  key1  = getInt(&s1);
@@ -159,14 +162,14 @@ void destroySimKey(char *simkey, bool med) {
     if (med) free(simkey);
 }
 
-char *createSimKeyFromRaw(void  *key_ptr,
-                          int    ktype, 
-                          bool  *med,
-                          uchar *sflag,
-                          uint  *ksize) {
+char *createSimKeyFromRaw(void    *key_ptr,
+                          int      ktype, 
+                          bool    *med,
+                          uchar   *sflag,
+                          uint32  *ksize) {
     assert(key_ptr || ktype == COL_TYPE_INT); /* INT can be 0 */
-    char *simkey;
-    uint  data = 0;
+    char   *simkey;
+    uint32  data = 0;
     if (ktype == COL_TYPE_STRING) {
         assert(sdslen(key_ptr) < TWO_POW_32);
         if (sdslen(key_ptr) < TWO_POW_7) {
@@ -183,9 +186,9 @@ char *createSimKeyFromRaw(void  *key_ptr,
             *simkey = (char)data;
             memcpy(simkey + 1, key_ptr, sdslen(key_ptr));
         } else {
-            uint len = sdslen(key_ptr);
-            *sflag  = 4;
-            *ksize  = sdslen(key_ptr) + 5;
+            uint32 len = sdslen(key_ptr);
+            *sflag     = 4;
+            *ksize     = sdslen(key_ptr) + 5;
             if (5 + sdslen(key_ptr) >= SIMKEY_BUFFER_SIZE) {
                 simkey = malloc(5 + sdslen(key_ptr)); /* MUST be freed soon */
                 *med   = 1;
@@ -231,7 +234,7 @@ char *createSimKey(const robj *key,
                    int         ktype,
                    bool       *med,
                    uchar      *sflag,
-                   uint       *ksize) {
+                   uint32     *ksize) {
     void *ptr;
     sds   tempkey = NULL;
     if (ktype == COL_TYPE_INT) {
@@ -247,9 +250,9 @@ char *createSimKey(const robj *key,
 }
 
 void assignKeyRobj(uchar *stream, robj *key) {
-    uchar b1     = *stream;
-    uchar sflag  = getSflag(b1);
-    uint  k, slen;
+    uint32  k, slen;
+    uchar   b1     = *stream;
+    uchar   sflag  = getSflag(b1);
     if (sflag == 1) {        // tiny string
         stream = getTinyString(stream, &slen);
         key->encoding = REDIS_ENCODING_RAW;
@@ -275,10 +278,10 @@ void assignKeyRobj(uchar *stream, robj *key) {
     key->refcount = 1;
 }
 
-static uint skipToVal(uchar **stream) {
-    uchar sflag = getSflag(**stream);
-    uint  klen  = 0;
-    uint  slen  = 0;
+static uint32 skipToVal(uchar **stream) {
+    uchar   sflag = getSflag(**stream);
+    uint32  klen  = 0;
+    uint32  slen  = 0;
     if (sflag == 1) {        // TINY STRING
         getTinyString(*stream, &slen);
         klen = 1 + slen;
@@ -310,11 +313,11 @@ void assignValRobj(uchar *stream, int vtype, robj *val, uchar is_index) {
     }
 }
 
-uint getStreamMallocSize(uchar *stream,
-                         int    vtype,
-                         uchar  is_index) {
-    uint vlen;
-    uint klen = skipToVal(&stream);
+uint32 getStreamMallocSize(uchar *stream,
+                           int    vtype,
+                           uchar  is_index) {
+    uint32 vlen;
+    uint32 klen = skipToVal(&stream);
 
     if (vtype == REDIS_ROW) {
         vlen = getRowMallocSize(stream);
@@ -325,7 +328,7 @@ uint getStreamMallocSize(uchar *stream,
             char **p_ptr = (char **)stream;
             bt    *btr   = (bt *)*p_ptr;
             vlen = sizeof(void *);
-            if (btr) vlen += (uint)btr->malloc_size;
+            if (btr) vlen += (uint32)btr->malloc_size;
         }
     }
     return klen + vlen;
@@ -341,7 +344,7 @@ static robj* _bt_find_val(bt         *btr,
                           int         ktype,
                           int         vtype,
                           int         nesting) {
-    bool  med; uchar sflag; uint ksize;
+    bool  med; uchar sflag; uint32 ksize;
     char *simkey = createSimKey(key, ktype, &med, &sflag, &ksize); /* FREE ME */
     if (!simkey) return NULL;
     uchar *stream = bt_find(btr, simkey);
@@ -356,26 +359,26 @@ static robj* _bt_find_val(bt         *btr,
 }
 
 static int _bt_del(bt *btr, const robj *key, int ktype, int vtype) {
-    bool  med; uchar sflag; uint ksize;
+    bool  med; uchar sflag; uint32 ksize;
     char *simkey = createSimKey(key, ktype, &med, &sflag, &ksize); /* FREE ME */
     if (!simkey) return 0;
     uchar *stream = bt_delete(btr, simkey);
     destroySimKey(simkey, med);                                    /* freeD */
     if (!stream) return 0;
 
-    uint ssize  = getStreamMallocSize(stream, vtype, btr->is_index);
+    uint32 ssize  = getStreamMallocSize(stream, vtype, btr->is_index);
     //RL4 "vtype: %d free: %p size: %u", vtype, stream, ssize);
     bt_free(stream, btr, ssize);
     return 1;
 }
 
-static uint _bt_insert(bt *btr, robj *key, robj *val, int ktype, int vtype) {
-    bool  med; uchar sflag; uint ksize;
+static uint32 _bt_insert(bt *btr, robj *key, robj *val, int ktype, int vtype) {
+    bool  med; uchar sflag; uint32 ksize;
     char  *simkey  = createSimKey(key, ktype, &med, &sflag, &ksize);
     if (!simkey) return 0;
-    uint   ssize   = ksize;
-    void  *val_ptr = val ? val->ptr : NULL;
-    uint   vlen    = 0;;
+    uint32   ssize   = ksize;
+    void    *val_ptr = val ? val->ptr : NULL;
+    uint32   vlen    = 0;;
     if (vtype == REDIS_ROW) vlen = getRowMallocSize(val_ptr);
     else if (val_ptr)       vlen = sizeof(void *);
     ssize += vlen;

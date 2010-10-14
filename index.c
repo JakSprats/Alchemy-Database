@@ -140,7 +140,7 @@ static void iRem(bt *ibtr, robj *i_key, robj *i_val, int pktype) {
     }
 }
 
-void addToIndex(redisDb *db, robj *pko, char *vals, uint cofsts[], int inum) {
+void addToIndex(redisDb *db, robj *pko, char *vals, uint32 cofsts[], int inum) {
     if (Index[server.dbid][inum].virt) return;
     robj *ind        = Index[server.dbid][inum].obj;
     robj *ibt        = lookupKey(db, ind);
@@ -442,7 +442,7 @@ void iselectAction(redisClient *c,
     btStreamIterator *bi   = btGetRangeIterator(bt, low, high, virt);
     while ((be = btRangeNext(bi, 1)) != NULL) {                // iterate btree
         if (virt) {
-            if (obc == 0 && (uint)lim == card) break;
+            if (obc == 0 && (uint32)lim == card) break;
             robj *pko = be->key;
             robj *row = be->val;
             robj *r   = outputRow(row, qcols, cmatchs, pko, tmatch, 0);
@@ -458,7 +458,7 @@ void iselectAction(redisClient *c,
             robj             *val     = be->val;
             btStreamIterator *nbi = btGetFullRangeIterator(val, 0, 0);
             while ((nbe = btRangeNext(nbi, 1)) != NULL) {     // iterate NodeBT
-                if (obc != -1 && obc == ind_col && (uint)lim == card) break;
+                if (obc != -1 && obc == ind_col && (uint32)lim == card) break;
                 robj *nkey = nbe->key;
                 robj *row  = btFindVal(o, nkey,
                                       Tbl[server.dbid][tmatch].col_type[0]);
@@ -497,16 +497,16 @@ void iselectCommand(redisClient *c) {
 }
 #endif
 
-void iupdateAction(redisClient   *c,
-                   char          *range,
-                   int            tmatch,
-                   int            imatch,
-                   int            ncols,
-                   int            matches,
-                   int            indices[],
-                   char          *vals[],
-                   uint   vlens[],
-                   uchar  cmiss[]) {
+void iupdateAction(redisClient *c,
+                   char        *range,
+                   int          tmatch,
+                   int          imatch,
+                   int          ncols,
+                   int          matches,
+                   int          indices[],
+                   char        *vals[],
+                   uint32       vlens[],
+                   uchar       cmiss[]) {
     RANGE_CHECK_OR_REPLY(range)
     btEntry    *be, *nbe;
     robj       *o    = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
@@ -820,7 +820,7 @@ void descCommand(redisClient *c) {
     } else {
         sprintf(buf, "INFO: KEYS: [NUM: %d MIN: %u MAX: %u]"\
                           " BYTES: [BT-DATA: %lld BT-TOTAL: %lld INDEX: %lld]",
-            btr->numkeys, (uint)(long)minkey.ptr, (uint)(long)maxkey.ptr,
+            btr->numkeys, (uint32)(long)minkey.ptr, (uint32)(long)maxkey.ptr,
             btr->data_size, btr->malloc_size, index_size);
     }
     robj *r = createStringObject(buf, strlen(buf));

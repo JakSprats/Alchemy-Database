@@ -22,23 +22,23 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include "common.h"
 
 typedef struct AlsoSqlObject {
-    char         *s;
-    uint  len;
-    uint  i;
-    uint  s_i;
-    flag          type;
-    flag          enc;
-    flag          sixbit;
+    char   *s;
+    uint32  len;
+    uint32  i;
+    uint32  s_i;
+    flag    type;
+    flag    enc;
+    flag    sixbit;
 } aobj;
 
 robj *createRow(redisClient *c,
                 int          tmatch,
                 int          ncols,
                 char        *vals,
-                uint         col_ofsts[]);
+                uint32       col_ofsts[]);
 void freeRowObject(robj *o);
 
-uint getRowMallocSize(uchar *stream);
+uint32 getRowMallocSize(uchar *stream);
 
 aobj getRawCol(robj *r,     int   cmatch, robj *okey,        int   tmatch,
                flag *cflag, bool  icol,   bool  force_string);
@@ -68,7 +68,7 @@ bool updateRow(redisClient *c,
                int          matches,
                int          indices[],
                char        *vals[],
-               uint         vlens[],
+               uint32       vlens[],
                uchar        cmisses[]);
 
 #endif /* __ALSOSQL_ROW__H */

@@ -8,7 +8,10 @@
 #include <string.h>
 #include <strings.h>
 #include <assert.h>
-char *strdup(char *);
+
+#ifdef _ANSI_SOURCE
+  char *strdup(char *);
+#endif
 
 #include "redis.h"
 #include "bt.h"

@@ -39,7 +39,7 @@ void legacyIndexCommand(redisClient *c);
 
 void iAdd(bt *btr, robj *i_key, robj *i_val, uchar pktype);
 
-void addToIndex(  redisDb *db, robj *pko, char *vals, uint cofsts[], int inum);
+void addToIndex(  redisDb *db, robj *pko, char *vals, uint32 cofsts[], int inum);
 void delFromIndex(redisDb *db, robj *old_pk, robj *row, int inum, int tmatch);
 void updateIndex( redisDb *db,
                   robj    *old_pk,
@@ -78,16 +78,16 @@ void iselectAction(redisClient *c,
                    bool         asc,
                    int          lim);
 void ideleteAction(redisClient *c, char *range, int tmatch, int imatch);
-void iupdateAction(redisClient   *c,
-                   char          *range,
-                   int            tmatch,
-                   int            imatch,
-                   int            ncols,
-                   int            matches,
-                   int            indices[],
-                   char          *vals[],
-                   uint   vlens[],
-                   uchar  cmiss[]);
+void iupdateAction(redisClient *c,
+                   char        *range,
+                   int          tmatch,
+                   int          imatch,
+                   int          ncols,
+                   int          matches,
+                   int          indices[],
+                   char        *vals[],
+                   uint32       vlens[],
+                   uchar        cmiss[]);
 
 ull get_sum_all_index_size_for_table(redisClient *c, int tmatch);
 

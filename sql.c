@@ -42,14 +42,13 @@ extern char  CMINUS;
 extern char *COMMA;
 extern char *STORE;
 
-extern int     Num_tbls[MAX_NUM_DB];
-extern r_tbl_t Tbl[MAX_NUM_DB][MAX_NUM_TABLES];
-
+extern int      Num_tbls[MAX_NUM_DB];
+extern r_tbl_t  Tbl[MAX_NUM_DB][MAX_NUM_TABLES];
 extern stor_cmd StorageCommands[NUM_STORAGE_TYPES];
 
-char *Col_keywords_to_ignore[] = {"PRIMARY", "CONSTRAINT", "UNIQUE",
-                                  "KEY", "FOREIGN" };
-uint  Num_col_keywords_to_ignore = 5;
+char   *Col_keywords_to_ignore[] = {"PRIMARY", "CONSTRAINT", "UNIQUE",
+                                    "KEY", "FOREIGN" };
+uint32  Num_col_keywords_to_ignore = 5;
 
 /* TODO legacy code based on "start-end" should be replaced */
 static void convertFkValueToRange(sds fk_ptr, robj **range) {
@@ -107,7 +106,7 @@ static bool parseCr8TblCName(redisClient *c,
     }
     tkn = rem_backticks(tkn, &len);
 
-    for (uint i = 0; i < Num_col_keywords_to_ignore; i++) {
+    for (uint32 i = 0; i < Num_col_keywords_to_ignore; i++) {
         if (!strcasecmp(tkn, Col_keywords_to_ignore[i])) {
             parseUntilNextCommaNotInParans(c, argn);
             *continuer = 1;
