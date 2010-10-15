@@ -26,7 +26,6 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <limits.h>
 
 #include "redis.h"
-#include "zmalloc.h"
 #include "adlist.h"
 
 #include "bt.h"
@@ -338,14 +337,18 @@ int stringOrderBySort(const void *s1, const void *s2) {
     obsl_t  *o2 = (obsl_t *)s2;
     char   **c1 = (char **)(o1->val);
     char   **c2 = (char **)(o2->val);
-    return strcmp(*c1, *c2);
+    char    *x1 = *c1;
+    char    *x2 = *c2;
+    return (x1 && x2) ? strcmp(x1, x2) : x1 - x2; /* strcmp() not ok w/ NULLs */
 }
 int stringOrderByRevSort(const void *s1, const void *s2) {
     obsl_t  *o1 = (obsl_t *)s1;
     obsl_t  *o2 = (obsl_t *)s2;
     char   **c1 = (char **)(o1->val);
     char   **c2 = (char **)(o2->val);
-    return strcmp(*c2, *c1);
+    char    *x1 = *c1;
+    char    *x2 = *c2;
+    return (x1 && x2) ? strcmp(x2, x1) : x2 - x1; /* strcmp() not ok w/ NULLs */
 }
 
 static void addOutputRowToRQList(list *ll,
@@ -356,7 +359,7 @@ static void addOutputRowToRQList(list *ll,
                                  int   tmatch,
                                  bool  icol) {
     flag cflag;
-    obsl_t *ob = (obsl_t *)zmalloc(sizeof(obsl_t)); /* zfree()d N listRelease */
+    obsl_t *ob = (obsl_t *)malloc(sizeof(obsl_t)); /* freed end iselectAction */
     ob->row    = cloneRobj(r); /*decrRefCount()d N sortOrderByAndReply() */
     aobj    ao = getRawCol(row, obc, pko, tmatch, &cflag, icol, 0);
     if (icol) {
@@ -479,6 +482,12 @@ void iselectAction(redisClient *c,
 
     if (obc != -1) {
         sortOrderByAndReply(c, ll, icol, lim, asc);
+        listNode  *ln; /* walk list and free "obsl_t"s */
+        listIter  *li = listGetIterator(ll, AL_START_HEAD);
+        while((ln = listNext(li)) != NULL) {
+            free(ln->value);      /* free obsl_t */
+        }
+        listReleaseIterator(li);
         listRelease(ll);
     }
     decrRefCount(low);

@@ -107,7 +107,9 @@ static int find_column_n(int tmatch, char *column, int len) {
     if (!Tbl[server.dbid][tmatch].name) return -1;
     for (int j = 0; j < Tbl[server.dbid][tmatch].col_count; j++) {
         if (Tbl[server.dbid][tmatch].col_name[j]) {
-            if (!strncmp(column, (char *)Tbl[server.dbid][tmatch].col_name[j]->ptr, len)) {
+            if (!strncmp(column, 
+                         (char *)Tbl[server.dbid][tmatch].col_name[j]->ptr,
+                         len)) {
                 return j;
             }
         }

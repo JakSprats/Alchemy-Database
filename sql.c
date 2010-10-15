@@ -618,7 +618,8 @@ void joinReply(redisClient *c, sds clist, int argn) {
     if (ret) {
         if (nname) {
             jstoreCommit(c, sto, range, nname,
-                         j_indxs, j_tbls, j_cols, n_ind, qcols);
+                         j_indxs, j_tbls, j_cols, n_ind, qcols,
+                         obt, obc, asc, lim);
             /* write back in "$" for AOF and Slaves */
             sds l_argv = sdscatprintf(sdsempty(), "%s$", 
                                              (char *)c->argv[c->argc - 1]->ptr);
@@ -627,7 +628,8 @@ void joinReply(redisClient *c, sds clist, int argn) {
         } else {
             RANGE_CHECK_OR_REPLY(range->ptr);
             joinGeneric(c, NULL, j_indxs, j_tbls, j_cols, n_ind, qcols,
-                        low, high, -1, 0 , 0, NULL);
+                        low, high, -1, 0 , 0, NULL,
+                        obt, obc, asc, lim);
         }
     }
     if (range) decrRefCount(range);

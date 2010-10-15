@@ -322,7 +322,7 @@ static void addRowToRangeQueryList(list *ll,
                                    int   tmatch,
                                    bool  icol) {
     flag cflag;
-    obsl_t *ob = (obsl_t *)zmalloc(sizeof(obsl_t)); /* zfree()d N listRelease */
+    obsl_t *ob = (obsl_t *)malloc(sizeof(obsl_t)); /* freed end istoreCommit */
     ob->row    = row->ptr;
     aobj    ao = getRawCol(row, obc, pko, tmatch, &cflag, icol, 0);
     if (icol) {
@@ -526,7 +526,15 @@ void istoreCommit(redisClient *c,
 
 istore_err:
     btReleaseRangeIterator(bi);
-    if (obc != -1) listRelease(ll);
+    if (obc != -1) {
+        listNode  *ln; /* walk list and free "obsl_t"s */
+        listIter  *li = listGetIterator(ll, AL_START_HEAD);
+        while((ln = listNext(li)) != NULL) {
+            free(ln->value);      /* free obsl_t */
+        }
+        listReleaseIterator(li);
+        listRelease(ll);
+    }
     decrRefCount(low);
     decrRefCount(high);
     freeFakeClient(fc);
