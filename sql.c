@@ -451,7 +451,7 @@ bool joinParseReply(redisClient  *c,
                     int           j_cols [],
                     int          *qcols,
                     int          *sto,
-                    robj        **newname,
+                    robj        **nname,
                     robj        **range,
                     int          *n_ind,
                     int          *obt,
@@ -562,8 +562,8 @@ bool joinParseReply(redisClient  *c,
                             ARGN_OVERFLOW(0)
                             CHECK_STORE_TYPE_OR_REPLY(c->argv[argn]->ptr,*sto,0)
                             ARGN_OVERFLOW(0)
-                            *newname = c->argv[argn];
-                            done = 1;
+                            *nname = c->argv[argn];
+                            done   = 1;
                         } else {
                             WHERE_CLAUSE_ERROR_REPLY(0);
                         }
@@ -605,19 +605,19 @@ void joinReply(redisClient *c, sds clist, int argn) {
     int   j_tbls [MAX_JOIN_INDXS];
     int   j_cols [MAX_JOIN_INDXS];
     int   n_ind, qcols, sto;
-    int   obt     = -1; /* ORDER BY tbl */
-    int   obc     = -1; /* ORDER BY col */
-    bool  asc     = 1;
-    int   lim     = -1;
-    robj *range   = NULL;
-    robj *newname = NULL;
+    int   obt   = -1; /* ORDER BY tbl */
+    int   obc   = -1; /* ORDER BY col */
+    bool  asc   = 1;
+    int   lim   = -1;
+    robj *range = NULL;
+    robj *nname = NULL;
 
     bool ret = joinParseReply(c, clist, argn, j_indxs, j_tbls, j_cols,
-                              &qcols, &sto, &newname, &range, &n_ind,
+                              &qcols, &sto, &nname, &range, &n_ind,
                               &obt, &obc, &asc, &lim);
     if (ret) {
-        if (newname) {
-            jstoreCommit(c, sto, range, newname,
+        if (nname) {
+            jstoreCommit(c, sto, range, nname,
                          j_indxs, j_tbls, j_cols, n_ind, qcols);
             /* write back in "$" for AOF and Slaves */
             sds l_argv = sdscatprintf(sdsempty(), "%s$", 

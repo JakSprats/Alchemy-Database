@@ -21,6 +21,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 #define uint32 unsigned int
 #define uchar  unsigned char
+#define ulong  unsigned long
 #define ull    unsigned long long
 
 #define bool unsigned char

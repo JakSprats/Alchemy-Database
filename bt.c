@@ -8,7 +8,7 @@
 #include <string.h>
 #include <assert.h>
 
-#ifdef _ANSI_SOURCE
+#ifndef __APPLE
   char *strdup(char *);
 #endif
 

@@ -223,10 +223,10 @@ void createTableAsObject(redisClient *c) {
             int   j_tbls [MAX_JOIN_INDXS], j_cols [MAX_JOIN_INDXS];
             int   idum;
             bool  bdum;
-            robj *range   = NULL;
-            robj *newname = NULL;
+            robj *range = NULL;
+            robj *nname = NULL;
             where = joinParseReply(c, clist, argn, j_indxs, j_tbls, j_cols,
-                                   &qcols, &idum, &newname, &range, &idum,
+                                   &qcols, &idum, &nname, &range, &idum,
                                    &idum, &idum, &bdum, &idum);
             if (range) decrRefCount(range);
             if (where && qcols)

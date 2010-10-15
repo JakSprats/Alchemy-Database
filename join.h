@@ -44,12 +44,12 @@ void joinGeneric(redisClient *c,
                  int          sto,
                  bool         sub_pk,
                  int          nargc,
-                 robj        *newname);
+                 robj        *nname);
 
 void jstoreCommit(redisClient *c,
                   int          sto,
                   robj        *range,
-                  robj        *newname,
+                  robj        *nname,
                   int          j_indxs[MAX_JOIN_INDXS],
                   int          j_tbls [MAX_JOIN_INDXS],
                   int          j_cols [MAX_JOIN_INDXS],

@@ -287,6 +287,13 @@ function order_by_test() {
   $CLI SELECT id,name,salary,division FROM employee WHERE division BETWEEN 22 AND 77 ORDER BY name DESC LIMIT 4
 }
 
+function istore_customer_hobby_order_by_denorm_to_many_lists() {
+  echo SELECT employee, hobby FROM customer WHERE employee BETWEEN 3 AND 6 ORDER BY hobby STORE RPUSH employee_ordered_hobby_list$
+  $CLI SELECT employee, hobby FROM customer WHERE employee BETWEEN 3 AND 6 ORDER BY hobby STORE RPUSH employee_ordered_hobby_list$
+  echo LRANGE employee_ordered_hobby_list:6 0 -1
+  $CLI LRANGE employee_ordered_hobby_list:6 0 -1
+}
+
 function joiner() {
   echo "JOINS"
   echo
@@ -587,6 +594,7 @@ function istorer() {
   istore_customer_hobby_denorm_to_many_lists
   istore_emp_div_sal_denorm_to_many_zset
   istore_worker_hash_name_salary
+  istore_customer_hobby_order_by_denorm_to_many_lists
 }
 
 function jstorer() {

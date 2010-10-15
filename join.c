@@ -220,7 +220,7 @@ typedef struct jrow_reply {
     int           sto;
     bool          sub_pk;
     int           nargc;
-    robj         *newname;
+    robj         *nname;
     jqo_t        *col_sort_order;
     bool          reordered;
     char         *reply;
@@ -228,7 +228,7 @@ typedef struct jrow_reply {
 
 static bool jRowStore(jrow_reply_t  *r) {
     robj **argv = r->fc->argv;
-    argv[1]     = cloneRobj(r->newname);
+    argv[1]     = cloneRobj(r->nname);
     int n = 1;
     if (r->sub_pk) { // pk =argv[1]:Rcols[0][0]
         argv[1]->ptr = sdscatlen(argv[1]->ptr, COLON,   1);
@@ -274,7 +274,7 @@ static bool jRowReply(jrow_reply_t  *r, int lvl) {
         robj *resp = createStringObject(r->reply, slot -1);
         if (r->sto != -1) { // insert
             r->fc->argc    = 3;
-            r->fc->argv[1] = cloneRobj(r->newname);
+            r->fc->argv[1] = cloneRobj(r->nname);
             r->fc->argv[2] = resp;
             if (!performStoreCmdOrReply(r->c, r->fc, r->sto)) return 0;
         } else {
@@ -474,7 +474,7 @@ void joinGeneric(redisClient *c,
                  int          sto,
                  bool         sub_pk,
                  int          nargc,
-                 robj        *newname) {
+                 robj        *nname) {
 
     /* sort queried-columns to queried-indices */
     jqo_t ocol_sort_order[MAX_COLUMN_PER_TABLE];
@@ -588,7 +588,7 @@ void joinGeneric(redisClient *c,
         bjr.j.sto            = sto;
         bjr.j.sub_pk         = sub_pk;
         bjr.j.nargc          = nargc; 
-        bjr.j.newname        = newname;
+        bjr.j.nname          = nname;
         bjr.j.col_sort_order = col_sort_order;
         bjr.j.reordered      = reordered;
         bjr.j.qcols          = qcols;
@@ -672,7 +672,7 @@ void legacyJoinCommand(redisClient *c) {
 void jstoreCommit(redisClient *c,
                   int          sto,
                   robj        *range,
-                  robj        *newname,
+                  robj        *nname,
                   int          j_indxs[MAX_JOIN_INDXS],
                   int          j_tbls [MAX_JOIN_INDXS],
                   int          j_cols [MAX_JOIN_INDXS],
@@ -701,7 +701,7 @@ void jstoreCommit(redisClient *c,
     RANGE_CHECK_OR_REPLY(range->ptr)
 
     if (!StorageCommands[sto].argc) { // create table first if needed
-        fc->argv[1] = cloneRobj(newname);
+        fc->argv[1] = cloneRobj(nname);
         if (!createTableFromJoin(c, fc, qcols, j_tbls, j_cols)) {
             freeFakeClient(fc);
             return;
@@ -709,7 +709,7 @@ void jstoreCommit(redisClient *c,
     }
 
     joinGeneric(c, fc, j_indxs, j_tbls, j_cols, n_ind, qcols, low, high, sto,
-                sub_pk, nargc, newname);
+                sub_pk, nargc, nname);
 
     freeFakeClient(fc);
 }

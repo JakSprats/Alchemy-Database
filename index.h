@@ -91,4 +91,15 @@ void iupdateAction(redisClient *c,
 
 ull get_sum_all_index_size_for_table(redisClient *c, int tmatch);
 
+/* ORDER BY START */
+typedef struct order_by_sort_element {
+    void *val;
+    void *row;
+} obsl_t;
+int intOrderBySort(      const void *s1, const void *s2);
+int intOrderByRevSort(   const void *s1, const void *s2);
+int stringOrderBySort(   const void *s1, const void *s2);
+int stringOrderByRevSort(const void *s1, const void *s2);
+/* ORDER BY END */
+
 #endif /* __INDEX__H */ 

@@ -553,7 +553,7 @@ void selectRedisqlCommand(redisClient *c) {
             int i = argn;
             ARGN_OVERFLOW()
             istoreCommit(c, tmatch, imatch, c->argv[i]->ptr, clist,
-                         range->ptr, c->argv[argn], obc, asc);
+                         range->ptr, c->argv[argn], obc, asc, lim);
         } else if (where == 2) { /* RANGE QUERY */
             iselectAction(c, range->ptr, tmatch, imatch, clist, obc, asc, lim);
         } else {

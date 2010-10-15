@@ -292,6 +292,7 @@ struct sharedObjectsStruct {
     *updatesyntax,           *update_pk_range_query, *update_pk_overwrite,
     *updatesyntax_nowhere,   *updatesyntax_notpk,    *updatesyntax_noequals,
     *scanselectsyntax,       *scanselectsyntax_noequals,
+    *istorecommit_err,
 
     *whereclause_no_and,
     *selectsyntax_store_norange,

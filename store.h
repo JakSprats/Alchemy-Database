@@ -41,7 +41,8 @@ void istoreCommit(redisClient *c,
                   char        *range,
                   robj        *new_name,
                   int          obc,
-                  bool         asc);
+                  bool         asc,
+                  int          lim);
 
 void legacyTableCommand(redisClient *c); /* LEGACY syntax for createTable() */
 void legacyInsertCommand(redisClient *c);

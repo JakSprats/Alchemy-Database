@@ -1868,6 +1868,9 @@ static void createSharedObjects(void) {
     shared.scanselectsyntax_noequals = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: SELECT col,,,, FROM tablename WHERE col = val - \"EQUALS SIGN\" MISSING\r\n"));
 
+    shared.istorecommit_err = createObject(REDIS_STRING,sdsnew(
+        "-ERR INTERNAL: SELECT STORE failed (generic)\r\n"));
+
     shared.joinsyntax_no_tablename = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: SELECT tbl.col,,,, FROM tbl1,tbl2 WHERE tbl1.indexed_column = tbl2.indexed_column AND tbl1.indexed_column BETWEEN x AND y - MISSING table-name in WhereClause\r\n"));
 
