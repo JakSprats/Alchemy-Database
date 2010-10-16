@@ -489,7 +489,7 @@ static int strJoinRowCmp(void *a, void *b) {
 
 bt *createJoinResultSet(uchar pkt) {
     bt *btr = (pkt == COL_TYPE_INT) ?
-                  bt_create(intJoinRowCmp,  INIT_JOIN_BTREE_BYTES) :
+                  bt_create(intJoinRowCmp, INIT_JOIN_BTREE_BYTES) :
                   bt_create(strJoinRowCmp, INIT_JOIN_BTREE_BYTES);
     return btr;
 }
@@ -511,27 +511,29 @@ int btJoinDeleteRow(bt *jbtr, joinRowEntry *key) {
 static void emptyJoinBtNode(bt   *jbtr,
                             bt_n *n,
                             int   ncols,
-                            void (*freer)(list *s, int ncols)) {
+                            bool  is_ob,
+                            void (*freer)(list *s, int ncols, bool is_ob)) {
     for (int i = 0; i < n->n; i++) {
         joinRowEntry *be  = KEYS(jbtr, n)[i];
         list         *val = be->val;
-        freer(val, ncols);             // free list of ind_rows (cols,sizes)
-        decrRefCount(be->key);         // free jk
-        free(be);                      // free jre
+        freer(val, ncols, is_ob);      /* free list of ind_rows (cols,sizes) */
+        decrRefCount(be->key);         /* free jk */
+        free(be);                      /* free jre */
     }
     if (!n->leaf) {
         for (int i = 0; i <= n->n; i++) {
-            emptyJoinBtNode(jbtr, NODES(jbtr, n)[i], ncols, freer);
+            emptyJoinBtNode(jbtr, NODES(jbtr, n)[i], ncols, is_ob, freer);
         }
     }
     bt_free_btreenode(n, jbtr); /* memory management in btr */
 }
 
-void btJoinRelease(bt  *jbtr,
-                   int  ncols,
-                   void (*freer)(list *s, int ncols)) {
+void btJoinRelease(bt   *jbtr,
+                   int   ncols,
+                   bool  is_ob,
+                   void (*freer)(list *s, int ncols, bool is_ob)) {
     if (jbtr->root) {
-        emptyJoinBtNode(jbtr, jbtr->root, ncols, freer);
+        emptyJoinBtNode(jbtr, jbtr->root, ncols, is_ob, freer);
         jbtr->root = NULL;
         bt_free_btree(jbtr, NULL);
     }

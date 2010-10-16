@@ -287,6 +287,17 @@ function order_by_test() {
   $CLI SELECT id,name,salary,division FROM employee WHERE division BETWEEN 22 AND 77 ORDER BY name DESC LIMIT 4
 }
 
+function order_by_test_joins() {
+  echo SELECT division.name,division.location,subdivision.name,worker.name,worker.salary FROM division,subdivision,worker WHERE division.id = subdivision.division AND division.id = worker.division AND division.id BETWEEN 11 AND 33 ORDER BY worker.salary
+  $CLI SELECT division.name,division.location,subdivision.name,worker.name,worker.salary FROM division,subdivision,worker WHERE division.id = subdivision.division AND division.id = worker.division AND division.id BETWEEN 11 AND 33 ORDER BY worker.salary
+  echo SELECT division.name,division.location,subdivision.name,worker.name,worker.salary FROM division,subdivision,worker WHERE division.id = subdivision.division AND division.id = worker.division AND division.id BETWEEN 11 AND 33 ORDER BY worker.salary DESC
+  $CLI SELECT division.name,division.location,subdivision.name,worker.name,worker.salary FROM division,subdivision,worker WHERE division.id = subdivision.division AND division.id = worker.division AND division.id BETWEEN 11 AND 33 ORDER BY worker.salary DESC
+  echo SELECT worker.health,division.name,division.location,subdivision.name,worker.name,worker.salary FROM division,subdivision,worker WHERE division.id = subdivision.division AND division.id = worker.division AND division.id BETWEEN 11 AND 33 ORDER BY worker.health
+  $CLI SELECT worker.health,division.name,division.location,subdivision.name,worker.name,worker.salary FROM division,subdivision,worker WHERE division.id = subdivision.division AND division.id = worker.division AND division.id BETWEEN 11 AND 33 ORDER BY worker.health
+  echo SELECT worker.health,division.name,division.location,subdivision.name,worker.name,worker.salary FROM division,subdivision,worker WHERE division.id = subdivision.division AND division.id = worker.division AND division.id BETWEEN 11 AND 33 ORDER BY worker.health DESC
+  $CLI SELECT worker.health,division.name,division.location,subdivision.name,worker.name,worker.salary FROM division,subdivision,worker WHERE division.id = subdivision.division AND division.id = worker.division AND division.id BETWEEN 11 AND 33 ORDER BY worker.health DESC
+}
+
 function istore_customer_hobby_order_by_denorm_to_many_lists() {
   echo SELECT employee, hobby FROM customer WHERE employee BETWEEN 3 AND 6 ORDER BY hobby STORE RPUSH employee_ordered_hobby_list$
   $CLI SELECT employee, hobby FROM customer WHERE employee BETWEEN 3 AND 6 ORDER BY hobby STORE RPUSH employee_ordered_hobby_list$
@@ -418,7 +429,17 @@ function denorm_actionlist_to_many_zsets() {
   $CLI ZREVRANGE user_action_zset:1 0 1
 }
 
-
+function actionlist_user1_different_order_by_lists() {
+  $CLI CREATE INDEX actionlist:user_id:index ON actionlist \(user_id\)
+  echo select action FROM actionlist WHERE user_id = 1 ORDER BY timestamp STORE RPUSH actl1
+  $CLI select action FROM actionlist WHERE user_id = 1 ORDER BY timestamp STORE RPUSH actl1
+  echo select action FROM actionlist WHERE user_id = 1 ORDER BY timestamp DESC STORE RPUSH actl1_desc
+  $CLI select action FROM actionlist WHERE user_id = 1 ORDER BY timestamp DESC STORE RPUSH actl1_desc
+  echo LRANGE actl1 0 -1
+  $CLI LRANGE actl1 0 -1
+  echo LRANGE actl1_desc 0 -1
+  $CLI LRANGE actl1_desc 0 -1
+}
 
 function istore_worker_hash_name_salary() {
   echo SELECT name,salary FROM worker WHERE division BETWEEN 11 AND 33 STORE HSET h_worker_name_to_salary

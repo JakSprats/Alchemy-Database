@@ -258,6 +258,38 @@ static bool parseOrderBy(redisClient *c,
         return Y;                                                    \
     }
 
+static bool parseWhereClauseAddtlSQL(redisClient *c,
+                                     int         *pargn, 
+                                     int         *obc,
+                                     bool        *store,
+                                     uchar        sop,
+                                     bool        *asc,
+                                     int         *lim,
+                                     int          tmatch) {
+    PARGN_OVERFLOW()
+    bool check_sto = 1;
+    if (!strcasecmp(c->argv[*pargn]->ptr, "ORDER")) {
+        PARGN_OVERFLOW()
+        int oba   = -1;
+        if (!parseOrderBy(c, pargn, &oba, asc, lim)) return 0;
+        *obc = find_column(tmatch, c->argv[oba]->ptr);
+        check_sto = 0;
+        if (*pargn != (c->argc - 1)) {
+            PARGN_OVERFLOW()
+            check_sto = 1;
+        }
+    }
+   if (check_sto) {
+       if (!strcasecmp(c->argv[*pargn]->ptr, STORE)) {
+            PARGN_OVERFLOW()
+            *store = 1;
+        } else {
+            WHERE_CLAUSE_ERROR_REPLY(0);
+        }
+    }
+    return 1;
+}
+
 unsigned char checkSQLWhereClauseReply(redisClient  *c,
                                        robj       **key,
                                        robj       **range,
@@ -337,40 +369,23 @@ unsigned char checkSQLWhereClauseReply(redisClient  *c,
                                         just_parse);
             if (where) {
                 if (*pargn != (c->argc - 1)) { /* additional SQL */
-                    PARGN_OVERFLOW()
-                    bool check_sto = 1;
-                    if (!strcasecmp(c->argv[*pargn]->ptr, "ORDER")) {
-                        PARGN_OVERFLOW()
-                        int oba   = -1;
-                        if (!parseOrderBy(c, pargn, &oba, asc, lim)) return 0;
-                        *obc = find_column(tmatch, c->argv[oba]->ptr);
-                        check_sto = 0;
-                        if (*pargn != (c->argc - 1)) {
-                            PARGN_OVERFLOW()
-                            check_sto = 1;
-                        }
-                    }
-                   if (check_sto) {
-                       if (!strcasecmp(c->argv[*pargn]->ptr, STORE)) {
-                            PARGN_OVERFLOW()
-                            *store = 1;
-                        } else {
-                            WHERE_CLAUSE_ERROR_REPLY(0);
-                        }
-                    }
+                    parseWhereClauseAddtlSQL(c, pargn, obc, store,
+                                             sop, asc, lim, tmatch);
                 }
             }
             return where;
         }
     }
 
+    if (just_parse) return 1;
     if (is_fk) { /* single FK lookup is HACKED into a range-query of length 1 */
-        if (just_parse) return 1;
         convertFkValueToRange((*key)->ptr, range);
+        if (*pargn != (c->argc - 1)) { /* additional SQL */
+            parseWhereClauseAddtlSQL(c, pargn, obc, store,
+                                     sop, asc, lim, tmatch);
+        }
         return 2;
-    }
-    else {
-        if (just_parse) return 1;
+    } else {
         return 1;
     }
 }

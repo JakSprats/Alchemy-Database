@@ -97,7 +97,9 @@ static struct config {
     int idlemode;
 
     bool perform_range_query;
+    bool perform_RQ_orderby;
     bool perform_join_test;
+    bool perform_join_orderby_test;
     bool perform_3way_join_test;
     bool perform_10way_join_test;
     bool perform_fk_test;
@@ -577,12 +579,16 @@ void parseOptions(int argc, char **argv) {
         /* START: ALSOSQL */
         } else if (!strcmp(argv[i],"-R")) {
             config.perform_range_query       = 1;
+        } else if (!strcmp(argv[i],"-ROB")) {
+            config.perform_RQ_orderby        = 1;
         } else if (!strcmp(argv[i],"-A")) {
             config.perform_address_test      = 1;
         } else if (!strcmp(argv[i],"-T")) {
             config.perform_test_table_test   = 1;
         } else if (!strcmp(argv[i],"-J")) {
             config.perform_join_test         = 1;
+        } else if (!strcmp(argv[i],"-JOB")) {
+            config.perform_join_orderby_test = 1;
         } else if (!strcmp(argv[i],"-J3")) {
             config.perform_3way_join_test    = 1;
         } else if (!strcmp(argv[i],"-J10")) {
@@ -684,8 +690,9 @@ void parseOptions(int argc, char **argv) {
         }
     }
 
-    if (config.perform_range_query    || config.perform_join_test        ||
-        config.perform_3way_join_test || config.perform_fk_test          ||
+    if (config.perform_range_query    || config.perform_RQ_orderby        ||
+        config.perform_join_test      || config.perform_join_orderby_test ||
+        config.perform_3way_join_test || config.perform_fk_test           ||
         config.perform_fk_join_test   || config.perform_10way_join_test)
             randomize_range = 1; 
 }
@@ -898,6 +905,18 @@ void test_Iselect_test_table() {
     endBenchmark("ISELECT TEST");
 }
 
+void test_Iselect_orderby_test_table() {
+    reset_non_rand();
+    prepareForBenchmark();
+    client c = createClient();
+    if (!c) exit(1);
+    c->obuf = sdscat(c->obuf,"SELECT * FROM test WHERE id BETWEEN 000100000001 AND 000100000002 ORDER BY name\n");
+    prepareClientForReply(c,REPLY_MBULK);
+    createMissingClients(c);
+    aeMain(config.el);
+    endBenchmark("ISELECT TEST");
+}
+
 void test_insert_join_table() {
 // THE FOLLOWING COMMAND MUST BE RUN using ./redis-cli
 // create table join (id int, field TEXT, name TEXT)
@@ -918,6 +937,18 @@ void test_join_test_with_join_table() {
     client c = createClient();
     if (!c) exit(1);
     c->obuf = sdscat(c->obuf,"SELECT test.id,test.field,join.name FROM test,join WHERE test.id=join.id AND test.id BETWEEN 000100000001 AND 000100000002\n");
+    prepareClientForReply(c,REPLY_MBULK);
+    createMissingClients(c);
+    aeMain(config.el);
+    endBenchmark("ISELECT JOIN");
+}
+
+void test_join_orderby_test_with_join_table() {
+    reset_non_rand();
+    prepareForBenchmark();
+    client c = createClient();
+    if (!c) exit(1);
+    c->obuf = sdscat(c->obuf,"SELECT test.id,test.field,join.name FROM test,join WHERE test.id=join.id AND test.id BETWEEN 000100000001 AND 000100000002 ORDER BY join.name\n");
     prepareClientForReply(c,REPLY_MBULK);
     createMissingClients(c);
     aeMain(config.el);
@@ -1089,7 +1120,9 @@ int main(int argc, char **argv) {
     config.perform_address_test      = 0;
     config.perform_test_table_test   = 0;
     config.perform_range_query       = 0;
+    config.perform_RQ_orderby        = 0;
     config.perform_join_test         = 0;
+    config.perform_join_orderby_test = 0;
     config.perform_3way_join_test    = 0;
     config.perform_10way_join_test   = 0;
     config.perform_fk_test           = 0;
@@ -1174,10 +1207,24 @@ int main(int argc, char **argv) {
             return 0;
         }
 
+        if (config.perform_RQ_orderby) {
+            printf("RQ Test OrderBy: length: %ld\n", config.range_query_len);
+            printf("test_Iselect_orderby_test_table\n");
+            test_Iselect_orderby_test_table();
+            return 0;
+        }
+
         if (config.perform_join_test) {
             printf("JoinTest: length: %ld\n", config.range_query_len);
             printf("test_join_test_with_join_table\n");
             test_join_test_with_join_table();
+            return 0;
+        }
+
+        if (config.perform_join_orderby_test) {
+            printf("JoinTest_OrderBy: length: %ld\n", config.range_query_len);
+            printf("test_join_orderby_test_with_join_table\n");
+            test_join_orderby_test_with_join_table();
             return 0;
         }
 

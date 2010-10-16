@@ -359,7 +359,7 @@ static void addOutputRowToRQList(list *ll,
                                  int   tmatch,
                                  bool  icol) {
     flag cflag;
-    obsl_t *ob = (obsl_t *)malloc(sizeof(obsl_t)); /* freed end iselectAction */
+    obsl_t *ob = (obsl_t *)malloc(sizeof(obsl_t)); /*freed sortOrderByAndReply*/
     ob->row    = cloneRobj(r); /*decrRefCount()d N sortOrderByAndReply() */
     aobj    ao = getRawCol(row, obc, pko, tmatch, &cflag, icol, 0);
     if (icol) {
@@ -379,35 +379,35 @@ static void sortOrderByAndReply(redisClient *c,
                                 bool         icol,
                                 int          lim,
                                 bool         asc) {
-        listNode  *ln;
-        listIter   li;
-        int        vlen   = listLength(ll);
-        obsl_t   **vector = malloc(sizeof(obsl_t *) * vlen);
-        int        j      = 0;
-        listRewind(ll, &li);
-        while((ln = listNext(&li))) {
-            vector[j] = (obsl_t *)ln->value;
-            j++;
-        }
-        if (icol) {
-            asc ? qsort(vector, vlen, sizeof(obsl_t *), intOrderBySort) :
-                  qsort(vector, vlen, sizeof(obsl_t *), intOrderByRevSort);
-        } else {
-            asc ? qsort(vector, vlen, sizeof(obsl_t *), stringOrderBySort) :
-                  qsort(vector, vlen, sizeof(obsl_t *), stringOrderByRevSort);
-        }
-        for (int k = 0; k < vlen; k++) {
-            if (lim != -1 && k == lim) break;
-            obsl_t *ob = vector[k];
-            addReplyBulk(c, ob->row);
-        }
-        /* TODO triple check for MEMORY LEAKS */
-        for (int k = 0; k < vlen; k++) {
-            obsl_t *ob = vector[k];
-            decrRefCount(ob->row);
-            if (!icol) free(ob->val);
-        }
-        free(vector);
+    listNode  *ln;
+    listIter   li;
+    int        vlen   = listLength(ll);
+    obsl_t   **vector = malloc(sizeof(obsl_t *) * vlen); /* freed in function */
+    int        j      = 0;
+    listRewind(ll, &li);
+    while((ln = listNext(&li))) {
+        vector[j] = (obsl_t *)ln->value;
+        j++;
+    }
+    if (icol) {
+        asc ? qsort(vector, vlen, sizeof(obsl_t *), intOrderBySort) :
+              qsort(vector, vlen, sizeof(obsl_t *), intOrderByRevSort);
+    } else {
+        asc ? qsort(vector, vlen, sizeof(obsl_t *), stringOrderBySort) :
+              qsort(vector, vlen, sizeof(obsl_t *), stringOrderByRevSort);
+    }
+    for (int k = 0; k < vlen; k++) {
+        if (lim != -1 && k == lim) break;
+        obsl_t *ob = vector[k];
+        addReplyBulk(c, ob->row);
+    }
+    for (int k = 0; k < vlen; k++) {
+        obsl_t *ob = vector[k];
+        decrRefCount(ob->row);
+        if (!icol) free(ob->val);
+        free(ob);
+    }
+    free(vector);
 }
 /* ORDER BY END */
 
@@ -453,8 +453,8 @@ void iselectAction(redisClient *c,
                 addOutputRowToRQList(ll, r, row, obc, pko, tmatch, icol);
             } else {
                 addReplyBulk(c, r);
-                decrRefCount(r);
             }
+            decrRefCount(r);
             card++;
         } else {
             int               ind_col = (int)Index[server.dbid][imatch].column;
@@ -471,8 +471,8 @@ void iselectAction(redisClient *c,
                     addOutputRowToRQList(ll, r, row, obc, nkey, tmatch, icol);
                 } else {
                     addReplyBulk(c, r);
-                    decrRefCount(r);
                 }
+                decrRefCount(r);
                 card++;
             }
             btReleaseRangeIterator(nbi);
@@ -482,12 +482,6 @@ void iselectAction(redisClient *c,
 
     if (obc != -1) {
         sortOrderByAndReply(c, ll, icol, lim, asc);
-        listNode  *ln; /* walk list and free "obsl_t"s */
-        listIter  *li = listGetIterator(ll, AL_START_HEAD);
-        while((ln = listNext(li)) != NULL) {
-            free(ln->value);      /* free obsl_t */
-        }
-        listReleaseIterator(li);
         listRelease(ll);
     }
     decrRefCount(low);

@@ -536,13 +536,12 @@ void selectRedisqlCommand(redisClient *c) {
         TABLE_CHECK_OR_REPLY(tbl_list,);
         ARGN_OVERFLOW()
 
-        int   idum;
         int   imatch = -1;
         int   obc    = -1; /* ORDER BY col */
         bool  asc    = 1;
         int   lim    = -1;
         bool  store  = 0;
-        uchar where  = checkSQLWhereClauseReply(c, &pko, &range, &imatch, &idum,
+        uchar where  = checkSQLWhereClauseReply(c, &pko, &range, &imatch, NULL,
                                                 &argn, tmatch, 0, 0,
                                                 &obc, &asc, &lim, &store);
         if (!where) goto sel_cmd_err;
@@ -582,14 +581,14 @@ void deleteCommand(redisClient *c) {
 
     TABLE_CHECK_OR_REPLY(c->argv[2]->ptr,)
 
-    int idum; bool bdum;
+    bool   bdum;
     int    imatch = -1;
     int    obc    = -1; /* ORDER BY col */
     bool   asc    = 1;
     int    lim    = -1;
     robj  *pko    = NULL, *range = NULL;
     int    argn   = 3;
-    uchar  where  = checkSQLWhereClauseReply(c, &pko, &range, &imatch, &idum,
+    uchar  where  = checkSQLWhereClauseReply(c, &pko, &range, &imatch, NULL,
                                              &argn, tmatch, 1, 0,
                                              &obc, &asc, &lim, &bdum);
     if (!where) return;
@@ -635,14 +634,14 @@ void updateCommand(redisClient *c) {
 
     ASSIGN_UPDATE_HITS_AND_MISSES
 
-    int idum; bool bdum;
+    bool   bdum;
     int    obc    = -1; /* ORDER BY col */
     bool   asc    = 1;
     int    lim    = -1;
     int    imatch = -1;
     robj  *pko    = NULL, *range = NULL;
     int    argn   = 4;
-    uchar  where  = checkSQLWhereClauseReply(c, &pko, &range, &imatch, &idum,
+    uchar  where  = checkSQLWhereClauseReply(c, &pko, &range, &imatch, NULL,
                                              &argn, tmatch, 2, 0,
                                              &obc, &asc, &lim, &bdum);
     if (!where) goto update_cmd_err;

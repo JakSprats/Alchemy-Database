@@ -21,8 +21,10 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <strings.h>
 #include <unistd.h>
 
-#include "alsosql.h"
+#include "zmalloc.h"
 #include "redis.h"
+
+#include "alsosql.h"
 #include "bt.h"
 #include "bt_iterator.h"
 #include "row.h"
@@ -237,9 +239,9 @@ typedef struct jrow_reply {
     bool          icol;
 } jrow_reply_t;
 
-static void addJoinOutputRowToList(jrow_reply_t *r, robj *resp) {
+static void addJoinOutputRowToList(jrow_reply_t *r, void *resp) {
     obsl_t *ob = (obsl_t *)malloc(sizeof(obsl_t));
-    ob->row = resp;
+    ob->row    = resp;
     if (r->icol) {
         ob->val = Order_by_col_val ? (void *)(long)atoi(Order_by_col_val) :
                                      (void *)-1;
@@ -249,23 +251,37 @@ static void addJoinOutputRowToList(jrow_reply_t *r, robj *resp) {
     listAddNodeTail(r->ll, ob);
 }
 
-static bool jRowStore(jrow_reply_t *r) {
+static void prepare_jRowStore(jrow_reply_t *r) {
     robj **argv = r->fc->argv;
     argv[1]     = cloneRobj(r->nname);
-    int n = 1;
+    int    n    = 1;
+    r->fc->argc = 3;
     if (r->sub_pk) { // pk =argv[1]:Rcols[0][0]
         argv[1]->ptr = sdscatlen(argv[1]->ptr, COLON,   1);
         argv[1]->ptr = sdscatlen(argv[1]->ptr, *Jrcols[0], Jrc_lens[0]);
-        argv[2]  = createStringObject(*Jrcols[1], Jrc_lens[1]);
+        argv[2]      = createStringObject(*Jrcols[1], Jrc_lens[1]);
         n++;
     } else {
-        argv[2]  = createStringObject(*Jrcols[0], Jrc_lens[0]);
+        argv[2]      = createStringObject(*Jrcols[0], Jrc_lens[0]);
     }
     if (r->nargc > 1) {
-        argv[3]  = createStringObject(*Jrcols[n], Jrc_lens[n]);
+        argv[3]      = createStringObject(*Jrcols[n], Jrc_lens[n]);
+        r->fc->argc  = 4;
     }
+}
+static bool jRowStore(jrow_reply_t *r) {
+    prepare_jRowStore(r);
     return performStoreCmdOrReply(r->c, r->fc, r->sto);
 }
+
+robj **cloneArgv(robj **argv, int argc) {
+    robj **cargv = zmalloc(sizeof(robj*)*argc);
+    for (int j = 0; j < argc; j++) {
+        cargv[j] = createObject(REDIS_STRING, argv[j]->ptr);
+    }
+    return cargv;
+}
+
 
 static bool jRowReply(jrow_reply_t *r, int lvl) {
     int cnt = 0;
@@ -279,9 +295,11 @@ static bool jRowReply(jrow_reply_t *r, int lvl) {
     }
 
     if (r->sto != -1 && StorageCommands[r->sto].argc) { /* JSTORE not INSERT */
-        if (Order_by) {
-            RL4 "JSTORE ORDER BT STORE not INSERT not yet supported"); //RUSS
-            return 0;
+        if (Order_by) { /* add the argv's to the list */
+            prepare_jRowStore(r);
+            robj **argv = cloneArgv(r->fc->argv, r->fc->argc);
+            addJoinOutputRowToList(r, argv);
+            return 1;
         } else {
             return jRowStore(r);
         }
@@ -302,12 +320,7 @@ static bool jRowReply(jrow_reply_t *r, int lvl) {
         robj *resp = createStringObject(r->reply, slot -1);
 
         if (Order_by) {
-            if (r->sto != -1) { /* JSTORE INSERT */
-                RL4 "JSTORE ORDER BT STORE INSERT not yet supported"); //RUSS
-                return 0;
-            } else {
-                addJoinOutputRowToList(r, resp);
-            }
+            addJoinOutputRowToList(r, resp);
         } else {
             if (r->sto != -1) { /* JSTORE INSERT */
                 r->fc->argc    = 3;
@@ -416,7 +429,7 @@ char *getCopyColStr(robj   *row,
     aobj    ao  = getColStr(row, cmatch, okey, tmatch);
     // force_string(INT) comes from a buffer, must be copied here
     char   *src = ao.s;
-    m_strcpy_len(src, ao.len, &dest); /* must be freeD */
+    m_strcpy_len(src, ao.len, &dest); /* freeD in freeIndRowEntries */
     if (ao.sixbit) free(src);
     *len        = ao.len;
     return dest;
@@ -456,7 +469,7 @@ static void joinAddColsFromInd(join_add_cols_t *a,
     a->jind_ncols[a->index] = nresp;
     char *ind_row           = malloc(nresp * (PTR_SIZE + UINT_SIZE));
     char *list_val          = ind_row;
-    for (int i = 0; i < nresp; i++) {
+    for (int i = 0; i < nresp; i++) { /* fill in ind_row */
         memcpy(ind_row, &cresp[i].s, PTR_SIZE);
         ind_row += PTR_SIZE;
         memcpy(ind_row, &cresp[i].len, UINT_SIZE);
@@ -464,10 +477,11 @@ static void joinAddColsFromInd(join_add_cols_t *a,
     }
 
     /* only index matching "obt" needs to have ORDER_BY column */
+    /* TODO does this for every column for this index - only 1st is needed */
     if (obt == a->itable) {
         uint32  vlen;
-        obsl_t *ob = (obsl_t *)malloc(sizeof(obsl_t)); /*freed N joinGeneric*/
-        ob->val    = getCopyColStr(row, obc, key, obt, &vlen); // TODO:free
+        obsl_t *ob = (obsl_t *)malloc(sizeof(obsl_t)); /*freed N freeIndRow */
+        ob->val    = getCopyColStr(row, obc, key, obt, &vlen);
         ob->row    = list_val;
         list_val   = (char *)ob; /* in ORDER BY list_val -> obsl_t */
     }
@@ -487,7 +501,7 @@ static void joinAddColsFromInd(join_add_cols_t *a,
             listAddNodeTail(ll, list_val);
         } else {
             joinRowEntry *jre = (joinRowEntry *)malloc(sizeof(joinRowEntry));
-            list         *ll  = listCreate();
+            list         *ll  = listCreate(); /* listRelease freeListOfIndRow*/
             jre->key          = a->jk;
             jre->val          = (void *)ll;
             listAddNodeHead(ll, list_val);
@@ -515,7 +529,7 @@ static void sortJoinOrderByAndReply(redisClient        *c,
                                     int                 lim) {
     listNode  *ln;
     int        vlen   = listLength(b->j.ll);
-    obsl_t   **vector = malloc(sizeof(obsl_t *) * vlen); // TODO: free
+    obsl_t   **vector = malloc(sizeof(obsl_t *) * vlen); /* freed in function */
     int        j      = 0;
     listIter  *li     = listGetIterator(b->j.ll, AL_START_HEAD);
     while((ln = listNext(li)) != NULL) {
@@ -533,17 +547,30 @@ static void sortJoinOrderByAndReply(redisClient        *c,
     for (int k = 0; k < vlen; k++) {
         if (lim != -1 && k == lim) break;
         obsl_t *ob = vector[k];
-        addReplyBulk(c, ob->row);
+        if (b->j.sto != -1) {
+            if (StorageCommands[b->j.sto].argc) { /* JSTORE not INSERT */
+                b->j.fc->argv = ob->row; /* argv's in list */
+                if (!performStoreCmdOrReply(b->j.c, b->j.fc, b->j.sto)) return;
+            } else { /* JSTORE INSERT */
+                b->j.fc->argc    = 3;
+                b->j.fc->argv[1] = cloneRobj(b->j.nname);
+                b->j.fc->argv[2] = ob->row;
+                if (!performStoreCmdOrReply(b->j.c, b->j.fc, b->j.sto)) return;
+            }
+        } else {
+            addReplyBulk(c, ob->row);
+            decrRefCount(ob->row);
+        }
     }
-    /* TODO triple check for MEMORY LEAKS */
     for (int k = 0; k < vlen; k++) {
         obsl_t *ob = vector[k];
-        decrRefCount(ob->row);
+        free(ob);               /* free malloc in addJoinOutputRowToList */
     }
     free(vector);
 }
 
-static void freeIndRow(char *s, int num_cols) {
+
+static void freeIndRowEntries(char *s, int num_cols) {
     for (int j = 0; j < num_cols; j++) {
         char **x = (char **)s;
         char **y = (char **)*x;
@@ -552,25 +579,35 @@ static void freeIndRow(char *s, int num_cols) {
     }
 }
 
-static void freeListOfIndRow(list *ll, int num_cols) {
-    listIter *iter;
-    listNode *node;
-    iter = listGetIterator(ll, AL_START_HEAD);
-    while((node = listNext(iter)) != NULL) {
-        freeIndRow(node->value, num_cols);
-        free(node->value);      /* free ind_row */
+static void freeIndRow(void *s, int num_cols, bool is_ob, bool free_ptr) {
+    if (is_ob) {
+        obsl_t *ob = (obsl_t *)s;
+        freeIndRowEntries(ob->row, num_cols);
+        free(ob->row);          /* free ind_row */
+        free(ob->val);          /* free getCopyColStr */
+        if (free_ptr) free(ob); /* free malloc */
+    } else {
+        freeIndRowEntries(s, num_cols);
+        if (free_ptr) free(s);  /* free ind_row */
     }
-    listReleaseIterator(iter);
+}
+
+static void freeListOfIndRow(list *ll, int num_cols, bool is_ob) {
+    listNode *ln;
+    listIter *li = listGetIterator(ll, AL_START_HEAD);
+    while((ln = listNext(li)) != NULL) {
+        freeIndRow(ln->value, num_cols, is_ob, 1);
+    }
+    listReleaseIterator(li);
     listRelease(ll);
 }
 
-void freeDictOfIndRow(dict *d, int num_cols) {
+void freeDictOfIndRow(dict *d, int num_cols, bool is_ob) {
     dictEntry    *ide;
     dictIterator *idi  = dictGetIterator(d);
     while((ide = dictNext(idi)) != NULL) {
         robj *ikey = dictGetEntryKey(ide);
-        char *s    = (char *)(ikey->ptr);
-        freeIndRow(s, num_cols);
+        freeIndRow(ikey->ptr, num_cols, is_ob, 0);
     }
     dictReleaseIterator(idi);
 }
@@ -625,7 +662,7 @@ void joinGeneric(redisClient *c,
     list *ll   = NULL;
     bool  icol = 0;
     if (Order_by) { /* ORDER BY logic */
-        ll = listCreate();
+        ll   = listCreate();
         icol = (Tbl[server.dbid][obt].col_type[obc] == COL_TYPE_INT);
     }
 
@@ -764,24 +801,24 @@ void joinGeneric(redisClient *c,
         }
     }
 
-// TODO free respecting obsl_t's
-#if 0
+    // TODO free respecting obsl_t's
     // free strdup()s from joinAddColsFromInd()
-    btJoinRelease(jbtr, jind_ncols[0], freeListOfIndRow);
+    bool  is_ob = (obt == Index[server.dbid][j_indxs[0]].table);
+    btJoinRelease(jbtr, jind_ncols[0], is_ob, freeListOfIndRow);
 
     // free strdup()s from joinAddColsFromInd()
     dictEntry *de;
     for (int i = 1; i < n_ind; i++) {
-        dict         *set = rset[i]->ptr;
-        dictIterator *di  = dictGetIterator(set);
+        dict         *set   = rset[i]->ptr;
+        bool          is_ob = (obt == Index[server.dbid][j_indxs[i]].table);
+        dictIterator *di    = dictGetIterator(set);
         while((de = dictNext(di)) != NULL) {
             robj *val  = dictGetEntryVal(de);
             dict *iset = val->ptr;
-            freeDictOfIndRow(iset, jind_ncols[i]);
+            freeDictOfIndRow(iset, jind_ncols[i], is_ob);
         }
         dictReleaseIterator(di);
     }
-#endif
 
     for (int i = 1; i < n_ind; i++) {
         decrRefCount(rset[i]);
@@ -851,7 +888,7 @@ void jstoreCommit(redisClient *c,
     }
     RANGE_CHECK_OR_REPLY(range->ptr)
 
-    if (!StorageCommands[sto].argc) { // create table first if needed
+    if (!StorageCommands[sto].argc) { /* INSERT -> create table first */
         fc->argv[1] = cloneRobj(nname);
         if (!createTableFromJoin(c, fc, qcols, j_tbls, j_cols)) {
             freeFakeClient(fc);
