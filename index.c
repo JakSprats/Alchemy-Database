@@ -35,6 +35,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include "common.h"
 #include "alsosql.h"
 #include "rdb_alsosql.h"
+#include "orderby.h"
 #include "index.h"
 
 // FROM redis.c
@@ -316,102 +317,6 @@ void dropIndex(redisClient *c) {
     addReply(c, shared.cone);
 }
 
-/* ORDER BY START */
-int intOrderBySort(const void *s1, const void *s2) {
-    obsl_t *o1 = (obsl_t *)s1;
-    obsl_t *o2 = (obsl_t *)s2;
-    int    *i1 = (int *)(o1->val);
-    int    *i2 = (int *)(o2->val);
-    return *i1 - *i2;
-}
-int intOrderByRevSort(const void *s1, const void *s2) {
-    obsl_t *o1 = (obsl_t *)s1;
-    obsl_t *o2 = (obsl_t *)s2;
-    int    *i1 = (int *)(o1->val);
-    int    *i2 = (int *)(o2->val);
-    return *i2 - *i1;
-}
-
-int stringOrderBySort(const void *s1, const void *s2) {
-    obsl_t  *o1 = (obsl_t *)s1;
-    obsl_t  *o2 = (obsl_t *)s2;
-    char   **c1 = (char **)(o1->val);
-    char   **c2 = (char **)(o2->val);
-    char    *x1 = *c1;
-    char    *x2 = *c2;
-    return (x1 && x2) ? strcmp(x1, x2) : x1 - x2; /* strcmp() not ok w/ NULLs */
-}
-int stringOrderByRevSort(const void *s1, const void *s2) {
-    obsl_t  *o1 = (obsl_t *)s1;
-    obsl_t  *o2 = (obsl_t *)s2;
-    char   **c1 = (char **)(o1->val);
-    char   **c2 = (char **)(o2->val);
-    char    *x1 = *c1;
-    char    *x2 = *c2;
-    return (x1 && x2) ? strcmp(x2, x1) : x2 - x1; /* strcmp() not ok w/ NULLs */
-}
-
-void addORowToRQList(list *ll,
-                     robj *r,
-                     robj *row,
-                     int   obc,
-                     robj *pko,
-                     int   tmatch,
-                     bool  icol) {
-    flag cflag;
-    obsl_t *ob  = (obsl_t *)malloc(sizeof(obsl_t));/*freed sortedOrdrByCleanup*/
-    if (r) {
-        ob->row = cloneRobj(r); /*decrRefCount()d N sortedOrderByCleanup() */
-    } else {
-        ob->row = row->ptr; /* used ONLY in istoreCommit */
-    }
-    aobj    ao  = getRawCol(row, obc, pko, tmatch, &cflag, icol, 0);
-    if (icol) {
-        ob->val   = (void *)(long)ao.i;
-    } else {
-        char *s   = malloc(ao.len + 1); /*free()d in sortedOrderByCleanup() */
-        memcpy(s, ao.s, ao.len);
-        s[ao.len] = '\0';
-        ob->val   = s;
-        if (ao.sixbit) free(ao.s); /* getRawCol() malloc()s sixbit strings */
-    }
-    listAddNodeTail(ll, ob);
-}
-
-obsl_t **sortOrderByToVector(list *ll, bool icol, bool asc) {
-    listNode  *ln;
-    listIter   li;
-    int        vlen   = listLength(ll);
-    obsl_t   **vector = malloc(sizeof(obsl_t *) * vlen); /* freed in function */
-    int        j      = 0;
-    listRewind(ll, &li);
-    while((ln = listNext(&li))) {
-        vector[j] = (obsl_t *)ln->value;
-        j++;
-    }
-    if (icol) {
-        asc ? qsort(vector, vlen, sizeof(obsl_t *), intOrderBySort) :
-              qsort(vector, vlen, sizeof(obsl_t *), intOrderByRevSort);
-    } else {
-        asc ? qsort(vector, vlen, sizeof(obsl_t *), stringOrderBySort) :
-              qsort(vector, vlen, sizeof(obsl_t *), stringOrderByRevSort);
-    }
-    return vector;
-}
-
-void sortedOrderByCleanup(obsl_t **vector,
-                          int      vlen,
-                          bool     icol,
-                          bool     decr_row) {
-    for (int k = 0; k < vlen; k++) {
-        obsl_t *ob = vector[k];
-        if (decr_row) decrRefCount(ob->row);
-        if (!icol)    free(ob->val);
-        free(ob);
-    }
-}
-/* ORDER BY END */
-
 #define ISELECT_OPERATION(Q)                                    \
     robj *r = outputRow(row, qcols, cmatchs, key, tmatch, 0);   \
     if (Q) addORowToRQList(ll, r, row, obc, key, tmatch, icol); \
@@ -467,16 +372,6 @@ void iselectAction(redisClient *c,
     if (lim != -1 && (uint32)lim < card) card = lim;
     lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
 }
-
-#if 0
-void iselectCommand(redisClient *c) {
-    int imatch = checkIndexedColumnOrReply(c, c->argv[1]->ptr);
-    if (imatch == -1) return;
-    int tmatch = Index[server.dbid][imatch].table;
-
-    iselectAction(c, c->argv[2]->ptr, tmatch, imatch, c->argv[3]->ptr);
-}
-#endif
 
 static void addPKtoRQList(list *ll,
                           robj *pko,
@@ -560,27 +455,6 @@ void iupdateAction(redisClient *c,
     addReplyLongLong(c, card);
 }
 
-#if 0
-void iupdateCommand(redisClient *c) {
-    int   imatch = checkIndexedColumnOrReply(c, c->argv[1]->ptr);
-    if (imatch == -1) return;
-    int   tmatch = Index[server.dbid][imatch].table;
-    int   ncols   = Tbl[server.dbid][tmatch]._col_count;
-
-    int   cmatchs  [MAX_COLUMN_PER_TABLE];
-    char *mvals    [MAX_COLUMN_PER_TABLE];
-    int   mvlens   [MAX_COLUMN_PER_TABLE];
-    int   qcols = parseUpdateOrReply(c, tmatch, c->argv[3]->ptr, cmatchs,
-                                     mvals, mvlens);
-    if (!qcols) return;
-
-    MATCH_INDICES(tmatch)
-    ASSIGN_UPDATE_HITS_AND_MISSES
-
-    iupdateAction(c, c->argv[2]->ptr, tmatch, imatch, ncols, matches, indices,
-                  vals, vlens, cmiss);
-}
-#endif
 
 void ideleteAction(redisClient *c,
                    char        *range,
@@ -634,15 +508,6 @@ void ideleteAction(redisClient *c,
     if (lim != -1 && (uint32)lim < card) card = lim;
     addReplyLongLong(c, card);
 }
-
-#if 0
-void ideleteCommand(redisClient *c) {
-    int   imatch = checkIndexedColumnOrReply(c, c->argv[1]->ptr);
-    if (imatch == -1) return;
-    int   tmatch = Index[server.dbid][imatch].table;
-    ideleteAction(c, c->argv[2]->ptr, tmatch, imatch);
-}
-#endif
 
 void ikeysCommand(redisClient *c) {
     int   imatch = checkIndexedColumnOrReply(c, c->argv[1]->ptr);
@@ -847,3 +712,41 @@ void descCommand(redisClient *c) {
     card++;
     lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
 }
+
+#if 0
+/* LEGACY CODE - the ROOTS */
+void iselectCommand(redisClient *c) {
+    int imatch = checkIndexedColumnOrReply(c, c->argv[1]->ptr);
+    if (imatch == -1) return;
+    int tmatch = Index[server.dbid][imatch].table;
+
+    iselectAction(c, c->argv[2]->ptr, tmatch, imatch, c->argv[3]->ptr);
+}
+
+void iupdateCommand(redisClient *c) {
+    int   imatch = checkIndexedColumnOrReply(c, c->argv[1]->ptr);
+    if (imatch == -1) return;
+    int   tmatch = Index[server.dbid][imatch].table;
+    int   ncols   = Tbl[server.dbid][tmatch]._col_count;
+
+    int   cmatchs  [MAX_COLUMN_PER_TABLE];
+    char *mvals    [MAX_COLUMN_PER_TABLE];
+    int   mvlens   [MAX_COLUMN_PER_TABLE];
+    int   qcols = parseUpdateOrReply(c, tmatch, c->argv[3]->ptr, cmatchs,
+                                     mvals, mvlens);
+    if (!qcols) return;
+
+    MATCH_INDICES(tmatch)
+    ASSIGN_UPDATE_HITS_AND_MISSES
+
+    iupdateAction(c, c->argv[2]->ptr, tmatch, imatch, ncols, matches, indices,
+                  vals, vlens, cmiss);
+}
+
+void ideleteCommand(redisClient *c) {
+    int   imatch = checkIndexedColumnOrReply(c, c->argv[1]->ptr);
+    if (imatch == -1) return;
+    int   tmatch = Index[server.dbid][imatch].table;
+    ideleteAction(c, c->argv[2]->ptr, tmatch, imatch);
+}
+#endif

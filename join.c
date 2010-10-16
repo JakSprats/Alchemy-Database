@@ -31,6 +31,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include "index.h"
 #include "store.h"
 #include "common.h"
+#include "orderby.h"
 #include "join.h"
 
 // FROM redis.c
