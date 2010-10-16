@@ -109,6 +109,63 @@ int intOrderBySort(      const void *s1, const void *s2);
 int intOrderByRevSort(   const void *s1, const void *s2);
 int stringOrderBySort(   const void *s1, const void *s2);
 int stringOrderByRevSort(const void *s1, const void *s2);
+
+void addORowToRQList(list *ll,
+                     robj *r,
+                     robj *row,
+                     int   obc,   
+                     robj *pko,
+                     int   tmatch,
+                     bool  icol);
+
+obsl_t **sortOrderByToVector(list *ll, bool icol, bool asc);
+
+void sortedOrderByCleanup(obsl_t **vector,
+                          int      vlen,  
+                          bool     icol,  
+                          bool     decr_row);
 /* ORDER BY END */
+
+#define RANGE_QUERY_LOOKUP_START                                              \
+    btEntry *be, *nbe;                                                        \
+    robj *o       = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);      \
+    robj *ind     = Index[server.dbid][imatch].obj;                           \
+    bool  virt    = Index[server.dbid][imatch].virt;                          \
+    robj *bt      = virt ? o : lookupKey(c->db, ind);                         \
+    int   ind_col = (int)Index[server.dbid][imatch].column;                   \
+    bool  pktype  = Tbl[server.dbid][tmatch].col_type[0];                     \
+    bool  brk_pk  = (asc && obc == 0);                                        \
+    bool  q_pk    = (!asc || (obc != -1 && obc != 0));                        \
+    bool  brk_fk  = (asc  && obc != -1 && obc == ind_col);                    \
+    bool  q_fk    = (obc != -1);                                              \
+    bool  qed     = virt ? q_pk : q_fk;                                       \
+    btStreamIterator *bi  = btGetRangeIterator(bt, low, high, virt);          \
+    btStreamIterator *nbi = NULL;                                             \
+    while ((be = btRangeNext(bi, 1)) != NULL) {     /* iterate btree */       \
+        if (virt) {                                                           \
+            if (brk_pk && (uint32)lim == card) break; /* ORDER BY PK LIMIT */ \
+            robj *key = be->key;                                              \
+            robj *row = be->val;
+            /* PK operation specific code comes here */
+#define RANGE_QUERY_LOOKUP_MIDDLE                                             \
+            card++;                                                           \
+        } else {                                                              \
+            robj *val = be->val;                                              \
+            nbi       = btGetFullRangeIterator(val, 0, 0);                    \
+            while ((nbe = btRangeNext(nbi, 1)) != NULL) {  /* iter8 NodeBT */ \
+                if (brk_fk && (uint32)lim == card) break;                     \
+                robj *key = nbe->key;                                         \
+                robj *row = btFindVal(o, key, pktype);
+                /* FK operation specific code comes here */
+#define RANGE_QUERY_LOOKUP_END                                                \
+                card++;                                                       \
+            }                                                                 \
+            btReleaseRangeIterator(nbi);                                      \
+            nbi = NULL; /* explicit in case of goto's in inner loop */        \
+        }                                                                     \
+    }                                                                         \
+    btReleaseRangeIterator(bi);                                               \
+    bi = NULL; /* explicit in case of goto's in inner loop */
+
 
 #endif /* __INDEX__H */ 

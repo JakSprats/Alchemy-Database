@@ -15,6 +15,8 @@ fi
 JOIN=0
 if [ "$1" == "JOIN" ]; then
   JOIN=2
+elif [ "$1" == "JOIN_ORDERBY" ]; then
+  JOIN=4
 elif [ "$1" == "3WAY" ]; then
   JOIN=3
 elif [ "$1" == "10WAY" ]; then
@@ -28,15 +30,20 @@ ACT_OPT="-R"
 if [ $JOIN -ne 10 ]; then
   echo create table test \(id int primary key, field TEXT, name TEXT\)
   $CLI create table test \(id int primary key, field TEXT, name TEXT\)
-  if [ $JOIN -eq 2 -o $JOIN -eq 3 ]; then
+  if [ $JOIN -eq 2 -o $JOIN -eq 3 -o $JOIN -eq 4 ]; then
     echo CREATE TABLE join \(id int primary key, field TEXT, name TEXT\)
     $CLI CREATE TABLE join \(id int primary key, field TEXT, name TEXT\)
-    ACT_OPT="-J"
   fi
   if [ $JOIN -eq 3 ]; then
     echo CREATE TABLE third_join \(id int primary key, field TEXT, name TEXT\)
     $CLI CREATE TABLE third_join \(id int primary key, field TEXT, name TEXT\)
+  fi
+  if [ $JOIN -eq 2 ]; then
+    ACT_OPT="-J"
+  elif [ $JOIN -eq 3 ]; then
     ACT_OPT="-J3"
+  elif [ $JOIN -eq 4 ]; then
+    ACT_OPT="-JOB"
   fi
 else
   I=0
@@ -51,17 +58,17 @@ fi
 #POPULATE DATA
 if [ $JOIN -eq 10 ]; then
   echo taskset -c 1 ./redisql-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PJ10
-  taskset -c 1 ./redisql-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PJ10 >/dev/null
+  taskset -c 1 ./redisql-benchmark -n $POP_NUM -r $POP_NUM -c $C -PJ10 >/dev/null
 else
-  echo ./redisql-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PT 
-  taskset -c 1 ./redisql-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PT >/dev/null
+  echo ./redisql-benchmark -n $POP_NUM -r $POP_NUM -c $C -PT 
+  taskset -c 1 ./redisql-benchmark -n $POP_NUM -r $POP_NUM -c $C -PT >/dev/null
   if [ $JOIN -gt 0 ]; then
-    echo ./redisql-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PJ
-    taskset -c 1 ./redisql-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PJ >/dev/null
+    echo ./redisql-benchmark -n $POP_NUM -r $POP_NUM -c $C -PJ
+    taskset -c 1 ./redisql-benchmark -n $POP_NUM -r $POP_NUM -c $C -PJ >/dev/null
   fi
   if [ $JOIN -eq 3 ]; then
-    echo ./redisql-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PJ3
-    taskset -c 1 ./redisql-benchmark -n $POP_NUM -r $POP_NUM -c $C  -PJ3 >/dev/null
+    echo ./redisql-benchmark -n $POP_NUM -r $POP_NUM -c $C -PJ3
+    taskset -c 1 ./redisql-benchmark -n $POP_NUM -r $POP_NUM -c $C -PJ3 >/dev/null
   fi
 fi
 

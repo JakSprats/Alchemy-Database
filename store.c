@@ -321,23 +321,10 @@ static void addRowToRangeQueryList(list *ll,
                                    robj *pko,
                                    int   tmatch,
                                    bool  icol) {
-    flag cflag;
-    obsl_t *ob = (obsl_t *)malloc(sizeof(obsl_t)); /* freed end istoreCommit */
-    ob->row    = row->ptr;
-    aobj    ao = getRawCol(row, obc, pko, tmatch, &cflag, icol, 0);
-    if (icol) {
-        ob->val   = (void *)(long)ao.i;
-    } else {
-        char *s   = malloc(ao.len + 1); /* freed N sortOrderByAndIstoreAction */
-        memcpy(s, ao.s, ao.len);
-        s[ao.len] = '\0';
-        ob->val   = s;
-        if (ao.sixbit) free(ao.s); /* getRawCol malloc()s sixbit strings */
-    }
-    listAddNodeTail(ll, ob);
+    addORowToRQList(ll, NULL, row, obc, pko, tmatch, icol);
 }
 
-/* a static robj to wrap the (row *) being sent to istoreAction */
+/* a static robj to wrap the (row *) being sent to istoreAction (for ORDER BY)*/
 static robj IstoreOrderByRobj;
 static void init_IstoreOrderByRobj() {
     IstoreOrderByRobj.type     = REDIS_ROW;
@@ -345,64 +332,47 @@ static void init_IstoreOrderByRobj() {
     IstoreOrderByRobj.refcount = 1;
 }
 
-static void sortOrderByAndIstoreAction(redisClient *c,
-                                       redisClient *fc,
-                                       int          tmatch,
-                                       int          cmatchs[],
-                                       int          qcols,
-                                       int          sto,
-                                       robj        *nname,
-                                       bool         sub_pk,
-                                       int          nargc,
-                                       list        *ll,
-                                       bool         icol,
-                                       int          lim,
-                                       bool         asc) {
+static bool sortedOrderByIstore(redisClient  *c,
+                                redisClient  *fc,
+                                int           tmatch,
+                                int           cmatchs[],
+                                int           qcols,
+                                int           sto,
+                                robj         *nname,
+                                bool          sub_pk,
+                                int           nargc,
+                                int           lim,
+                                obsl_t      **vector,
+                                int           vlen) {
     static bool inited_IstoreOrderByRobj = 0;
     if (!inited_IstoreOrderByRobj) {
         init_IstoreOrderByRobj();
         inited_IstoreOrderByRobj = 1;
     }
 
-    listNode  *ln;
-    listIter   li;
-    int        vlen   = listLength(ll);
-    obsl_t   **vector = malloc(sizeof(obsl_t *) * vlen);
-    int        j      = 0;
-    listRewind(ll, &li);
-    while((ln = listNext(&li))) {
-        vector[j] = (obsl_t *)ln->value;
-        j++;
-    }
-    if (icol) {
-        asc ? qsort(vector, vlen, sizeof(obsl_t *), intOrderBySort) :
-              qsort(vector, vlen, sizeof(obsl_t *), intOrderByRevSort);
-    } else {
-        asc ? qsort(vector, vlen, sizeof(obsl_t *), stringOrderBySort) :
-              qsort(vector, vlen, sizeof(obsl_t *), stringOrderByRevSort);
-    }
-    bool err = 0;
     for (int k = 0; k < vlen; k++) {
         if (lim != -1 && k == lim) break;
         obsl_t *ob = vector[k];
         IstoreOrderByRobj.ptr = ob->row;
         if (!istoreAction(c, fc, tmatch, cmatchs, qcols, sto,
                           ob->val, &IstoreOrderByRobj, nname, sub_pk, nargc)) {
-            err = 1;
-            goto srt_ordrby_istore_err;
+            return 1; /* TODO get err from fs */
         }
     }
-
-srt_ordrby_istore_err:
-    for (int k = 0; k < vlen; k++) {
-        obsl_t *ob = vector[k];
-        if (!icol) free(ob->val);
-    }
-
-    free(vector);
-    /* TODO triple check for MEMORY LEAKS */
+    return 0;
 }
 /* ORDER BY END */
+
+#define ISTORE_OPERATION(Q)                                       \
+    if (Q) {                                                      \
+        addRowToRangeQueryList(ll, row, obc, key, tmatch, icol);  \
+    } else {                                                      \
+        if (!istoreAction(c, fc, tmatch, cmatchs, qcols, sto,     \
+                          key, row, nname, sub_pk, nargc)) {      \
+            err = 1; /* TODO get err from fc */                   \
+            goto istore_err;                                      \
+        }                                                         \
+    }
 
 void istoreCommit(redisClient *c,
                   int          tmatch,
@@ -440,7 +410,6 @@ void istoreCommit(redisClient *c,
         if (sub_pk) nargc--;
     }
     RANGE_CHECK_OR_REPLY(range)
-    robj *o = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
 
     robj               *argv[STORAGE_MAX_ARGC + 1];
     struct redisClient *fc = rsql_createFakeClient();
@@ -463,58 +432,21 @@ void istoreCommit(redisClient *c,
         icol = (Tbl[server.dbid][tmatch].col_type[obc] == COL_TYPE_INT);
     }
 
-    btEntry          *be, *nbe;
-    bool              err    = 0;
-    ulong             card   = 0;
-    robj             *ind    = Index[server.dbid][imatch].obj;
-    bool              virt   = Index[server.dbid][imatch].virt;
-    robj             *bt     = virt ? o : lookupKey(c->db, ind);
-    btStreamIterator *bi     = btGetRangeIterator(bt, low, high, virt);
-    while ((be = btRangeNext(bi, 1)) != NULL) {             /* iterate btree */
-        if (virt) {
-            if (asc && obc == 0 && (uint32)lim == card) break; /*ORDBY PK LIM*/
-            robj *pko = be->key;
-            robj *row = be->val;
-            if (!asc || (obc != -1 && obc != 0)) { /* obc == 0 already sorted */
-                addRowToRangeQueryList(ll, row, obc, pko, tmatch, icol);
-            } else {
-                if (!istoreAction(c, fc, tmatch, cmatchs, qcols, sto,
-                                  pko, row, nname, sub_pk, nargc)) {
-                    err = 1; /* TODO get err from fc */
-                    goto istore_err;
-                }
-            }
-            card++;
-        } else {
-            int               ind_col = (int)Index[server.dbid][imatch].column;
-            robj             *val = be->val;
-            btStreamIterator *nbi = btGetFullRangeIterator(val, 0, 0);
-            while ((nbe = btRangeNext(nbi, 1)) != NULL) {  /* iterate NodeBT */
-                if (asc            && obc != -1  && /* ORDER BY FK ASC LIMIT */
-                    obc == ind_col && (uint32)lim == card) break;
-                robj *nkey = nbe->key;
-                robj *row  = btFindVal(o, nkey,
-                                       Tbl[server.dbid][tmatch].col_type[0]);
-                if (obc != -1) {
-                    addRowToRangeQueryList(ll, row, obc, nkey, tmatch, icol);
-                } else {
-                    if (!istoreAction(c, fc, tmatch, cmatchs, qcols, sto,
-                                      nkey, row, nname, sub_pk, nargc)) {
-                        btReleaseRangeIterator(nbi);
-                        err = 1; /* TODO get err from fc */
-                        goto istore_err;
-                    }
-                }
-                card++;
-            }
-            btReleaseRangeIterator(nbi);
-        }
-    }
+    bool  err     = 0;
+    ulong card    = 0;
+    RANGE_QUERY_LOOKUP_START
+        ISTORE_OPERATION(q_pk)
+    RANGE_QUERY_LOOKUP_MIDDLE
+            ISTORE_OPERATION(q_fk)
+    RANGE_QUERY_LOOKUP_END
 
-    if (obc != -1) {
-        sortOrderByAndIstoreAction(c, fc, tmatch, cmatchs, qcols, sto,
-                                   nname, sub_pk, nargc,
-                                   ll, icol, lim, asc);
+    if (qed) {
+        obsl_t **vector = sortOrderByToVector(ll, icol, asc);
+        err             = sortedOrderByIstore(c, fc, tmatch, cmatchs, qcols,
+                                              sto, nname, sub_pk, nargc, lim,
+                                              vector, listLength(ll));
+        sortedOrderByCleanup(vector, listLength(ll), icol, 0);
+        free(vector);
     }
 
     if (sub_pk) { /* write back in "$" for AOF and Slaves */
@@ -525,16 +457,9 @@ void istoreCommit(redisClient *c,
     }
 
 istore_err:
-    btReleaseRangeIterator(bi);
-    if (obc != -1) {
-        listNode  *ln; /* walk list and free "obsl_t"s */
-        listIter  *li = listGetIterator(ll, AL_START_HEAD);
-        while((ln = listNext(li)) != NULL) {
-            free(ln->value);      /* free obsl_t */
-        }
-        listReleaseIterator(li);
-        listRelease(ll);
-    }
+    if (nbi) btReleaseRangeIterator(nbi);
+    if (bi)  btReleaseRangeIterator(bi);
+    if (ll)  listRelease(ll);
     decrRefCount(low);
     decrRefCount(high);
     freeFakeClient(fc);
