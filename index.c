@@ -359,13 +359,13 @@ static void addOutputRowToRQList(list *ll,
                                  int   tmatch,
                                  bool  icol) {
     flag cflag;
-    obsl_t *ob = (obsl_t *)malloc(sizeof(obsl_t)); /*freed sortOrderByAndReply*/
-    ob->row    = cloneRobj(r); /*decrRefCount()d N sortOrderByAndReply() */
+    obsl_t *ob = (obsl_t *)malloc(sizeof(obsl_t));/*freed sortedOrderByCleanup*/
+    ob->row    = cloneRobj(r); /*decrRefCount()d N sortedOrderByCleanup() */
     aobj    ao = getRawCol(row, obc, pko, tmatch, &cflag, icol, 0);
     if (icol) {
         ob->val   = (void *)(long)ao.i;
     } else {
-        char *s   = malloc(ao.len + 1); /*free()d in sortOrderByAndReply() */
+        char *s   = malloc(ao.len + 1); /*free()d in sortedOrderByCleanup() */
         memcpy(s, ao.s, ao.len);
         s[ao.len] = '\0';
         ob->val   = s;
@@ -374,11 +374,9 @@ static void addOutputRowToRQList(list *ll,
     listAddNodeTail(ll, ob);
 }
 
-static void sortOrderByAndReply(redisClient *c,
-                                list        *ll,
-                                bool         icol,
-                                int          lim,
-                                bool         asc) {
+static obsl_t **sortOrderByToVector(list        *ll,
+                                    bool         icol,
+                                    bool         asc) {
     listNode  *ln;
     listIter   li;
     int        vlen   = listLength(ll);
@@ -396,20 +394,21 @@ static void sortOrderByAndReply(redisClient *c,
         asc ? qsort(vector, vlen, sizeof(obsl_t *), stringOrderBySort) :
               qsort(vector, vlen, sizeof(obsl_t *), stringOrderByRevSort);
     }
-    for (int k = 0; k < vlen; k++) {
-        if (lim != -1 && k == lim) break;
-        obsl_t *ob = vector[k];
-        addReplyBulk(c, ob->row);
-    }
+    return vector;
+}
+
+static void sortedOrderByCleanup(obsl_t **vector,
+                                 int      vlen,
+                                 bool     icol) {
     for (int k = 0; k < vlen; k++) {
         obsl_t *ob = vector[k];
         decrRefCount(ob->row);
         if (!icol) free(ob->val);
         free(ob);
     }
-    free(vector);
 }
 /* ORDER BY END */
+
 
 // INDEX_COMMANDS INDEX_COMMANDS INDEX_COMMANDS INDEX_COMMANDS INDEX_COMMANDS
 // INDEX_COMMANDS INDEX_COMMANDS INDEX_COMMANDS INDEX_COMMANDS INDEX_COMMANDS
@@ -439,10 +438,12 @@ void iselectAction(redisClient *c,
     }
 
     btEntry          *be, *nbe;
-    robj             *ind  = Index[server.dbid][imatch].obj;
-    bool              virt = Index[server.dbid][imatch].virt;
-    robj             *bt   = virt ? o : lookupKey(c->db, ind);
-    btStreamIterator *bi   = btGetRangeIterator(bt, low, high, virt);
+    robj             *ind     = Index[server.dbid][imatch].obj;
+    bool              virt    = Index[server.dbid][imatch].virt;
+    robj             *bt      = virt ? o : lookupKey(c->db, ind);
+    int               ind_col = (int)Index[server.dbid][imatch].column;
+    bool              pktype  = Tbl[server.dbid][tmatch].col_type[0];
+    btStreamIterator *bi      = btGetRangeIterator(bt, low, high, virt);
     while ((be = btRangeNext(bi, 1)) != NULL) {             /* iterate btree */
         if (virt) {
             if (asc && obc == 0 && (uint32)lim == card) break; /*ORDBY PK LIM*/
@@ -457,15 +458,13 @@ void iselectAction(redisClient *c,
             decrRefCount(r);
             card++;
         } else {
-            int               ind_col = (int)Index[server.dbid][imatch].column;
             robj             *val     = be->val;
             btStreamIterator *nbi = btGetFullRangeIterator(val, 0, 0);
             while ((nbe = btRangeNext(nbi, 1)) != NULL) {  /* iterate NodeBT */
                 if (asc            && obc != -1 && /* ORDER BY FK ASC LIMIT X */
                     obc == ind_col && (uint32)lim == card) break;
                 robj *nkey = nbe->key;
-                robj *row  = btFindVal(o, nkey,
-                                      Tbl[server.dbid][tmatch].col_type[0]);
+                robj *row  = btFindVal(o, nkey, pktype);
                 robj *r    = outputRow(row, qcols, cmatchs, nkey, tmatch, 0);
                 if (obc != -1) {
                     addOutputRowToRQList(ll, r, row, obc, nkey, tmatch, icol);
@@ -481,7 +480,14 @@ void iselectAction(redisClient *c,
     btReleaseRangeIterator(bi);
 
     if (obc != -1) {
-        sortOrderByAndReply(c, ll, icol, lim, asc);
+        obsl_t **vector = sortOrderByToVector(ll, icol, asc);
+        for (int k = 0; k < (int)listLength(ll); k++) {
+            if (lim != -1 && k == lim) break;
+            obsl_t *ob = vector[k];
+            addReplyBulk(c, ob->row);
+        }
+        sortedOrderByCleanup(vector, listLength(ll), icol);
+        free(vector);
         listRelease(ll);
     }
     decrRefCount(low);
@@ -501,6 +507,68 @@ void iselectCommand(redisClient *c) {
 }
 #endif
 
+static void addPKtoRQList(list *ll,
+                          robj *pko,
+                          robj *row,
+                          int   obc,
+                          int   tmatch,
+                          bool  icol) {
+    addOutputRowToRQList(ll, pko, row, obc, pko, tmatch, icol);
+}
+
+static void builRangeQueryList(redisClient *c,
+                               list        *ll,
+                               bool         icol,
+                               robj        *low,
+                               robj        *high,
+                               ulong       *card,
+                               int          tmatch,
+                               int          imatch,
+                               int          obc,
+                               bool         asc,
+                               int          lim) {
+    btEntry    *be,  *nbe;
+    robj       *o        = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
+    robj       *ind      = Index[server.dbid][imatch].obj;
+    bool        virt     = Index[server.dbid][imatch].virt;
+    robj       *bt       = virt ? o : lookupKey(c->db, ind);
+    int         ind_col  = (int)Index[server.dbid][imatch].column;
+    bool        pktype   = Tbl[server.dbid][tmatch].col_type[0];
+    btStreamIterator *bi = btGetRangeIterator(bt, low, high, virt);
+    while ((be = btRangeNext(bi, 1)) != NULL) {                // iterate btree
+        if (virt) {
+            if (asc && obc == 0 && (uint32)lim == *card) break; /*ORDBY PK LIM*/
+            robj *nkey = be->key;
+            if (!asc || (obc != -1 && obc != 0)) { /* obc == 0 already sorted */
+                robj *row  = btFindVal(o, nkey, pktype);
+                addPKtoRQList(ll, nkey, row, obc, tmatch, icol);
+            } else {
+                robj *cln  = cloneRobj(nkey); /* clone orig is BtRobj */
+                listAddNodeTail(ll, cln);
+            }
+            *card = *card + 1;
+        } else {
+            if (asc            && obc != -1 && /* ORDER BY FK ASC LIMIT X */
+                obc == ind_col && (uint32)lim == *card) break;
+            robj       *val = be->val;
+            btStreamIterator *nbi = btGetFullRangeIterator(val, 0, 0);
+            while ((nbe = btRangeNext(nbi, 1)) != NULL) {     // iterate NodeBT
+                robj *nkey = nbe->key;
+                if (obc != -1) {
+                    robj *row  = btFindVal(o, nkey, pktype);
+                    addPKtoRQList(ll, nkey, row, obc, tmatch, icol);
+                } else {
+                    robj *cln  = cloneRobj(nkey); /* clone orig is BtRobj */
+                    listAddNodeTail(ll, cln);
+                }
+                *card = *card + 1;
+            }
+            btReleaseRangeIterator(nbi);
+        }
+    }
+    btReleaseRangeIterator(bi);
+}
+
 void iupdateAction(redisClient *c,
                    char        *range,
                    int          tmatch,
@@ -510,48 +578,54 @@ void iupdateAction(redisClient *c,
                    int          indices[],
                    char        *vals[],
                    uint32       vlens[],
-                   uchar       cmiss[]) {
+                   uchar        cmiss[],
+                   int          obc,
+                   bool         asc,
+                   int          lim) {
     RANGE_CHECK_OR_REPLY(range)
-    btEntry    *be, *nbe;
-    robj       *o    = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
-    robj       *ind  = Index[server.dbid][imatch].obj;
-    bool        virt = Index[server.dbid][imatch].virt;
-    robj       *bt   = virt ? o : lookupKey(c->db, ind);
-    robj       *uset = createSetObject();
-    btStreamIterator *bi   = btGetRangeIterator(bt, low, high, virt);
-    while ((be = btRangeNext(bi, 1)) != NULL) {                // iterate btree
-        if (virt) {
-            robj *nkey = be->key;
-            dictAdd(uset->ptr, nkey, NULL);
-        } else {
-            robj       *val = be->val;
-            btStreamIterator *nbi = btGetFullRangeIterator(val, 0, 0);
-            while ((nbe = btRangeNext(nbi, 1)) != NULL) {     // iterate NodeBT
-                robj *nkey = nbe->key;
-                robj *cln  = cloneRobj(nkey);
-                dictAdd(uset->ptr, cln, NULL);
-            }
-            btReleaseRangeIterator(nbi);
-        }
+
+    list *ll   = listCreate();
+    bool  icol = 0;
+    if (obc != -1) {
+        icol = (Tbl[server.dbid][tmatch].col_type[obc] == COL_TYPE_INT);
     }
-    btReleaseRangeIterator(bi);
+
+    ulong card = 0;
+    builRangeQueryList(c, ll, icol, low, high, &card,
+                       tmatch, imatch, obc, asc, lim);
     decrRefCount(low);
     decrRefCount(high);
 
-    dictEntry     *ude;
-    unsigned long  updated = 0;
-    dictIterator  *udi     = dictGetIterator(uset->ptr);
-    while ((ude = dictNext(udi)) != NULL) {                    // iterate uset
-        robj *nkey = ude->key;
-        robj *row  = btFindVal(o, nkey, Tbl[server.dbid][tmatch].col_type[0]);
-        updateRow(c, o, nkey, row, tmatch, ncols, matches, indices,
-                  vals, vlens, cmiss);
-        updated++;
+    robj *o        = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
+    bool  pktype   = Tbl[server.dbid][tmatch].col_type[0];
+    if (obc != -1) {
+        obsl_t **vector = sortOrderByToVector(ll, icol, asc);
+        for (int k = 0; k < (int)listLength(ll); k++) {
+            if (lim != -1 && k == lim) break;
+            obsl_t *ob = vector[k];
+            robj *nkey = ob->row;
+            robj *row  = btFindVal(o, nkey, pktype);
+            updateRow(c, o, nkey, row,
+                      tmatch, ncols, matches, indices, vals, vlens, cmiss);
+        }
+        sortedOrderByCleanup(vector, listLength(ll), icol);
+        free(vector);
+    } else {
+        listNode  *ln;
+        listIter  *li = listGetIterator(ll, AL_START_HEAD);
+        while((ln = listNext(li)) != NULL) {
+            robj *nkey = ln->value;
+            robj *row  = btFindVal(o, nkey, pktype);
+            updateRow(c, o, nkey, row,
+                      tmatch, ncols, matches, indices, vals, vlens, cmiss);
+            decrRefCount(nkey); /* from cloneRobj above */
+        }
+        listReleaseIterator(li);
     }
-    dictReleaseIterator(udi);
-    decrRefCount(uset);
+    listRelease(ll);
 
-    addReplyLongLong(c, updated);
+    if (lim != -1) card = lim;
+    addReplyLongLong(c, card);
 }
 
 #if 0
@@ -576,49 +650,52 @@ void iupdateCommand(redisClient *c) {
 }
 #endif
 
-void ideleteAction(redisClient *c, char *range, int tmatch, int imatch) {
+void ideleteAction(redisClient *c,
+                   char        *range,
+                   int          tmatch,
+                   int          imatch,
+                   int          obc,
+                   bool         asc,
+                   int          lim) {
     RANGE_CHECK_OR_REPLY(range)
     MATCH_INDICES(tmatch)
 
-    btEntry    *be,  *nbe;
-    robj       *o    = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
-    robj       *ind  = Index[server.dbid][imatch].obj;
-    bool        virt = Index[server.dbid][imatch].virt;
-    robj       *dset = createSetObject();
-    robj       *bt   = virt ? o : lookupKey(c->db, ind);
-    btStreamIterator *bi   = btGetRangeIterator(bt, low, high, virt);
-    while ((be = btRangeNext(bi, 1)) != NULL) {                // iterate btree
-        if (virt) {
-            robj *nkey = be->key;
-            robj *cln  = cloneRobj(nkey);
-            dictAdd(dset->ptr, cln, NULL);
-        } else {
-            robj       *val = be->val;
-            btStreamIterator *nbi = btGetFullRangeIterator(val, 0, 0);
-            while ((nbe = btRangeNext(nbi, 1)) != NULL) {     // iterate NodeBT
-                robj *nkey = nbe->key;
-                robj *cln  = cloneRobj(nkey);
-                dictAdd(dset->ptr, cln, NULL);
-            }
-            btReleaseRangeIterator(nbi);
-        }
+    list *ll   = listCreate();
+    bool  icol = 0;
+    if (obc != -1) {
+        icol = (Tbl[server.dbid][tmatch].col_type[obc] == COL_TYPE_INT);
     }
-    btReleaseRangeIterator(bi);
+
+    ulong card = 0;
+    builRangeQueryList(c, ll, icol, low, high, &card,
+                       tmatch, imatch, obc, asc, lim);
     decrRefCount(low);
     decrRefCount(high);
 
-    dictEntry     *dde;
-    unsigned long  deleted = 0;
-    dictIterator  *ddi     = dictGetIterator(dset->ptr);
-    while ((dde = dictNext(ddi)) != NULL) {                    // iterate dset
-        robj *key = dde->key;
-        deleteRow(c, tmatch, key, matches, indices);
-        deleted++;
+    if (obc != -1) {
+        obsl_t **vector = sortOrderByToVector(ll, icol, asc);
+        for (int k = 0; k < (int)listLength(ll); k++) {
+            if (lim != -1 && k == lim) break;
+            obsl_t *ob = vector[k];
+            robj *nkey = ob->row;
+            deleteRow(c, tmatch, nkey, matches, indices);
+        }
+        sortedOrderByCleanup(vector, listLength(ll), icol);
+        free(vector);
+    } else {
+        listNode  *ln;
+        listIter  *li = listGetIterator(ll, AL_START_HEAD);
+        while((ln = listNext(li)) != NULL) {
+            robj *nkey = ln->value;
+            deleteRow(c, tmatch, nkey, matches, indices);
+            decrRefCount(nkey); /* from cloneRobj above */
+        }
+        listReleaseIterator(li);
     }
-    dictReleaseIterator(ddi);
-    decrRefCount(dset);
+    listRelease(ll);
 
-    addReplyLongLong(c, deleted);
+    if (lim != -1) card = lim;
+    addReplyLongLong(c, card);
 }
 
 #if 0

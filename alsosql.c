@@ -596,7 +596,7 @@ void deleteCommand(redisClient *c) {
     sdsfree(Curr_range);
     if (where == 2) { /* RANGE QUERY */
         Curr_range = sdsdup(range->ptr);
-        ideleteAction(c, range->ptr, tmatch, imatch);
+        ideleteAction(c, range->ptr, tmatch, imatch, obc, asc, lim);
     } else {
         Curr_range = sdsdup(pko->ptr);
         MATCH_INDICES(tmatch)
@@ -654,7 +654,7 @@ void updateCommand(redisClient *c) {
         }
         Curr_range = sdsdup(range->ptr);
         iupdateAction(c, range->ptr, tmatch, imatch, ncols, matches, indices,
-                      vals, vlens, cmiss);
+                      vals, vlens, cmiss, obc, asc, lim);
     } else {
         Curr_range = sdsdup(pko->ptr);
         robj *o    = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);

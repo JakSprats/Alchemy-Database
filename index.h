@@ -77,7 +77,13 @@ void iselectAction(redisClient *c,
                    int          obc,
                    bool         asc,
                    int          lim);
-void ideleteAction(redisClient *c, char *range, int tmatch, int imatch);
+void ideleteAction(redisClient *c,
+                   char        *range,
+                   int          tmatch,
+                   int          imatch,
+                   int          obc,
+                   bool         asc,
+                   int          lim);
 void iupdateAction(redisClient *c,
                    char        *range,
                    int          tmatch,
@@ -87,7 +93,10 @@ void iupdateAction(redisClient *c,
                    int          indices[],
                    char        *vals[],
                    uint32       vlens[],
-                   uchar        cmiss[]);
+                   uchar        cmiss[],
+                   int          obc,
+                   bool         asc,
+                   int          lim);
 
 ull get_sum_all_index_size_for_table(redisClient *c, int tmatch);
 
