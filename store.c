@@ -410,7 +410,7 @@ void istoreCommit(redisClient *c,
         }
         if (sub_pk) nargc--;
     }
-    RANGE_CHECK_OR_REPLY(range)
+    RANGE_CHECK_OR_REPLY(range,)
 
     robj               *argv[STORAGE_MAX_ARGC + 1];
     struct redisClient *fc = rsql_createFakeClient();
@@ -433,8 +433,9 @@ void istoreCommit(redisClient *c,
         icol = (Tbl[server.dbid][tmatch].col_type[obc] == COL_TYPE_INT);
     }
 
-    bool  err     = 0;
-    ulong card    = 0;
+    bool  err  = 0;
+    bool  qed  = 0;
+    ulong card = 0;
     RANGE_QUERY_LOOKUP_START
         ISTORE_OPERATION(q_pk)
     RANGE_QUERY_LOOKUP_MIDDLE

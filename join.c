@@ -57,7 +57,7 @@ extern r_tbl_t  Tbl   [MAX_NUM_DB][MAX_NUM_TABLES];
 extern r_ind_t  Index [MAX_NUM_DB][MAX_NUM_INDICES];
 
 
-extern stor_cmd StorageCommands[NUM_STORAGE_TYPES];
+extern stor_cmd StorageCommands[];
 
 static unsigned int dictAppendHash(const void *key) {
     unsigned long long ll = (unsigned long long)key;
@@ -847,7 +847,7 @@ void legacyJoinCommand(redisClient *c) {
         addReply(c, shared.joincolumnlisterror);
         return;
     }
-    RANGE_CHECK_OR_REPLY(c->argv[3]->ptr)
+    RANGE_CHECK_OR_REPLY(c->argv[3]->ptr,)
 
     joinGeneric(c, NULL, j_indxs, j_tbls, j_cols, n_ind, qcols, low, high,
                 -1, 0, 0, NULL, /* STORE args */
@@ -887,7 +887,7 @@ void jstoreCommit(redisClient *c,
         }
         if (sub_pk) nargc--;
     }
-    RANGE_CHECK_OR_REPLY(range->ptr)
+    RANGE_CHECK_OR_REPLY(range->ptr,)
 
     if (!StorageCommands[sto].argc) { /* INSERT -> create table first */
         fc->argv[1] = cloneRobj(nname);

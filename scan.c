@@ -157,12 +157,14 @@ void tscanCommand(redisClient *c) {
         int   obc   = -1; /* ORDER BY col */
         bool  asc   = 1;
         int   lim   = -1;
+        list *inl   = NULL;
         uchar where = checkSQLWhereClauseReply(c, &pko, &range, &imatch,
                                                &cmatch, &argn, tmatch, 0, 0,
-                                               &obc, &asc, &lim, &bdum);
+                                               &obc, &asc, &lim, &bdum, &inl);
+        if (inl) listRelease(inl);
         if (!where) goto tscan_cmd_err;
         if (where == 2) { /* RANGE QUERY */
-            RANGE_CHECK_OR_REPLY(range->ptr)
+            RANGE_CHECK_OR_REPLY(range->ptr,)
             rq_low  = low;
             rq_high = high;
             rq      = 1;

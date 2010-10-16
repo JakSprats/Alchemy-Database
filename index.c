@@ -317,6 +317,14 @@ void dropIndex(redisClient *c) {
     addReply(c, shared.cone);
 }
 
+/* TODO cleanup this fugly workaround */
+bool range_check_or_reply(redisClient *c, char *r, robj **l, robj **h) {
+    RANGE_CHECK_OR_REPLY(r, 0)
+    *l = low;
+    *h = high;
+    return 1;
+}
+
 #define ISELECT_OPERATION(Q)                                    \
     robj *r = outputRow(row, qcols, cmatchs, key, tmatch, 0);   \
     if (Q) addORowToRQList(ll, r, row, obc, key, tmatch, icol); \
@@ -326,21 +334,25 @@ void dropIndex(redisClient *c) {
 // INDEX_COMMANDS INDEX_COMMANDS INDEX_COMMANDS INDEX_COMMANDS INDEX_COMMANDS
 // INDEX_COMMANDS INDEX_COMMANDS INDEX_COMMANDS INDEX_COMMANDS INDEX_COMMANDS
 void iselectAction(redisClient *c,
-                   char        *range,
+                   robj        *rng,
                    int          tmatch,
                    int          imatch,
                    char        *col_list,
                    int          obc,
                    bool         asc,
-                   int          lim) {
+                   int          lim,
+                   list        *inl) {
     int cmatchs[MAX_COLUMN_PER_TABLE];
-    int qcols = parseColListOrReply(c, tmatch, col_list, cmatchs);
+    int   qcols = parseColListOrReply(c, tmatch, col_list, cmatchs);
     if (!qcols) {
         addReply(c, shared.nullbulk);
         return;
     }
-    RANGE_CHECK_OR_REPLY(range)
-    LEN_OBJ
+
+    char *range = rng ? rng->ptr : NULL;
+    robj *low   = NULL;
+    robj *high  = NULL;
+    if (range && !range_check_or_reply(c, range, &low, &high)) return;
 
     list *ll   = NULL;
     bool  icol = 0;
@@ -349,11 +361,64 @@ void iselectAction(redisClient *c,
         icol = (Tbl[server.dbid][tmatch].col_type[obc] == COL_TYPE_INT);
     }
 
-    RANGE_QUERY_LOOKUP_START
-        ISELECT_OPERATION(q_pk)
-    RANGE_QUERY_LOOKUP_MIDDLE
-            ISELECT_OPERATION(q_fk)
-    RANGE_QUERY_LOOKUP_END
+    bool qed = 0;
+    LEN_OBJ
+    if (range) { /* RANGE QUERY */
+        RANGE_QUERY_LOOKUP_START
+            ISELECT_OPERATION(q_pk)
+        RANGE_QUERY_LOOKUP_MIDDLE
+                ISELECT_OPERATION(q_fk)
+        RANGE_QUERY_LOOKUP_END
+    } else {    /* IN () QUERY */
+        listNode  *ln;
+        btEntry   *nbe;
+        btStreamIterator *nbi = NULL;
+        bool  virt    = Index[server.dbid][imatch].virt;
+        robj *o       = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
+        bool  pktype  = Tbl[server.dbid][tmatch].col_type[0];
+        listIter  *li = listGetIterator(inl, AL_START_HEAD);
+        if (virt) {
+            bool  brk_pk  = (asc && obc == 0);
+            bool  q_pk    = (!asc || (obc != -1 && obc != 0));
+            qed           = q_pk;
+            while((ln = listNext(li)) != NULL) {
+                if (brk_pk && (uint32)lim == card) break; /* ORDR BY PK LIMIT */
+                robj *key = ln->value;
+                robj *row = btFindVal(o, key, pktype);
+                if (row) {
+                    ISELECT_OPERATION(q_pk)
+                    card++;
+                }
+                decrRefCount(key); /* from addRedisCmdToINList() */
+             }
+         } else {
+            robj *ind     = Index[server.dbid][imatch].obj;
+            robj *ibt     = lookupKey(c->db, ind);
+            int   ind_col = (int)Index[server.dbid][imatch].column;
+            bool  fktype  = Tbl[server.dbid][tmatch].col_type[ind_col];
+            bool  brk_fk  = (asc  && obc != -1 && obc == ind_col);
+            bool  q_fk    = (obc != -1);
+            qed           = q_fk;
+            while((ln = listNext(li)) != NULL) {
+                robj *ikey = ln->value;
+                robj *val  = btIndFindVal(ibt->ptr, ikey, fktype);
+                if (val) {
+                    nbi        = btGetFullRangeIterator(val, 0, 0);
+                    while ((nbe = btRangeNext(nbi, 1)) != NULL) {
+                        if (brk_fk && (uint32)lim == card) break;
+                        robj *key = nbe->key;
+                        robj *row = btFindVal(o, key, pktype);
+                        ISELECT_OPERATION(q_fk)
+                        card++;
+                    }
+                    btReleaseRangeIterator(nbi);
+                    nbi = NULL; /* explicit in case of goto's in inner loop */
+                }
+                decrRefCount(ikey); /* from addRedisCmdToINList() */
+            }
+        }
+        listReleaseIterator(li);
+    }
 
     if (qed && card) {
         obsl_t **vector = sortOrderByToVector(ll, icol, asc);
@@ -365,9 +430,9 @@ void iselectAction(redisClient *c,
         sortedOrderByCleanup(vector, listLength(ll), icol, 1);
         free(vector);
     }
-    decrRefCount(low);
-    decrRefCount(high);
-    if (ll) listRelease(ll);
+    if (low)  decrRefCount(low);
+    if (high) decrRefCount(high);
+    if (ll)   listRelease(ll);
 
     if (lim != -1 && (uint32)lim < card) card = lim;
     lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
@@ -404,7 +469,7 @@ void iupdateAction(redisClient *c,
                    int          obc,
                    bool         asc,
                    int          lim) {
-    RANGE_CHECK_OR_REPLY(range)
+    RANGE_CHECK_OR_REPLY(range,)
 
     list *ll   = listCreate();
     bool  icol = 0;
@@ -412,7 +477,8 @@ void iupdateAction(redisClient *c,
         icol = (Tbl[server.dbid][tmatch].col_type[obc] == COL_TYPE_INT);
     }
 
-    ulong card   = 0;
+    bool  qed  = 0;
+    ulong card = 0;
     RANGE_QUERY_LOOKUP_START
         BUILD_RQ_OPERATION(q_pk)
     RANGE_QUERY_LOOKUP_MIDDLE
@@ -463,7 +529,7 @@ void ideleteAction(redisClient *c,
                    int          obc,
                    bool         asc,
                    int          lim) {
-    RANGE_CHECK_OR_REPLY(range)
+    RANGE_CHECK_OR_REPLY(range,)
     MATCH_INDICES(tmatch)
 
     list *ll   = listCreate();
@@ -472,7 +538,8 @@ void ideleteAction(redisClient *c,
         icol = (Tbl[server.dbid][tmatch].col_type[obc] == COL_TYPE_INT);
     }
 
-    ulong card   = 0;
+    bool  qed  = 0;
+    ulong card = 0;
     RANGE_QUERY_LOOKUP_START
         BUILD_RQ_OPERATION(q_pk)
     RANGE_QUERY_LOOKUP_MIDDLE
@@ -512,7 +579,7 @@ void ideleteAction(redisClient *c,
 void ikeysCommand(redisClient *c) {
     int   imatch = checkIndexedColumnOrReply(c, c->argv[1]->ptr);
     if (imatch == -1) return;
-    RANGE_CHECK_OR_REPLY(c->argv[2]->ptr)
+    RANGE_CHECK_OR_REPLY(c->argv[2]->ptr,)
     LEN_OBJ
 
     btEntry    *be, *nbe;
@@ -720,7 +787,7 @@ void iselectCommand(redisClient *c) {
     if (imatch == -1) return;
     int tmatch = Index[server.dbid][imatch].table;
 
-    iselectAction(c, c->argv[2]->ptr, tmatch, imatch, c->argv[3]->ptr);
+    iselectAction(c, c->argv[2], tmatch, imatch, c->argv[3]->ptr);
 }
 
 void iupdateCommand(redisClient *c) {

@@ -203,8 +203,10 @@ typedef struct redisClient {
 robj *createObject(int type, void *ptr);
 robj *createHashObject(void);
 robj *createSetObject(void);
-robj *getDecodedObject(robj *o);
 void freeSetObject(robj *o);
+
+robj *tryObjectEncoding(robj *o);
+robj *getDecodedObject(robj *o);
 
 void incrRefCount(robj *o);
 void decrRefCount(void *o);
@@ -283,14 +285,16 @@ struct sharedObjectsStruct {
     *createsyntax, *dropsyntax,
     *insertsyntax,           *insertsyntax_no_into,  *insertsyntax_col_decl,
     *insertsyntax_no_values, *insert_ret_cname_err,
-    *whereclause_in_directive,
-    *whereclause_orderby_directive, *whereclause_orderby_no_by,
+
+    *whereclause_in_err,
+    *whereclause_orderby_no_by,
+
     *selectsyntax,           *selectsyntax_nofrom,
-    *selectsyntax_nowhere,   *selectsyntax_notpk,    *selectsyntax_noequals,
+    *selectsyntax_nowhere,   *select_notpk,          *selectsyntax_noequals,
     *deletesyntax,
-    *deletesyntax_nowhere,   *deletesyntax_notpk,    *deletesyntax_noequals,
+    *deletesyntax_nowhere,   *delete_notpk,          *deletesyntax_noequals,
     *updatesyntax,           *update_pk_range_query, *update_pk_overwrite,
-    *updatesyntax_nowhere,   *updatesyntax_notpk,    *updatesyntax_noequals,
+    *updatesyntax_nowhere,   *update_notpk,          *updatesyntax_noequals,
     *scanselectsyntax,       *scanselectsyntax_noequals,
     *istorecommit_err,
 

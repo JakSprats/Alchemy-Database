@@ -602,7 +602,6 @@ static void replicationFeedMonitors(list *monitors, int dictid, robj **argv, int
 static void flushAppendOnlyFile(void);
 static void feedAppendOnlyFile(struct redisCommand *cmd, int dictid, robj **argv, int argc);
 static int syncWithMaster(void);
-static robj *tryObjectEncoding(robj *o);
 robj *getDecodedObject(robj *o);
 static int removeExpire(redisDb *db, robj *key);
 static int expireIfNeeded(redisDb *db, robj *key);
@@ -1818,10 +1817,10 @@ static void createSharedObjects(void) {
     shared.insert_ret_cname_err = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: INSERT INTO tablename VALUES (vals,,,,) RETURN column_name \"column_name\" not found\r\n"));
 
-    shared.whereclause_in_directive = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: WHERE id IN (...) - \"IN\" NOT YET SUPORTED\r\n"));
-    shared.whereclause_orderby_directive = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: WHERE ... ORDER BY col - \"ORDER BY\" NOT YET SUPORTED\r\n"));
+
+    shared.whereclause_in_err = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: WHERE id IN (...) - \"IN\" requires () delimited list\r\n"));
+
     shared.whereclause_orderby_no_by = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: WHERE ... ORDER BY col - \"BY\" MISSING\r\n"));
 
@@ -1831,7 +1830,7 @@ static void createSharedObjects(void) {
         "-ERR SYNTAX: SELECT col,,,, FROM tablename WHERE indexed_column = val - \"FROM\" keyword MISSING\r\n"));
     shared.selectsyntax_nowhere = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: SELECT col,,,, FROM tablename WHERE indexed_column = val - \"WHERE\" keyword MISSING\r\n"));
-    shared.selectsyntax_notpk = createObject(REDIS_STRING,sdsnew(
+    shared.select_notpk = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: SELECT col,,,, FROM tablename WHERE indexed_column = val - Column must be indexed\r\n"));
     shared.selectsyntax_noequals = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: SELECT col,,,, FROM tablename WHERE indexed_column = val - \"EQUALS SIGN\" MISSING\r\n"));
@@ -1840,7 +1839,7 @@ static void createSharedObjects(void) {
         "-ERR SYNTAX: DELETE FROM tablename WHERE indexed_column = val || WHERE indexed_column BETWEEN x AND y\r\n"));
     shared.deletesyntax_nowhere = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: DELETE FROM tablename WHERE indexed_column = val - \"WHERE\" keyword MISSING\r\n"));
-    shared.deletesyntax_notpk = createObject(REDIS_STRING,sdsnew(
+    shared.delete_notpk = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: DELETE FROM tablename WHERE indexed_column = val - Column must be indexed\r\n"));
     shared.deletesyntax_noequals = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: DELETE FROM tablename WHERE indexed_column = val  - \"EQUALS SIGN\" MISSING\r\n"));
@@ -1849,7 +1848,7 @@ static void createSharedObjects(void) {
         "-ERR SYNTAX: UPDATE tablename SET col1=val1,col2=val2,,,, WHERE indexed_column = val\r\n"));
     shared.updatesyntax_nowhere = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: UPDATE tablename SET col1=val1,col2=val2,,,, WHERE indexed_column = val \"WHERE\" keyword MISSING\r\n"));
-    shared.updatesyntax_notpk = createObject(REDIS_STRING,sdsnew(
+    shared.update_notpk = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: UPDATE tablename SET col1=val1,col2=val2,,,, WHERE indexed_column = val - Column must be indexed\r\n"));
     shared.updatesyntax_noequals = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: UPDATE tablename SET col1=val1,col2=val2,,,, WHERE indexed_column = val - \"EQUALS SIGN\" MISSING\r\n"));
@@ -3586,7 +3585,7 @@ static int isStringRepresentableAsLong(sds s, long *longval) {
 }
 
 /* Try to encode a string object in order to save space */
-static robj *tryObjectEncoding(robj *o) {
+robj *tryObjectEncoding(robj *o) {
     long value;
     sds s = o->ptr;
 

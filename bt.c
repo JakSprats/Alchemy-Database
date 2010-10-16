@@ -7,7 +7,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-
 #ifndef __APPLE
   char *strdup(char *);
 #endif

@@ -48,19 +48,20 @@ static robj *_createStringObject(char *s) {
 }
 
 static bool addSingle(redisClient *c,
-                      redisClient *fc,
+                      void        *x,
                       robj        *key,
                       long        *instd,
-                      bool         is_insert) {
-    robj *vals  = createObject(REDIS_STRING, NULL);
-    if (is_insert) {
-        vals->ptr   = sdsnewlen(key->ptr, sdslen(key->ptr));
+                      bool         is_ins) {
+    redisClient *fc    = (redisClient *)x;
+    robj        *vals  = createObject(REDIS_STRING, NULL);
+    if (is_ins) {
+        vals->ptr      = sdsnewlen(key->ptr, sdslen(key->ptr));
     } else {
-        vals->ptr   = (key->encoding == REDIS_ENCODING_RAW) ?
-            sdscatprintf(sdsempty(), "%ld,%s",  *instd, (char *)key->ptr):
-            sdscatprintf(sdsempty(), "%ld,%ld", *instd, (long)  key->ptr);
+        vals->ptr      = (key->encoding == REDIS_ENCODING_RAW) ?
+                 sdscatprintf(sdsempty(), "%ld,%s",  *instd, (char *)key->ptr) :
+                 sdscatprintf(sdsempty(), "%ld,%ld", *instd, (long)  key->ptr);
     }
-    fc->argv[2] = vals;
+    fc->argv[2]        = vals;
     //RL4 "SGL: INSERTING [1]: %s [2]: %s", fc->argv[1]->ptr, fc->argv[2]->ptr);
     legacyInsertCommand(fc);
     decrRefCount(vals);
@@ -74,11 +75,11 @@ static bool addSingle(redisClient *c,
 }
 
 static bool addDouble(redisClient *c,
-                     redisClient *fc,
-                     robj        *key,
-                     robj        *val,
-                     long        *instd,
-                     bool         val_is_dbl) {
+                      redisClient *fc,
+                      robj        *key,
+                      robj        *val,
+                      long        *instd,
+                      bool         val_is_dbl) {
     robj *vals  = createObject(REDIS_STRING, NULL);
     if (val_is_dbl) {
         double d = *((double *)val);
@@ -113,27 +114,14 @@ static bool addDouble(redisClient *c,
     return 1;
 }
 
-/* TODO the protocol-parsing does not exactly follow the line protocol,
-        it follow what the code does ... the code could change */
-
 /* NOTE: this function implements a fakeClient pipe */
-void createTableAsObjectOperation(redisClient *c, bool is_insert) {
-    robj               *wargv[3];
-    struct redisClient *wfc    = rsql_createFakeClient(); /* client to write */
-    wfc->argc                  = 3;
-    wfc->argv                  = wargv;
-    wfc->argv[1]               = c->argv[2]; /* table name */
-
-    robj               **rargv = malloc(sizeof(robj *) * c->argc);
-    struct redisClient *rfc    = rsql_createFakeClient(); /* client to read */
-    rfc->argv                  = rargv;
-    for (int i = 5; i < c->argc; i++) {
-        rfc->argv[i - 4] = c->argv[i];
-    }
-    rfc->argc                  = c->argc - 4;
-    rfc->db                    = c->db;
-
-    struct redisCommand *cmd = lookupCommand(c->argv[4]->ptr);
+bool fakeClientPipe(redisClient *c,
+                    redisClient *rfc,
+                    void        *wfc, /* can be redisClient or sumthin else */
+                    bool         is_ins,
+                    bool (* adder)
+                        (redisClient *c, void *x, robj *key, long *l, bool b)) {
+    struct redisCommand *cmd = lookupCommand(rfc->argv[0]->ptr);
     cmd->proc(rfc);
 
     long instd = 1; /* ZER0 as pk is sometimes bad */
@@ -155,15 +143,36 @@ void createTableAsObjectOperation(redisClient *c, bool is_insert) {
                 char *y = strchr(x, '\r'); /* kill the final \r\n */
                 *y = '\0';
                 robj *r = createStringObject(x, strlen(x));
-                if (!addSingle(c, wfc, r, &instd, is_insert)) goto cr8tbloo_err;
+                if (!(*adder)(c, wfc, r, &instd, is_ins)) return 0;
             }
             continue;
         }
         /* all ranges are single */
-        if (!addSingle(c, wfc, o, &instd, is_insert)) goto cr8tbloo_err;
+        if (!(*adder)(c, wfc, o, &instd, is_ins)) return 0;
     }
+    return 1;
+}
 
-cr8tbloo_err:
+/* TODO the protocol-parsing does not exactly follow the line protocol,
+        it follow what the code does ... the code could change */
+void createTableAsObjectOperation(redisClient *c, bool is_ins) {
+    robj               *wargv[3];
+    struct redisClient *wfc    = rsql_createFakeClient(); /* client to write */
+    wfc->argc                  = 3;
+    wfc->argv                  = wargv;
+    wfc->argv[1]               = c->argv[2]; /* table name */
+
+    robj               **rargv = malloc(sizeof(robj *) * c->argc);
+    struct redisClient *rfc    = rsql_createFakeClient(); /* client to read */
+    rfc->argv                  = rargv;
+    for (int i = 4; i < c->argc; i++) {
+        rfc->argv[i - 4] = c->argv[i];
+    }
+    rfc->argc                  = c->argc - 4;
+    rfc->db                    = c->db;
+
+    fakeClientPipe(c, rfc, wfc, is_ins, addSingle);
+
     freeFakeClient(rfc);
     freeFakeClient(wfc);
     free(rargv);
@@ -225,9 +234,12 @@ void createTableAsObject(redisClient *c) {
             bool  bdum;
             robj *range = NULL;
             robj *nname = NULL;
+            list *inl   = NULL;
+            /* check WHERE clause for syntax */
             where = joinParseReply(c, clist, argn, j_indxs, j_tbls, j_cols,
                                    &qcols, &idum, &nname, &range, &idum,
-                                   &idum, &idum, &bdum, &idum);
+                                   &idum, &idum, &bdum, &idum, &inl);
+            if (inl)   listRelease(inl);
             if (range) decrRefCount(range);
             if (where && qcols)
                 ret = createTableFromJoin(c, rfc, qcols, j_tbls, j_cols);
@@ -236,14 +248,16 @@ void createTableAsObject(redisClient *c) {
             int cmatchs[MAX_COLUMN_PER_TABLE];
             qcols = parseColListOrReply(c, tmatch, clist, cmatchs);
             if (qcols) { /* check WHERE clause for syntax */
-                bool bdum;
-                int  obc = -1; /* ORDER BY col */
-                bool asc = 1;
-                int  lim = -1;
+                bool  bdum;
+                int   obc = -1; /* ORDER BY col */
+                bool  asc = 1;
+                int   lim = -1;
+                list *inl = NULL;
                 ARGN_OVERFLOW()
                 where = checkSQLWhereClauseReply(c, NULL, NULL, NULL, NULL,
                                                  &argn, tmatch, 0, 1,
-                                                 &obc, &asc, &lim, &bdum);
+                                                 &obc, &asc, &lim, &bdum, &inl);
+                if (inl) listRelease(inl);
                 if (where)
                     ret = internalCreateTable(c, rfc, qcols, cmatchs, tmatch);
             }

@@ -20,6 +20,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 #include "redis.h"
 #include "common.h"
+#include "adlist.h"
 
 char *rem_backticks(char *token, int *len);
 
@@ -29,11 +30,20 @@ bool parseCreateTable(redisClient *c,
                       int          *parsed_argn,
                       char         *o_token[]);
 
-#define WHERE_CLAUSE_ERROR_REPLY(ret)                        \
-    if      (sop == 0) addReply(c, shared.selectsyntax);     \
-    else if (sop == 1) addReply(c, shared.deletesyntax);     \
-    else if (sop == 2) addReply(c, shared.updatesyntax);     \
-    else               addReply(c, shared.scanselectsyntax); \
+#define SQL_SINGLE_LOOKUP 1
+#define SQL_RANGE_QUERY   2
+#define SQL_IN_LOOKUP     3
+
+#define SQL_SELECT     0
+#define SQL_DELETE     1
+#define SQL_UPDATE     2
+#define SQL_SCANSELECT 3
+
+#define WHERE_CLAUSE_ERROR_REPLY(ret)                                 \
+    if      (sop == SQL_SELECT) addReply(c, shared.selectsyntax);     \
+    else if (sop == SQL_DELETE) addReply(c, shared.deletesyntax);     \
+    else if (sop == SQL_UPDATE) addReply(c, shared.updatesyntax);     \
+    else               addReply(c, shared.scanselectsyntax);          \
     return ret;
 
 #define ARGN_OVERFLOW(ret)            \
@@ -54,7 +64,8 @@ unsigned char checkSQLWhereClauseReply(redisClient  *c,
                                        int         *oba,
                                        bool        *asc,
                                        int         *lim,
-                                       bool        *store);
+                                       bool        *store,
+                                       list       **inl);
 
 bool joinParseReply(redisClient  *c,
                     sds           clist,
@@ -70,7 +81,8 @@ bool joinParseReply(redisClient  *c,
                     int          *obt,
                     int          *obc,
                     bool         *asc,
-                    int          *lim);
+                    int          *lim,
+                    list        **inl);
 
 void joinReply(redisClient *c, sds clist, int argn);
 

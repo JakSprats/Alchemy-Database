@@ -50,16 +50,16 @@ void updateIndex( redisDb *db,
                   uchar    pk_update,
                   int      tmatch);
 
-/* RANGE_CHECK_OR_REPLY(char *cargv3ptr) -
+/* RANGE_CHECK_OR_REPLY(char *range, [retval]) -
      creates (robj *low, robj *high)     */
-#define RANGE_CHECK_OR_REPLY(cargv3ptr)                              \
+#define RANGE_CHECK_OR_REPLY(RANGE, RET)                             \
     robj *low, *high;                                                \
     {                                                                \
-        char *local_range = cargv3ptr;                               \
+        char *local_range = RANGE;                                   \
         char *local_nextc = strchr(local_range, CMINUS);             \
         if (!local_nextc) {                                          \
             addReply(c, shared.invalidrange);                        \
-            return;                                                  \
+            return RET;                                              \
         }                                                            \
         *local_nextc = '\0';                                         \
         local_nextc++;                                               \
@@ -70,13 +70,14 @@ void updateIndex( redisDb *db,
 void dropIndex(redisClient *c);
 
 void iselectAction(redisClient *c,
-                   char        *range,
+                   robj        *rng,
                    int          tmatch,
                    int          i_match,
                    char        *col_list,
                    int          obc,
                    bool         asc,
-                   int          lim);
+                   int          lim,
+                   list        *inl);
 void ideleteAction(redisClient *c,
                    char        *range,
                    int          tmatch,
@@ -112,7 +113,7 @@ ull get_sum_all_index_size_for_table(redisClient *c, int tmatch);
     bool  q_pk    = (!asc || (obc != -1 && obc != 0));                        \
     bool  brk_fk  = (asc  && obc != -1 && obc == ind_col);                    \
     bool  q_fk    = (obc != -1);                                              \
-    bool  qed     = virt ? q_pk : q_fk;                                       \
+    qed           = virt ? q_pk : q_fk;                                       \
     btStreamIterator *bi  = btGetRangeIterator(bt, low, high, virt);          \
     btStreamIterator *nbi = NULL;                                             \
     while ((be = btRangeNext(bi, 1)) != NULL) {     /* iterate btree */       \

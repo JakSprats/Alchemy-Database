@@ -519,6 +519,7 @@ void selectRedisqlCommand(redisClient *c) {
     int    argn  = 1;
     uchar  sop   = 0; /*used in ARGN_OVERFLOW() */
     robj  *pko   = NULL, *range = NULL;
+    list  *inl   = NULL;
     sds    clist = sdsempty();
 
     parseSelectColumnList(c, &clist, &argn);
@@ -541,10 +542,10 @@ void selectRedisqlCommand(redisClient *c) {
         bool  asc    = 1;
         int   lim    = -1;
         bool  store  = 0;
-        uchar where  = checkSQLWhereClauseReply(c, &pko, &range, &imatch, NULL,
+        uchar wtype  = checkSQLWhereClauseReply(c, &pko, &range, &imatch, NULL,
                                                 &argn, tmatch, 0, 0,
-                                                &obc, &asc, &lim, &store);
-        if (!where) goto sel_cmd_err;
+                                                &obc, &asc, &lim, &store, &inl);
+        if (!wtype) goto sel_cmd_err;
 
         if (store) { /* DENORM e.g.: STORE LPUSH list */
             if (!range) {
@@ -555,8 +556,8 @@ void selectRedisqlCommand(redisClient *c) {
             ARGN_OVERFLOW()
             istoreCommit(c, tmatch, imatch, c->argv[i]->ptr, clist,
                          range->ptr, c->argv[argn], obc, asc, lim);
-        } else if (where == 2) { /* RANGE QUERY */
-            iselectAction(c, range->ptr, tmatch, imatch, clist, obc, asc, lim);
+        } else if (wtype == SQL_RANGE_QUERY || wtype == SQL_IN_LOOKUP) {
+            iselectAction(c, range, tmatch, imatch, clist, obc, asc, lim, inl);
         } else {
             int cmatchs[MAX_COLUMN_PER_TABLE];
             int qcols = parseColListOrReply(c, tmatch, clist, cmatchs);
@@ -570,6 +571,7 @@ void selectRedisqlCommand(redisClient *c) {
 sel_cmd_err:
     sdsfree(clist);
     if (pko)   decrRefCount(pko);
+    if (inl)   listRelease(inl);
     if (range) decrRefCount(range);
 }
 
@@ -588,13 +590,14 @@ void deleteCommand(redisClient *c) {
     int    lim    = -1;
     robj  *pko    = NULL, *range = NULL;
     int    argn   = 3;
-    uchar  where  = checkSQLWhereClauseReply(c, &pko, &range, &imatch, NULL,
+    list  *inl    = NULL;
+    uchar  wtype  = checkSQLWhereClauseReply(c, &pko, &range, &imatch, NULL,
                                              &argn, tmatch, 1, 0,
-                                             &obc, &asc, &lim, &bdum);
-    if (!where) return;
+                                             &obc, &asc, &lim, &bdum, &inl);
+    if (!wtype) goto del_cmd_err;
 
     sdsfree(Curr_range);
-    if (where == 2) { /* RANGE QUERY */
+    if (wtype == SQL_RANGE_QUERY || wtype == SQL_IN_LOOKUP) {
         Curr_range = sdsdup(range->ptr);
         ideleteAction(c, range->ptr, tmatch, imatch, obc, asc, lim);
     } else {
@@ -603,7 +606,10 @@ void deleteCommand(redisClient *c) {
         deleteRow(c, tmatch, pko, matches, indices) ? addReply(c, shared.cone) :
                                                       addReply(c, shared.czero);
     }
+
+del_cmd_err:
     if (pko)   decrRefCount(pko);
+    if (inl)   listRelease(inl);
     if (range) decrRefCount(range);
 }
 
@@ -641,13 +647,14 @@ void updateCommand(redisClient *c) {
     int    imatch = -1;
     robj  *pko    = NULL, *range = NULL;
     int    argn   = 4;
-    uchar  where  = checkSQLWhereClauseReply(c, &pko, &range, &imatch, NULL,
+    list  *inl    = NULL;
+    uchar  wtype  = checkSQLWhereClauseReply(c, &pko, &range, &imatch, NULL,
                                              &argn, tmatch, 2, 0,
-                                             &obc, &asc, &lim, &bdum);
-    if (!where) goto update_cmd_err;
+                                             &obc, &asc, &lim, &bdum, &inl);
+    if (!wtype) goto update_cmd_err;
 
     sdsfree(Curr_range);
-    if (where == 2) { /* RANGE QUERY */
+    if (wtype == SQL_RANGE_QUERY || wtype == SQL_IN_LOOKUP) {
         if (pk_up_col != -1) {
             addReply(c, shared.update_pk_range_query);
             goto update_cmd_err;
@@ -682,6 +689,7 @@ void updateCommand(redisClient *c) {
 
 update_cmd_err:
     if (pko)   decrRefCount(pko);
+    if (inl)   listRelease(inl);
     if (range) decrRefCount(range);
 }
 

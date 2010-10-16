@@ -312,6 +312,25 @@ function istore_customer_hobby_order_by_denorm_to_many_lists() {
   $CLI LRANGE employee_ordered_hobby_list:4 0 -1
 }
 
+function in_test_cust_id() {
+    echo SELECT \* FROM customer WHERE id IN "(1,2,3,4)"
+    $CLI SELECT \* FROM customer WHERE id IN "(1,2,3,4)"
+    $CLI LPUSH LINDEX_cust_id 4
+    $CLI LPUSH LINDEX_cust_id 3
+    $CLI LPUSH LINDEX_cust_id 6
+    $CLI LPUSH LINDEX_cust_id 7
+    echo SELECT \* FROM customer WHERE id IN "(LRANGE LINDEX_cust_id 0 3)"
+    $CLI SELECT \* FROM customer WHERE id IN "(LRANGE LINDEX_cust_id 0 3)"
+}
+function in_test_cust_hobby() {
+    $CLI LPUSH list_index_customer_hobby yachting
+    $CLI LPUSH list_index_customer_hobby painting
+    $CLI LPUSH list_index_customer_hobby violin
+    $CLI LPUSH list_index_customer_hobby choir
+    echo SELECT \* FROM customer WHERE hobby IN "(LRANGE list_index_customer_hobby 0 2)" ORDER BY name
+    $CLI SELECT \* FROM customer WHERE hobby IN "(LRANGE list_index_customer_hobby 0 2)" ORDER BY name
+}
+
 function joiner() {
   echo "JOINS"
   echo
@@ -484,12 +503,14 @@ function jstore_city_wrkr_denorm_to_many_hash() {
 }
 
 function create_table_as_select_customer() {
+  echo CREATE TABLE copy AS SELECT id,hobby,name,employee FROM customer WHERE hobby BETWEEN a AND z
   $CLI CREATE TABLE copy AS SELECT id,hobby,name,employee FROM customer WHERE hobby BETWEEN a AND z
   $CLI DESC copy
   $CLI DUMP copy
 }
 
 function create_table_as_select_join_worker_health() {
+  echo CREATE TABLE worker_health AS SELECT worker.id,worker.name,worker.salary,healthplan.name FROM worker,healthplan WHERE worker.health = healthplan.id AND healthplan.id BETWEEN 1 AND 5
   $CLI CREATE TABLE worker_health AS SELECT worker.id,worker.name,worker.salary,healthplan.name FROM worker,healthplan WHERE worker.health = healthplan.id AND healthplan.id BETWEEN 1 AND 5
   $CLI DESC worker_health
   $CLI DUMP worker_health

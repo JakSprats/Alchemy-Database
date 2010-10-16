@@ -25,4 +25,10 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #define ACCESS_SELECT_COMMAND_NUM 0
 void createTableAsObject(redisClient *c);
 
+bool fakeClientPipe(redisClient *c,
+                    redisClient *rfc,
+                    void        *wfc,
+                    bool         is_ins,
+                    bool (* adder)
+                        (redisClient *c, void *x, robj *key, long *l, bool b));
 #endif /* __DENORM__H */

@@ -8,7 +8,6 @@
 #include <string.h>
 #include <strings.h>
 #include <assert.h>
-
 #ifndef __APPLE
   char *strdup(char *);
 #endif
@@ -16,6 +15,7 @@
 #include "redis.h"
 #include "bt.h"
 #include "bt_iterator.h"
+#include "common.h"
 
 /* GLOBALS */
 #define RL4 redisLog(4,
