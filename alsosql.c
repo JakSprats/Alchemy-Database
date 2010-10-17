@@ -548,14 +548,14 @@ void selectRedisqlCommand(redisClient *c) {
         if (!wtype) goto sel_cmd_err;
 
         if (store) { /* DENORM e.g.: STORE LPUSH list */
-            if (!range) {
+            if (!range && !inl) {
                 addReply(c, shared.selectsyntax_store_norange);
                 goto sel_cmd_err;
             }
             int i = argn;
             ARGN_OVERFLOW()
             istoreCommit(c, tmatch, imatch, c->argv[i]->ptr, clist,
-                         range->ptr, c->argv[argn], obc, asc, lim);
+                         range, c->argv[argn], obc, asc, lim, inl);
         } else if (wtype == SQL_RANGE_QUERY || wtype == SQL_IN_LOOKUP) {
             iselectAction(c, range, tmatch, imatch, clist, obc, asc, lim, inl);
         } else {
@@ -598,8 +598,8 @@ void deleteCommand(redisClient *c) {
 
     sdsfree(Curr_range);
     if (wtype == SQL_RANGE_QUERY || wtype == SQL_IN_LOOKUP) {
-        Curr_range = sdsdup(range->ptr);
-        ideleteAction(c, range->ptr, tmatch, imatch, obc, asc, lim);
+        if (wtype == SQL_RANGE_QUERY) Curr_range = sdsdup(range->ptr);
+        ideleteAction(c, range, tmatch, imatch, obc, asc, lim, inl);
     } else {
         Curr_range = sdsdup(pko->ptr);
         MATCH_INDICES(tmatch)
@@ -659,9 +659,9 @@ void updateCommand(redisClient *c) {
             addReply(c, shared.update_pk_range_query);
             goto update_cmd_err;
         }
-        Curr_range = sdsdup(range->ptr);
-        iupdateAction(c, range->ptr, tmatch, imatch, ncols, matches, indices,
-                      vals, vlens, cmiss, obc, asc, lim);
+        if (wtype == SQL_RANGE_QUERY) Curr_range = sdsdup(range->ptr);
+        iupdateAction(c, range, tmatch, imatch, ncols, matches, indices,
+                      vals, vlens, cmiss, obc, asc, lim, inl);
     } else {
         Curr_range = sdsdup(pko->ptr);
         robj *o    = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);

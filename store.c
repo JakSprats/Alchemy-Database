@@ -60,6 +60,7 @@ stor_cmd StorageCommands[NUM_STORAGE_TYPES];
 // STORE_COMMANDS STORE_COMMANDS STORE_COMMANDS STORE_COMMANDS STORE_COMMANDS
 // STORE_COMMANDS STORE_COMMANDS STORE_COMMANDS STORE_COMMANDS STORE_COMMANDS
 
+/* LEGACY functions used on AOF readin */
 void legacyInsertCommand(redisClient *c) {
     TABLE_CHECK_OR_REPLY(c->argv[1]->ptr,)
     int ncols = Tbl[server.dbid][tmatch].col_count;
@@ -69,6 +70,7 @@ void legacyInsertCommand(redisClient *c) {
     insertCommitReply(c, vals, ncols, tmatch, matches, indices);
 }
 
+/* LEGACY functions used on AOF readin */
 void legacyTableCommand(redisClient *c) {
     if (Num_tbls[server.dbid] >= MAX_NUM_TABLES) {
         addReply(c,shared.toomanytables);
@@ -380,12 +382,12 @@ void istoreCommit(redisClient *c,
                   int          imatch,
                   char        *sto_type,
                   char        *col_list,
-                  char        *range,
+                  robj        *rng,
                   robj        *nname,
                   int          obc, 
                   bool         asc,
-                  int          lim) {
-    //RL4 "istoreCommit ORDER BY ignoring: obc: %d asc: %d", obc, asc);
+                  int          lim,
+                  list        *inl) {
     int sto;
     CHECK_STORE_TYPE_OR_REPLY(sto_type,sto,)
     int cmatchs[MAX_COLUMN_PER_TABLE];
@@ -394,6 +396,7 @@ void istoreCommit(redisClient *c,
         addReply(c, shared.nullbulk);
         return;
     }
+
     bool sub_pk    = (StorageCommands[sto].argc < 0);
     int  nargc     = abs(StorageCommands[sto].argc);
     sds  last_argv = c->argv[c->argc - 1]->ptr;
@@ -410,7 +413,6 @@ void istoreCommit(redisClient *c,
         }
         if (sub_pk) nargc--;
     }
-    RANGE_CHECK_OR_REPLY(range,)
 
     robj               *argv[STORAGE_MAX_ARGC + 1];
     struct redisClient *fc = rsql_createFakeClient();
@@ -419,12 +421,15 @@ void istoreCommit(redisClient *c,
         fc->argv[1] = cloneRobj(nname);
         if (!internalCreateTable(c, fc, qcols, cmatchs, tmatch)) {
             freeFakeClient(fc);
-            decrRefCount(low);
-            decrRefCount(high);
             addReply(c, shared.istorecommit_err); /* TODO get err from fc */
             return;
         }
     }
+
+    char *range = rng ? rng->ptr : NULL;
+    robj *low   = NULL;
+    robj *high  = NULL;
+    if (range && !range_check_or_reply(c, range, &low, &high)) return;
 
     list *ll   = NULL;
     bool  icol = 0;
@@ -433,14 +438,24 @@ void istoreCommit(redisClient *c,
         icol = (Tbl[server.dbid][tmatch].col_type[obc] == COL_TYPE_INT);
     }
 
-    bool  err  = 0;
-    bool  qed  = 0;
-    ulong card = 0;
-    RANGE_QUERY_LOOKUP_START
-        ISTORE_OPERATION(q_pk)
-    RANGE_QUERY_LOOKUP_MIDDLE
-            ISTORE_OPERATION(q_fk)
-    RANGE_QUERY_LOOKUP_END
+    bool              err  = 0;
+    bool              qed  = 0;
+    ulong             card = 0;
+    btStreamIterator *bi   = NULL;
+    btStreamIterator *nbi  = NULL;
+    if (range) { /* RANGE QUERY */
+        RANGE_QUERY_LOOKUP_START
+            ISTORE_OPERATION(q_pk)
+        RANGE_QUERY_LOOKUP_MIDDLE
+                ISTORE_OPERATION(q_fk)
+        RANGE_QUERY_LOOKUP_END
+    } else {    /* IN () QUERY */
+        IN_QUERY_LOOKUP_START
+            ISTORE_OPERATION(q_pk)
+        IN_QUERY_LOOKUP_MIDDLE
+                ISTORE_OPERATION(q_fk)
+        IN_QUERY_LOOKUP_END
+    }
 
     if (qed) {
         obsl_t **vector = sortOrderByToVector(ll, icol, asc);
@@ -459,11 +474,11 @@ void istoreCommit(redisClient *c,
     }
 
 istore_err:
-    if (nbi) btReleaseRangeIterator(nbi);
-    if (bi)  btReleaseRangeIterator(bi);
-    if (ll)  listRelease(ll);
-    decrRefCount(low);
-    decrRefCount(high);
+    if (nbi)  btReleaseRangeIterator(nbi);
+    if (bi)   btReleaseRangeIterator(bi);
+    if (ll)   listRelease(ll);
+    if (low)  decrRefCount(low);
+    if (high) decrRefCount(high);
     freeFakeClient(fc);
 
     if (err) addReply(c, shared.istorecommit_err);
@@ -475,6 +490,7 @@ istore_err:
 
 
 #if 0
+/* LEGACY COMMANDS the ROOTS */
 void istoreCommand(redisClient *c) {
     int imatch = checkIndexedColumnOrReply(c, c->argv[3]->ptr);
     if (imatch == -1) return;

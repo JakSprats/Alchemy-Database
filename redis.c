@@ -1860,7 +1860,7 @@ static void createSharedObjects(void) {
     shared.whereclause_no_and = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: WHERE-CLAUSE: WHERE indexed_column BETWEEN start AND finish - \"AND\" MISSING\r\n"));
     shared.selectsyntax_store_norange = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: SELECT w/ STORE requires WHERE indexed_column BETWEEN start AND FINISH\r\n"));
+        "-ERR SYNTAX: SELECT w/ STORE requires WHERE indexed_column BETWEEN x AND y OR indexed_column IN (list)\r\n"));
 
     shared.scanselectsyntax = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: SCANSELECT col,,,, FROM tablename WHERE col = val\r\n"));

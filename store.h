@@ -19,6 +19,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #define __STORE__H
 
 #include "redis.h"
+#include "adlist.h"
+
 #include "common.h"
 
 #define NUM_STORAGE_TYPES 11
@@ -38,11 +40,12 @@ void istoreCommit(redisClient *c,
                   int          imatch,
                   char        *sto_type,
                   char        *col_list,
-                  char        *range,
+                  robj        *rng,
                   robj        *new_name,
                   int          obc,
                   bool         asc,
-                  int          lim);
+                  int          lim,
+                  list        *inl);
 
 void legacyTableCommand(redisClient *c); /* LEGACY syntax for createTable() */
 void legacyInsertCommand(redisClient *c);

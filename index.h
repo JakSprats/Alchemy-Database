@@ -66,6 +66,7 @@ void updateIndex( redisDb *db,
         low  = createStringObject(local_range, strlen(local_range)); \
         high = createStringObject(local_nextc, strlen(local_nextc)); \
     }
+bool range_check_or_reply(redisClient *c, char *r, robj **l, robj **h);
 
 void dropIndex(redisClient *c);
 
@@ -78,15 +79,18 @@ void iselectAction(redisClient *c,
                    bool         asc,
                    int          lim,
                    list        *inl);
+
 void ideleteAction(redisClient *c,
-                   char        *range,
+                   robj        *rng,
                    int          tmatch,
                    int          imatch,
                    int          obc,
                    bool         asc,
-                   int          lim);
+                   int          lim,
+                   list        *inl);
+
 void iupdateAction(redisClient *c,
-                   char        *range,
+                   robj        *rng,
                    int          tmatch,
                    int          imatch,
                    int          ncols,
@@ -97,7 +101,8 @@ void iupdateAction(redisClient *c,
                    uchar        cmiss[],
                    int          obc,
                    bool         asc,
-                   int          lim);
+                   int          lim,
+                   list        *inl);
 
 ull get_sum_all_index_size_for_table(redisClient *c, int tmatch);
 
@@ -114,8 +119,7 @@ ull get_sum_all_index_size_for_table(redisClient *c, int tmatch);
     bool  brk_fk  = (asc  && obc != -1 && obc == ind_col);                    \
     bool  q_fk    = (obc != -1);                                              \
     qed           = virt ? q_pk : q_fk;                                       \
-    btStreamIterator *bi  = btGetRangeIterator(bt, low, high, virt);          \
-    btStreamIterator *nbi = NULL;                                             \
+    bi            = btGetRangeIterator(bt, low, high, virt);                  \
     while ((be = btRangeNext(bi, 1)) != NULL) {     /* iterate btree */       \
         if (virt) {                                                           \
             if (brk_pk && (uint32)lim == card) break; /* ORDER BY PK LIMIT */ \
@@ -141,6 +145,60 @@ ull get_sum_all_index_size_for_table(redisClient *c, int tmatch);
     }                                                                         \
     btReleaseRangeIterator(bi);                                               \
     bi = NULL; /* explicit in case of goto's in inner loop */
+
+
+
+#define IN_QUERY_LOOKUP_START                                                 \
+    listNode  *ln;                                                            \
+    bool  virt   = Index[server.dbid][imatch].virt;                           \
+    robj *o      = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);       \
+    bool  pktype = Tbl[server.dbid][tmatch].col_type[0];                      \
+    listIter         *li  = listGetIterator(inl, AL_START_HEAD);              \
+    if (virt) {                                                               \
+        bool  brk_pk  = (asc && obc == 0);                                    \
+        bool  q_pk    = (!asc || (obc != -1 && obc != 0));                    \
+        qed           = q_pk;                                                 \
+        while((ln = listNext(li)) != NULL) {                                  \
+            if (brk_pk && (uint32)lim == card) break; /* ORDR BY PK LIMIT */  \
+            robj *key = ln->value;                                            \
+            robj *row = btFindVal(o, key, pktype);                            \
+            if (row) {
+            /* PK operation specific code comes here */
+#define IN_QUERY_LOOKUP_MIDDLE                                                \
+               card++;                                                        \
+            }                                                                 \
+            decrRefCount(key); /* from addRedisCmdToINList() */               \
+         }                                                                    \
+     } else {                                                                 \
+        btEntry *nbe;                                                         \
+        robj *ind     = Index[server.dbid][imatch].obj;                       \
+        robj *ibt     = lookupKey(c->db, ind);                                \
+        int   ind_col = (int)Index[server.dbid][imatch].column;               \
+        bool  fktype  = Tbl[server.dbid][tmatch].col_type[ind_col];           \
+        bool  brk_fk  = (asc  && obc != -1 && obc == ind_col);                \
+        bool  q_fk    = (obc != -1);                                          \
+        qed           = q_fk;                                                 \
+        while((ln = listNext(li)) != NULL) {                                  \
+            robj *ikey = ln->value;                                           \
+            robj *val  = btIndFindVal(ibt->ptr, ikey, fktype);                \
+            if (val) {                                                        \
+                nbi = btGetFullRangeIterator(val, 0, 0);                      \
+                while ((nbe = btRangeNext(nbi, 1)) != NULL) {                 \
+                    if (brk_fk && (uint32)lim == card) break;                 \
+                    robj *key = nbe->key;                                     \
+                    robj *row = btFindVal(o, key, pktype);
+               /* FK operation specific code comes here */
+#define IN_QUERY_LOOKUP_END                                                   \
+                    card++;                                                   \
+                }                                                             \
+                btReleaseRangeIterator(nbi);                                  \
+                nbi = NULL; /* explicit in case of goto's in inner loop */    \
+            }                                                                 \
+            decrRefCount(ikey); /* from addRedisCmdToINList() */              \
+        }                                                                     \
+    }                                                                         \
+    listReleaseIterator(li);
+
 
 
 #endif /* __INDEX__H */ 
