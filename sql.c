@@ -417,12 +417,12 @@ uchar checkSQLWhereClauseReply(redisClient  *c,
         }
     }
 
-    bool  is_fk      = 0;
-    int   tok_cmatch = find_column(tmatch, token);
-    int   im         = find_index( tmatch, tok_cmatch); 
+    bool  is_fk       = 0;
+    int   tok_cmatch  = find_column(tmatch, token);
+    int   im          = find_index( tmatch, tok_cmatch); 
+    char *pk_col_name = Tbl[server.dbid][tmatch].col_name[0]->ptr;
     if (imatch) *imatch = im;
-    if (strcasecmp(token,
-                   Tbl[server.dbid][tmatch].col_name[0]->ptr)) { /* not PK */
+    if (strcasecmp(token, pk_col_name)) { /* not PK */
         if (im != -1) { /* FK query */
             is_fk = 1;
         } else {
@@ -435,6 +435,8 @@ uchar checkSQLWhereClauseReply(redisClient  *c,
                 return 0;
             }
         }
+    } else {
+        if (cmatch) *cmatch = tok_cmatch;
     }
 
     PARGN_OVERFLOW()

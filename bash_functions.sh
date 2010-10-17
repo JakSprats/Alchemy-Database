@@ -437,7 +437,12 @@ function scan_external() {
   $CLI SCANSELECT name,salary FROM external WHERE salary BETWEEN 15000.99 AND 25001.01
 }
 function scan_healthpan() {
+   echo SCANSELECT "*" FROM healthplan WHERE name BETWEEN a AND k
    $CLI SCANSELECT "*" FROM healthplan WHERE name BETWEEN a AND k
+   echo SCANSELECT \* FROM healthplan WHERE id in "(1,2,3)"
+   $CLI SCANSELECT \* FROM healthplan WHERE id in "(1,2,3)"
+   echo SCANSELECT \* FROM healthplan WHERE id = 4
+   $CLI SCANSELECT \* FROM healthplan WHERE id = 4
 }
 
 function istore_worker_name_list() {
