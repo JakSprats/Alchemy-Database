@@ -18,7 +18,9 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #ifndef __JOINSTORE__H
 #define __JOINSTORE__H
 
+#include "adlist.h"
 #include "redis.h"
+
 #include "common.h"
 
 void freeJoinRowObject(robj *o);
@@ -48,12 +50,14 @@ void joinGeneric(redisClient *c,
                  int          obt,
                  int          obc,
                  bool         asc,
-                 int          lim);
+                 int          lim,
+                 list        *inl);
 
 
 void jstoreCommit(redisClient *c,
                   int          sto,
-                  robj        *range,
+                  robj        *low,  
+                  robj        *high, 
                   robj        *nname,
                   int          j_indxs[MAX_JOIN_INDXS],
                   int          j_tbls [MAX_JOIN_INDXS],
@@ -63,6 +67,7 @@ void jstoreCommit(redisClient *c,
                   int          obt,
                   int          obc,
                   bool         asc,
-                  int          lim);
+                  int          lim,
+                  list        *inl);
 
 #endif /* __JOINSTORE__H */ 

@@ -629,7 +629,8 @@ void joinGeneric(redisClient *c,
                  int          obt,
                  int          obc,
                  bool         asc,
-                 int          lim) {
+                 int          lim,
+                 list        *inl) {
     Order_by         = (obt != -1);
     Order_by_col_val = NULL;
 
@@ -684,45 +685,75 @@ void joinGeneric(redisClient *c,
         rset[i] = createValSetObject();
     }
 
-    join_add_cols_t jac; /* these dont change in the loop below */
-    jac.qcols      = qcols;
-    jac.j_tbls     = j_tbls;
-    jac.j_cols     = j_cols;
-    jac.jind_ncols = jind_ncols;
-    jac.j_ind_len  = j_ind_len;
-    jac.jbtr       = jbtr;
+    join_add_cols_t jc; /* these dont change in the loop below */
+    jc.qcols      = qcols;
+    jc.j_tbls     = j_tbls;
+    jc.j_cols     = j_cols;
+    jc.jind_ncols = jind_ncols;
+    jc.j_ind_len  = j_ind_len;
+    jc.jbtr       = jbtr;
     
-    for (int i = 0; i < n_ind; i++) {                 // iterate indices
+    for (int i = 0; i < n_ind; i++) {    /* iterate indices */
         btEntry    *be, *nbe;
         j_ind_len[i]  = 0;
-        jac.index     = i;
+        jc.index      = i;
 
-        jac.itable    = Index[server.dbid][j_indxs[i]].table;
-        jac.o         = lookupKeyRead(c->db, Tbl[server.dbid][jac.itable].name);
+        jc.itable     = Index[server.dbid][j_indxs[i]].table;
+        jc.o          = lookupKeyRead(c->db, Tbl[server.dbid][jc.itable].name);
+        jc.virt       = Index[server.dbid][j_indxs[i]].virt;
         robj *ind     = Index[server.dbid][j_indxs[i]].obj;
-        jac.virt      = Index[server.dbid][j_indxs[i]].virt;
-        robj *bt      = jac.virt ? jac.o : lookupKey(c->db, ind);
-        btStreamIterator *bi = btGetRangeIterator(bt, low, high, jac.virt);
-        while ((be = btRangeNext(bi, 1)) != NULL) {            // iterate btree
-            if (jac.virt) {
-                jac.jk  = be->key;
-                jac.val = be->val;
-                joinAddColsFromInd(&jac, rset, obt, obc);
-            } else {
-                jac.jk                = be->key;
-                robj             *val = be->val;
-                btStreamIterator *nbi = btGetFullRangeIterator(val, 0, 0);
-                while ((nbe = btRangeNext(nbi, 1)) != NULL) { // iterate NodeBT
-                    jac.val = nbe->key;
-                    joinAddColsFromInd(&jac, rset, obt, obc);
+     
+        if (low) {     /* RANGE QUERY */
+            robj             *bt = jc.virt ? jc.o : lookupKey(c->db, ind);
+            btStreamIterator *bi = btGetRangeIterator(bt, low, high, jc.virt);
+            while ((be = btRangeNext(bi, 1)) != NULL) {
+                if (jc.virt) {
+                    jc.jk  = be->key;
+                    jc.val = be->val;
+                    joinAddColsFromInd(&jc, rset, obt, obc);
+                } else {
+                    jc.jk                 = be->key;
+                    robj             *val = be->val;
+                    btStreamIterator *nbi = btGetFullRangeIterator(val, 0, 0);
+                    while ((nbe = btRangeNext(nbi, 1)) != NULL) {
+                        jc.val = nbe->key;
+                        joinAddColsFromInd(&jc, rset, obt, obc);
+                    }
+                    btReleaseRangeIterator(nbi);
                 }
-                btReleaseRangeIterator(nbi);
             }
+            btReleaseRangeIterator(bi);
+        } else {       /* IN () QUERY */
+            listNode *ln;
+            listIter *li  = listGetIterator(inl, AL_START_HEAD);
+            if (jc.virt) {
+                bool pktype = Tbl[server.dbid][jc.itable].col_type[0];
+                while((ln = listNext(li)) != NULL) {
+                    jc.jk  = ln->value;
+                    jc.val = btFindVal(jc.o, jc.jk, pktype);
+                    if (jc.val) joinAddColsFromInd(&jc, rset, obt, obc);
+                }
+            } else {
+                int  ind_col = (int)Index[server.dbid][j_indxs[i]].column;
+                bool fktype  = Tbl[server.dbid][jc.itable].col_type[ind_col];
+                btStreamIterator *nbi;
+                robj *ibt = lookupKey(c->db, ind);   
+                while((ln = listNext(li)) != NULL) {
+                    jc.jk     = ln->value;
+                    robj *val = btIndFindVal(ibt->ptr, jc.jk, fktype);
+                    if (val) {
+                        nbi = btGetFullRangeIterator(val, 0, 0);
+                        while ((nbe = btRangeNext(nbi, 1)) != NULL) {
+                            jc.val = nbe->key;
+                            joinAddColsFromInd(&jc, rset, obt, obc);
+                        }
+                        btReleaseRangeIterator(nbi);
+                    }
+                }
+            }
+            listReleaseIterator(li);
         }
-        btReleaseRangeIterator(bi);
     }
-    decrRefCount(low);
-    decrRefCount(high);
 
     /* cant join if one table had ZERO rows */
     bool one_empty = 0;
@@ -833,30 +864,10 @@ void joinGeneric(redisClient *c,
     }
 }
 
-void legacyJoinCommand(redisClient *c) {
-    int j_indxs[MAX_JOIN_INDXS];
-    int j_tbls [MAX_JOIN_INDXS];
-    int j_cols [MAX_JOIN_INDXS];
-    int n_ind = parseIndexedColumnListOrReply(c, c->argv[1]->ptr, j_indxs);
-    if (!n_ind) {
-        addReply(c, shared.joinindexedcolumnlisterror);
-        return;
-    }
-    int qcols = multiColCheckOrReply(c, c->argv[2]->ptr, j_tbls, j_cols);
-    if (!qcols) {
-        addReply(c, shared.joincolumnlisterror);
-        return;
-    }
-    RANGE_CHECK_OR_REPLY(c->argv[3]->ptr,)
-
-    joinGeneric(c, NULL, j_indxs, j_tbls, j_cols, n_ind, qcols, low, high,
-                -1, 0, 0, NULL, /* STORE args */
-                -1, -1, 1, -1); /* ORDER BY args */
-}
-
 void jstoreCommit(redisClient *c,
                   int          sto,
-                  robj        *range,
+                  robj        *low,
+                  robj        *high,
                   robj        *nname,
                   int          j_indxs[MAX_JOIN_INDXS],
                   int          j_tbls [MAX_JOIN_INDXS],
@@ -866,7 +877,8 @@ void jstoreCommit(redisClient *c,
                   int          obt,
                   int          obc,
                   bool         asc,
-                  int          lim) {
+                  int          lim,
+                  list        *inl) {
     robj               *argv[STORAGE_MAX_ARGC + 1];
     struct redisClient *fc = rsql_createFakeClient();
     fc->argv               = argv;
@@ -887,7 +899,6 @@ void jstoreCommit(redisClient *c,
         }
         if (sub_pk) nargc--;
     }
-    RANGE_CHECK_OR_REPLY(range->ptr,)
 
     if (!StorageCommands[sto].argc) { /* INSERT -> create table first */
         fc->argv[1] = cloneRobj(nname);
@@ -898,7 +909,7 @@ void jstoreCommit(redisClient *c,
     }
 
     joinGeneric(c, fc, j_indxs, j_tbls, j_cols, n_ind, qcols, low, high, sto,
-                sub_pk, nargc, nname, obt, obc, asc, lim);
+                sub_pk, nargc, nname, obt, obc, asc, lim, inl);
 
     freeFakeClient(fc);
 }
@@ -918,3 +929,28 @@ void freeValSetObject(robj *o) {
     //RL4 "freeValSetObject: %p", o->ptr);
     dictRelease((dict*) o->ptr);
 }
+
+#if 0
+/* LEGACY CODE - the ROOTS */
+void legacyJoinCommand(redisClient *c) {
+    int j_indxs[MAX_JOIN_INDXS];
+    int j_tbls [MAX_JOIN_INDXS];
+    int j_cols [MAX_JOIN_INDXS];
+    int n_ind = parseIndexedColumnListOrReply(c, c->argv[1]->ptr, j_indxs);
+    if (!n_ind) {
+        addReply(c, shared.joinindexedcolumnlisterror);
+        return;
+    }
+    int qcols = multiColCheckOrReply(c, c->argv[2]->ptr, j_tbls, j_cols);
+    if (!qcols) {
+        addReply(c, shared.joincolumnlisterror);
+        return;
+    }
+    RANGE_CHECK_OR_REPLY(c->argv[3]->ptr,)
+
+    joinGeneric(c, NULL, j_indxs, j_tbls, j_cols, n_ind, qcols, low, high,
+                -1, 0, 0, NULL, /* STORE args */
+                -1, -1, 1, -1,  /* ORDER BY args */
+                NULL);          /* IN() args */
+}
+#endif

@@ -796,7 +796,6 @@ void denormCommand(redisClient *c);
 
 void ikeysCommand(redisClient *c);
 
-void legacyJoinCommand(redisClient *c);
 void legacyTableCommand(redisClient *c);
 void legacyInsertCommand(redisClient *c);
 #endif /* ALSOSQL END */
@@ -935,7 +934,6 @@ static struct redisCommand cmdTable[] = {
     {"norm",         normCommand,          -2,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
     {"denorm",       denormCommand,        -3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
 
-    {"legacyjoin",   legacyJoinCommand,     4,REDIS_CMD_INLINE,NULL,1,1,1,1},
     {"legacytable",  legacyTableCommand,   -3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
     {"legacyinsert", legacyInsertCommand,  -3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
     {"legacyindex",  legacyIndexCommand,    3,REDIS_CMD_INLINE,NULL,1,1,1,1},
@@ -1786,7 +1784,7 @@ static void createSharedObjects(void) {
     shared.join_on_multi_col = createObject(REDIS_STRING,sdsnew(
         "-ERR SELECT: JOIN: Only SINGLE index joins are supported\r\n"));
     shared.join_requires_range = createObject(REDIS_STRING,sdsnew(
-        "-ERR SELECT: JOIN: A range must be specified when joining (e.g. tbl.col BETWEEN x AND Y) -> Full Table Scans when joining are purposefully prohibited\r\n"));
+        "-ERR SELECT: JOIN: A range must be specified when joining, e.g. [tbl.col BETWEEN x AND Y] or [tbl.col IN (1,2,3)] - Use SCANSELECT for FullTableJoins \r\n"));
     shared.join_order_by_tbl = createObject(REDIS_STRING,sdsnew(
         "-ERR SELECT: JOIN: ORDER BY tablename.columname - table does not exist\r\n"));
     shared.join_order_by_col = createObject(REDIS_STRING,sdsnew(

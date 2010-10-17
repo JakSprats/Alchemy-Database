@@ -59,9 +59,9 @@ char   *Col_keywords_to_ignore[] = {"PRIMARY", "CONSTRAINT", "UNIQUE",
 uint32  Num_col_keywords_to_ignore = 5;
 
 /* TODO legacy code based on "start-end" should be replaced */
-static void convertFkValueToRange(sds fk_ptr, robj **range) {
-    *range        = createStringObject(fk_ptr, sdslen(fk_ptr));
-    (*range)->ptr = sdscatprintf((*range)->ptr, "-%s", (char *)fk_ptr);
+static void convertFkValueToRange(sds fk_ptr, robj **rng) {
+    *rng        = createStringObject(fk_ptr, sdslen(fk_ptr));
+    (*rng)->ptr = sdscatprintf((*rng)->ptr, "-%s", (char *)fk_ptr);
 }
 
 char *rem_backticks(char *token, int *len) {
@@ -201,7 +201,7 @@ bool parseCreateTable(redisClient *c,
 static uchar parseRangeReply(redisClient  *c,
                              char         *x,
                              int          *pargn,
-                             robj        **range,
+                             robj        **rng,
                              uchar         sop,
                              bool          just_parse) {
     if (!strcasecmp(x, "BETWEEN")) { /* RANGE QUERY */
@@ -215,11 +215,11 @@ static uchar parseRangeReply(redisClient  *c,
         PARGN_OVERFLOW()
         int finish = *pargn;
         if (just_parse) return SQL_RANGE_QUERY;
-        *range = createStringObject(c->argv[start]->ptr,
+        *rng = createStringObject(c->argv[start]->ptr,
                                     sdslen(c->argv[start]->ptr));
-        (*range)->ptr  = sdscatprintf((*range)->ptr, "-%s",
-                                      (char *)c->argv[finish]->ptr);
-        //RL4 "RANGEQUERY: %s", (*range)->ptr);
+        (*rng)->ptr  = sdscatprintf((*rng)->ptr, "-%s",
+                                    (char *)c->argv[finish]->ptr);
+        //RL4 "RANGEQUERY: %s", (*rng)->ptr);
         return SQL_RANGE_QUERY;
     }
     if      (sop == SQL_SELECT) addReply(c, shared.selectsyntax_noequals);
@@ -305,7 +305,9 @@ static bool addRedisCmdToINList(redisClient *c,
                                 bool b) { /* variable ignored */
     c = NULL; l = NULL; b = 0; /* compiler warnings */
     list **inl = (list **)x;
-    listAddNodeTail(*inl, cloneRobj(key));
+    robj *r    = cloneRobj(key);
+    r          = tryObjectEncoding(r);
+    listAddNodeTail(*inl, r);
     return 1;
 }
 
@@ -382,7 +384,7 @@ static bool parseWhereClauseIN(redisClient  *c,
 /* TODO just_parse is not respected in all parsing routines */
 uchar checkSQLWhereClauseReply(redisClient  *c,
                                robj       **key,
-                               robj       **range,
+                               robj       **rng,
                                int         *imatch,
                                int         *cmatch,
                                int         *pargn,
@@ -457,7 +459,7 @@ uchar checkSQLWhereClauseReply(redisClient  *c,
                 if (!parseWhereClauseIN(c, pargn, inl, sop)) return 0;
                 wtype = SQL_IN_LOOKUP;
             } else {
-                wtype = parseRangeReply(c, token, pargn, range, sop,
+                wtype = parseRangeReply(c, token, pargn, rng, sop,
                                         just_parse);
             }
             if (wtype) {
@@ -472,7 +474,7 @@ uchar checkSQLWhereClauseReply(redisClient  *c,
 
     if (just_parse) return SQL_SINGLE_LOOKUP;
     if (is_fk) { /* single FK lookup is HACKED into a range-query of length 1 */
-        convertFkValueToRange((*key)->ptr, range);
+        convertFkValueToRange((*key)->ptr, rng);
         if (*pargn != (c->argc - 1)) { /* additional SQL */
             if (!parseWhereClauseAddtlSQL(c, pargn, obc, store,
                                      sop, asc, lim, tmatch)) return 0;
@@ -486,7 +488,7 @@ uchar checkSQLWhereClauseReply(redisClient  *c,
 static uchar checkSQLWhereJoinReply(redisClient  *c,
                                     robj        **jind1,
                                     robj        **jind2,
-                                    robj        **range,
+                                    robj        **rng,
                                     int          *pargn,
                                     list        **inl) {
     uchar sop    = 0;
@@ -527,7 +529,7 @@ static uchar checkSQLWhereJoinReply(redisClient  *c,
                 if (!parseWhereClauseIN(c, pargn, inl, sop)) return 0;
                 return SQL_IN_LOOKUP;
             }
-            return parseRangeReply(c, token, pargn, range, sop, 0);
+            return parseRangeReply(c, token, pargn, rng, sop, 0);
         }
     }
     return 1;
@@ -561,7 +563,7 @@ bool joinParseReply(redisClient  *c,
                     int          *qcols,
                     int          *sto,
                     robj        **nname,
-                    robj        **range,
+                    robj        **rng,
                     int          *n_ind,
                     int          *obt,
                     int          *obc,
@@ -600,7 +602,7 @@ bool joinParseReply(redisClient  *c,
     robj  *jind1   = NULL, *jind2 = NULL;
     while (argn < c->argc) {
         bool fin = 0;
-        wtype    = checkSQLWhereJoinReply(c, &jind1, &jind2, range, &argn, inl);
+        wtype    = checkSQLWhereJoinReply(c, &jind1, &jind2, rng, &argn, inl);
         if (wtype) {
             sds jp1       = jind1 ? jind1->ptr : NULL;
             sds jp2       = jind2 ? jind2->ptr : NULL;
@@ -608,11 +610,11 @@ bool joinParseReply(redisClient  *c,
             if (jind1 && !strchr(jp1, CPERIOD)) cnvrt_rng = jp1;
             if (jind2 && !strchr(jp2, CPERIOD)) cnvrt_rng = jp2;
             if (cnvrt_rng) {
-                if (range) {
+                if (rng) {
                     addReply(c, shared.join_on_multi_col);
                     goto join_cmd_err;
                 }
-                convertFkValueToRange(cnvrt_rng, range);
+                convertFkValueToRange(cnvrt_rng, rng);
             } else {
                 if (jind1) {
                     if (sdslen(icl) && !strstr(icl, jp1)) {
@@ -697,7 +699,7 @@ bool joinParseReply(redisClient  *c,
         addReply(c, shared.joinindexedcolumnlisterror);
         goto join_cmd_err;
     }
-    if (!range) {
+    if (!*rng && !*inl) {
         addReply(c, shared.join_requires_range);
         goto join_cmd_err;
     }
@@ -715,35 +717,41 @@ void joinReply(redisClient *c, sds clist, int argn) {
     int   j_tbls [MAX_JOIN_INDXS];
     int   j_cols [MAX_JOIN_INDXS];
     int   n_ind, qcols, sto;
-    int   obt   = -1; /* ORDER BY tbl */
-    int   obc   = -1; /* ORDER BY col */
+    int   obt   = -1;   /* ORDER BY tbl */
+    int   obc   = -1;   /* ORDER BY col */
     bool  asc   = 1;
     int   lim   = -1;
-    robj *range = NULL;
-    robj *nname = NULL;
-    list *inl   = NULL;
+    robj *rng   = NULL; /* BETWEEN range */
+    robj *nname = NULL; /* NewName - jstore */
+    list *inl   = NULL; /* IN() list */
 
     bool ret = joinParseReply(c, clist, argn, j_indxs, j_tbls, j_cols,
-                              &qcols, &sto, &nname, &range, &n_ind,
+                              &qcols, &sto, &nname, &rng, &n_ind,
                               &obt, &obc, &asc, &lim, &inl);
+
+    char *range = rng ? rng->ptr : NULL;
+    robj *low   = NULL;
+    robj *high  = NULL;
+    if (range && !range_check_or_reply(c, range, &low, &high)) return;
+
     if (ret) {
         if (nname) {
-            jstoreCommit(c, sto, range, nname,
+            jstoreCommit(c, sto, low, high, nname,
                          j_indxs, j_tbls, j_cols, n_ind, qcols,
-                         obt, obc, asc, lim);
+                         obt, obc, asc, lim, inl);
             /* write back in "$" for AOF and Slaves */
             sds l_argv = sdscatprintf(sdsempty(), "%s$", 
                                              (char *)c->argv[c->argc - 1]->ptr);
             sdsfree(c->argv[c->argc - 1]->ptr);
             c->argv[c->argc - 1]->ptr = l_argv;
         } else {
-            RANGE_CHECK_OR_REPLY(range->ptr,)
             joinGeneric(c, NULL, j_indxs, j_tbls, j_cols, n_ind, qcols,
                         low, high, -1, 0 , 0, NULL,
-                        obt, obc, asc, lim);
+                        obt, obc, asc, lim, inl);
         }
     }
-    if (inl)   listRelease(inl);
-    if (range) decrRefCount(range);
+    if (low)  decrRefCount(low);
+    if (high) decrRefCount(high);
+    if (inl)  listRelease(inl);
+    if (rng)  decrRefCount(rng);
 }
-

@@ -294,6 +294,7 @@ function order_by_test() {
   $CLI SELECT id,name,salary,division FROM employee WHERE division BETWEEN 22 AND 77 ORDER BY name DESC LIMIT 4
 }
 
+
 function order_by_test_joins() {
   echo SELECT division.name,division.location,subdivision.name,worker.name,worker.salary FROM division,subdivision,worker WHERE division.id = subdivision.division AND division.id = worker.division AND division.id BETWEEN 11 AND 33 ORDER BY worker.salary
   $CLI SELECT division.name,division.location,subdivision.name,worker.name,worker.salary FROM division,subdivision,worker WHERE division.id = subdivision.division AND division.id = worker.division AND division.id BETWEEN 11 AND 33 ORDER BY worker.salary
@@ -310,6 +311,12 @@ function istore_customer_hobby_order_by_denorm_to_many_lists() {
   $CLI SELECT employee, hobby FROM customer WHERE employee BETWEEN 3 AND 6 ORDER BY hobby STORE RPUSH employee_ordered_hobby_list$
   echo LRANGE employee_ordered_hobby_list:4 0 -1
   $CLI LRANGE employee_ordered_hobby_list:4 0 -1
+}
+
+function orderbyer() {
+  order_by_test
+  order_by_test_joins
+  istore_customer_hobby_order_by_denorm_to_many_lists
 }
 
 function in_test_cust_id() {
@@ -329,6 +336,31 @@ function in_test_cust_hobby() {
     $CLI LPUSH list_index_customer_hobby choir
     echo SELECT \* FROM customer WHERE hobby IN "(LRANGE list_index_customer_hobby 0 2)" ORDER BY name
     $CLI SELECT \* FROM customer WHERE hobby IN "(LRANGE list_index_customer_hobby 0 2)" ORDER BY name
+}
+
+function in_test_join_nonrelational() {
+    echo SELECT division.id,division.name,division.location,external.name,external.salary FROM division,external WHERE division.id=external.division AND division.id IN "(44,55,33,11,22)"
+    $CLI SELECT division.id,division.name,division.location,external.name,external.salary FROM division,external WHERE division.id=external.division AND division.id IN "(44,55,33,11,22)"
+    echo DEL L_IND_div_id
+    $CLI DEL L_IND_div_id
+    echo LPUSH L_IND_div_id 22
+    $CLI LPUSH L_IND_div_id 22
+    echo LPUSH L_IND_div_id 11
+    $CLI LPUSH L_IND_div_id 11
+    echo LPUSH L_IND_div_id 33
+    $CLI LPUSH L_IND_div_id 33
+    echo LPUSH L_IND_div_id 55
+    $CLI LPUSH L_IND_div_id 55
+    echo LPUSH L_IND_div_id 44
+    $CLI LPUSH L_IND_div_id 44
+    echo SELECT division.id,division.name,division.location,external.name,external.salary FROM division,external WHERE division.id=external.division AND division.id IN "(LRANGE L_IND_div_id 0 -1)"
+    $CLI SELECT division.id,division.name,division.location,external.name,external.salary FROM division,external WHERE division.id=external.division AND division.id IN "(LRANGE L_IND_div_id 0 -1)"
+}
+
+function in_tester() {
+  in_test_cust_id
+  in_test_cust_hobby
+  in_test_join_nonrelational
 }
 
 function joiner() {
@@ -675,6 +707,9 @@ function all_tests() {
 
   create_table_as_select_customer
   create_table_as_select_join_worker_health
+
+  orderbyer
+  in_tester
 
   test_fk_joins
 
