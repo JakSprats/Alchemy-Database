@@ -389,9 +389,9 @@ void iselectAction(redisClient *c,
         sortedOrderByCleanup(vector, listLength(ll), icol, 1);
         free(vector);
     }
+    if (ll)   listRelease(ll);
     if (low)  decrRefCount(low);
     if (high) decrRefCount(high);
-    if (ll)   listRelease(ll);
 
     if (lim != -1 && (uint32)lim < card) card = lim;
     lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);

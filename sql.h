@@ -52,6 +52,16 @@ bool parseCreateTable(redisClient *c,
         WHERE_CLAUSE_ERROR_REPLY(ret) \
     }
 
+bool parseWCAddtlSQL(redisClient *c,
+                     int         *pargn, 
+                     int         *obc,  
+                     bool        *store,
+                     uchar        sop,   
+                     bool        *asc,  
+                     int         *lim,  
+                     int          tmatch,
+                     bool         reply);
+
 unsigned char checkSQLWhereClauseReply(redisClient  *c,
                                        robj       **key, 
                                        robj       **range,

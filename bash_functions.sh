@@ -445,6 +445,15 @@ function scan_healthpan() {
    $CLI SCANSELECT \* FROM healthplan WHERE id = 4
 }
 
+function scan_customer() {
+  echo SCANSELECT \* FROM customer ORDER BY hobby
+  $CLI SCANSELECT \* FROM customer ORDER BY hobby
+  echo SCANSELECT \* FROM customer WHERE id in "(1,2,3,4,5,6,7)" ORDER BY name
+  $CLI SCANSELECT \* FROM customer WHERE id in "(1,2,3,4,5,6,7)" ORDER BY name
+  echo SCANSELECT \* FROM customer WHERE id BETWEEN 1 AND 7 ORDER BY name DESC
+  $CLI SCANSELECT \* FROM customer WHERE id BETWEEN 1 AND 7 ORDER BY name DESC
+}
+
 function istore_worker_name_list() {
   echo SELECT name FROM worker WHERE division BETWEEN 11 AND 33 STORE RPUSH l_worker_name
   $CLI SELECT name FROM worker WHERE division BETWEEN 11 AND 33 STORE RPUSH l_worker_name

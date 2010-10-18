@@ -266,14 +266,15 @@ static bool parseOrderBy(redisClient *c,
         return Y;                                                    \
     }
 
-static bool parseWhereClauseAddtlSQL(redisClient *c,
-                                     int         *pargn, 
-                                     int         *obc,
-                                     bool        *store,
-                                     uchar        sop,
-                                     bool        *asc,
-                                     int         *lim,
-                                     int          tmatch) {
+bool parseWCAddtlSQL(redisClient *c,
+                     int         *pargn, 
+                     int         *obc,
+                     bool        *store,
+                     uchar        sop,
+                     bool        *asc,
+                     int         *lim,
+                     int          tmatch,
+                     bool         reply) {
     PARGN_OVERFLOW()
     bool check_sto = 1;
     if (!strcasecmp(c->argv[*pargn]->ptr, "ORDER")) {
@@ -292,7 +293,9 @@ static bool parseWhereClauseAddtlSQL(redisClient *c,
             PARGN_OVERFLOW()
             *store = 1;
         } else {
-            WHERE_CLAUSE_ERROR_REPLY(0);
+            if (reply) {
+                WHERE_CLAUSE_ERROR_REPLY(0);
+            }
         }
     }
     return 1;
@@ -466,8 +469,8 @@ uchar checkSQLWhereClauseReply(redisClient  *c,
             }
             if (wtype) {
                 if (*pargn != (c->argc - 1)) { /* additional SQL */
-                    if (!parseWhereClauseAddtlSQL(c, pargn, obc, store, sop,
-                                                  asc, lim, tmatch)) return 0;
+                    if (!parseWCAddtlSQL(c, pargn, obc, store, sop,
+                                         asc, lim, tmatch, 1)) return 0;
                 }
             }
             return wtype;
@@ -478,8 +481,8 @@ uchar checkSQLWhereClauseReply(redisClient  *c,
     if (is_fk) { /* single FK lookup is HACKED into a range-query of length 1 */
         convertFkValueToRange((*key)->ptr, rng);
         if (*pargn != (c->argc - 1)) { /* additional SQL */
-            if (!parseWhereClauseAddtlSQL(c, pargn, obc, store,
-                                     sop, asc, lim, tmatch)) return 0;
+            if (!parseWCAddtlSQL(c, pargn, obc, store, sop,
+                                 asc, lim, tmatch, 1)) return 0;
         }
         return SQL_RANGE_QUERY;
     } else {
