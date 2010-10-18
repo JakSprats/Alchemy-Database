@@ -160,7 +160,7 @@ ull get_sum_all_index_size_for_table(redisClient *c, int tmatch);
         qed           = q_pk;                                                 \
         while((ln = listNext(li)) != NULL) {                                  \
             if (brk_pk && (uint32)lim == card) break; /* ORDR BY PK LIMIT */  \
-            robj *key = ln->value;                                            \
+            robj *key = convertRobj(ln->value, pktype);                       \
             robj *row = btFindVal(o, key, pktype);                            \
             if (row) {
             /* PK operation specific code comes here */
@@ -179,7 +179,7 @@ ull get_sum_all_index_size_for_table(redisClient *c, int tmatch);
         bool  q_fk    = (obc != -1);                                          \
         qed           = q_fk;                                                 \
         while((ln = listNext(li)) != NULL) {                                  \
-            robj *ikey = ln->value;                                           \
+            robj *ikey = convertRobj(ln->value, fktype);                      \
             robj *val  = btIndFindVal(ibt->ptr, ikey, fktype);                \
             if (val) {                                                        \
                 nbi = btGetFullRangeIterator(val, 0, 0);                      \

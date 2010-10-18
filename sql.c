@@ -309,7 +309,6 @@ static bool addRedisCmdToINList(redisClient *c,
     c = NULL; l = NULL; b = 0; /* compiler warnings */
     list **inl = (list **)x;
     robj *r    = cloneRobj(key);
-    r          = tryObjectEncoding(r);
     listAddNodeTail(*inl, r);
     return 1;
 }
@@ -335,7 +334,6 @@ static bool parseWhereClauseIN(redisClient  *c,
         if (!nextc) break;  /* TODO respect "\," */
         *nextc      = '\0';
         robj *r     = createStringObject(s, nextc - s);
-        r           = tryObjectEncoding(r);
         listAddNodeTail(*inl, r);
         nextc++;
         s           = nextc;
@@ -377,7 +375,6 @@ static bool parseWhereClauseIN(redisClient  *c,
     }
     while (*s == ' ') s++; /* ltrim */
     robj *r = createStringObject(s, t - s);
-    r       = tryObjectEncoding(r);
     listAddNodeTail(*inl, r);
 
     sdsfree(arg); /* sdsdup above */

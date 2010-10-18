@@ -20,6 +20,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <string.h>
 #include <strings.h>
 #include <unistd.h>
+#include <ctype.h>
 
 #include "redis.h"
 #include "bt.h"
@@ -65,7 +66,7 @@ char *Col_type_defs[] = {"TEXT", "INT" };
 extern int     Num_indx[MAX_NUM_DB];
 extern r_ind_t Index   [MAX_NUM_DB][MAX_NUM_INDICES];
 
-sds   Curr_range;
+sds Curr_range;
 
 // HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS
 // HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS
@@ -77,6 +78,25 @@ robj *cloneRobj(robj *r) { // must be decrRefCount()ed
         n->encoding = REDIS_ENCODING_INT;
         return n;
     }
+}
+
+robj *convertRobj(robj *r, int type) {
+    if ((r->encoding == REDIS_ENCODING_RAW && type == COL_TYPE_STRING) ||
+        (r->encoding == REDIS_ENCODING_INT && type == COL_TYPE_INT)) {
+        return r;
+    }
+    robj *n = NULL;
+    if (r->encoding == REDIS_ENCODING_RAW) { /* string -> want int */
+        int i = atoi(r->ptr);
+        n           = createObject(REDIS_STRING, (void *)(long)i);
+        n->encoding = REDIS_ENCODING_INT;
+    } else {                                /* int    -> want string */
+        char buf[32];
+        sprintf(buf, "%d", (int)(long)r->ptr);
+        n = createStringObject(buf, strlen(buf));
+    }
+    decrRefCount(r);
+    return n;
 }
 
 int find_table(char *tname) {
@@ -279,11 +299,11 @@ void createTableCommitReply(redisClient *c,
         Tbl[server.dbid][ntbls].col_name[i] = createStringObject(cnames[i],
                                                     strlen(cnames[i]));
     }
-    robj *tbl            = createStringObject(tname, strlen(tname));
-    Tbl[server.dbid][ntbls].col_count = ccount;
+    int   pktype = Tbl[server.dbid][ntbls].col_type[0];
+    robj *tbl    = createStringObject(tname, strlen(tname));
+    robj *bt     = createBtreeObject(pktype, ntbls, BTREE_TABLE);
     Tbl[server.dbid][ntbls].name      = tbl;
-    robj *bt             = createBtreeObject(Tbl[server.dbid][ntbls].col_type[0],
-                                             ntbls, BTREE_TABLE);
+    Tbl[server.dbid][ntbls].col_count = ccount;
     dictAdd(c->db->dict, tbl, bt);
     // BTREE implies an index on "tbl:pk:index" -> autogenerate
     robj *iname = createStringObject(tname, strlen(tname));
@@ -352,6 +372,51 @@ void createCommand(redisClient *c) {
     server.dirty++; /* for appendonlyfile */
 }
 
+
+static sds parsePrintStream(char   *o_s,
+                            sds     vals,
+                            uint32  cofsts[MAX_COLUMN_PER_TABLE],
+                            int     tmatch) {
+    sds ret_msg = NULL;
+    char *s   = strchr(o_s, '$');
+    if (!s) {
+        ret_msg = sdsdup(o_s);
+    } else {
+        while (1) {
+            s++; /* advance past "$" */
+            char *nexto = s;
+            while (isalnum(*nexto)) nexto++; /* cname must be alpha-num */
+            char *nexts = strchr(s, '$');    /* nextvar is '$' delimed */
+
+            int cmatch = -1;
+            if (nexto) cmatch = find_column_n(tmatch, s, nexto - s);
+            else       cmatch = find_column(tmatch, s);
+            if (cmatch == -1) return NULL;
+
+            if (!ret_msg) ret_msg = sdsempty();
+            ret_msg = sdscatlen(ret_msg, o_s, (s - 1) - o_s); /* no "$" */
+            
+            char *x;
+            int   xlen;
+            if (!cmatch) {
+                x    = vals;
+                xlen = cofsts[0] - 1;
+            } else {
+                x    = vals + cofsts[cmatch - 1];
+                xlen = cofsts[cmatch] - cofsts[cmatch - 1] - 1;
+            }
+            ret_msg = sdscatlen(ret_msg, x, xlen);
+            if (!nexts) { /* no more vars */
+                if (nexto) ret_msg = sdscatlen(ret_msg, nexto, strlen(nexto));
+                break;
+            }
+            o_s = nexto;
+            s   = nexts;
+        }
+    }
+    return ret_msg;
+}
+
 void insertCommitReply(redisClient *c,
                        sds          vals,
                        int          ncols,
@@ -370,63 +435,65 @@ void insertCommitReply(redisClient *c,
     int   pktype = Tbl[server.dbid][tmatch].col_type[0];
     robj *o      = lookupKeyWrite(c->db, Tbl[server.dbid][tmatch].name);
 
-    robj *pko = createStringObject(pk, pklen);
+    robj *nrow = NULL; /* must come before first goto */
+    robj *pko  = createStringObject(pk, pklen);
     if (pktype == COL_TYPE_INT) {
-        long l   = atol(pko->ptr);
+        long l = atol(pko->ptr);
         if (l >= TWO_POW_32) {
             addReply(c, shared.uint_pk_too_big);
-            return;
+            goto insert_commit_err;
         } else if (l < 0) {
             addReply(c, shared.uint_no_negative_values);
-            return;
+            goto insert_commit_err;
         }
     }
     robj *row = btFindVal(o, pko, pktype);
     if (row) {
-        zfree(pk);
-        decrRefCount(pko);
         addReply(c, shared.insertcannotoverwrite);
-        return;
-    }
-    if (matches) { /* indices */
-        for (int i = 0; i < matches; i++) {
-            addToIndex(c->db, pko, vals, cofsts, indices[i]);
-        }
+        goto insert_commit_err;
     }
 
-    /* createRow modifies vals' buffer in place */
-    robj *nrow = createRow(c, tmatch, ncols, vals, cofsts);
-    if (!nrow) return;
-    int   len  = btAdd(o, pko, nrow, pktype); /* copy[pk & val] */
-    sdsfree(Curr_range); /* used by InSwapMode */
-    Curr_range = sdsdup(pko->ptr);
-
-    int new_size   = 0;
-    int ret_cmatch = -1;
-    if (c->argc > 5 && !strcasecmp(c->argv[5]->ptr, "RETURN")) {
-        if (!strcasecmp(c->argv[6]->ptr, "SIZE")) {
-            new_size = len;
+    sds    ret_msg  = NULL;
+    bool   ret_size = 0;
+    if (c->argc > 6 && !strcasecmp(c->argv[5]->ptr, "RETURN")) {
+        char *s = c->argv[6]->ptr;
+        if (!strcasecmp(s, "SIZE")) {
+            ret_size = 1;
         } else { /* used for AUTO_INCREMENT cols - atomic return val */
-            ret_cmatch = find_column(tmatch, c->argv[6]->ptr);
-            if (ret_cmatch == -1) {
+            ret_msg = parsePrintStream(s, vals, cofsts, tmatch);
+            if (!ret_msg) {
                 addReply(c, shared.insert_ret_cname_err);
                 goto insert_commit_err;
             }
         }
     }
 
-    if (new_size) {
+    /* NOTE: createRow replaces final ")" with a NULL */
+    nrow       = createRow(c, tmatch, ncols, vals, cofsts);
+    if (!nrow) goto insert_commit_err; /* value did not match col_def */
+
+    if (matches) { /* Add to Indices */
+        for (int i = 0; i < matches; i++) {
+            addToIndex(c->db, pko, vals, cofsts, indices[i]);
+        }
+    }
+    int len    = btAdd(o, pko, nrow, pktype);
+    if (Curr_range) sdsfree(Curr_range); /* used by InSwapMode */
+    Curr_range = sdsdup(pko->ptr);       /* used by InSwapMode */
+
+    if (ret_size) {
         char buf[128];
         bt  *btr        = (bt *)o->ptr;
         ull  index_size = get_sum_all_index_size_for_table(c, tmatch);
         sprintf(buf,
               "INFO: BYTES: [ROW: %d BT-DATA: %lld BT-TOTAL: %lld INDEX: %lld]",
-                   new_size, btr->data_size, btr->malloc_size, index_size);
+                   len, btr->data_size, btr->malloc_size, index_size);
         robj *r = createStringObject(buf, strlen(buf));
         addReplyBulk(c, r);
         decrRefCount(r);
-    } else if (ret_cmatch != -1) {
-        robj *r = createColObjFromRow(nrow, ret_cmatch, pko, tmatch);
+    } else if (ret_msg) {
+        //robj *r = createColObjFromRow(nrow, cmatch, pko, tmatch);
+        robj *r = createStringObject(ret_msg, sdslen(ret_msg));
         addReplyBulk(c, r);
         decrRefCount(r);
     } else {
@@ -434,7 +501,7 @@ void insertCommitReply(redisClient *c,
     }
 
     if (c->argc > 4) { /* do not do for legacyInsert */
-        /* write back in final ")" for AOF and slaves */
+        /* write back in final ")" for AOF and slaves -> HACK */
         sds l_argv = c->argv[4]->ptr;
         l_argv[sdslen(l_argv) - 1] = ')';
     }
@@ -442,7 +509,7 @@ void insertCommitReply(redisClient *c,
 insert_commit_err:
     zfree(pk);
     decrRefCount(pko);
-    decrRefCount(nrow);
+    if (nrow) decrRefCount(nrow);
 
 }
 
@@ -596,9 +663,9 @@ void deleteCommand(redisClient *c) {
                                              &obc, &asc, &lim, &bdum, &inl);
     if (!wtype) goto del_cmd_err;
 
-    sdsfree(Curr_range);
+    if (Curr_range) sdsfree(Curr_range);
     if (wtype == SQL_RANGE_QUERY || wtype == SQL_IN_LOOKUP) {
-        if (wtype == SQL_RANGE_QUERY) Curr_range = sdsdup(range->ptr);
+        Curr_range = (wtype == SQL_RANGE_QUERY) ? sdsdup(range->ptr) : NULL;
         ideleteAction(c, range, tmatch, imatch, obc, asc, lim, inl);
     } else {
         Curr_range = sdsdup(pko->ptr);
@@ -653,13 +720,13 @@ void updateCommand(redisClient *c) {
                                              &obc, &asc, &lim, &bdum, &inl);
     if (!wtype) goto update_cmd_err;
 
-    sdsfree(Curr_range);
+    if (Curr_range) sdsfree(Curr_range);
     if (wtype == SQL_RANGE_QUERY || wtype == SQL_IN_LOOKUP) {
+        Curr_range = (wtype == SQL_RANGE_QUERY) ? sdsdup(range->ptr) : NULL;
         if (pk_up_col != -1) {
             addReply(c, shared.update_pk_range_query);
             goto update_cmd_err;
         }
-        if (wtype == SQL_RANGE_QUERY) Curr_range = sdsdup(range->ptr);
         iupdateAction(c, range, tmatch, imatch, ncols, matches, indices,
                       vals, vlens, cmiss, obc, asc, lim, inl);
     } else {

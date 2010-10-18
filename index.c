@@ -261,9 +261,10 @@ static void indexCommit(redisClient *c, char *iname, char *trgt) {
     newIndex(c, iname, tmatch, cmatch, 0);
     addReply(c, shared.ok);
 
+    /* IF table has rows - loop thru and populate index */
     robj *o   = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
     bt   *btr = (bt *)o->ptr;
-    if (btr->numkeys > 0) { /* table has rows - loop thru and populate index */
+    if (btr->numkeys > 0) {
         robj *ind  = Index[server.dbid][Num_indx[server.dbid] - 1].obj;
         robj *ibt  = lookupKey(c->db, ind);
         buildIndex(btr, btr->root, ibt->ptr, cmatch, tmatch);
@@ -292,7 +293,7 @@ void legacyIndexCommand(redisClient *c) {
 }
 
 
-void indexEmpty(redisDb *db, int inum) {
+void emptyIndex(redisDb *db, int inum) {
     robj *ind                       = Index[server.dbid][inum].obj;
     deleteKey(db, ind);
     Index[server.dbid][inum].table  = -1;
@@ -313,9 +314,13 @@ void dropIndex(redisClient *c) {
         return;
     }
 
-    indexEmpty(c->db, inum);
+    emptyIndex(c->db, inum);
     addReply(c, shared.cone);
 }
+
+
+/* RANGE_OPS RANGE_OPS RANGE_OPS RANGE_OPS RANGE_OPS RANGE_OPS RANGE_OPS */
+/* RANGE_OPS RANGE_OPS RANGE_OPS RANGE_OPS RANGE_OPS RANGE_OPS RANGE_OPS */
 
 /* TODO cleanup this fugly workaround */
 bool range_check_or_reply(redisClient *c, char *r, robj **l, robj **h) {
@@ -331,8 +336,6 @@ bool range_check_or_reply(redisClient *c, char *r, robj **l, robj **h) {
     else   addReplyBulk(c, r);                                  \
     decrRefCount(r);
 
-// INDEX_COMMANDS INDEX_COMMANDS INDEX_COMMANDS INDEX_COMMANDS INDEX_COMMANDS
-// INDEX_COMMANDS INDEX_COMMANDS INDEX_COMMANDS INDEX_COMMANDS INDEX_COMMANDS
 void iselectAction(redisClient *c,
                    robj        *rng,
                    int          tmatch,
@@ -445,6 +448,49 @@ static void addPKtoRQList(list *ll,
         IN_QUERY_LOOKUP_END                                                   \
     }
 
+void ideleteAction(redisClient *c,
+                   robj        *rng,
+                   int          tmatch,
+                   int          imatch,
+                   int          obc,
+                   bool         asc,
+                   int          lim,
+                   list        *inl) {
+    BUILD_RANGE_QUERY_LIST
+
+    MATCH_INDICES(tmatch)
+
+    if (card) {
+        if (qed) {
+            obsl_t **vector = sortOrderByToVector(ll, icol, asc);
+            for (int k = 0; k < (int)listLength(ll); k++) {
+                if (lim != -1 && k == lim) break;
+                obsl_t *ob = vector[k];
+                robj *nkey = ob->row;
+                deleteRow(c, tmatch, nkey, matches, indices);
+            }
+            sortedOrderByCleanup(vector, listLength(ll), icol, 1);
+            free(vector);
+        } else {
+            listNode  *ln;
+            listIter  *li = listGetIterator(ll, AL_START_HEAD);
+            while((ln = listNext(li)) != NULL) {
+                robj *nkey = ln->value;
+                deleteRow(c, tmatch, nkey, matches, indices);
+                decrRefCount(nkey); /* from cloneRobj in BUILD_RQ_OPERATION */
+            }
+            listReleaseIterator(li);
+        }
+    }
+
+    if (lim != -1 && (uint32)lim < card) card = lim;
+    addReplyLongLong(c, card);
+
+    listRelease(ll);
+    if (low)  decrRefCount(low);
+    if (high) decrRefCount(high);
+}
+
 void iupdateAction(redisClient *c,
                    robj        *rng,
                    int          tmatch,
@@ -485,50 +531,6 @@ void iupdateAction(redisClient *c,
                 robj *row  = btFindVal(o, nkey, pktype);
                 updateRow(c, o, nkey, row,
                           tmatch, ncols, matches, indices, vals, vlens, cmiss);
-                decrRefCount(nkey); /* from cloneRobj in BUILD_RQ_OPERATION */
-            }
-            listReleaseIterator(li);
-        }
-    }
-
-    if (lim != -1 && (uint32)lim < card) card = lim;
-    addReplyLongLong(c, card);
-
-    listRelease(ll);
-    if (low)  decrRefCount(low);
-    if (high) decrRefCount(high);
-}
-
-
-void ideleteAction(redisClient *c,
-                   robj        *rng,
-                   int          tmatch,
-                   int          imatch,
-                   int          obc,
-                   bool         asc,
-                   int          lim,
-                   list        *inl) {
-    BUILD_RANGE_QUERY_LIST
-
-    MATCH_INDICES(tmatch)
-
-    if (card) {
-        if (qed) {
-            obsl_t **vector = sortOrderByToVector(ll, icol, asc);
-            for (int k = 0; k < (int)listLength(ll); k++) {
-                if (lim != -1 && k == lim) break;
-                obsl_t *ob = vector[k];
-                robj *nkey = ob->row;
-                deleteRow(c, tmatch, nkey, matches, indices);
-            }
-            sortedOrderByCleanup(vector, listLength(ll), icol, 1);
-            free(vector);
-        } else {
-            listNode  *ln;
-            listIter  *li = listGetIterator(ll, AL_START_HEAD);
-            while((ln = listNext(li)) != NULL) {
-                robj *nkey = ln->value;
-                deleteRow(c, tmatch, nkey, matches, indices);
                 decrRefCount(nkey); /* from cloneRobj in BUILD_RQ_OPERATION */
             }
             listReleaseIterator(li);

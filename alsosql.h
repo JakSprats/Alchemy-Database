@@ -40,6 +40,7 @@ typedef struct r_ind {
 } r_ind_t;
 
 robj *cloneRobj(robj *r);
+robj *convertRobj(robj *r, int type);
 
 int find_table(char *tname);
 int find_column(int tmatch, char *column);
@@ -124,6 +125,5 @@ void insertCommitReply(redisClient *c,
                        int          indices[]);
 
 unsigned long tableEmpty(redisDb *db, int tmatch);
-void          indexEmpty(redisDb *db, int inum);
 
 #endif /*__ALSOSQL__H */ 

@@ -44,9 +44,9 @@ function init_worker() {
 }
 
 function insert_external() {
-  $CLI INSERT INTO external VALUES \(1,66,1,15000.99,"marieanne"\)
-  $CLI INSERT INTO external VALUES \(2,33,3,75000.77,"rosemarie"\)
-  $CLI INSERT INTO external VALUES \(3,11,2,55000.55,"johnathan"\)
+  $CLI INSERT INTO external VALUES \(1,66,1,15000.99,"marieanne"\) RETURN SIZE
+  $CLI INSERT INTO external VALUES \(2,33,3,75000.77,"rosemarie"\) RETURN "INSERT SUCCEEDED"
+  $CLI INSERT INTO external VALUES \(3,11,2,55000.55,"johnathan"\) RETURN "id=\$id,name=\$name,sal=\$salary"
   $CLI INSERT INTO external VALUES \(4,22,1,25000.99,"bartholemew"\)
 }
 function insert_healthplan() {
@@ -322,10 +322,11 @@ function orderbyer() {
 function in_test_cust_id() {
     echo SELECT \* FROM customer WHERE id IN "(1,2,3,4)"
     $CLI SELECT \* FROM customer WHERE id IN "(1,2,3,4)"
+    $CLI DEL LINDEX_cust_id
     $CLI LPUSH LINDEX_cust_id 4
+    $CLI LPUSH LINDEX_cust_id 2
+    $CLI LPUSH LINDEX_cust_id 1
     $CLI LPUSH LINDEX_cust_id 3
-    $CLI LPUSH LINDEX_cust_id 6
-    $CLI LPUSH LINDEX_cust_id 7
     echo SELECT \* FROM customer WHERE id IN "(LRANGE LINDEX_cust_id 0 3)"
     $CLI SELECT \* FROM customer WHERE id IN "(LRANGE LINDEX_cust_id 0 3)"
 }
