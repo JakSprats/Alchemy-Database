@@ -45,8 +45,8 @@ function init_worker() {
 
 function insert_external() {
   $CLI INSERT INTO external VALUES \(1,66,1,15000.99,"marieanne"\) RETURN SIZE
-  $CLI INSERT INTO external VALUES \(2,33,3,75000.77,"rosemarie"\) RETURN "INSERT SUCCEEDED"
-  $CLI INSERT INTO external VALUES \(3,11,2,55000.55,"johnathan"\) RETURN "id=\$id,name=\$name,sal=\$salary"
+  $CLI INSERT INTO external VALUES \(2,33,3,75000.77,"rosemarie"\)
+  $CLI INSERT INTO external VALUES \(3,11,2,55000.55,"johnathan"\)
   $CLI INSERT INTO external VALUES \(4,22,1,25000.99,"bartholemew"\)
 }
 function insert_healthplan() {

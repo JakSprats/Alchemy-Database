@@ -8,9 +8,6 @@
 #include <string.h>
 #include <strings.h>
 #include <assert.h>
-#ifndef __APPLE
-  char *strdup(char *);
-#endif
 
 #include "redis.h"
 #include "bt.h"
@@ -23,6 +20,15 @@
 
 /* Currently: BT_Iterators[2] would work UNTIL parallel joining is done, then MAX_NUM_INDICES is needed */
 static btStreamIterator BT_Iterators[MAX_NUM_INDICES]; /* avoid malloc()s */
+
+/* copy of strdup - compiles w/o warnings */
+char *_strdup(char *s) {
+    int len = strlen(s);
+    char *x = malloc(len + 1);
+    memcpy(x, s, len);
+    x[len]  = '\0';
+    return x;
+}
 
 bt_ll_n *get_new_iter_child(btIterator *iter) {
     assert(iter->num_nodes < MAX_BTREE_DEPTH);
@@ -158,7 +164,7 @@ btStreamIterator *btGetRangeIterator(robj *o,
     btStreamIterator *iter = createIterator(btr, virt, which);
 
     char *s = (char *)(((robj *)high)->ptr);
-    if      (btr->ktype == COL_TYPE_STRING) iter->x.highc = strdup(s);
+    if      (btr->ktype == COL_TYPE_STRING) iter->x.highc = _strdup(s);
     else if (btr->ktype == COL_TYPE_INT)    iter->x.high  = atoi(s);
 
     bool med; uchar sflag; unsigned int ksize;
@@ -228,7 +234,7 @@ btStreamIterator *btGetFullRangeIterator(robj *o, bool asc, bool virt) {
 
     btStreamIterator *iter = createIterator(btr, virt, 1);
     if (       btr->ktype == COL_TYPE_STRING) {
-        iter->x.highc = strdup(BtHigh.ptr);
+        iter->x.highc = _strdup(BtHigh.ptr);
     } else if (btr->ktype == COL_TYPE_INT) {
         //RL4 "GetFullRangeIterator: low: %u high: %u", BtLow.ptr, BtHigh.ptr);
         iter->x.high  = (long)BtHigh.ptr;
@@ -287,7 +293,7 @@ btIterator *btGetJoinRangeIterator(bt           *btr,
     }
     robj *hkey = high->key;
     //RL4 "hkey->ptr: %p", hkey->ptr);
-    if      (ktype == COL_TYPE_STRING) iter->highc = strdup(hkey->ptr);
+    if      (ktype == COL_TYPE_STRING) iter->highc = _strdup(hkey->ptr);
     else if (ktype == COL_TYPE_INT)    iter->high  = (int)(long)(hkey->ptr);
     return iter;
 }

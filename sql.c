@@ -19,9 +19,6 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <string.h>
 #include <strings.h>
 #include <unistd.h>
-#ifndef __APPLE
-  char *strdup(char *);
-#endif
 char *strcasestr(const char *haystack, const char *needle); /*compiler warning*/
 
 #include "sds.h"

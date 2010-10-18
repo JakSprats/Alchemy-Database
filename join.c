@@ -833,12 +833,11 @@ void joinGeneric(redisClient *c,
         }
     }
 
-    // TODO free respecting obsl_t's
-    // free strdup()s from joinAddColsFromInd()
+    /* free joinRowEntry malloc from joinAddColsFromInd() */
     bool  is_ob = (obt == Index[server.dbid][j_indxs[0]].table);
     btJoinRelease(jbtr, jind_ncols[0], is_ob, freeListOfIndRow);
 
-    // free strdup()s from joinAddColsFromInd()
+    /* free joinRowEntry malloc from joinAddColsFromInd() */
     dictEntry *de;
     for (int i = 1; i < n_ind; i++) {
         dict         *set   = rset[i]->ptr;
