@@ -363,7 +363,7 @@ static bool parseWhereClauseIN(redisClient  *c,
 
                 fakeClientPipe(c, rfc, inl, 0, addRedisCmdToINList);
 
-                freeFakeClient(rfc);
+                rsql_freeFakeClient(rfc);
                 free(rargv);
                 sdsfree(arg); /* sdsdup above */
                 return 1;

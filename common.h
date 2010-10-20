@@ -30,6 +30,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 //TODO these should be redis TYPEs no redundant defs
 #define COL_TYPE_STRING       0
 #define COL_TYPE_INT          1
+#define COL_TYPE_FLOAT        2
+#define COL_TYPE_NONE         3
 
 #define TWO_POW_7         128
 #define TWO_POW_14      16384

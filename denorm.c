@@ -173,8 +173,8 @@ void createTableAsObjectOperation(redisClient *c, bool is_ins) {
 
     fakeClientPipe(c, rfc, wfc, is_ins, addSingle);
 
-    freeFakeClient(rfc);
-    freeFakeClient(wfc);
+    rsql_freeFakeClient(rfc);
+    rsql_freeFakeClient(wfc);
     free(rargv);
     addReply(c, shared.ok);
     return;
@@ -262,7 +262,7 @@ void createTableAsObject(redisClient *c) {
                     ret = internalCreateTable(c, rfc, qcols, cmatchs, tmatch);
             }
         }
-        freeFakeClient(rfc);
+        rsql_freeFakeClient(rfc);
         if (!ret || !where || !qcols) return;
 
         createTableAsObjectOperation(c, 1);
@@ -295,7 +295,7 @@ void createTableAsObject(redisClient *c) {
         cfc->argv[1]            = c->argv[2]; /* new tablename */
 
         bool ret = internalCreateTable(c, cfc, qcols, cmatchs, tmatch);
-        freeFakeClient(cfc);
+        rsql_freeFakeClient(cfc);
         if (!ret) return;
         table_created = 1;
     } else if (o->type == REDIS_LIST) {
@@ -327,10 +327,10 @@ void createTableAsObject(redisClient *c) {
         if (!respOk(fc)) { /* most likely table already exists */
             listNode *ln = listFirst(fc->reply);
             addReply(c, ln->value);
-            freeFakeClient(fc);
+            rsql_freeFakeClient(fc);
             return;
         }
-        freeFakeClient(fc);
+        rsql_freeFakeClient(fc);
     }
 
     if (axs != -1) {
@@ -392,7 +392,7 @@ void createTableAsObject(redisClient *c) {
         addReply(c, shared.ok);
 
 cr8tbldmp_err:
-        freeFakeClient(dfc);
+        rsql_freeFakeClient(dfc);
     }
 }
 
@@ -455,5 +455,5 @@ void denormCommand(redisClient *c) {
     addReply(c, shared.ok);
     sdsfree(s_wldcrd);
     sdsfree(d_wldcrd);
-    freeFakeClient(fc);
+    rsql_freeFakeClient(fc);
 }

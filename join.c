@@ -902,7 +902,7 @@ void jstoreCommit(redisClient *c,
     if (!StorageCommands[sto].argc) { /* INSERT -> create table first */
         fc->argv[1] = cloneRobj(nname);
         if (!createTableFromJoin(c, fc, qcols, j_tbls, j_cols)) {
-            freeFakeClient(fc);
+            rsql_freeFakeClient(fc);
             return;
         }
     }
@@ -910,7 +910,7 @@ void jstoreCommit(redisClient *c,
     joinGeneric(c, fc, j_indxs, j_tbls, j_cols, n_ind, qcols, low, high, sto,
                 sub_pk, nargc, nname, obt, obc, asc, lim, inl);
 
-    freeFakeClient(fc);
+    rsql_freeFakeClient(fc);
 }
 
 // CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP

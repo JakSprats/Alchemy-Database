@@ -144,9 +144,7 @@ void dictRedisObjectDestructor(void *privdata, void *val);
   #define REDIS_JOINROW         7
   #define REDIS_APPEND_SET      8
   #define REDIS_VAL_SET         9
-  #define REDIS_FULL_SET       10
-  #define REDIS_INT            11
-  #define REDIS_GENERIC        12
+  #define REDIS_NRL_INDEX      10
 #endif
 
 typedef struct redisDb {
@@ -284,7 +282,7 @@ struct sharedObjectsStruct {
 
     *createsyntax, *dropsyntax,
     *insertsyntax,           *insertsyntax_no_into,  *insertsyntax_col_decl,
-    *insertsyntax_no_values, *insert_ret_cname_err,
+    *insertsyntax_no_values, *index_nonrel_decl_fmt,
 
     *whereclause_in_err,
     *whereclause_orderby_no_by,
@@ -459,9 +457,11 @@ unsigned int dictEncObjHash(const void *key);
 
 struct redisClient *createFakeClient(void);
 void freeFakeClient(struct redisClient *c);
+void call(redisClient *c, struct redisCommand *cmd);
 
 int rdbSaveLen(FILE *fp, unsigned int len);
 unsigned int rdbLoadLen(FILE *fp, int *isencoded);
+
 int rdbSaveStringObject(FILE *fp, robj *obj);
 robj *rdbLoadStringObject(FILE *fp);
 
@@ -522,6 +522,7 @@ typedef struct storage_command {
 
 #ifdef ALSOSQL
 struct redisClient *rsql_createFakeClient(void);
+void rsql_freeFakeClient(struct redisClient *c);
 #endif
 
 #endif

@@ -321,5 +321,5 @@ norm_err:
         decrRefCount(cdefs   [i]);
         decrRefCount(rowvals [i]);
     }
-    freeFakeClient(fc);
+    rsql_freeFakeClient(fc);
 }

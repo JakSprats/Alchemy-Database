@@ -25,6 +25,9 @@ int   rdbSaveBT(FILE *fp, robj *o);
 robj *rdbLoadBT(FILE *fp, redisDb *db);
 void  rdbLoadFinished(    redisDb *db);
 
-int buildIndex(bt *btr, bt_n *x, bt *ind, int icol, int itbl);
+int buildIndex(bt *btr, bt_n *x, bt *ind, int icol, int itbl, bool nrl);
+
+int rdbSaveNRL(FILE *fp, robj *o);
+robj *rdbLoadNRL(FILE *fp);
 
 #endif /* __ALSQSQL_RDB_H */

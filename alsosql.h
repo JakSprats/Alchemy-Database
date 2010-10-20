@@ -18,7 +18,9 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #ifndef __ALSOSQL__H
 #define __ALSOSQL__H
 
+#include "adlist.h"
 #include "redis.h"
+
 #include "common.h"
 
 typedef struct r_tbl {
@@ -31,12 +33,19 @@ typedef struct r_tbl {
     int     virt_indx; /* TODO is this still used? */
 } r_tbl_t;
 
+typedef struct dual_lists {
+    list *l1;
+    list *l2;
+    short num;
+} d_l_t;
+
 typedef struct r_ind {
     robj  *obj;
     int    table;
     int    column;
     uchar  type;
-    bool   virt;
+    bool   virt; /* virtual - i.e. on primary key */
+    bool   nrl;  /* non relational index - i.e. redis command */
 } r_ind_t;
 
 robj *cloneRobj(robj *r);
@@ -44,17 +53,18 @@ robj *convertRobj(robj *r, int type);
 
 int find_table(char *tname);
 int find_column(int tmatch, char *column);
+int find_column_n(int tmatch, char *column, int len);
 
 bool cCpyOrReply(redisClient *c, char *src, char *dest, unsigned int len);
 void createTable(redisClient *c);
 
-/* TABLE_CHECK_OR_REPLY(char *cargv1ptr) -
+/* TABLE_CHECK_OR_REPLY(char *TBL, RET) -
      creates (int tmatch) */
-#define TABLE_CHECK_OR_REPLY(cargv1ptr, retval)   \
-    int   tmatch = find_table(cargv1ptr);         \
-    if (tmatch == -1) {                           \
-        addReply(c, shared.nonexistenttable);     \
-        return retval;                            \
+#define TABLE_CHECK_OR_REPLY(TBL, RET)        \
+    int   tmatch = find_table(TBL);           \
+    if (tmatch == -1) {                       \
+        addReply(c, shared.nonexistenttable); \
+        return RET;                           \
     }
 
 /* COLUMN_CHECK_OR_REPLY(char *cargv2ptr) -

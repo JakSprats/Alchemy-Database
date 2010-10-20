@@ -19,6 +19,8 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #define __INDEX__H
 
 #include "redis.h"
+
+#include "alsosql.h"
 #include "btreepriv.h"
 #include "common.h"
 
@@ -33,13 +35,18 @@ int checkIndexedColumnOrReply(redisClient *c, char *curr_tname);
     int   indices[REDIS_DEFAULT_DBNUM];            \
     int   matches = match_index(tmatch, indices);
 
-void newIndex(redisClient *c, char *iname, int tmatch, int cmatch, bool virt);
+void newIndex(redisClient *c,
+              char        *iname,
+              int          tmatch,
+              int          cmatch,
+              bool         virt,
+              d_l_t       *nrlind);
 void createIndex(redisClient *c);
 void legacyIndexCommand(redisClient *c);
 
 void iAdd(bt *btr, robj *i_key, robj *i_val, uchar pktype);
 
-void addToIndex(  redisDb *db, robj *pko, char *vals, uint32 cofsts[], int inum);
+void addToIndex(redisDb *db, robj *pko, char *vals, uint32 cofsts[], int inum);
 void delFromIndex(redisDb *db, robj *old_pk, robj *row, int inum, int tmatch);
 void updateIndex( redisDb *db,
                   robj    *old_pk,
@@ -49,6 +56,17 @@ void updateIndex( redisDb *db,
                   int      inum,
                   uchar    pk_update,
                   int      tmatch);
+
+void freeNrlIndexObject(robj *o);
+sds genNRL_Cmd(d_l_t  *nrlind,
+               robj   *pko,
+               char   *vals,
+               uint32  cofsts[],
+               bool    from_insert,
+               robj   *row,
+               int     tmatch);
+void runCmdInFakeClient(sds s);
+sds rebuildOrigNRLcmd(robj *o);
 
 /* RANGE_CHECK_OR_REPLY(char *range, [retval]) -
      creates (robj *low, robj *high)     */

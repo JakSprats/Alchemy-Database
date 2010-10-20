@@ -123,7 +123,7 @@ int find_column(int tmatch, char *column) {
     return -1;
 }
 
-static int find_column_n(int tmatch, char *column, int len) {
+int find_column_n(int tmatch, char *column, int len) {
     if (!Tbl[server.dbid][tmatch].name) return -1;
     for (int j = 0; j < Tbl[server.dbid][tmatch].col_count; j++) {
         if (Tbl[server.dbid][tmatch].col_name[j]) {
@@ -158,6 +158,7 @@ static char *str_next_unescaped_chr(char *beg, char *s, int x) {
     }
     return NULL;
 }
+
 static char *parseRowVals(sds      vals,
                           char   **pk,
                           int     *pklen,
@@ -309,7 +310,7 @@ void createTableCommitReply(redisClient *c,
     robj *iname = createStringObject(tname, strlen(tname));
     iname->ptr  = sdscatprintf(iname->ptr, "%s%s%s%s",
                                        COLON, cnames[0], COLON, INDEX_DELIM);
-    newIndex(c, iname->ptr, Num_tbls[server.dbid], 0, 1);
+    newIndex(c, iname->ptr, Num_tbls[server.dbid], 0, 1, NULL);
     decrRefCount(iname);
     Num_tbls[server.dbid]++;
 }
@@ -372,51 +373,6 @@ void createCommand(redisClient *c) {
     server.dirty++; /* for appendonlyfile */
 }
 
-
-static sds parsePrintStream(char   *o_s,
-                            sds     vals,
-                            uint32  cofsts[MAX_COLUMN_PER_TABLE],
-                            int     tmatch) {
-    sds ret_msg = NULL;
-    char *s   = strchr(o_s, '$');
-    if (!s) {
-        ret_msg = sdsdup(o_s);
-    } else {
-        while (1) {
-            s++; /* advance past "$" */
-            char *nexto = s;
-            while (isalnum(*nexto)) nexto++; /* cname must be alpha-num */
-            char *nexts = strchr(s, '$');    /* nextvar is '$' delimed */
-
-            int cmatch = -1;
-            if (nexto) cmatch = find_column_n(tmatch, s, nexto - s);
-            else       cmatch = find_column(tmatch, s);
-            if (cmatch == -1) return NULL;
-
-            if (!ret_msg) ret_msg = sdsempty();
-            ret_msg = sdscatlen(ret_msg, o_s, (s - 1) - o_s); /* no "$" */
-            
-            char *x;
-            int   xlen;
-            if (!cmatch) {
-                x    = vals;
-                xlen = cofsts[0] - 1;
-            } else {
-                x    = vals + cofsts[cmatch - 1];
-                xlen = cofsts[cmatch] - cofsts[cmatch - 1] - 1;
-            }
-            ret_msg = sdscatlen(ret_msg, x, xlen);
-            if (!nexts) { /* no more vars */
-                if (nexto) ret_msg = sdscatlen(ret_msg, nexto, strlen(nexto));
-                break;
-            }
-            o_s = nexto;
-            s   = nexts;
-        }
-    }
-    return ret_msg;
-}
-
 void insertCommitReply(redisClient *c,
                        sds          vals,
                        int          ncols,
@@ -435,7 +391,7 @@ void insertCommitReply(redisClient *c,
     int   pktype = Tbl[server.dbid][tmatch].col_type[0];
     robj *o      = lookupKeyWrite(c->db, Tbl[server.dbid][tmatch].name);
 
-    robj *nrow = NULL; /* must come before first goto */
+    robj *nrow = NULL; /* must come before first GOTO */
     robj *pko  = createStringObject(pk, pklen);
     if (pktype == COL_TYPE_INT) {
         long l = atol(pko->ptr);
@@ -456,16 +412,7 @@ void insertCommitReply(redisClient *c,
     sds    ret_msg  = NULL;
     bool   ret_size = 0;
     if (c->argc > 6 && !strcasecmp(c->argv[5]->ptr, "RETURN")) {
-        char *s = c->argv[6]->ptr;
-        if (!strcasecmp(s, "SIZE")) {
-            ret_size = 1;
-        } else { /* used for AUTO_INCREMENT cols - atomic return val */
-            ret_msg = parsePrintStream(s, vals, cofsts, tmatch);
-            if (!ret_msg) {
-                addReply(c, shared.insert_ret_cname_err);
-                goto insert_commit_err;
-            }
-        }
+        if (!strcasecmp(c->argv[6]->ptr, "SIZE")) ret_size = 1;
     }
 
     /* NOTE: createRow replaces final ")" with a NULL */

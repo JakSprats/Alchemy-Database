@@ -130,26 +130,6 @@
 #define REDIS_CMD_FORCE_REPLICATION 8 /* Force replication even if dirty is 0 */
 
 /* Object types */
-#if 0
-#define REDIS_STRING     0
-#define REDIS_LIST       1
-#define REDIS_SET        2
-#define REDIS_ZSET       3
-#define REDIS_HASH       4
-#ifdef ALSOSQL
-  #define REDIS_BTREE      5
-  #define REDIS_ROW        6
-  #define REDIS_JOINROW    7
-#endif
-
-/* Objects encoding. Some kind of objects like Strings and Hashes can be
- * internally represented in multiple ways. The 'encoding' field of the object
- * is set to one of this fields for this object. */
-#define REDIS_ENCODING_RAW 0    /* Raw representation */
-#define REDIS_ENCODING_INT 1    /* Encoded as integer */
-#define REDIS_ENCODING_ZIPMAP 2 /* Encoded as zipmap */
-#define REDIS_ENCODING_HT 3     /* Encoded as an hash table */
-#endif
 
 static char* strencoding[] = {
     "raw", "int", "zipmap", "hashtable"
@@ -653,7 +633,6 @@ static int blockClientOnSwappedKeys(redisClient *c, struct redisCommand *cmd);
 static int dontWaitForSwappedKey(redisClient *c, robj *key);
 static void handleClientsBlockedOnSwappedKey(redisDb *db, robj *key);
 static void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask);
-static void call(redisClient *c, struct redisCommand *cmd);
 static void resetClient(redisClient *c);
 static void convertToRealHash(robj *o);
 static int pubsubUnsubscribeAllChannels(redisClient *c, int notify);
@@ -1767,7 +1746,10 @@ static void createSharedObjects(void) {
     shared.nonexistentindex = createObject(REDIS_STRING,sdsnew(
         "-ERR Index does not exist\r\n"));
     shared.badindexedcolumnsyntax = createObject(REDIS_STRING,sdsnew(
-        "-ERR Indexed Column syntax is: tablename.columname\r\n"));
+        "-ERR Indexed Column syntax is: ON tablename (columname)\r\n"));
+    shared.index_nonrel_decl_fmt = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: CREATE INDEX ind ON tbl NON_RELATIONAL_ADD_CMD [NON_RELATIONAL_DEL_CMD] - syntax for CMD: text $colmn_name text\r\n"));
+
     shared.invalidupdatestring = createObject(REDIS_STRING,sdsnew(
         "-ERR UPDATE: string error, syntax is col1=val1,col2=val2,....\r\n"));
     shared.invalidrange = createObject(REDIS_STRING,sdsnew(
@@ -1812,8 +1794,6 @@ static void createSharedObjects(void) {
         "-ERR SYNTAX: INSERT INTO tablename VALUES (vals,,,,) - Column Declaration not supported\r\n"));
     shared.insertsyntax_no_values = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: INSERT INTO tablename VALUES (vals,,,,) - \"VALUES\" keyword MISSING\r\n"));
-    shared.insert_ret_cname_err = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: INSERT INTO tablename VALUES (vals,,,,) RETURN column_name \"column_name\" not found\r\n"));
 
 
     shared.whereclause_in_err = createObject(REDIS_STRING,sdsnew(
@@ -2073,9 +2053,6 @@ static void initServer() {
     if (server.vm_enabled) vmInit();
 
 #ifdef ALSOSQL
-    bzero(&Num_tbls, sizeof(int) * MAX_NUM_DB);
-    bzero(&Num_indx, sizeof(int) * MAX_NUM_DB);
-
     StorageCommands[0].func  = lpushCommand;
     StorageCommands[0].name  = "LPUSH";
     StorageCommands[0].argc  = 1;
@@ -2162,6 +2139,9 @@ static void initServer() {
     AccessCommands[13].argc  = 2;
 
     init_six_bit_strings();
+
+    bzero(&Num_tbls, sizeof(int) * MAX_NUM_DB);
+    bzero(&Num_indx, sizeof(int) * MAX_NUM_DB);
 
     for (int i = 0; i < MAX_NUM_TABLES; i++) {
         Tbl[server.dbid][i].name = NULL;
@@ -2653,7 +2633,7 @@ static void resetClient(redisClient *c) {
 }
 
 /* Call() is the core of Redis execution of a command */
-static void call(redisClient *c, struct redisCommand *cmd) {
+void call(redisClient *c, struct redisCommand *cmd) {
     long long dirty;
 
     dirty = server.dirty;
@@ -3469,6 +3449,7 @@ void decrRefCount(void *obj) {
         case REDIS_JOINROW:    freeJoinRowObject(o);   break;
         case REDIS_APPEND_SET: freeAppendSetObject(o); break;
         case REDIS_VAL_SET:    freeValSetObject(o);    break;
+        case REDIS_NRL_INDEX:  freeNrlIndexObject(o);  break;
         default: redisPanic("Unknown object type");    break;
         }
         if (server.vm_enabled) pthread_mutex_lock(&server.obj_freelist_mutex);
@@ -4075,6 +4056,8 @@ static int rdbSaveObject(FILE *fp, robj *o) {
         }
     } else if (o->type == REDIS_BTREE) {
         if (rdbSaveBT(fp, o) == -1) return -1;
+    } else if (o->type == REDIS_NRL_INDEX) {
+        if (rdbSaveNRL(fp, o) == -1) return -1;
     } else {
         redisPanic("Unknown object type");
     }
@@ -4333,6 +4316,7 @@ static robj *rdbLoadLzfStringObject(FILE*fp) {
     if (fread(c,clen,1,fp) == 0) goto err;
     if (lzf_decompress(c,clen,val,len) == 0) goto err;
     zfree(c);
+
     return createObject(REDIS_STRING,val);
 err:
     zfree(c);
@@ -4486,6 +4470,8 @@ static robj *rdbLoadObject(int type, FILE *fp, redisDb *db) {
         }
     } else if (type == REDIS_BTREE) {
         o = rdbLoadBT(fp, db);
+    } else if (type == REDIS_NRL_INDEX) {
+        o = rdbLoadNRL(fp);
     } else {
         redisPanic("Unknown object type");
     }
@@ -5096,11 +5082,12 @@ static void typeCommand(redisClient *c) {
         }
     } else {
         switch(o->type) {
-        case REDIS_STRING: type = "+string"; break;
-        case REDIS_LIST: type = "+list"; break;
-        case REDIS_SET: type = "+set"; break;
-        case REDIS_ZSET: type = "+zset"; break;
-        case REDIS_HASH: type = "+hash"; break;
+        case REDIS_STRING:    type = "+string"; break;
+        case REDIS_LIST:      type = "+list"; break;
+        case REDIS_SET:       type = "+set"; break;
+        case REDIS_ZSET:      type = "+zset"; break;
+        case REDIS_HASH:      type = "+hash"; break;
+        case REDIS_NRL_INDEX: type = "+non-relational-index"; break;
         case REDIS_BTREE: {
            if (!o->ptr) { /* virtual index */
                type = "+index";
@@ -8876,6 +8863,13 @@ void freeFakeClient(struct redisClient *c) {
     zfree(c);
 }
 
+void rsql_freeFakeClient(struct redisClient *c) {
+    /* Discard the reply objects list from the fake client */
+    while(listLength(c->reply))
+        listDelNode(c->reply, listFirst(c->reply));
+    freeFakeClient(c);
+}
+
 /* Replay the append log file. On error REDIS_OK is returned. On non fatal
  * error (the append only file is zero-length) REDIS_ERR is returned. On
  * fatal error an error message is logged and the program exists. */
@@ -9035,23 +9029,38 @@ static int fwriteBulkLong(FILE *fp, long l) {
     return 1;
 }
 
-static bool appendOnlyDumpIndices(FILE *fp, int tmatch) {
-    sds tname  = Tbl[server.dbid][tmatch].name->ptr;
-    char cmd3[]="*3\r\n$11\r\nLEGACYINDEX\r\n";
+static bool appendOnlyDumpIndices(FILE *fp, int tmatch, int dbnum) {
+    sds tname   = Tbl[server.dbid][tmatch].name->ptr;
+    char cmd3[] = "*3\r\n$11\r\nLEGACYINDEX\r\n";
+    char cmd4[] = "*4\r\n$11\r\nLEGACYINDEX\r\n";
     MATCH_INDICES(tmatch)
     for (int i = 0; i < matches; i++) {
         int inum = indices[i];
         if (Index[server.dbid][inum].virt) continue;
-        if (!(fwrite(cmd3, sizeof(cmd3) - 1, 1, fp))) goto awerr;
-        sds s    = Index[server.dbid][inum].obj->ptr;
-        if (fwriteBulkString(fp, s, sdslen(s)) == -1) goto awerr;
-        s        = sdsnewlen(tname, sdslen(tname));
-        s        = sdscatlen(s, PERIOD, 1);
-        int icol = Index[server.dbid][inum].column;
-        sds t    = Tbl[server.dbid][tmatch].col_name[icol]->ptr;
-        s        = sdscatlen(s, t, sdslen(t));
-        if (fwriteBulkString(fp, s, sdslen(s)) == -1) goto awerr;
-        sdsfree(s);
+        if (Index[server.dbid][inum].nrl) {
+            /* TODO add in nrldel ... 5 args */
+            if (!(fwrite(cmd4, sizeof(cmd4) - 1, 1, fp))) goto awerr;
+            sds s    = Index[server.dbid][inum].obj->ptr;
+            if (fwriteBulkString(fp, s, sdslen(s)) == -1) goto awerr;
+            if (fwriteBulkString(fp, tname, sdslen(tname)) == -1) goto awerr;
+            /* REDIS_NRL_INDEX obj contains definition */
+            redisDb *db   = server.db + dbnum;
+            robj    *o    = lookupKeyRead(db, Index[dbnum][inum].obj);
+            /* rebuild orignal NRL ADD_CMD */
+            sds      orig = rebuildOrigNRLcmd(o);
+            if (fwriteBulkString(fp, orig, sdslen(orig)) == -1) goto awerr;
+        } else {
+            if (!(fwrite(cmd3, sizeof(cmd3) - 1, 1, fp))) goto awerr;
+            sds s    = Index[server.dbid][inum].obj->ptr;
+            if (fwriteBulkString(fp, s, sdslen(s)) == -1) goto awerr;
+            s        = sdsnewlen(tname, sdslen(tname));
+            s        = sdscatlen(s, PERIOD, 1);
+            int icol = Index[server.dbid][inum].column;
+            sds t    = Tbl[server.dbid][tmatch].col_name[icol]->ptr;
+            s        = sdscatlen(s, t, sdslen(t));
+            if (fwriteBulkString(fp, s, sdslen(s)) == -1) goto awerr;
+            sdsfree(s);
+        }
     }
     return 1;
 awerr:
@@ -9205,7 +9214,7 @@ static int rewriteAppendOnlyFile(char *filename) {
                 }
                 dictReleaseIterator(di);
             } else if (o->type == REDIS_ZSET) {
-                /* Emit the ZADDs needed to rebuild the sorted set */
+            /* Emit the ZADDs needed to rebuild the sorted set */
                 zset *zs = o->ptr;
                 dictIterator *di = dictGetIterator(zs->dict);
                 dictEntry *de;
@@ -9258,11 +9267,14 @@ static int rewriteAppendOnlyFile(char *filename) {
                 if (!btr) continue; /* virtual indices have NULLs */
                 if (btr->is_index == BTREE_TABLE) {
                     int tmatch = btr->num;
+                    /* First dump table definition and ALL rows */
                     if (!appendOnlyDumpTable(fp, o, btr, tmatch)) goto werr;
-
-                    /* Dump ALL Table's Index definitions */
-                    if (!appendOnlyDumpIndices(fp, tmatch)) goto werr;
+    
+                    /* then dump Table's Index definitions */
+                    if (!appendOnlyDumpIndices(fp, tmatch, j)) goto werr;
                 }
+            } else if (o->type == REDIS_NRL_INDEX) {
+                continue; /* REDIS_NRL_INDEX dumped in appendOnlyDumpIndices */
             } else {
                 redisPanic("Unknown object type");
             }

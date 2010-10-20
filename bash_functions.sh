@@ -685,6 +685,20 @@ function secondary_many_range_query_test() {
   done
 }
 
+function non_rel_index_test() {
+  $CLI CREATE TABLE nrl \(id int primary key, state int, message TEXT\)
+  $CLI CREATE INDEX nrl:pub:index ON nrl "PUBLISH NRL:\$state message=\$message -END"
+  $CLI CREATE INDEX nrl:zadd:index ON nrl "ZADD Z_NRL \$state \$id"
+  $CLI CREATE TABLE T_NRL \(id int primary key, message TEXT\)
+  $CLI CREATE INDEX nrl:insert:index ON nrl "INSERT INTO T_NRL VALUES (\$id,\$message)"
+
+  $CLI INSERT INTO nrl VALUES "(1,1,hi state 1)"
+  $CLI INSERT INTO nrl VALUES "(2,1,state 1 is great)"
+  $CLI INSERT INTO nrl VALUES "(3,2,lets not forget state 2)"
+  $CLI INSERT INTO nrl VALUES "(4,2,state 2 rocks)"
+  $CLI SELECT \* FROM nrl WHERE id in "(ZREVRANGE Z_NRL 0 -1)"
+}
+
 function istorer() {
   istore_worker_name_list
   istore_customer_hobby_denorm_to_many_lists
@@ -725,6 +739,8 @@ function all_tests() {
 
   orderbyer
   in_tester
+
+  non_rel_index_test
 
   test_fk_joins
 

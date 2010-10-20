@@ -22,7 +22,7 @@
 static btStreamIterator BT_Iterators[MAX_NUM_INDICES]; /* avoid malloc()s */
 
 /* copy of strdup - compiles w/o warnings */
-char *_strdup(char *s) {
+static inline char *_strdup(char *s) {
     int len = strlen(s);
     char *x = malloc(len + 1);
     memcpy(x, s, len);

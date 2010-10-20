@@ -244,6 +244,7 @@ bool createTableFromJoin(redisClient *c,
 }
 
 bool performStoreCmdOrReply(redisClient *c, redisClient *fc, int sto) {
+    /* TODO in terms of aof-logging, smarter to do a "call(fc, cmd);"  */
     (*StorageCommands[sto].func)(fc);
     if (!respNotErr(fc)) {
         listNode *ln = listFirst(fc->reply);
@@ -420,7 +421,7 @@ void istoreCommit(redisClient *c,
     if (!StorageCommands[sto].argc) { // create table first if needed
         fc->argv[1] = cloneRobj(nname);
         if (!internalCreateTable(c, fc, qcols, cmatchs, tmatch)) {
-            freeFakeClient(fc);
+            rsql_freeFakeClient(fc);
             addReply(c, shared.istorecommit_err); /* TODO get err from fc */
             return;
         }
@@ -479,7 +480,7 @@ istore_err:
     if (ll)   listRelease(ll);
     if (low)  decrRefCount(low);
     if (high) decrRefCount(high);
-    freeFakeClient(fc);
+    rsql_freeFakeClient(fc);
 
     if (err) addReply(c, shared.istorecommit_err);
     else {
