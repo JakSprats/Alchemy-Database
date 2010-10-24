@@ -1540,7 +1540,7 @@ static int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientD
             listLength(server.clients)-listLength(server.slaves),
             listLength(server.slaves),
             zmalloc_used_memory());
-//RL4 "%zu bytes in use", zmalloc_used_memory());
+        //RL4 "%zu bytes in use", zmalloc_used_memory());
     }
 
     /* Close connections of timedout clients */

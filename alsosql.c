@@ -409,7 +409,6 @@ void insertCommitReply(redisClient *c,
         goto insert_commit_err;
     }
 
-    sds    ret_msg  = NULL;
     bool   ret_size = 0;
     if (c->argc > 6 && !strcasecmp(c->argv[5]->ptr, "RETURN")) {
         if (!strcasecmp(c->argv[6]->ptr, "SIZE")) ret_size = 1;
@@ -436,11 +435,6 @@ void insertCommitReply(redisClient *c,
               "INFO: BYTES: [ROW: %d BT-DATA: %lld BT-TOTAL: %lld INDEX: %lld]",
                    len, btr->data_size, btr->malloc_size, index_size);
         robj *r = createStringObject(buf, strlen(buf));
-        addReplyBulk(c, r);
-        decrRefCount(r);
-    } else if (ret_msg) {
-        //robj *r = createColObjFromRow(nrow, cmatch, pko, tmatch);
-        robj *r = createStringObject(ret_msg, sdslen(ret_msg));
         addReplyBulk(c, r);
         decrRefCount(r);
     } else {
@@ -497,6 +491,9 @@ static void selectReply(redisClient  *c,
         return;
     }
 
+    robj *lenobj = createStringObject("*1\r\n", 4);
+    addReply(c, lenobj);
+    decrRefCount(lenobj);
     robj *r = outputRow(row, qcols, cmatchs, pko, tmatch, 0);
     addReplyBulk(c, r);
     decrRefCount(r);

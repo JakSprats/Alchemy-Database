@@ -396,18 +396,17 @@ uchar checkSQLWhereClauseReply(redisClient  *c,
     CHECK_WHERE_CLAUSE_REPLY(*pargn, 0, sop)
     PARGN_OVERFLOW()
 
-    bool got_eq = 0;
-    sds  token  = c->argv[*pargn]->ptr;
-    sds  eq     = strchr(token, CEQUALS); /* pk=X */
+    bool got_eq     = 0;
+    sds  token      = c->argv[*pargn]->ptr;
+    sds  eq         = strchr(token, CEQUALS); /* pk=X */
+    int  tok_cmatch = -1;
     if (eq) {
+        tok_cmatch  = find_column_n(tmatch, token, eq - token - 1);
         if (token[sdslen(token) - 1] == CEQUALS) {
             token[sdslen(token) - 1] = '\0';
             got_eq = 1;
         } else { // pk=X
-            if (cmatch) {
-                *eq     = '\0';
-                *cmatch = find_column(tmatch, token);
-            }
+            if (cmatch)     *cmatch = tok_cmatch;
             if (just_parse) return SQL_SINGLE_LOOKUP;
             *key = createStringObject(eq + 1, sdslen(token) - (eq - token) - 1);
             return SQL_SINGLE_LOOKUP;
@@ -415,7 +414,6 @@ uchar checkSQLWhereClauseReply(redisClient  *c,
     }
 
     bool  is_fk       = 0;
-    int   tok_cmatch  = find_column(tmatch, token);
     int   im          = find_index( tmatch, tok_cmatch); 
     char *pk_col_name = Tbl[server.dbid][tmatch].col_name[0]->ptr;
     if (imatch) *imatch = im;
