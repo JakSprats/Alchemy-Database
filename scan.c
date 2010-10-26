@@ -177,7 +177,7 @@ void tscanCommand(redisClient *c) {
     if (!no_w_c) {
         parseWCAddtlSQL(c, &argn, &obc, &store, SQL_SELECT,
                         &asc, &lim, tmatch, 0);
-        if (obc != -1) no_w_c = 1; /* ORDER BY w/o WHERE CLAUSE */
+        if (obc != -1) no_w_c = 1; /* ORDER BY or STORE w/o WHERE CLAUSE */
     }
 
     int    imatch = -1;

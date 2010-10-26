@@ -11470,7 +11470,6 @@ static void *getMcontextEip(ucontext_t *uc) {
 }
 
 static void segvHandler(int sig, siginfo_t *info, void *secret) {
-    exit(0);
     void *trace[100];
     char **messages = NULL;
     int i, trace_size = 0;

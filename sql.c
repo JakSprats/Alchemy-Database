@@ -411,10 +411,12 @@ uchar checkSQLWhereClauseReply(redisClient  *c,
             *key = createStringObject(eq + 1, sdslen(token) - (eq - token) - 1);
             return SQL_SINGLE_LOOKUP;
         }
+    } else {
+        tok_cmatch  = find_column(tmatch, token);
     }
 
     bool  is_fk       = 0;
-    int   im          = find_index( tmatch, tok_cmatch); 
+    int   im          = find_index(tmatch, tok_cmatch); 
     char *pk_col_name = Tbl[server.dbid][tmatch].col_name[0]->ptr;
     if (imatch) *imatch = im;
     if (strcasecmp(token, pk_col_name)) { /* not PK */
@@ -495,10 +497,14 @@ static uchar checkSQLWhereJoinReply(redisClient  *c,
     if (eq) {
         *jind1 = createStringObject(token, (eq - token));
         if (token[sdslen(token) - 1] == CEQUALS) {
-            token[sdslen(token) - 1] = '\0';
+            token[sdslen(token) - 1] = '\0'; /* TODO this must go */
             sdsupdatelen(token);
             got_eq = 1;
-        } else { // pk=X
+        } else { // "pk=X"
+            if (!isalnum(*(eq + 1))) { /* sanity check - protocol abuse */ 
+                addReply(c, shared.selectsyntax);
+                return 0;
+            }
             int len = sdslen(token) - (eq - token) - 1;
             *jind2  = createStringObject(eq + 1, len);
             return 1;
@@ -515,11 +521,11 @@ static uchar checkSQLWhereJoinReply(redisClient  *c,
         if (token[0] == CEQUALS) {
             if (sdslen(token) == 1) {
                 PARGN_OVERFLOW()
-                token = c->argv[*pargn]->ptr;
+                token  = c->argv[*pargn]->ptr;
                 *jind2 = createStringObject(token, sdslen(token));
             } else {
                 char *k = token + 1;
-                *jind2 = createStringObject(k, sdslen(token) - 1);
+                *jind2  = createStringObject(k, sdslen(token) - 1);
             }
         } else {
             if (!strcasecmp(token, "IN")) {
@@ -594,11 +600,14 @@ bool joinParseReply(redisClient  *c,
     CHECK_WHERE_CLAUSE_REPLY(argn,0,sop)
     ARGN_OVERFLOW(0)
 
-    sds    icl     = sdsempty();
-    uchar  wtype   = 0;
-    robj  *jind1   = NULL, *jind2 = NULL;
+    sds    icl   = sdsempty();
+    uchar  wtype = 0;
+    robj  *jind1 = NULL;
+    robj  *jind2 = NULL;
     while (argn < c->argc) {
         bool fin = 0;
+        jind1    = NULL;
+        jind2    = NULL;
         wtype    = checkSQLWhereJoinReply(c, &jind1, &jind2, rng, &argn, inl);
         if (wtype) {
             sds jp1       = jind1 ? jind1->ptr : NULL;
@@ -606,7 +615,7 @@ bool joinParseReply(redisClient  *c,
             sds cnvrt_rng = 0;
             if (jind1 && !strchr(jp1, CPERIOD)) cnvrt_rng = jp1;
             if (jind2 && !strchr(jp2, CPERIOD)) cnvrt_rng = jp2;
-            if (cnvrt_rng) {
+            if (cnvrt_rng) { /* TODO this has to go, replace w/ flags */
                 if (rng) {
                     addReply(c, shared.join_on_multi_col);
                     goto join_cmd_err;
