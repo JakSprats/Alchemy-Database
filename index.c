@@ -569,6 +569,10 @@ void dropIndex(redisClient *c) {
     char *iname  = c->argv[2]->ptr;
     int   inum   = match_index_name(iname);
 
+    if (inum == -1) {
+        addReply(c, shared.nullbulk);
+        return;
+    }
     if (Index[server.dbid][inum].virt) {
         addReply(c, shared.drop_virtual_index);
         return;
