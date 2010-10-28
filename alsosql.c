@@ -196,12 +196,17 @@ static char *parseRowVals(sds      vals,
 int parseColListOrReply(redisClient   *c,
                         int            tmatch,
                         char          *clist,
-                        int            cmatchs[]) {
+                        int            cmatchs[],
+                        bool          *cntstr) {
     if (*clist == '*') {
         for (int i = 0; i < Tbl[server.dbid][tmatch].col_count; i++) {
             cmatchs[i] = i;
         }
         return Tbl[server.dbid][tmatch].col_count;
+    }
+    if (!strcasecmp(clist, "COUNT(*)")) {
+        *cntstr = 1;
+        return 1;
     }
 
     int   qcols  = 0;
@@ -503,21 +508,24 @@ void parseSelectColumnList(redisClient *c, sds *clist, int *argn) {
     for (; *argn < c->argc; *argn = *argn + 1) {
         sds y = c->argv[*argn]->ptr;
         if (!strcasecmp(y, "FROM")) break;
-
-        if (*y == CCOMMA) {
-             if (sdslen(y) == 1) continue;
-             y++;
-        }
-        char *nextc = y;
-        while ((nextc = strrchr(nextc, CCOMMA))) {
-            nextc++;
-            if (sdslen(*clist)) *clist  = sdscatlen(*clist, COMMA, 1);
-            *clist  = sdscatlen(*clist, y, nextc - y - 1);
-            y      = nextc;
-        }
-        if (*y) {
-            if (sdslen(*clist)) *clist  = sdscatlen(*clist, COMMA, 1);
+        if (!strcasecmp(y, "COUNT(*)")) {
             *clist  = sdscat(*clist, y);
+        } else {
+            if (*y == CCOMMA) {
+                if (sdslen(y) == 1) continue;
+                y++;
+            }
+            char *nextc = y;
+            while ((nextc = strrchr(nextc, CCOMMA))) {
+                nextc++;
+                if (sdslen(*clist)) *clist  = sdscatlen(*clist, COMMA, 1);
+                *clist  = sdscatlen(*clist, y, nextc - y - 1);
+                y      = nextc;
+            }
+            if (*y) {
+                if (sdslen(*clist)) *clist  = sdscatlen(*clist, COMMA, 1);
+                *clist  = sdscat(*clist, y);
+            }
         }
     }
 }
@@ -542,7 +550,8 @@ void selectRedisqlCommand(redisClient *c) {
     ARGN_OVERFLOW()
     sds  tbl_list = c->argv[argn]->ptr;
 
-    if (strchr(clist, '.')) {
+    if (strchr(tbl_list, ',') ||
+        strchr(clist,    '.')) { /* TODO: misses COUNT(*) FROM "tbl1 , tbl2" */
         joinReply(c, clist, argn);
     } else {
         TABLE_CHECK_OR_REPLY(tbl_list,);
@@ -570,8 +579,9 @@ void selectRedisqlCommand(redisClient *c) {
         } else if (wtype == SQL_RANGE_QUERY || wtype == SQL_IN_LOOKUP) {
             iselectAction(c, range, tmatch, imatch, clist, obc, asc, lim, inl);
         } else {
-            int cmatchs[MAX_COLUMN_PER_TABLE];
-            int qcols = parseColListOrReply(c, tmatch, clist, cmatchs);
+            int  cmatchs[MAX_COLUMN_PER_TABLE];
+            bool bdum;
+            int  qcols = parseColListOrReply(c, tmatch, clist, cmatchs, &bdum);
             if (!qcols) goto sel_cmd_err;
     
             robj *o = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);

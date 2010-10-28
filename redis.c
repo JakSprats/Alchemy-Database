@@ -9030,7 +9030,7 @@ static int fwriteBulkLong(FILE *fp, long l) {
 }
 
 static bool appendOnlyDumpIndices(FILE *fp, int tmatch, int dbnum) {
-    sds tname   = Tbl[server.dbid][tmatch].name->ptr;
+    sds  tname  = Tbl[server.dbid][tmatch].name->ptr;
     char cmd3[] = "*3\r\n$11\r\nLEGACYINDEX\r\n";
     char cmd4[] = "*4\r\n$11\r\nLEGACYINDEX\r\n";
     MATCH_INDICES(tmatch)
@@ -9087,9 +9087,10 @@ static bool appendOnlyDumpTable(FILE *fp, robj *o, bt *btr, int tmatch) {
 
     /* Dump Table DATA */
     if (btr->numkeys) {
-        char cmd2[]="*3\r\n$12\r\nLEGACYINSERT\r\n";
         int  cmatchs[MAX_COLUMN_PER_TABLE];
-        int  qcols = parseColListOrReply(NULL, tmatch, "*", cmatchs);
+        bool bdum;
+        char cmd2[] = "*3\r\n$12\r\nLEGACYINSERT\r\n";
+        int  qcols = parseColListOrReply(NULL, tmatch, "*", cmatchs, &bdum);
 
         btEntry          *be;
         btStreamIterator *bi = btGetFullRangeIterator(o, 0, 1);

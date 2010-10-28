@@ -594,11 +594,13 @@ bool range_check_or_reply(redisClient *c, char *r, robj **l, robj **h) {
     return 1;
 }
 
-#define ISELECT_OPERATION(Q)                                    \
-    robj *r = outputRow(row, qcols, cmatchs, key, tmatch, 0);   \
-    if (Q) addORowToRQList(ll, r, row, obc, key, tmatch, icol); \
-    else   addReplyBulk(c, r);                                  \
-    decrRefCount(r);
+#define ISELECT_OPERATION(Q)                                        \
+    if (!cntstr) {                                                  \
+        robj *r = outputRow(row, qcols, cmatchs, key, tmatch, 0);   \
+        if (Q) addORowToRQList(ll, r, row, obc, key, tmatch, icol); \
+        else   addReplyBulk(c, r);                                  \
+        decrRefCount(r);                                            \
+    }
 
 void iselectAction(redisClient *c,
                    robj        *rng,
@@ -609,8 +611,9 @@ void iselectAction(redisClient *c,
                    bool         asc,
                    int          lim,
                    list        *inl) {
-    int cmatchs[MAX_COLUMN_PER_TABLE];
-    int   qcols = parseColListOrReply(c, tmatch, col_list, cmatchs);
+    int  cmatchs[MAX_COLUMN_PER_TABLE];
+    bool cntstr  = 0;
+    int  qcols = parseColListOrReply(c, tmatch, col_list, cmatchs, &cntstr);
     if (!qcols) {
         addReply(c, shared.nullbulk);
         return;
@@ -661,7 +664,11 @@ void iselectAction(redisClient *c,
     if (high) decrRefCount(high);
 
     if (lim != -1 && (uint32)lim < card) card = lim;
-    lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
+    if (cntstr) {
+        lenobj->ptr = sdscatprintf(sdsempty(), ":%lu\r\n", card);
+    } else {
+        lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
+    }
 }
 
 static void addPKtoRQList(list *ll,
@@ -854,10 +861,11 @@ void dumpCommand(redisClient *c) {
     TABLE_CHECK_OR_REPLY(c->argv[1]->ptr,)
     robj *o = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
 
-    bt *btr = (bt *)o->ptr;
     int   cmatchs[MAX_COLUMN_PER_TABLE];
-    int   qcols = parseColListOrReply(c, tmatch, "*", cmatchs);
-    char *tname = Tbl[server.dbid][tmatch].name->ptr;
+    bool  bdum;
+    bt   *btr    = (bt *)o->ptr;
+    int   qcols  = parseColListOrReply(c, tmatch, "*", cmatchs, &bdum);
+    char *tname  = Tbl[server.dbid][tmatch].name->ptr;
 
     LEN_OBJ
 

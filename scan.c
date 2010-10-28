@@ -78,7 +78,8 @@ static void condSelectReply(redisClient   *c,
                             int            obc,
                             bool           icol,
                             list          *ll,
-                            list          *inl) {
+                            list          *inl,
+                            bool           cntstr) {
     char *s;
     robj *cr = NULL;
     if (!cmatch) {
@@ -113,13 +114,15 @@ static void condSelectReply(redisClient   *c,
     }
 
     if (hit) {
-        robj *row = btFindVal(o, key, Tbl[server.dbid][tmatch].col_type[0]);
-        robj *r   = outputRow(row, qcols, cmatchs, key, tmatch, 0);
-        if (obc != -1) {
-            addORowToRQList(ll, r, row, obc, key, tmatch, icol);
-        } else {
-            addReplyBulk(c, r);
-            decrRefCount(r);
+        if (!cntstr) {
+            robj *row = btFindVal(o, key, Tbl[server.dbid][tmatch].col_type[0]);
+            robj *r   = outputRow(row, qcols, cmatchs, key, tmatch, 0);
+            if (obc != -1) {
+                addORowToRQList(ll, r, row, obc, key, tmatch, icol);
+            } else {
+                addReplyBulk(c, r);
+                decrRefCount(r);
+            }
         }
         *card = *card + 1;
     }
@@ -183,8 +186,9 @@ void tscanCommand(redisClient *c) {
     int    imatch = -1;
     int    cmatch = -1;
 
-    int cmatchs[MAX_COLUMN_PER_TABLE];
-    int qcols = parseColListOrReply(c, tmatch, clist, cmatchs);
+    int  cmatchs[MAX_COLUMN_PER_TABLE];
+    bool cntstr = 0;
+    int  qcols = parseColListOrReply(c, tmatch, clist, cmatchs, &cntstr);
     if (!qcols) goto tscan_cmd_err;
 
     if (!no_w_c && obc == -1) {
@@ -218,8 +222,8 @@ void tscanCommand(redisClient *c) {
     while ((be = btRangeNext(bi, 0)) != NULL) {      // iterate btree
         robj *key = be->key;
         robj *row = be->val;
-        condSelectReply(c, o, key, row, tmatch, cmatch, qcols, cmatchs,
-                        rq_low, rq_high, &card, no_w_c, obc, icol, ll, inl);
+        condSelectReply(c, o, key, row, tmatch, cmatch, qcols, cmatchs, rq_low,
+                        rq_high, &card, no_w_c, obc, icol, ll, inl, cntstr);
     }
     btReleaseRangeIterator(bi);
 
@@ -235,7 +239,11 @@ void tscanCommand(redisClient *c) {
     }
 
     if (lim != -1 && (uint32)lim < card) card = lim;
-    lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
+    if (cntstr) {
+        lenobj->ptr = sdscatprintf(sdsempty(), ":%lu\r\n", card);
+    } else {
+        lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
+    }
 
 tscan_cmd_err:
     if (rq) {

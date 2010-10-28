@@ -99,13 +99,18 @@ static robj *createValSetObject(void) {
 // HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS
 // HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS
 int multiColCheckOrReply(redisClient *c,
-                         char        *col_list,
+                         char        *clist,
                          int          j_tbls[],
-                         int          j_cols[]) {
+                         int          j_cols[],
+                         bool        *cntstr) {
+    if (!strcasecmp(clist, "COUNT(*)")) {
+        *cntstr = 1;
+        return 1;
+    }
     int qcols = 0;
     while (1) {
-        char *nextc = strchr(col_list, CCOMMA);
-        char *nextp = strchr(col_list, CPERIOD);
+        char *nextc = strchr(clist, CCOMMA);
+        char *nextp = strchr(clist, CPERIOD);
         if (nextp) {
             *nextp = '\0';
             nextp++;
@@ -117,7 +122,7 @@ int multiColCheckOrReply(redisClient *c,
             *nextc = '\0';
             nextc++;
         }
-        int tmatch       = find_table(col_list);
+        int tmatch = find_table(clist);
         if (tmatch == -1) {
             addReply(c, shared.nonexistenttable);
             return 0;
@@ -135,7 +140,7 @@ int multiColCheckOrReply(redisClient *c,
             qcols++;
         }
         if (!nextc) break;
-        col_list = nextc;
+        clist = nextc;
     }
     return qcols;
 }
@@ -238,6 +243,7 @@ typedef struct jrow_reply {
     int           obc;
     list         *ll;
     bool          icol;
+    bool          cntstr;
 } jrow_reply_t;
 
 static void addJoinOutputRowToList(jrow_reply_t *r, void *resp) {
@@ -328,7 +334,7 @@ static bool jRowReply(jrow_reply_t *r, int lvl) {
                 r->fc->argv[1] = cloneRobj(r->nname);
                 r->fc->argv[2] = resp;
                 if (!performStoreCmdOrReply(r->c, r->fc, r->sto)) return 0;
-            } else {
+            } else if (!r->cntstr) {
                 addReplyBulk(r->c, resp);
                 decrRefCount(resp);
             }
@@ -558,7 +564,7 @@ static void sortJoinOrderByAndReply(redisClient        *c,
                 b->j.fc->argv[2] = ob->row;
                 if (!performStoreCmdOrReply(b->j.c, b->j.fc, b->j.sto)) return;
             }
-        } else {
+        } else if (!b->j.cntstr) {
             addReplyBulk(c, ob->row);
             decrRefCount(ob->row);
         }
@@ -630,7 +636,8 @@ void joinGeneric(redisClient *c,
                  int          obc,
                  bool         asc,
                  int          lim,
-                 list        *inl) {
+                 list        *inl,
+                 bool         cntstr) {
     Order_by         = (obt != -1);
     Order_by_col_val = NULL;
 
@@ -794,6 +801,7 @@ void joinGeneric(redisClient *c,
         bjr.j_indxs       = j_indxs;
         bjr.j.ll          = ll;
         bjr.j.icol        = icol;
+        bjr.j.cntstr      = cntstr;
 
         joinRowEntry *be;
         btIterator   *bi = btGetJoinFullRangeIterator(jbtr, pktype);
@@ -858,6 +866,8 @@ void joinGeneric(redisClient *c,
     if (lim != -1) card = lim;
     if (sto != -1) {
         addReplyLongLong(c, card);
+    } else if (cntstr) {
+        lenobj->ptr = sdscatprintf(sdsempty(), ":%lu\r\n", card);
     } else {
         lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
     }
@@ -908,7 +918,7 @@ void jstoreCommit(redisClient *c,
     }
 
     joinGeneric(c, fc, j_indxs, j_tbls, j_cols, n_ind, qcols, low, high, sto,
-                sub_pk, nargc, nname, obt, obc, asc, lim, inl);
+                sub_pk, nargc, nname, obt, obc, asc, lim, inl, 0);
 
     rsql_freeFakeClient(fc);
 }
@@ -928,28 +938,3 @@ void freeValSetObject(robj *o) {
     //RL4 "freeValSetObject: %p", o->ptr);
     dictRelease((dict*) o->ptr);
 }
-
-#if 0
-/* LEGACY CODE - the ROOTS */
-void legacyJoinCommand(redisClient *c) {
-    int j_indxs[MAX_JOIN_INDXS];
-    int j_tbls [MAX_JOIN_INDXS];
-    int j_cols [MAX_JOIN_INDXS];
-    int n_ind = parseIndexedColumnListOrReply(c, c->argv[1]->ptr, j_indxs);
-    if (!n_ind) {
-        addReply(c, shared.joinindexedcolumnlisterror);
-        return;
-    }
-    int qcols = multiColCheckOrReply(c, c->argv[2]->ptr, j_tbls, j_cols);
-    if (!qcols) {
-        addReply(c, shared.joincolumnlisterror);
-        return;
-    }
-    RANGE_CHECK_OR_REPLY(c->argv[3]->ptr,)
-
-    joinGeneric(c, NULL, j_indxs, j_tbls, j_cols, n_ind, qcols, low, high,
-                -1, 0, 0, NULL, /* STORE args */
-                -1, -1, 1, -1,  /* ORDER BY args */
-                NULL);          /* IN() args */
-}
-#endif

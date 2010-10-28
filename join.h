@@ -28,9 +28,10 @@ void freeAppendSetObject(robj *o);
 void freeValSetObject(robj *o);
 
 int multiColCheckOrReply(redisClient *c,
-                         char        *col_list,
+                         char        *clist,
                          int          j_tbls[],
-                         int          j_cols[]);
+                         int          j_cols[],
+                         bool        *cntstr);
 
 int parseIndexedColumnListOrReply(redisClient *c, char *ilist, int j_indxs[]);
 
@@ -51,7 +52,8 @@ void joinGeneric(redisClient *c,
                  int          obc,
                  bool         asc,
                  int          lim,
-                 list        *inl);
+                 list        *inl,
+                 bool         cntstr);
 
 
 void jstoreCommit(redisClient *c,

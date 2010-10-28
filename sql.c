@@ -47,9 +47,10 @@ extern char *COMMA;
 extern char *STORE;
 
 extern int      Num_tbls[MAX_NUM_DB];
-extern r_tbl_t  Tbl[MAX_NUM_DB][MAX_NUM_TABLES];
+extern r_tbl_t  Tbl     [MAX_NUM_DB][MAX_NUM_TABLES];
+extern r_ind_t  Index   [MAX_NUM_DB][MAX_NUM_INDICES];
 extern stor_cmd StorageCommands[];
-extern stor_cmd  AccessCommands[];
+extern stor_cmd AccessCommands[];
 
 char   *Col_keywords_to_ignore[] = {"PRIMARY", "CONSTRAINT", "UNIQUE",
                                     "KEY", "FOREIGN" };
@@ -572,10 +573,11 @@ bool joinParseReply(redisClient  *c,
                     int          *obc,
                     bool         *asc,
                     int          *lim,
-                    list        **inl) {
+                    list        **inl,
+                    bool         *cntstr) {
     bool  ret = 0;
     uchar sop = 0;
-    *qcols    = multiColCheckOrReply(c, clist, j_tbls, j_cols);
+    *qcols      = multiColCheckOrReply(c, clist, j_tbls, j_cols, cntstr);
     if (!*qcols) return 0;
 
     for (; argn < c->argc; argn++) {
@@ -723,24 +725,25 @@ void joinReply(redisClient *c, sds clist, int argn) {
     int   j_tbls [MAX_JOIN_INDXS];
     int   j_cols [MAX_JOIN_INDXS];
     int   n_ind, qcols, sto;
-    int   obt   = -1;   /* ORDER BY tbl */
-    int   obc   = -1;   /* ORDER BY col */
-    bool  asc   = 1;
-    int   lim   = -1;
-    robj *rng   = NULL; /* BETWEEN range */
-    robj *nname = NULL; /* NewName - jstore */
-    list *inl   = NULL; /* IN() list */
+    int   obt    = -1;   /* ORDER BY tbl */
+    int   obc    = -1;   /* ORDER BY col */
+    bool  asc    = 1;
+    int   lim    = -1;
+    robj *rng    = NULL; /* BETWEEN range */
+    robj *nname  = NULL; /* NewName - jstore */
+    list *inl    = NULL; /* IN() list */
+    bool  cntstr = 0;
 
     bool ret = joinParseReply(c, clist, argn, j_indxs, j_tbls, j_cols,
                               &qcols, &sto, &nname, &rng, &n_ind,
-                              &obt, &obc, &asc, &lim, &inl);
-
-    char *range = rng ? rng->ptr : NULL;
-    robj *low   = NULL;
-    robj *high  = NULL;
-    if (range && !range_check_or_reply(c, range, &low, &high)) return;
+                              &obt, &obc, &asc, &lim, &inl, &cntstr);
 
     if (ret) {
+        char *range = rng ? rng->ptr : NULL;
+        robj *low   = NULL;
+        robj *high  = NULL;
+        if (range && !range_check_or_reply(c, range, &low, &high)) return;
+
         if (nname) {
             jstoreCommit(c, sto, low, high, nname,
                          j_indxs, j_tbls, j_cols, n_ind, qcols,
@@ -751,13 +754,21 @@ void joinReply(redisClient *c, sds clist, int argn) {
             sdsfree(c->argv[c->argc - 1]->ptr);
             c->argv[c->argc - 1]->ptr = l_argv;
         } else {
+            if (cntstr) { /* get PK per column for "COUNT(*)" */
+               qcols = 0;
+               for (int i = 0; i < n_ind; i++) {
+                   j_tbls[i] = Index[server.dbid][j_indxs[i]].table;
+                   j_cols[i] = 0; /* PK */
+                   qcols++;
+               }
+            }
             joinGeneric(c, NULL, j_indxs, j_tbls, j_cols, n_ind, qcols,
                         low, high, -1, 0 , 0, NULL,
-                        obt, obc, asc, lim, inl);
+                        obt, obc, asc, lim, inl, cntstr);
         }
+        if (low)  decrRefCount(low);
+        if (high) decrRefCount(high);
     }
-    if (low)  decrRefCount(low);
-    if (high) decrRefCount(high);
     if (inl)  listRelease(inl);
     if (rng)  decrRefCount(rng);
 }

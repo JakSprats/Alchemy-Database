@@ -80,7 +80,8 @@ void createTable(redisClient *c);
 int parseColListOrReply(redisClient   *c,
                         int            tmatch,
                         char          *clist,
-                        int            cmatchs[]);
+                        int            cmatchs[],
+                        bool          *cntstr);
 
 #define ASSIGN_UPDATE_HITS_AND_MISSES               \
     unsigned char  cmiss[MAX_COLUMN_PER_TABLE];     \

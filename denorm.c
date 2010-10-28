@@ -238,15 +238,16 @@ void createTableAsObject(redisClient *c) {
             /* check WHERE clause for syntax */
             where = joinParseReply(c, clist, argn, j_indxs, j_tbls, j_cols,
                                    &qcols, &idum, &nname, &range, &idum,
-                                   &idum, &idum, &bdum, &idum, &inl);
+                                   &idum, &idum, &bdum, &idum, &inl, &bdum);
             if (inl)   listRelease(inl);
             if (range) decrRefCount(range);
             if (where && qcols)
                 ret = createTableFromJoin(c, rfc, qcols, j_tbls, j_cols);
         } else {
             TABLE_CHECK_OR_REPLY(c->argv[argn]->ptr,);
-            int cmatchs[MAX_COLUMN_PER_TABLE];
-            qcols = parseColListOrReply(c, tmatch, clist, cmatchs);
+            int  cmatchs[MAX_COLUMN_PER_TABLE];
+            bool bdum;
+            qcols = parseColListOrReply(c, tmatch, clist, cmatchs, &bdum);
             if (qcols) { /* check WHERE clause for syntax */
                 bool  bdum;
                 int   obc = -1; /* ORDER BY col */
@@ -286,8 +287,9 @@ void createTableAsObject(redisClient *c) {
             return;
         }
         TABLE_CHECK_OR_REPLY(c->argv[5]->ptr,)
-        int cmatchs[MAX_COLUMN_PER_TABLE];
-        int qcols = parseColListOrReply(c, tmatch, "*", cmatchs);
+        int  cmatchs[MAX_COLUMN_PER_TABLE];
+        bool bdum;
+        int  qcols = parseColListOrReply(c, tmatch, "*", cmatchs, &bdum);
 
         robj               *argv[3];
         struct redisClient *cfc = rsql_createFakeClient();

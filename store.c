@@ -389,10 +389,11 @@ void istoreCommit(redisClient *c,
                   bool         asc,
                   int          lim,
                   list        *inl) {
-    int sto;
+    int  sto;
     CHECK_STORE_TYPE_OR_REPLY(sto_type,sto,)
-    int cmatchs[MAX_COLUMN_PER_TABLE];
-    int qcols = parseColListOrReply(c, tmatch, col_list, cmatchs);
+    int  cmatchs[MAX_COLUMN_PER_TABLE];
+    bool bdum;
+    int  qcols = parseColListOrReply(c, tmatch, col_list, cmatchs, &bdum);
     if (!qcols) {
         addReply(c, shared.nullbulk);
         return;

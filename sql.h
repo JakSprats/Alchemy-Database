@@ -92,7 +92,8 @@ bool joinParseReply(redisClient  *c,
                     int          *obc,
                     bool         *asc,
                     int          *lim,
-                    list        **inl);
+                    list        **inl,
+                    bool         *cntstr);
 
 void joinReply(redisClient *c, sds clist, int argn);
 
