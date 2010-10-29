@@ -51,7 +51,7 @@ static bool addSingle(redisClient *c,
                       void        *x,
                       robj        *key,
                       long        *instd,
-                      bool         is_ins) {
+                      int          is_ins) {
     redisClient *fc    = (redisClient *)x;
     robj        *vals  = createObject(REDIS_STRING, NULL);
     if (is_ins) {
@@ -118,9 +118,9 @@ static bool addDouble(redisClient *c,
 bool fakeClientPipe(redisClient *c,
                     redisClient *rfc,
                     void        *wfc, /* can be redisClient or sumthin else */
-                    bool         is_ins,
+                    int          is_ins,
                     bool (* adder)
-                        (redisClient *c, void *x, robj *key, long *l, bool b)) {
+                         (redisClient *c, void *x, robj *key, long *l, int b)) {
     struct redisCommand *cmd = lookupCommand(rfc->argv[0]->ptr);
     cmd->proc(rfc);
 
@@ -155,7 +155,7 @@ bool fakeClientPipe(redisClient *c,
 
 /* TODO the protocol-parsing does not exactly follow the line protocol,
         it follow what the code does ... the code could change */
-void createTableAsObjectOperation(redisClient *c, bool is_ins) {
+void createTableAsObjectOperation(redisClient *c, int  is_ins) {
     robj               *wargv[3];
     struct redisClient *wfc    = rsql_createFakeClient(); /* client to write */
     wfc->argc                  = 3;

@@ -28,7 +28,7 @@ void createTableAsObject(redisClient *c);
 bool fakeClientPipe(redisClient *c,
                     redisClient *rfc,
                     void        *wfc,
-                    bool         is_ins,
+                    int          is_ins,
                     bool (* adder)
-                        (redisClient *c, void *x, robj *key, long *l, bool b));
+                          (redisClient *c, void *x, robj *key, long *l, int b));
 #endif /* __DENORM__H */

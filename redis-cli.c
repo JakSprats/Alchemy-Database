@@ -55,6 +55,9 @@ void redisLog(int level, const char *fmt, ...) {
 
 }
 
+#define RL4 redisLog(4, 
+#define bool unsigned char
+
 #define REDIS_CMD_INLINE 1
 #define REDIS_CMD_BULK 2
 #define REDIS_CMD_MULTIBULK 4
@@ -417,10 +420,21 @@ static int cliSendCommand(int argc, char **argv, int repeat) {
     }
     config.raw_output = (rc->flags & CMDFLAG_RAWOUTPUT);
 
-    if ((rc->arity > 0 && argc != rc->arity) ||
-        (rc->arity < 0 && argc < -rc->arity)) {
-            fprintf(stderr,"Wrong number of arguments for '%s'\n",rc->name);
-            return 1;
+    bool nest = 0; /* check for nested commands, delimited by "$(" */
+    for (int i = 1; i < (argc - 1); i++) { /* last argv cant be nested */
+        char *x = strchr(argv[i], '$');
+        if (x) {
+            x++;
+            if (*x == '(') nest = 1;
+        }
+    }
+
+    if (!nest) {
+        if ((rc->arity > 0 && argc != rc->arity) ||
+            (rc->arity < 0 && argc < -rc->arity)) {
+                fprintf(stderr,"Wrong number of arguments for '%s'\n",rc->name);
+                return 1;
+        }
     }
 
     if (!strcasecmp(rc->name,"shutdown")) config.shutdown = 1;

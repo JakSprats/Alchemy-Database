@@ -86,6 +86,7 @@
 #include "join.h"         /* relational join in ALSOSQL */
 #include "row.h"          /* ALSOSQL's bit-packed rows */
 #include "index.h"        /* ALSOSQL's indices */
+#include "denorm.h"       /* fakeClientPipe() */
 #include "common.h"       /* ALSOSQL's common definitions */
 
 #define ALSOSQL
@@ -572,6 +573,7 @@ static void freeStringObject(robj *o);
 static void freeListObject(robj *o);
 void decrRefCount(void *o);
 static void freeClient(redisClient *c);
+static void rsql_resetFakeClient(struct redisClient *c);
 static int rdbLoad(char *filename);
 void addReplySds(redisClient *c, sds s);
 static int rdbSaveBackground(char *filename);
@@ -2652,6 +2654,8 @@ void call(redisClient *c, struct redisCommand *cmd) {
     server.stat_numcommands++;
 }
 
+static int rewriteNestedCmd(redisClient *c);
+static int doCommand(redisClient *c);
 /* If this function gets called we already read a whole
  * command, argments are in the client argv/argc fields.
  * processCommand() execute the command or prepare the
@@ -2661,8 +2665,6 @@ void call(redisClient *c, struct redisCommand *cmd) {
  * and other operations can be performed by the caller. Otherwise
  * if 0 is returned the client was destroied (i.e. after QUIT). */
 static int processCommand(redisClient *c) {
-    struct redisCommand *cmd;
-
     /* Free some memory if needed (maxmemory setting) */
     if (server.maxmemory) freeMemoryIfNeeded();
 
@@ -2671,7 +2673,8 @@ static int processCommand(redisClient *c) {
      * multiple binary-safe "bulk" arguments. The latency of processing is
      * a bit higher but this allows things like multi-sets, so if this
      * protocol is used only for MSET and similar commands this is a big win. */
-    if (c->multibulk == 0 && c->argc == 1 && ((char*)(c->argv[0]->ptr))[0] == '*') {
+    if (c->multibulk == 0 && c->argc == 1 &&
+        ((char*)(c->argv[0]->ptr))[0] == '*') {
         c->multibulk = atoi(((char*)c->argv[0]->ptr)+1);
         if (c->multibulk <= 0) {
             resetClient(c);
@@ -2741,9 +2744,189 @@ static int processCommand(redisClient *c) {
         return 0;
     }
 
+    if (rewriteNestedCmd(c)) return 1;
+    return doCommand(c);
+}
+
+sds nest_bfor = NULL;
+sds nest_rest = NULL;
+
+static void subNestCommand(int j, robj *key, robj **nargv) {
+    if (nest_bfor) {
+        sds new  = sdsdup(nest_bfor);
+        new      = sdscatlen(new, key->ptr, sdslen(key->ptr));
+        nargv[j] = createStringObject(new, sdslen(new));
+        sdsfree(new);
+    } else {
+        nargv[j] = cloneRobj(key);
+    }
+}
+
+static void appendNestTrailing(int j, robj **nargv) {
+    if (nest_rest) {
+        int k = j - 1;
+        nargv[k]->ptr = sdscatlen(nargv[k]->ptr, nest_rest, sdslen(nest_rest));
+    }
+}
+
+static bool nestedCmdEval(redisClient *c,
+                          void        *x,
+                          robj        *key,
+                          long        *nlines,
+                          int          b) { /* variable ignored */
+    int argn  = (int)(long)x;
+    int arity = b;
+    int nargc = c->argc - arity + 1;
+
+    bool append = 0;
+    if (*nlines > 1) { /* subsequent lines returned from command -> append */
+        append = 1;
+        nargc  = c->argc + 1;
+    }
+
+    robj **nargv    = zmalloc(sizeof(robj *) * nargc);
+    bool   inserted = 0;
+    bool   appended = 0;
+    int    j        = 0;
+    for (int i = 0; i < c->argc; i++) {
+        bool replace = append ? 0 : (i >= argn && i < argn + arity);
+        if (append && i == (argn + *nlines - 1)) { /* middle append */
+            subNestCommand(j, key, nargv); /* first add new entry */
+            j++;
+            appendNestTrailing(j, nargv);
+            nargv[j] = cloneRobj(c->argv[i]); /* then add post cmd entry */
+            j++;
+            appended = 1;
+        } else if (replace) {
+            if (!inserted) {
+                subNestCommand(j, key, nargv);
+                inserted = 1;
+                j++;
+            } else if (i == (argn + arity - 1)) { /* embedded nest */
+                appendNestTrailing(j, nargv);
+            }
+        } else {
+            nargv[j] = cloneRobj(c->argv[i]);
+            j++;
+        }
+    }
+    if (append && !appended) { /* append to end */
+        subNestCommand(j, key, nargv);
+        j++;
+        appendNestTrailing(j, nargv);
+    }
+    *nlines = *nlines + 1; /* count num lines returned from cmd */
+
+    /* cleanup old argv */
+    for (int k = 0; k < c->argc; k++) decrRefCount(c->argv[k]);
+    zfree(c->argv);
+
+    //for (int i = 0; i < nargc; i++) RL4 "nargv[%d]: %s", i, nargv[i]->ptr);
+
+    /* set new argv */
+    c->argc = nargc;
+    c->argv = nargv;
+    return 1;
+}
+
+static int rewriteNestedCmd(redisClient *c) {
+    sds ocmd = c->argv[0]->ptr;
+    if (!strcasecmp(ocmd, "MSET") ||
+        !strcasecmp(ocmd, "MSETNX") ||
+        !strcasecmp(ocmd, "INSERT") || /* this may change */
+        !strcasecmp(ocmd, "UPDATE") || /* this may change */
+        !strcasecmp(ocmd, "HMSET")) return 0; /* nesting not supported */
+
+    int ret   = 0;
+    while (1) {
+        nest_bfor = NULL;
+        nest_rest = NULL;
+        bool nest = 0; /* check for nested commands, delimited by "$(" */
+        for (int i = 1; i < (c->argc - 1); i++) { /* last argv cant be nested */
+            char *x = strchr(c->argv[i]->ptr, '$');
+            if (x && *(x + 1) == '(') {
+                nest = 1;
+                break;
+            }
+        }
+        if (nest) {
+            struct redisClient *rfc = rsql_createFakeClient();
+            for (int i = c->argc - 2; i != 0; i--) { /* start from end of cmd */
+                sds   orig = c->argv[i]->ptr;
+                char *x    = strchr(orig, '$');
+                if (x && *(x + 1) == '(') {
+                    if (x != orig) nest_bfor  = sdsnewlen(orig, x - orig);
+                        //RL4 "nest_bfor: %s", nest_bfor);
+                        x += 2; /* skip "$(" */
+                        struct redisCommand *cmd = lookupCommand(x);
+                        if (!cmd) {
+                            addReplySds(c, sdscatprintf(sdsempty(),
+                                               "-ERR nested cmd: '%s'\r\n", x));
+                            resetClient(c);
+                            rsql_freeFakeClient(rfc);
+                            ret = 1;
+                            goto rewrite_nest_err;
+                        }
+                        int arity = cmd->arity;
+                        if (arity < 0) {
+                            arity = 1;
+                            for (int k = i + 1; k < c->argc; k++) {
+                                arity++;
+                                sds s = c->argv[k]->ptr;
+                                if (strchr(s, ')')) break;
+                                //if (s[sdslen(s) - 1] == ')') break;
+                            }
+                        }
+                        //RL4 "cmd: %s arity: %d", cmd->name, arity);
+                        robj **cargv = zmalloc(sizeof(robj *) * arity);
+                        rfc->argv    = cargv;
+                        rfc->argv[0] = createStringObject(x, strlen(x));
+                        for (int j = 1; j < arity; j++) {
+                            if (j == (arity - 1)) {
+                                sds   s      = c->argv[j + i]->ptr;
+                                char *t      = strchr(s, ')');
+                                int   len    = t ? t - s : (int)sdslen(s);
+                                if (t && (t -s) != ((int)sdslen(s) - 1)) {
+                                    t++;
+                                    while (*t == ')') t++;
+                                    if (*t) nest_rest = sdsnewlen(t, strlen(t));
+                                    //RL4 "nest_rest: %s", nest_rest);
+                                }
+                                rfc->argv[j] = createStringObject(s, len);
+                            } else {
+                                rfc->argv[j] = cloneRobj(c->argv[j + i]);
+                            }
+                        }
+                        //for (int j = 0; j < arity; j++)
+                             //RL4 "rfc->argv[%d]: %s", j, rfc->argv[j]->ptr);
+                        rfc->argc = arity;
+                        rfc->db   = c->db;
+                        void *v   = (void *)(long)i;
+                        fakeClientPipe(c, rfc, v, arity, nestedCmdEval);
+                        rsql_resetFakeClient(rfc);
+                        for (int k = 0; k < arity; k++) decrRefCount(cargv[k]);
+                        zfree(cargv);
+                        if (nest_bfor) sdsfree(nest_bfor);
+                        if (nest_rest) sdsfree(nest_rest);
+                        break;
+                }
+            }
+            rsql_freeFakeClient(rfc);
+        } else {
+            break;
+        }
+    }
+
+rewrite_nest_err:
+    if (nest_bfor) sdsfree(nest_bfor);
+    if (nest_rest) sdsfree(nest_rest);
+    return ret;
+}
+
+static int doCommand(redisClient *c) {
     /* Now lookup the command and check ASAP about trivial error conditions
      * such wrong arity, bad command name and so forth. */
-    cmd = lookupCommand(c->argv[0]->ptr);
+    struct redisCommand *cmd = lookupCommand(c->argv[0]->ptr);
     if (!cmd) {
         addReplySds(c,
             sdscatprintf(sdsempty(), "-ERR unknown command '%s'\r\n",
@@ -2799,8 +2982,7 @@ static int processCommand(redisClient *c) {
 
     /* Handle the maxmemory directive */
     if (server.maxmemory && (cmd->flags & REDIS_CMD_DENYOOM) &&
-        zmalloc_used_memory() > server.maxmemory)
-    {
+        zmalloc_used_memory() > server.maxmemory) {
         addReplySds(c,sdsnew("-ERR command not allowed when used memory > 'maxmemory'\r\n"));
         resetClient(c);
         return 1;
@@ -2817,7 +2999,9 @@ static int processCommand(redisClient *c) {
     }
 
     /* Exec the command */
-    if (c->flags & REDIS_MULTI && cmd->proc != execCommand && cmd->proc != discardCommand) {
+    if (c->flags & REDIS_MULTI  &&
+        cmd->proc != execCommand &&
+        cmd->proc != discardCommand) {
         queueMultiCommand(c,cmd);
         addReply(c,shared.queued);
     } else {
@@ -8863,10 +9047,13 @@ void freeFakeClient(struct redisClient *c) {
     zfree(c);
 }
 
-void rsql_freeFakeClient(struct redisClient *c) {
+static void rsql_resetFakeClient(struct redisClient *c) {
     /* Discard the reply objects list from the fake client */
     while(listLength(c->reply))
         listDelNode(c->reply, listFirst(c->reply));
+}
+void rsql_freeFakeClient(struct redisClient *c) {
+    rsql_resetFakeClient(c);
     freeFakeClient(c);
 }
 

@@ -300,10 +300,10 @@ bool parseWCAddtlSQL(redisClient *c,
 }
 
 static bool addRedisCmdToINList(redisClient *c,
-                                void *x,
-                                robj *key,
-                                long *l,  /* variable ignored */
-                                bool b) { /* variable ignored */
+                                void        *x,
+                                robj        *key,
+                                long        *l,  /* variable ignored */
+                                int          b) { /* variable ignored */
     c = NULL; l = NULL; b = 0; /* compiler warnings */
     list **inl = (list **)x;
     robj *r    = cloneRobj(key);
