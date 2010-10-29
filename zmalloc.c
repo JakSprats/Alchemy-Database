@@ -83,7 +83,7 @@ static void zmalloc_oom(size_t size) {
 
 void *zmalloc(size_t size) {
     void *ptr = malloc(size+PREFIX_SIZE);
-//RL4 "zmalloc: %p size: %d", ptr, size);
+    //RL4 "zmalloc: %p size: %d", ptr, size);
 
     if (!ptr) zmalloc_oom(size);
 #ifdef HAVE_MALLOC_SIZE

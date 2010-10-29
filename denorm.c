@@ -47,6 +47,11 @@ static robj *_createStringObject(char *s) {
     return createStringObject(s, strlen(s));
 }
 
+bool emptyNoop(redisClient *c, void *x, robj *key, long *l, int i) {
+    c = NULL; x = NULL; key = NULL; l = NULL; i = 0; /* compiler warning */
+    return 1;
+}
+
 static bool addSingle(redisClient *c,
                       void        *x,
                       robj        *key,
@@ -120,18 +125,19 @@ bool fakeClientPipe(redisClient *c,
                     void        *wfc, /* can be redisClient or sumthin else */
                     int          is_ins,
                     bool (* adder)
+                         (redisClient *c, void *x, robj *key, long *l, int b),
+                    bool (* emptyer)
                          (redisClient *c, void *x, robj *key, long *l, int b)) {
     struct redisCommand *cmd = lookupCommand(rfc->argv[0]->ptr);
     cmd->proc(rfc);
 
-    long instd = 1; /* ZER0 as pk is sometimes bad */
     listNode *ln;
-    listIter li;
-    robj *o;
+    listIter  li;
+    long      instd = 1; /* ZER0 as pk is sometimes bad */
     listRewind(rfc->reply,&li);
     while((ln = listNext(&li))) {
-        o     = ln->value;
-        sds s = o->ptr;
+        robj *o = ln->value;
+        sds   s = o->ptr;
         /* ignore protocol, we just want data */
         if (*s == '*' || *s == '\r') continue;
         if (*s == '-')               break; /* error */
@@ -149,6 +155,9 @@ bool fakeClientPipe(redisClient *c,
         }
         /* all ranges are single */
         if (!(*adder)(c, wfc, o, &instd, is_ins)) return 0;
+    }
+    if (instd == 1) { /* empty response from rfc */
+        if (!(*emptyer)(c, wfc, NULL, &instd, is_ins)) return 0;
     }
     return 1;
 }
@@ -171,7 +180,7 @@ void createTableAsObjectOperation(redisClient *c, int  is_ins) {
     rfc->argc                  = c->argc - 4;
     rfc->db                    = c->db;
 
-    fakeClientPipe(c, rfc, wfc, is_ins, addSingle);
+    fakeClientPipe(c, rfc, wfc, is_ins, addSingle, emptyNoop);
 
     rsql_freeFakeClient(rfc);
     rsql_freeFakeClient(wfc);

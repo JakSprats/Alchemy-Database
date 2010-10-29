@@ -780,6 +780,9 @@ void ikeysCommand(redisClient *c);
 
 void legacyTableCommand(redisClient *c);
 void legacyInsertCommand(redisClient *c);
+void legacyIndexCommand(redisClient *c);
+
+static void runCommand(redisClient *c);
 #endif /* ALSOSQL END */
 
 void rewriteCommand(redisClient *c);
@@ -919,6 +922,7 @@ static struct redisCommand cmdTable[] = {
     {"legacytable",  legacyTableCommand,   -3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
     {"legacyinsert", legacyInsertCommand,  -3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
     {"legacyindex",  legacyIndexCommand,   -3,REDIS_CMD_INLINE,NULL,1,1,1,1},
+    {"run",          runCommand,            2,REDIS_CMD_INLINE,NULL,1,1,1,0},
 #endif /* ALSOSQL END */
     {NULL,NULL,0,0,NULL,0,0,0,0}
 };
@@ -2770,11 +2774,63 @@ static void appendNestTrailing(int j, robj **nargv) {
     }
 }
 
+static bool emptyCmdEval(redisClient *c,
+                         void        *x,
+                         robj        *key,
+                         long        *nlines,
+                         int          b) {
+    key = NULL; nlines = NULL; /* compiler warnings */
+    int argn  = (int)(long)x;
+    int arity = b;
+    int nargc = c->argc - arity + 1;
+
+    sds nesta = NULL;
+    if (nest_bfor) {
+        nesta = sdsdup(nest_bfor);
+    }
+    if (nest_rest) {
+        if (nesta) nesta = sdscatlen(nesta, nest_rest, sdslen(nest_rest));
+        else       nesta = sdsdup(nest_rest);
+    }
+    robj *r  = nesta ? createStringObject(nesta, sdslen(nesta)) : NULL;
+    //RL4 "emptyCmdEval: argn: %d nesta: %s nargc: %d", argn, nesta, nargc);
+
+    robj **nargv    = zmalloc(sizeof(robj *) * nargc);
+    bool   inserted = 0;
+    int    j        = 0;
+    for (int i = 0; i < c->argc; i++) {
+        if (i >= argn && i < argn + arity) {
+            if (!inserted) {
+                inserted = 1;
+                if (nesta) {
+                    nargv[j] = r;
+                    j++;
+                }
+            }
+        } else {
+            nargv[j] = cloneRobj(c->argv[i]);
+            j++;
+        }
+    }
+
+    if (nesta) sdsfree(nesta);
+
+    //for (int i = 0; i < nargc; i++) RL4 "MT nargv[%d]: %s", i, nargv[i]->ptr);
+
+    for (int k = 0; k < c->argc; k++) decrRefCount(c->argv[k]);
+    zfree(c->argv);
+    c->argc = nargc;
+    c->argv = nargv;
+
+
+    return 1;
+}
+
 static bool nestedCmdEval(redisClient *c,
                           void        *x,
                           robj        *key,
                           long        *nlines,
-                          int          b) { /* variable ignored */
+                          int          b) {
     int argn  = (int)(long)x;
     int arity = b;
     int nargc = c->argc - arity + 1;
@@ -2903,7 +2959,9 @@ static int rewriteNestedCmd(redisClient *c) {
                         rfc->argc = arity;
                         rfc->db   = c->db;
                         void *v   = (void *)(long)i;
-                        fakeClientPipe(c, rfc, v, arity, nestedCmdEval);
+                        // TODO if this EVALs to empty set do something
+                        fakeClientPipe(c, rfc, v, arity, 
+                                       nestedCmdEval, emptyCmdEval);
                         rsql_resetFakeClient(rfc);
                         for (int k = 0; k < arity; k++) decrRefCount(cargv[k]);
                         zfree(cargv);
@@ -4921,6 +4979,52 @@ static int getGenericCommand(redisClient *c) {
 
 static void getCommand(redisClient *c) {
     getGenericCommand(c);
+}
+
+static void runCommand(redisClient *c) {
+    robj *o;
+
+    if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.nullbulk)) == NULL)
+        return;
+
+    if (o->type == REDIS_STRING) {
+        int     argc;
+        sds     s    = o->ptr;
+        sds    *argv = sdssplitlen(s, sdslen(s), " ", 1, &argc);
+        robj **rargv = zmalloc(sizeof(robj *) * argc);
+        for (int j = 0; j < argc; j++) {
+            rargv[j] = createObject(REDIS_STRING, argv[j]);
+        }
+        zfree(argv);
+        redisClient *rfc = rsql_createFakeClient(); /* client to read */
+        rfc->argv        = rargv;
+        rfc->argc        = argc;
+
+        if (!rewriteNestedCmd(rfc)) {
+            sds                  x   = rfc->argv[0]->ptr;
+            struct redisCommand *cmd = lookupCommand(x);
+            if (!cmd) {
+                addReplySds(c, sdscatprintf(sdsempty(),
+                                        "-ERR nested cmd: '%s'\r\n", x));
+            } else {
+                cmd->proc(rfc);
+                listNode  *ln;
+                listIter  *li = listGetIterator(rfc->reply, AL_START_HEAD);
+                while((ln = listNext(li)) != NULL) {
+                    robj *nkey = ln->value;
+                    addReply(c, nkey);
+                }
+                listReleaseIterator(li);
+            }
+        }
+
+        for (int j = 0; j < rfc->argc; j++) decrRefCount(rfc->argv[j]);
+        zfree(rfc->argv);
+        rsql_freeFakeClient(rfc);
+    } else {
+        addReply(c,shared.wrongtypeerr);
+    }
+    return;
 }
 
 #if 0
@@ -9019,6 +9123,7 @@ static void feedAppendOnlyFile(struct redisCommand  *cmd,
  * order to load the append only file we need to create a fake client. */
 struct redisClient *createFakeClient(void) {
     struct redisClient *c = zmalloc(sizeof(*c));
+    if (!c) return NULL;
 
     selectDb(c,0);
     c->fd = -1;

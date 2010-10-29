@@ -157,6 +157,7 @@ sds genNRL_Cmd(d_l_t  *nrlind,
             ln1 = listNext(li1);
             ln2 = listNext(li2);
         }
+    /*TODO destroy both listIter's */
     return cmd;
 }
 
@@ -422,6 +423,7 @@ sds rebuildOrigNRLcmd(robj *o) {
             ln2 = listNext(li2);
         }
     }
+    /*TODO destroy both listIter's */
     cmd = sdscatlen(cmd, "\"", 1); /* has to be one arg */
     return cmd;
 }
