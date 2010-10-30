@@ -221,7 +221,13 @@ static struct redisCommand cmdTable[] = {
     {"legacytable",  -3,CMDFLAG_NONE},
     {"legacyinsert", -3,CMDFLAG_NONE},
     {"legacyindex",  -3,CMDFLAG_NONE},
+
     {"run",           2,CMDFLAG_NONE},
+    {"call",         -2,CMDFLAG_NONE},
+
+    {"begin",        -3,CMDFLAG_NONE},
+    {"end",           1,CMDFLAG_NONE},
+    {"show",         -2,CMDFLAG_NONE},
 #endif
     {NULL,0,CMDFLAG_NONE}
 };

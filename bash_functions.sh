@@ -949,3 +949,15 @@ function dump_mysql_table_to_redisql() {
   ) | $CLI
   
 }
+
+# PROCEDURES PROCEDURES PROCEDURES PROCEDURES PROCEDURES PROCEDURES
+# PROCEDURES PROCEDURES PROCEDURES PROCEDURES PROCEDURES PROCEDURES
+function init_procedures() {
+  cat proc_test.rds | $CLI
+}
+function show_procedures() {
+  $CLI show foo
+  $CLI show foo ___ %%%%%%
+  $CLI show lilfoo ++++++++ ===
+  $CLI show simple
+}
