@@ -145,7 +145,6 @@ void dictRedisObjectDestructor(void *privdata, void *val);
   #define REDIS_APPEND_SET      8
   #define REDIS_VAL_SET         9
   #define REDIS_NRL_INDEX      10
-  #define REDIS_PROCEDURE      11
 #endif
 
 typedef struct redisDb {
@@ -168,29 +167,6 @@ typedef struct multiState {
     int count;              /* Total number of MULTI commands */
 } multiState;
 
-/* single variable substitution in STORED PROCEDURE */
-typedef struct vsub {
-    int ncmd;  /* which command - PROCEDURE's have many */
-    int varn;  /* which variable is to be substituted */
-    int argc;  /* which arg of this command needs substituting */
-    int ofst;  /* where in this argc needs substituting */
-               /* NOTE: ofst is relative to the post "compiled" string */
-} vsub_t;
-
-typedef struct procStateControl {
-    multiState  mstate;   /* holds commands */
-    int         nvar;     /* procedure called w/ explicit numvars */
-    sds        *vname;    /* variable names */
-    list       *vsub;     /* list[varnum,argc,offset] */
-} procStateControl;
-
-typedef struct procState {
-    procStateControl  p;
-    robj             *name;
-    sds              *vpatt;    /* variable patterns [e.g. $V ] */
-    sds              *vpattext; /* variable patterns extended [e.g. $(V) ] */
-} procState;
-
 typedef struct redisClient {
     int fd;
     redisDb *db;
@@ -211,7 +187,6 @@ typedef struct redisClient {
     long repldboff;         /* replication DB file offset */
     off_t repldbsize;       /* replication DB file size */
     multiState mstate;      /* MULTI/EXEC state */
-    procState  procstate;   /* BEGIN/END PROCDURE state */
     robj **blockingkeys;    /* The key we are waiting to terminate a blocking
                              * operation such as BLPOP. Otherwise NULL. */
     int blockingkeysnum;    /* Number of blocking keys */
