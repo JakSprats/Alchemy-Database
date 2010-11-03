@@ -1945,7 +1945,7 @@ static bool loadLuaHelperFile() {
 static bool initLua() {
     Lua = lua_open();
     luaL_openlibs(Lua);
-    lua_register(Lua, "redis", redisLua);
+    lua_register(Lua, "client", redisLua);
 
     if (server.luafilename) return loadLuaHelperFile();
     else                    return 1;

@@ -4,8 +4,8 @@ CLI="./redisql-cli"
 
 # SIMPLE SIMPLE SIMPLE SIMPLE SIMPLE SIMPLE SIMPLE SIMPLE SIMPLE SIMPLE
 # SIMPLE SIMPLE SIMPLE SIMPLE SIMPLE SIMPLE SIMPLE SIMPLE SIMPLE SIMPLE
-$CLI LUA 'return redis("SET", "lua_R", 5*5);'
-$CLI LUA 'return redis("GET", "lua_R");'
+$CLI LUA 'return client("SET", "lua_R", 5*5);'
+$CLI LUA 'return client("GET", "lua_R");'
 
 
 # LIST_OF_HASHES LIST_OF_HASHES LIST_OF_HASHES LIST_OF_HASHES LIST_OF_HASHES
@@ -19,9 +19,9 @@ done
 
 INDEX=2
 LUA_CMD="
-list = redis('LINDEX', 'user:1:list', $INDEX);
+list = client('LINDEX', 'user:1:list', $INDEX);
 msg  = 'user:1:message:' .. list;
-return redis('HGET', msg, 'text');"
+return client('HGET', msg, 'text');"
 echo $CLI LUA "${LUA_CMD}"
 $CLI LUA "${LUA_CMD}"
 
@@ -38,12 +38,12 @@ $CLI SADD set2 1
 $CLI SADD set2 10
 
 LUA_SINTERGET_CMD='
-a = redis("SINTER", "set1", "set2");
+a = client("SINTER", "set1", "set2");
 t = {};
 i = 1;
 for k,v in pairs(a) do
   u = "user:" .. v .. ":name";
-  b = redis("GET", u);
+  b = client("GET", u);
   t[i] = b;
   i = i + 1;
 end
@@ -69,3 +69,5 @@ $CLI LUA "return lset_hset('user:1:list', 1, 'user:1:message:', 'text', 'ONE HAS
 $CLI LUA "return l_hget('user:1:list', 0, 'user:1:message:', 'text')"
 $CLI LUA "return l_hget('user:1:list', 1, 'user:1:message:', 'text')"
 $CLI LUA "return l_hget('user:1:list', 2, 'user:1:message:', 'text')"
+$CLI LUA "return lpush_hset('user:1:list', 'user:1:message:', 'text', 'Message -1-1-1-1-1');"
+$CLI LUA "return l_hget('user:1:list', 0, 'user:1:message:', 'text')"
