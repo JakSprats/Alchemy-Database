@@ -4694,11 +4694,9 @@ void luaCommand(redisClient *c) {
     }
 
     int lret = lua_gettop(Lua);
-    if (LuaFlag == PIPE_OK_FLAG) {
-      addReply(c,shared.ok);
-    } else if (LuaFlag == PIPE_EMPTY_SET_FLAG) {
+    if (LuaFlag == PIPE_EMPTY_SET_FLAG) {
         addReply(c, shared.emptymultibulk);
-    } else if (LuaFlag == PIPE_ERR_FLAG) {
+    } else if (LuaFlag == PIPE_ONE_LINER_FLAG || LuaFlag == PIPE_ERR_FLAG) {
         char *x = (char *)lua_tostring(Lua, -1);
         lua_pop(Lua, 1);
         addReplySds(c, sdsnewlen(x, strlen(x)));

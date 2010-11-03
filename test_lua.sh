@@ -59,6 +59,7 @@ $CLI LUA "${LUA_SINTERGET_CMD}"
 
 $CLI CONFIG set luafilename helper.lua
 $CLI DEL user:1:list
+# LIST_OF_HASHES
 $CLI LUA "return rpush_hset('user:1:list', 'user:1:message:', 'text', 'Message 00000000');"
 $CLI LUA "return rpush_hset('user:1:list', 'user:1:message:', 'text', 'Message 1111');"
 $CLI LUA "return rpush_hset('user:1:list', 'user:1:message:', 'text', 'Message 22');"
@@ -71,3 +72,13 @@ $CLI LUA "return l_hget('user:1:list', 1, 'user:1:message:', 'text')"
 $CLI LUA "return l_hget('user:1:list', 2, 'user:1:message:', 'text')"
 $CLI LUA "return lpush_hset('user:1:list', 'user:1:message:', 'text', 'Message -1-1-1-1-1');"
 $CLI LUA "return l_hget('user:1:list', 0, 'user:1:message:', 'text')"
+
+# HASH_OF_HASHES
+$CLI LUA "return hset_hset('accounting', 'bill', 'phone', '1234567');"
+$CLI LUA "return hset_hset('accounting', 'bill', 'address', '987 place st');"
+$CLI LUA "return hget_hget('accounting', 'bill', 'address');"
+
+ #SQL
+$CLI SELECT health from worker where id = 2
+$CLI LUA "return increment_worker_health(2);"
+$CLI SELECT health from worker where id = 2

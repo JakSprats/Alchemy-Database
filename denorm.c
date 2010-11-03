@@ -144,6 +144,7 @@ long fakeClientPipe(redisClient *c,
         sds   s    = o->ptr;
         bool  o_fl = fline;
         fline = 0;
+        //RL4 "PIPE: %s", s);
         /* ignore protocol, we just want data */
         if (*s == '\r' && *(s + 1) == '\n') continue;
          /* TODO introduce more state -> data starting w/ '\r\n' ignored */
@@ -154,7 +155,8 @@ long fakeClientPipe(redisClient *c,
                 break; /* error */
             }
             if (*s == '+') {
-                *flg = PIPE_OK_FLAG;
+                *flg = PIPE_ONE_LINER_FLAG;
+                if (!(*adder)(c, wfc, o, &card, is_ins, nlines)) return -1;
                 break; /* OK */
             }
             if (*s == ':') {

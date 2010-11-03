@@ -30,7 +30,7 @@ void createTableAsObject(redisClient *c);
 bool emptyNoop(redisClient *c);
 #define PIPE_NONE_FLAG      0
 #define PIPE_ERR_FLAG       1
-#define PIPE_OK_FLAG        2
+#define PIPE_ONE_LINER_FLAG 2
 #define PIPE_EMPTY_SET_FLAG 3
 long fakeClientPipe(redisClient *c,
                     redisClient *rfc,

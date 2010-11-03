@@ -1,4 +1,7 @@
 
+-- LIST_OF_HASHES LIST_OF_HASHES LIST_OF_HASHES LIST_OF_HASHES LIST_OF_HASHES
+-- LIST_OF_HASHES LIST_OF_HASHES LIST_OF_HASHES LIST_OF_HASHES LIST_OF_HASHES
+
 -- usage lpush_hash('user:1:list', 'user:1:message:', 'text')
 function lpush_hset(list, hprefix, key, val)
   hash = hprefix .. "0";
@@ -39,4 +42,39 @@ function l_hget(list, index, hprefix, key)
   print (l)
   hash = hprefix .. l;
   return client('HGET', hash, key);
+end
+
+-- HASH_OF_HASHES HASH_OF_HASHES HASH_OF_HASHES HASH_OF_HASHES HASH_OF_HASHES
+-- HASH_OF_HASHES HASH_OF_HASHES HASH_OF_HASHES HASH_OF_HASHES HASH_OF_HASHES
+function create_secondary_hash_table(h1, key1)
+  return h1 .. "_" .. key1;
+end
+function hset_hset(h1, key1, key2, val2)
+  h2 = create_secondary_hash_table(h1, key1)
+  type = client("TYPE", h1);
+  if type == "+none" or type == "+hash" then
+    type = client("TYPE", h2);
+    if type == "+none" or type == "+hash" then
+      client("HSET", h2, key2, val2);
+      return client("HSET", h1, key1, h2);
+    else
+      return error("function hset_hset: secondary hash: " .. h2 .. " not a hash");
+    end
+  else
+    return error("function hset_hset: 1st arg: " .. h1 .. " not a hash");
+  end
+end
+
+function hget_hget(h1, key1, key2)
+  h2 = create_secondary_hash_table(h1, key1)
+  return client("HGET", h2, key2);
+end
+
+-- SQL
+function increment_worker_health(id)
+  health = client('SELECT', 'health', 'FROM', 'worker',
+                  'WHERE', 'id', '=', id);
+  health = health + 1;
+  return client('UPDATE', 'worker', 'SET', 'health=' .. health,
+                'WHERE', 'id', '=', id);
 end

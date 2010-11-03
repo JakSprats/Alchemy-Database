@@ -49,6 +49,7 @@ static bool luaLine(redisClient *c,
                     int          n) {
     c = NULL; i = 0; /* compiler warning */
     lua_State *L = (lua_State *)x;
+    //RL4 "luaLine: %s", key->ptr);
     if (n > 1) {
         if (*card == 1) lua_newtable(L);
         lua_pushnumber(L, *card);
