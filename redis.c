@@ -66,6 +66,10 @@
 #include "solarisfixes.h"
 #endif
 
+#include "lua.h"
+#include "lualib.h"
+#include "lauxlib.h"
+
 #include "redis.h"
 #include "ae.h"           /* Event driven programming library */
 #include "sds.h"          /* Dynamic safe strings */
@@ -87,9 +91,13 @@
 #include "join.h"         /* relational join in ALSOSQL */
 #include "row.h"          /* ALSOSQL's bit-packed rows */
 #include "index.h"        /* ALSOSQL's indices */
-#include "denorm.h"       /* fakeClientPipe() */
+#include "denorm.h"       /* PIPE_ flags */
 #include "common.h"       /* ALSOSQL's common definitions */
+#include "lua_integration.h" /* Lua c bindings for lua function "redis" */
 
+lua_State   *Lua       = NULL;
+redisClient *LuaClient = NULL;
+flag         LuaFlag   = PIPE_NONE_FLAG;
 #define ALSOSQL
 
 #if 0
@@ -120,16 +128,6 @@
 
 /* Hash table parameters */
 #define REDIS_HT_MINFILL        10      /* Minimal hash table fill 10% */
-
-/* Command flags */
-#define REDIS_CMD_BULK          1       /* Bulk write command */
-#define REDIS_CMD_INLINE        2       /* Inline command */
-/* REDIS_CMD_DENYOOM reserves a longer comment: all the commands marked with
-   this flags will return an error when the 'maxmemory' option is set in the
-   config file and the server is using more than maxmemory bytes of memory.
-   In short this commands are denied on low memory conditions. */
-#define REDIS_CMD_DENYOOM       4
-#define REDIS_CMD_FORCE_REPLICATION 8 /* Force replication even if dirty is 0 */
 
 /* Object types */
 
@@ -635,7 +633,6 @@ static void vmReopenSwapFile(void);
 static int vmFreePage(off_t page);
 static void zunionInterBlockClientOnSwappedKeys(redisClient *c, struct redisCommand *cmd, int argc, robj **argv);
 static void execBlockClientOnSwappedKeys(redisClient *c, struct redisCommand *cmd, int argc, robj **argv);
-static int blockClientOnSwappedKeys(redisClient *c, struct redisCommand *cmd);
 static int dontWaitForSwappedKey(redisClient *c, robj *key);
 static void handleClientsBlockedOnSwappedKey(redisDb *db, robj *key);
 static void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask);
@@ -784,6 +781,8 @@ void ikeysCommand(redisClient *c);
 void legacyTableCommand(redisClient *c);
 void legacyInsertCommand(redisClient *c);
 void legacyIndexCommand(redisClient *c);
+
+void luaCommand(redisClient *c);
 #endif /* ALSOSQL END */
 
 void rewriteCommand(redisClient *c);
@@ -923,6 +922,8 @@ static struct redisCommand cmdTable[] = {
     {"legacytable",  legacyTableCommand,   -3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
     {"legacyinsert", legacyInsertCommand,  -3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
     {"legacyindex",  legacyIndexCommand,   -3,REDIS_CMD_INLINE,NULL,1,1,1,1},
+
+    {"lua",          luaCommand,            2,REDIS_CMD_INLINE,NULL,1,1,1,1},
 #endif /* ALSOSQL END */
     {NULL,NULL,0,0,NULL,0,0,0,0}
 };
@@ -1933,6 +1934,31 @@ static unsigned char am_big_endian() {
     return !(*((char *)(&one)));
 }
 
+#ifdef ALSOSQL
+static bool loadLuaHelperFile() {
+    if (luaL_loadfile(Lua, server.luafilename) || lua_pcall(Lua, 0, 0, 0)) {
+        printf("loadLuaHelperFile: error: %s", lua_tostring(Lua, -1));
+        return 0;
+    }
+    return 1;
+}
+static bool initLua() {
+    Lua = lua_open();
+    luaL_openlibs(Lua);
+    lua_register(Lua, "redis", redisLua);
+
+    if (server.luafilename) return loadLuaHelperFile();
+    else                    return 1;
+}
+static void closeLua() {
+    lua_close(Lua);
+}
+static bool reloadLua() {
+    closeLua();
+    return initLua();
+}
+#endif
+
 static void initServerConfig() {
     server.dbnum      = REDIS_DEFAULT_DBNUM;
     server.port = REDIS_SERVERPORT;
@@ -1946,7 +1972,8 @@ static void initServerConfig() {
     server.daemonize = 0;
     server.appendonly = 0;
     /* ALSOSQL START */
-    Curr_range                   = sdsempty();
+    Curr_range         = sdsempty();
+    server.luafilename = NULL;
     /* ALSOSQL END */
     server.appendfsync = APPENDFSYNC_EVERYSEC;
     server.lastfsync = time(NULL);
@@ -2156,6 +2183,9 @@ static void initServer() {
     for (int i = 0; i < MAX_NUM_TABLES; i++) {
         Index[server.dbid][i].obj = NULL;
     }
+
+    bool il = initLua();
+    if (!il) exit(-1);
 #endif /* ALSOSQL END */
 }
 
@@ -2353,6 +2383,11 @@ static void loadServerConfig(char *filename) {
             server.hash_max_zipmap_entries = memtoll(argv[1], NULL);
         } else if (!strcasecmp(argv[0],"hash-max-zipmap-value") && argc == 2){
             server.hash_max_zipmap_value = memtoll(argv[1], NULL);
+#ifdef ALSOSQL
+        } else if (!strcasecmp(argv[0],"luafilename") && argc == 2) {
+            if (server.luafilename) zfree(server.luafilename);
+            server.luafilename = zstrdup(argv[1]);
+#endif
         } else {
             err = "Bad directive or wrong number of arguments"; goto loaderr;
         }
@@ -4646,8 +4681,54 @@ static int prepareForShutdown() {
     return REDIS_OK;
 }
 
-/*================================== Commands =============================== */
+/* ==================================== LUA ================================= */
 
+void luaCommand(redisClient *c) {
+    LuaClient = c;             /* used in func redisLua */
+    int s     = luaL_dostring(Lua, c->argv[1]->ptr);
+    if (s) {
+        const char *x = lua_tostring(Lua, -1);
+        lua_pop(Lua, 1);
+        addReplySds(c, sdscatprintf(sdsempty(), "-ERR: Lua error: %s \r\n", x));
+        return;
+    }
+
+    int lret = lua_gettop(Lua);
+    if (LuaFlag == PIPE_OK_FLAG) {
+      addReply(c,shared.ok);
+    } else if (LuaFlag == PIPE_EMPTY_SET_FLAG) {
+        addReply(c, shared.emptymultibulk);
+    } else if (LuaFlag == PIPE_ERR_FLAG) {
+        char *x = (char *)lua_tostring(Lua, -1);
+        lua_pop(Lua, 1);
+        addReplySds(c, sdsnewlen(x, strlen(x)));
+    } else if (!lret) {
+        addReply(c, shared.nullbulk);
+    } else {
+        if (!lua_istable(Lua, -1)) { /* single line return */
+            char *x = (char *)lua_tostring(Lua, -1);
+            lua_pop(Lua, 1);
+            robj *r = createStringObject(x, strlen(x));
+            addReplyBulk(c, r);
+            decrRefCount(r);
+        } else {
+            const int len = lua_objlen(Lua, -1 );
+            addReplySds(c, sdscatprintf(sdsempty(), "*%d\r\n", len));
+            for ( int i = 1; i <= len; ++i ) {
+                lua_pushinteger(Lua, i);
+                lua_gettable(Lua, -2);
+                char *x = (char *)lua_tostring(Lua, -1);
+                robj *r = createStringObject(x, strlen(x));
+                addReplyBulk(c, r);
+                decrRefCount(r);
+                lua_pop(Lua, 1);
+            }
+            lua_pop(Lua, 1);
+        }
+    }
+}
+
+/*================================== Commands =============================== */
 static void authCommand(redisClient *c) {
     if (!server.requirepass || !strcmp(c->argv[1]->ptr, server.requirepass)) {
       c->authenticated = 1;
@@ -10495,7 +10576,7 @@ static void execBlockClientOnSwappedKeys(redisClient *c, struct redisCommand *cm
  *
  * Return 1 if the client is marked as blocked, 0 if the client can
  * continue as the keys it is going to access appear to be in memory. */
-static int blockClientOnSwappedKeys(redisClient *c, struct redisCommand *cmd) {
+int blockClientOnSwappedKeys(redisClient *c, struct redisCommand *cmd) {
     if (cmd->vm_preload_proc != NULL) {
         cmd->vm_preload_proc(c,cmd,c->argc,c->argv);
     } else {
@@ -10655,6 +10736,16 @@ static void configSetCommand(redisClient *c) {
             appendServerSaveParams(seconds, changes);
         }
         sdsfreesplitres(v,vlen);
+#ifdef ALSOSQL
+    } else if (!strcasecmp(c->argv[2]->ptr, "luafilename")) {
+        if (server.luafilename) zfree(server.luafilename);
+        server.luafilename = zstrdup(o->ptr);
+        if (!reloadLua()) {
+            addReplySds(c,sdscatprintf(sdsempty(),
+               "-ERR problem loading lua helper file: %s\r\n", (char *)o->ptr));
+            return;
+        }
+#endif
     } else {
         addReplySds(c,sdscatprintf(sdsempty(),
             "-ERR not supported CONFIG parameter %s\r\n",
@@ -10748,6 +10839,13 @@ static void configGetCommand(redisClient *c) {
         sdsfree(buf);
         matches++;
     }
+#ifdef ALSOSQL
+    if (stringmatch(pattern, "luafilename", 0)) {
+        addReplyBulkCString(c, "luafilename");
+        addReplyBulkCString(c, server.luafilename);
+        matches++;
+    }
+#endif
     decrRefCount(o);
     lenobj->ptr = sdscatprintf(sdsempty(),"*%d\r\n",matches*2);
 }

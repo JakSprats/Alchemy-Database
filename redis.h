@@ -233,6 +233,16 @@ int stringmatchlen(const char *pattern, int patternLen,
 #define REDIS_OK                0
 #define REDIS_ERR               -1
 
+/* Command flags */
+#define REDIS_CMD_BULK          1       /* Bulk write command */
+#define REDIS_CMD_INLINE        2       /* Inline command */
+/* REDIS_CMD_DENYOOM reserves a longer comment: all the commands marked with
+   this flags will return an error when the 'maxmemory' option is set in the
+   config file and the server is using more than maxmemory bytes of memory.
+   In short this commands are denied on low memory conditions. */
+#define REDIS_CMD_DENYOOM       4
+#define REDIS_CMD_FORCE_REPLICATION 8 /* Force replication even if dirty is 0 */
+
 typedef struct zskiplistNode {
     struct zskiplistNode **forward;
     struct zskiplistNode *backward;
@@ -306,8 +316,6 @@ struct sharedObjectsStruct {
     *create_table_as_access_num_args,
 
     *denorm_wildcard_no_star,
-
-    *begin, *end, *procedure_define,
 #endif /* ALSOSQL END */
     *outofrangeerr, *plus,
     *select0, *select1, *select2, *select3, *select4,
@@ -425,7 +433,8 @@ struct redisServer {
     unsigned char big_endian;
     unsigned char psize;
 #ifdef ALSOSQL
-    int dbid;
+    int   dbid;
+    char *luafilename;
 #endif   
 };
 
@@ -445,6 +454,8 @@ typedef struct {
 
 #define REDIS_HASH_KEY 1
 #define REDIS_HASH_VALUE 2
+
+int blockClientOnSwappedKeys(redisClient *c, struct redisCommand *cmd);
 
 int hashSet(robj *o, robj *key, robj *value);
 int hashDelete(robj *o, robj *key);

@@ -299,12 +299,13 @@ bool parseWCAddtlSQL(redisClient *c,
     return 1;
 }
 
-static bool addRedisCmdToINList(redisClient *c,
-                                void        *x,
-                                robj        *key,
-                                long        *l,  /* variable ignored */
-                                int          b) { /* variable ignored */
-    c = NULL; l = NULL; b = 0; /* compiler warnings */
+static bool addRCmdToINList(redisClient *c,
+                            void        *x,
+                            robj        *key,
+                            long        *l,   /* variable ignored */
+                            int          b,   /* variable ignored */
+                            int          n) { /* variable ignored */
+    c = NULL; l = NULL; b = 0; n = 0; /* compiler warnings */
     list **inl = (list **)x;
     robj *r    = cloneRobj(key);
     listAddNodeTail(*inl, r);
@@ -362,7 +363,8 @@ static bool parseWhereClauseIN(redisClient  *c,
                 rfc->argv        = rargv;
                 rfc->argc        = argc;
 
-                fakeClientPipe(c, rfc, inl, 0, addRedisCmdToINList, emptyNoop);
+                uchar f = 0;
+                fakeClientPipe(c, rfc, inl, 0, &f, addRCmdToINList, emptyNoop);
 
                 rsql_freeFakeClient(rfc);
                 free(rargv);

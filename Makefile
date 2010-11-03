@@ -2,19 +2,29 @@
 # Copyright (C) 2009 Salvatore Sanfilippo <antirez at gmail dot com>
 # This file is released under the BSD license, see the COPYING file
 
+# Your platform. See PLATS for possible values.
+PLAT= none
+#PLAT= linux
+
+# == END OF USER SETTINGS. NO NEED TO CHANGE ANYTHING BELOW THIS LINE =========
+
+# Convenience platforms targets.
+PLATS= aix ansi bsd freebsd generic linux macosx mingw posix solaris
+
 uname_S := $(shell sh -c 'uname -s 2>/dev/null || echo not')
 OPTIMIZATION?=-O2
 ifeq ($(uname_S),SunOS)
   CFLAGS?= -std=c99 -pedantic $(OPTIMIZATION) -Wall -W -D__EXTENSIONS__ -D_XPG6
   CCLINK?= -ldl -lnsl -lsocket -lm -lpthread
 else
-  CFLAGS?= -std=c99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF)
-  CCLINK?= -lm -pthread
+  CFLAGS?= -std=c99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF) -I./lua-5.1.4/src/
+  CCLINK?= -lm -pthread -L./lua-5.1.4/src/ -llua -ldl
 endif
+EXTRA_LD= -llua
 CCOPT= $(CFLAGS) $(CCLINK) $(ARCH) $(PROF)
 DEBUG?= -g -rdynamic -ggdb 
 
-OBJ = adlist.o ae.o anet.o dict.o redis.o sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o zipmap.o sha1.o bt.o bt_code.o bt_output.o alsosql.c sixbit.c row.c index.c rdb_alsosql.c join.c norm.c bt_iterator.c sql.c denorm.c store.c scan.c orderby.c
+OBJ = adlist.o ae.o anet.o dict.o redis.o sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o zipmap.o sha1.o bt.o bt_code.o bt_output.o alsosql.o sixbit.o row.o index.o rdb_alsosql.o join.o norm.o bt_iterator.o sql.o denorm.o store.o scan.o orderby.o lua_integration.o
 BENCHOBJ = ae.o anet.o redis-benchmark.o sds.o adlist.o zmalloc.o
 CLIOBJ = anet.o sds.o adlist.o redis-cli.o zmalloc.o linenoise.o
 CHECKDUMPOBJ = redis-check-dump.o lzf_c.o lzf_d.o
@@ -26,7 +36,62 @@ CLIPRGNAME = redisql-cli
 CHECKDUMPPRGNAME = redisql-check-dump
 CHECKAOFPRGNAME = redisql-check-aof
 
-all: redisql-server redisql-benchmark redisql-cli redisql-check-dump redisql-check-aof
+ALL = $(PRGNAME) $(BENCHPRGNAME) $(CLIPRGNAME) $(CHECKDUMPPRGNAME) $(CHECKAOFPRGNAME)
+
+all:    $(PLAT)
+
+bins : $(ALL)
+
+aix:
+	cd lua-5.1.4 && $(MAKE) $@
+	make bins
+
+ansi:
+	cd lua-5.1.4 && $(MAKE) $@
+	make bins
+
+bsd:
+	cd lua-5.1.4 && $(MAKE) $@
+	make bins
+
+freebsd:
+	cd lua-5.1.4 && $(MAKE) $@
+	make bins
+
+generic:
+	cd lua-5.1.4 && $(MAKE) $@
+	make bins
+
+linux:
+	cd lua-5.1.4 && $(MAKE) linux
+	make bins
+
+macosx:
+	cd lua-5.1.4 && $(MAKE) $@
+	make bins
+
+# use this on Mac OS X 10.3-
+#       $(MAKE) all MYCFLAGS=-DLUA_USE_MACOSX
+
+mingw:
+	cd lua-5.1.4 && $(MAKE) $@
+	make bins
+
+posix:
+	cd lua-5.1.4 && $(MAKE) $@
+	make bins
+
+solaris:
+	cd lua-5.1.4 && $(MAKE) $@
+	make bins
+
+none:
+	@echo "Please do"
+	@echo "   make PLATFORM"
+	@echo "where PLATFORM is one of these:"
+	@echo "   $(PLATS)"
+	@echo "See INSTALL for complete instructions."
+
 
 # Deps (use make dep to generate this)
 adlist.o: adlist.c adlist.h zmalloc.h
@@ -73,9 +138,10 @@ sql.o: redis.h sql.h bt_iterator.h
 denorm.o: redis.h denorm.h bt_iterator.h alsosql.h
 scan.o: alsosql.h bt_iterator.h
 orderby.o: orderby.h
+lua_integration.o: lua_integration.h redis.h zmalloc.h denorm.h
 
 redisql-server: $(OBJ)
-	$(CC) -o $(PRGNAME) $(CCOPT) $(DEBUG) $(OBJ)
+	$(CC) -o $(PRGNAME) $(CCOPT) $(DEBUG) $(OBJ) $(EXTRA_LD)
 
 redisql-benchmark: $(BENCHOBJ)
 	$(CC) -o $(BENCHPRGNAME) $(CCOPT) $(DEBUG) $(BENCHOBJ)

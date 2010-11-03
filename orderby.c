@@ -1,5 +1,5 @@
 /*
- * This file implements the indexing logic of Alsosql
+ * This file implements "SELECT ... ORDER BY col LIMIT X" helper funcs
  *
 
 MIT License

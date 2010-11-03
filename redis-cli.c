@@ -221,6 +221,8 @@ static struct redisCommand cmdTable[] = {
     {"legacytable",  -3,CMDFLAG_NONE},
     {"legacyinsert", -3,CMDFLAG_NONE},
     {"legacyindex",  -3,CMDFLAG_NONE},
+
+    {"lua",           2,CMDFLAG_NONE},
 #endif
     {NULL,0,CMDFLAG_NONE}
 };
@@ -420,21 +422,10 @@ static int cliSendCommand(int argc, char **argv, int repeat) {
     }
     config.raw_output = (rc->flags & CMDFLAG_RAWOUTPUT);
 
-    bool nest = 0; /* check for nested commands, delimited by "$(" */
-    for (int i = 1; i < (argc - 1); i++) { /* last argv cant be nested */
-        char *x = strchr(argv[i], '$');
-        if (x) {
-            x++;
-            if (*x == '(') nest = 1;
-        }
-    }
-
-    if (!nest) {
-        if ((rc->arity > 0 && argc != rc->arity) ||
-            (rc->arity < 0 && argc < -rc->arity)) {
-                fprintf(stderr,"Wrong number of arguments for '%s'\n",rc->name);
-                return 1;
-        }
+    if ((rc->arity > 0 && argc != rc->arity) ||
+        (rc->arity < 0 && argc < -rc->arity)) {
+            fprintf(stderr,"Wrong number of arguments for '%s'\n",rc->name);
+            return 1;
     }
 
     if (!strcasecmp(rc->name,"shutdown")) config.shutdown = 1;
