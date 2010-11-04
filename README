@@ -16,10 +16,18 @@ BUILD:
 3.) make platform # platform can be "aix ansi bsd freebsd generic linux macosx mingw posix solaris"
 RUN:
 1.) ./redisql-server
-EXPERIMENT
-1.) ./redisql-client
-2.) type "SET X 5" -> OK
-3.) type "GET X"   -> 5
+EXPERIMENT (run from command line, some characters '(',')','*' must be escaped)
+./redisql-client CREATE TABLE test \(id int primary key, field TEXT, name TEXT\)
+OK
+./redisql-client INSERT INTO test VALUES "(1,field1,name1)"
+OK
+./redisql-client INSERT INTO test VALUES "(2,field2,name2)"
+OK
+./redisql-client SELECT \* FROM test WHERE id BETWEEN 1 AND 2
+1. "1,field1,name1"
+2. "2,field2,name2"
+
+Many examples can be found here: https://github.com/JakSprats/Redisql/blob/master/bash_functions.sh
 
 MIT License
 
