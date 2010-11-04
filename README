@@ -17,13 +17,13 @@ BUILD:
 RUN:
 1.) ./redisql-server
 EXPERIMENT (run from command line, some characters '(',')','*' must be escaped)
-./redisql-client CREATE TABLE test \(id int primary key, field TEXT, name TEXT\)
+./redisql-cli CREATE TABLE test \(id int primary key, field TEXT, name TEXT\)
 OK
-./redisql-client INSERT INTO test VALUES "(1,field1,name1)"
+./redisql-cli INSERT INTO test VALUES "(1,field1,name1)"
 OK
-./redisql-client INSERT INTO test VALUES "(2,field2,name2)"
+./redisql-cli INSERT INTO test VALUES "(2,field2,name2)"
 OK
-./redisql-client SELECT \* FROM test WHERE id BETWEEN 1 AND 2
+./redisql-cli SELECT \* FROM test WHERE id BETWEEN 1 AND 2
 1. "1,field1,name1"
 2. "2,field2,name2"
 
