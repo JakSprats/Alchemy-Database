@@ -173,14 +173,18 @@ void runCmdInFakeClient(sds s) {
     if (!cmd) goto run_cmd_err;
     int arity = abs(cmd->arity);
 
-    char *args = strchr(end, ' ');
-    if (!args) goto run_cmd_err;
-    args++;
+    char *args = NULL;
+    if (arity > 2) {
+        args = strchr(end, ' ');
+        if (!args) goto run_cmd_err;
+        else      args++;
+    }
 
     argv                = malloc(sizeof(sds) * arity);
     argv[0]             = cmd_name;
     a_arity++;
-    argv[1]             = sdsnewlen(end, args - end - 1);
+    argv[1]             = args ? sdsnewlen(end, args - end - 1) :
+                                 sdsnewlen(end, strlen(end)) ;
     a_arity++;
     if (arity == 3) {
         argv[2]         = sdsnewlen(args, strlen(args));
@@ -945,11 +949,14 @@ void dumpCommand(redisClient *c) {
 ull get_sum_all_index_size_for_table(redisClient *c, int tmatch) {
     ull isize = 0;
     for (int i = 0; i < Num_indx[server.dbid]; i++) {
-        if (!Index[server.dbid][i].virt && Index[server.dbid][i].table == tmatch) {
+        if (!Index[server.dbid][i].virt &&
+             Index[server.dbid][i].table == tmatch) {
             robj *ind   = Index[server.dbid][i].obj;
             robj *ibt   = lookupKey(c->db, ind);
-            bt   *ibtr  = (bt *)(ibt->ptr);
-            isize      += ibtr->malloc_size;
+            if (ibt->type != REDIS_NRL_INDEX) { /*TODO: desc info on NRL inds */
+                bt   *ibtr  = (bt *)(ibt->ptr);
+                isize      += ibtr->malloc_size;
+            }
         }
     }
     return isize;

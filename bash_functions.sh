@@ -689,6 +689,8 @@ function non_rel_index_test() {
   $CLI CREATE TABLE nrl \(id int primary key, state int, message TEXT\)
   $CLI CREATE INDEX nrl:pub:index ON nrl "PUBLISH NRL:\$state message=\$message -END"
   $CLI CREATE INDEX nrl:zadd:index ON nrl "ZADD Z_NRL \$state \$id"
+  # yes this does a lua transform and then publishes it (per insert)
+  $CLI CREATE INDEX nrl:lua_pub:index ON nrl "LUA len=string.len('\$message'); client('PUBLISH','NRL:\$state','LUA:message=\$message '..'len='..len);"
   $CLI CREATE TABLE T_NRL \(id int primary key, message TEXT\)
   $CLI CREATE INDEX nrl:insert:index ON nrl "INSERT INTO T_NRL VALUES (\$id,\$message)"
 

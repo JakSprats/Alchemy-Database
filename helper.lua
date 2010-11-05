@@ -69,12 +69,3 @@ function hget_hget(h1, key1, key2)
   h2 = create_secondary_hash_table(h1, key1)
   return client("HGET", h2, key2);
 end
-
--- SQL
-function increment_worker_health(id)
-  health = client('SELECT', 'health', 'FROM', 'worker',
-                  'WHERE', 'id', '=', id);
-  health = health + 1;
-  return client('UPDATE', 'worker', 'SET', 'health=' .. health,
-                'WHERE', 'id', '=', id);
-end
