@@ -453,7 +453,7 @@ static void indexCommit(redisClient *c,
     sds    o_target = NULL; /* must come before first GOTO */
     d_l_t *nrlind   = NULL;
     int    cmatch   = - 1;
-    int    tblmatch = - 1;
+    int    tmatch   = - 1;
 
     if (!nrl) {
         // parse tablename.columnname
@@ -469,8 +469,11 @@ static void indexCommit(redisClient *c,
         }
         *column = '\0';
         column++;
-        TABLE_CHECK_OR_REPLY(target,)
-        tblmatch = tmatch;
+        tmatch  = find_table(target);
+        if (tmatch == -1) {
+            addReply(c, shared.nonexistenttable);
+            goto ind_commit_err;
+        }
     
         cmatch = find_column(tmatch, column);
         if (cmatch == -1) {
@@ -486,8 +489,11 @@ static void indexCommit(redisClient *c,
             }
         }
     } else {
-        TABLE_CHECK_OR_REPLY(nrltbl,)
-        tblmatch = tmatch;
+        tmatch = find_table(nrltbl);
+        if (tmatch == -1) {
+            addReply(c, shared.nonexistenttable);
+            goto ind_commit_err;
+        }
 
         nrlind = malloc(sizeof(d_l_t)); /* freed in freeNrlIndexObject */
         nrlind->l1 = listCreate();
@@ -499,17 +505,17 @@ static void indexCommit(redisClient *c,
         }
     }
 
-    newIndex(c, iname, tblmatch, cmatch, 0, nrlind);
+    newIndex(c, iname, tmatch, cmatch, 0, nrlind);
     addReply(c, shared.ok);
 
     if (build) {
         /* IF table has rows - loop thru and populate index */
-        robj *o   = lookupKeyRead(c->db, Tbl[server.dbid][tblmatch].name);
+        robj *o   = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
         bt   *btr = (bt *)o->ptr;
         if (btr->numkeys > 0) {
             robj *ind  = Index[server.dbid][Num_indx[server.dbid] - 1].obj;
             robj *ibt  = lookupKey(c->db, ind);
-            buildIndex(btr, btr->root, ibt->ptr, cmatch, tblmatch, nrl);
+            buildIndex(btr, btr->root, ibt->ptr, cmatch, tmatch, nrl);
         }
     }
 

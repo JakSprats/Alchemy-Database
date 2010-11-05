@@ -255,7 +255,7 @@ void createTableAsObject(redisClient *c) {
     bool  single;
     robj *o  = NULL;
     if (axs == ACCESS_SELECT_COMMAND_NUM) {
-        uchar sop   = 0; /*used in ARGN_OVERFLOW() */
+        uchar sop   = 0; /*used in argn_overflow() */
         int   argn  = 5;
         sds   clist = sdsempty();
 
@@ -263,7 +263,7 @@ void createTableAsObject(redisClient *c) {
         /* parseSelectColumnList edits the cargv ----------------\/           */
         sdsfree(c->argv[5]->ptr);                             /* so free it   */
         c->argv[5]->ptr = sdsnewlen(clist, sdslen(clist));;   /* and recr8 it */
-        ARGN_OVERFLOW()                      /* skip SQL keyword"FROM" */
+        if (argn_overflow(c, &argn, sop)) return; /* skip SQL keyword"FROM" */
 
         robj               *argv[3];
         bool                ret   = 0;
@@ -299,7 +299,7 @@ void createTableAsObject(redisClient *c) {
                 bool  asc = 1;
                 int   lim = -1;
                 list *inl = NULL;
-                ARGN_OVERFLOW()
+                if (argn_overflow(c, &argn, sop)) return;
                 where = checkSQLWhereClauseReply(c, NULL, NULL, NULL, NULL,
                                                  &argn, tmatch, 0, 1,
                                                  &obc, &asc, &lim, &bdum, &inl);

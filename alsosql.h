@@ -52,6 +52,7 @@ robj *cloneRobj(robj *r);
 robj *convertRobj(robj *r, int type);
 
 int find_table(char *tname);
+int find_table_n(char *tname, int len);
 int find_column(int tmatch, char *column);
 int find_column_n(int tmatch, char *column, int len);
 
@@ -61,7 +62,7 @@ void createTable(redisClient *c);
 /* TABLE_CHECK_OR_REPLY(char *TBL, RET) -
      creates (int tmatch) */
 #define TABLE_CHECK_OR_REPLY(TBL, RET)        \
-    int   tmatch = find_table(TBL);           \
+    int tmatch = find_table(TBL);             \
     if (tmatch == -1) {                       \
         addReply(c, shared.nonexistenttable); \
         return RET;                           \

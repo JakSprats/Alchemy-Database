@@ -190,11 +190,19 @@ bool parseCreateTable(redisClient *c,
     return 1;
 }
 
-#define PARGN_OVERFLOW()            \
-    *pargn = *pargn + 1;            \
-    if (*pargn == c->argc) {        \
-        WHERE_CLAUSE_ERROR_REPLY(0) \
+/* WHERE_CLAUSE WHERE_CLAUSE WHERE_CLAUSE WHERE_CLAUSE WHERE_CLAUSE */
+/* WHERE_CLAUSE WHERE_CLAUSE WHERE_CLAUSE WHERE_CLAUSE WHERE_CLAUSE */
+bool argn_overflow(redisClient *c, int *pargn, uchar sop) {
+    *pargn = *pargn + 1;
+    if (*pargn == c->argc) {
+         if      (sop == SQL_SELECT) addReply(c, shared.selectsyntax);
+         else if (sop == SQL_DELETE) addReply(c, shared.deletesyntax);
+         else if (sop == SQL_UPDATE) addReply(c, shared.updatesyntax);
+         else               addReply(c, shared.scanselectsyntax);
+         return 1;
     }
+    return 0;
+}
 
 static uchar parseRangeReply(redisClient  *c,
                              char         *x,
@@ -203,14 +211,14 @@ static uchar parseRangeReply(redisClient  *c,
                              uchar         sop,
                              bool          just_parse) {
     if (!strcasecmp(x, "BETWEEN")) { /* RANGE QUERY */
-        PARGN_OVERFLOW()
+        if (argn_overflow(c, pargn, sop)) return SQL_ERR_LOOKUP;
         int start = *pargn;
-        PARGN_OVERFLOW()
+        if (argn_overflow(c, pargn, sop)) return SQL_ERR_LOOKUP;
         if (strcasecmp(c->argv[*pargn]->ptr, "AND")) {
             addReply(c, shared.whereclause_no_and);
-            return 0;
+            return SQL_ERR_LOOKUP;
         }
-        PARGN_OVERFLOW()
+        if (argn_overflow(c, pargn, sop)) return SQL_ERR_LOOKUP;
         int finish = *pargn;
         if (just_parse) return SQL_RANGE_QUERY;
         *rng = createStringObject(c->argv[start]->ptr,
@@ -223,8 +231,8 @@ static uchar parseRangeReply(redisClient  *c,
     if      (sop == SQL_SELECT) addReply(c, shared.selectsyntax_noequals);
     else if (sop == SQL_DELETE) addReply(c, shared.deletesyntax_noequals);
     else if (sop == SQL_UPDATE) addReply(c, shared.updatesyntax_noequals);
-    else               addReply(c, shared.scanselectsyntax_noequals);
-    return 0;
+    else                        addReply(c, shared.scanselectsyntax_noequals);
+    return SQL_ERR_LOOKUP;
 }
 
 static bool parseOrderBy(redisClient *c,
@@ -234,18 +242,18 @@ static bool parseOrderBy(redisClient *c,
                          int         *lim) {
     uchar sop = 0;
     if (!strcasecmp(c->argv[*pargn]->ptr, "BY")) {
-        PARGN_OVERFLOW()
+        if (argn_overflow(c, pargn, sop)) return 0;
         *oba = *pargn;
         if (*pargn != (c->argc - 1)) {
             if (!strcasecmp(c->argv[*pargn + 1]->ptr, "DESC")) {
-                PARGN_OVERFLOW()
+                if (argn_overflow(c, pargn, sop)) return 0;
                 *asc = 0;
             }
         }
         if (*pargn != (c->argc - 1)) {
             if (!strcasecmp(c->argv[*pargn + 1]->ptr, "LIMIT")) {
-                PARGN_OVERFLOW()
-                PARGN_OVERFLOW()
+                if (argn_overflow(c, pargn, sop)) return 0;
+                if (argn_overflow(c, pargn, sop)) return 0;
                 *lim = atoi(c->argv[*pargn]->ptr);
             }
         }
@@ -256,13 +264,20 @@ static bool parseOrderBy(redisClient *c,
     }
 }
 
-#define CHECK_WHERE_CLAUSE_REPLY(X,Y,SOP)                            \
-    if (strcasecmp(c->argv[X]->ptr, "WHERE")) {                      \
-        if      (SOP == 0) addReply(c, shared.selectsyntax_nowhere); \
-        else if (SOP == 1) addReply(c, shared.deletesyntax_nowhere); \
-        else if (SOP == 2) addReply(c, shared.updatesyntax_nowhere); \
-        return Y;                                                    \
+void where_clause_error(redisClient *c, uchar sop) {
+    if      (sop == 0) addReply(c, shared.selectsyntax_nowhere);
+    else if (sop == 1) addReply(c, shared.deletesyntax_nowhere);
+    else if (sop == 2) addReply(c, shared.updatesyntax_nowhere);
+}
+
+bool check_where_clause_reply(redisClient *c, int argn, uchar sop) {
+    if (strcasecmp(c->argv[argn]->ptr, "WHERE")) {
+        where_clause_error(c, sop);
+        return 0;
     }
+    return 1;
+}
+
 
 bool parseWCAddtlSQL(redisClient *c,
                      int         *pargn, 
@@ -273,27 +288,26 @@ bool parseWCAddtlSQL(redisClient *c,
                      int         *lim,
                      int          tmatch,
                      bool         reply) {
-    PARGN_OVERFLOW()
+    if (argn_overflow(c, pargn, sop)) return 0;
     bool check_sto = 1;
     if (!strcasecmp(c->argv[*pargn]->ptr, "ORDER")) {
-        PARGN_OVERFLOW()
+        if (argn_overflow(c, pargn, sop)) return 0;
         int oba   = -1;
         if (!parseOrderBy(c, pargn, &oba, asc, lim)) return 0;
         *obc = find_column(tmatch, c->argv[oba]->ptr);
         check_sto = 0;
         if (*pargn != (c->argc - 1)) {
-            PARGN_OVERFLOW()
+            if (argn_overflow(c, pargn, sop)) return 0;
             check_sto = 1;
         }
     }
    if (check_sto) {
        if (!strcasecmp(c->argv[*pargn]->ptr, STORE)) {
-            PARGN_OVERFLOW()
+            if (argn_overflow(c, pargn, sop)) return 0;
             *store = 1;
-        } else {
-            if (reply) {
-                WHERE_CLAUSE_ERROR_REPLY(0);
-            }
+        } else if (reply) {
+            where_clause_error(c, sop);
+            return 0;
         }
     }
     return 1;
@@ -313,11 +327,11 @@ static bool addRCmdToINList(redisClient *c,
 }
 
 /* NOTE: IN "(x, y, z)" must be one argv */
-static bool parseWhereClauseIN(redisClient  *c,
-                               int          *pargn,
-                               list        **inl,
-                               uchar         sop) {
-    PARGN_OVERFLOW()
+static bool parseWC_IN(redisClient  *c,
+                       int          *pargn,
+                       list        **inl,
+                       uchar         sop) {
+    if (argn_overflow(c, pargn, sop)) return 0;
     sds carg = c->argv[*pargn]->ptr;
     if (!strchr(carg, '(') || !strchr(carg, ')')) {
         addReply(c, shared.whereclause_in_err);
@@ -396,11 +410,12 @@ uchar checkSQLWhereClauseReply(redisClient  *c,
                                int         *lim,
                                bool        *store,
                                list       **inl) {
-    CHECK_WHERE_CLAUSE_REPLY(*pargn, 0, sop)
-    PARGN_OVERFLOW()
+    if (!check_where_clause_reply(c, *pargn, sop)) return SQL_ERR_LOOKUP;
+    if (argn_overflow(c, pargn, sop))              return SQL_ERR_LOOKUP;
 
+    robj **argv = c->argv;
     bool got_eq     = 0;
-    sds  token      = c->argv[*pargn]->ptr;
+    sds  token      = argv[*pargn]->ptr;
     sds  eq         = strchr(token, CEQUALS); /* pk=X */
     int  tok_cmatch = -1;
     if (eq) {
@@ -432,15 +447,15 @@ uchar checkSQLWhereClauseReply(redisClient  *c,
                 if      (sop == SQL_SELECT) addReply(c, shared.select_notpk);
                 else if (sop == SQL_DELETE) addReply(c, shared.delete_notpk);
                 else if (sop == SQL_UPDATE) addReply(c, shared.update_notpk);
-                return 0;
+                return SQL_ERR_LOOKUP;
             }
         }
     } else {
         if (cmatch) *cmatch = tok_cmatch;
     }
 
-    PARGN_OVERFLOW()
-    token = c->argv[*pargn]->ptr;
+    if (argn_overflow(c, pargn, sop)) return SQL_ERR_LOOKUP;
+    token = argv[*pargn]->ptr;
     if (got_eq) {
         if (just_parse) return SQL_SINGLE_LOOKUP;
         *key = createStringObject(token, sdslen(token));
@@ -448,8 +463,8 @@ uchar checkSQLWhereClauseReply(redisClient  *c,
         if (token[0] == CEQUALS) {
             if (just_parse) return SQL_SINGLE_LOOKUP;
             if (sdslen(token) == 1) {
-                PARGN_OVERFLOW()
-                token = c->argv[*pargn]->ptr;
+                if (argn_overflow(c, pargn, sop)) return SQL_ERR_LOOKUP;
+                token = argv[*pargn]->ptr;
                 *key = createStringObject(token, sdslen(token));
             } else {
                 char *k = token + 1;
@@ -458,7 +473,7 @@ uchar checkSQLWhereClauseReply(redisClient  *c,
         } else {
             uchar wtype = 0;
             if (!strcasecmp(token, "IN")) {
-                if (!parseWhereClauseIN(c, pargn, inl, sop)) return 0;
+                if (!parseWC_IN(c, pargn, inl, sop)) return SQL_ERR_LOOKUP;
                 wtype = SQL_IN_LOOKUP;
             } else {
                 wtype = parseRangeReply(c, token, pargn, rng, sop,
@@ -466,8 +481,8 @@ uchar checkSQLWhereClauseReply(redisClient  *c,
             }
             if (wtype) {
                 if (*pargn != (c->argc - 1)) { /* additional SQL */
-                    if (!parseWCAddtlSQL(c, pargn, obc, store, sop,
-                                         asc, lim, tmatch, 1)) return 0;
+                    if (!parseWCAddtlSQL(c, pargn, obc, store, sop, asc, lim,
+                                         tmatch, 1)) return SQL_ERR_LOOKUP;
                 }
             }
             return wtype;
@@ -479,7 +494,7 @@ uchar checkSQLWhereClauseReply(redisClient  *c,
         convertFkValueToRange((*key)->ptr, rng);
         if (*pargn != (c->argc - 1)) { /* additional SQL */
             if (!parseWCAddtlSQL(c, pargn, obc, store, sop,
-                                 asc, lim, tmatch, 1)) return 0;
+                                 asc, lim, tmatch, 1)) return SQL_ERR_LOOKUP;
         }
         return SQL_RANGE_QUERY;
     } else {
@@ -497,33 +512,31 @@ static uchar checkSQLWhereJoinReply(redisClient  *c,
     bool  got_eq = 0;
     sds   token  = c->argv[*pargn]->ptr;
     sds   eq     = strchr(token, CEQUALS); /* pk=X */
-    if (eq) {
+    if (eq) { /* "pk=" */
         *jind1 = createStringObject(token, (eq - token));
         if (token[sdslen(token) - 1] == CEQUALS) {
-            token[sdslen(token) - 1] = '\0'; /* TODO this must go */
-            sdsupdatelen(token);
             got_eq = 1;
         } else { // "pk=X"
             if (!isalnum(*(eq + 1))) { /* sanity check - protocol abuse */ 
                 addReply(c, shared.selectsyntax);
-                return 0;
+                return SQL_ERR_LOOKUP;
             }
             int len = sdslen(token) - (eq - token) - 1;
             *jind2  = createStringObject(eq + 1, len);
-            return 1;
+            return SQL_SINGLE_LOOKUP;
         }
     } else {
         *jind1 = createStringObject(token, sdslen(token));
     }
 
-    PARGN_OVERFLOW()
+    if (argn_overflow(c, pargn, sop)) return SQL_ERR_LOOKUP;
     token = c->argv[*pargn]->ptr;
     if (got_eq) {
-        *jind2 = createStringObject(token, sdslen(token));
+        *jind2 = createStringObject(token, sdslen(token) - 1);
     } else {
         if (token[0] == CEQUALS) {
             if (sdslen(token) == 1) {
-                PARGN_OVERFLOW()
+                if (argn_overflow(c, pargn, sop)) return SQL_ERR_LOOKUP;
                 token  = c->argv[*pargn]->ptr;
                 *jind2 = createStringObject(token, sdslen(token));
             } else {
@@ -532,13 +545,13 @@ static uchar checkSQLWhereJoinReply(redisClient  *c,
             }
         } else {
             if (!strcasecmp(token, "IN")) {
-                if (!parseWhereClauseIN(c, pargn, inl, sop)) return 0;
+                if (!parseWC_IN(c, pargn, inl, sop)) return SQL_ERR_LOOKUP;
                 return SQL_IN_LOOKUP;
             }
             return parseRangeReply(c, token, pargn, rng, sop, 0);
         }
     }
-    return 1;
+    return SQL_SINGLE_LOOKUP;
 }
 
 static bool parseJoinTable(redisClient *c, char *tbl, int *obt, int *obc) {
@@ -591,18 +604,20 @@ bool joinParseReply(redisClient  *c,
         }
         char *nextc = y;
         while ((nextc = strchr(nextc, CCOMMA))) {
-            sds z = sdsnewlen(y, nextc - y);
+            int tmatch = find_table_n(y, nextc - y);
+            if (tmatch == -1) {
+                 addReply(c, shared.nonexistenttable);
+                 return 0;
+            }
             nextc++;
-            TABLE_CHECK_OR_REPLY(z,0)
             y      = nextc;
-            sdsfree(z);
         }
         if (*y) {
             TABLE_CHECK_OR_REPLY(y,0)
         }
     }
-    CHECK_WHERE_CLAUSE_REPLY(argn,0,sop)
-    ARGN_OVERFLOW(0)
+    if (!check_where_clause_reply(c, argn, sop)) return 0;
+    if (argn_overflow(c, &argn, sop))            return 0;
 
     sds    icl   = sdsempty();
     uchar  wtype = 0;
@@ -613,7 +628,7 @@ bool joinParseReply(redisClient  *c,
         jind1    = NULL;
         jind2    = NULL;
         wtype    = checkSQLWhereJoinReply(c, &jind1, &jind2, rng, &argn, inl);
-        if (wtype) {
+        if (wtype != SQL_ERR_LOOKUP) {
             sds jp1       = jind1 ? jind1->ptr : NULL;
             sds jp2       = jind2 ? jind2->ptr : NULL;
             sds cnvrt_rng = 0;
@@ -645,13 +660,13 @@ bool joinParseReply(redisClient  *c,
             }
 
             if (argn < (c->argc - 1)) { /* Parse Next AND-Tuplet */
-                ARGN_OVERFLOW(0)
+                if (argn_overflow(c, &argn, sop)) goto join_cmd_err;
                 bool check_sto = 1;
                 if (!strcasecmp(c->argv[argn]->ptr, "AND")) {
-                    ARGN_OVERFLOW(0)
+                    if (argn_overflow(c, &argn, sop)) goto join_cmd_err;
                 } else {
                     if (!strcasecmp(c->argv[argn]->ptr, "ORDER")) {
-                        ARGN_OVERFLOW(0)
+                        if (argn_overflow(c, &argn, sop)) goto join_cmd_err;
                         int oba = -1;
                         if (!parseOrderBy(c, &argn, &oba, asc, lim))
                             goto join_cmd_err;
@@ -674,20 +689,21 @@ bool joinParseReply(redisClient  *c,
 
                         check_sto = 0;
                         if (argn != (c->argc - 1)) {
-                            ARGN_OVERFLOW(0)
+                            if (argn_overflow(c, &argn, sop)) goto join_cmd_err;
                             check_sto = 1;
                         }
                         fin = 1;
                     }
                     if (check_sto) {
                         if (!strcasecmp(c->argv[argn]->ptr, STORE)) {
-                            ARGN_OVERFLOW(0)
+                            if (argn_overflow(c, &argn, sop)) goto join_cmd_err;
                             CHECK_STORE_TYPE_OR_REPLY(c->argv[argn]->ptr,*sto,0)
-                            ARGN_OVERFLOW(0)
+                            if (argn_overflow(c, &argn, sop)) goto join_cmd_err;
                             *nname = c->argv[argn];
                             fin   = 1;
                         } else {
-                            WHERE_CLAUSE_ERROR_REPLY(0);
+                            where_clause_error(c, sop);
+                            goto join_cmd_err;
                         }
                     }
                 }
@@ -701,7 +717,7 @@ bool joinParseReply(redisClient  *c,
         if (jind2) decrRefCount(jind2);
         jind2 = NULL;
         if (fin)   break;
-        if (!wtype) goto join_cmd_err;
+        if (wtype == SQL_ERR_LOOKUP) goto join_cmd_err;
     }
 
     *n_ind = parseIndexedColumnListOrReply(c, icl, j_indxs);

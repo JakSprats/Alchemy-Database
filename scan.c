@@ -131,7 +131,7 @@ static void condSelectReply(redisClient   *c,
 
 void tscanCommand(redisClient *c) {
     int   argn;
-    uchar sop   = 3; /*used in ARGN_OVERFLOW() */
+    uchar sop   = 3; /*used in argn_overflow() */
     robj *pko   = NULL, *rng  = NULL;
     sds   clist = sdsempty();
     for (argn = 1; argn < c->argc; argn++) { /* parse col_list */
@@ -166,9 +166,14 @@ void tscanCommand(redisClient *c) {
         addReply(c, shared.selectsyntax_nofrom);
         goto tscan_cmd_err;
     }
-    ARGN_OVERFLOW()
+    if (argn_overflow(c, &argn, sop)) goto tscan_cmd_err;
 
-    TABLE_CHECK_OR_REPLY(c->argv[argn]->ptr,)
+    int tmatch = find_table(c->argv[argn]->ptr);
+    if (tmatch == -1) {
+        addReply(c, shared.nonexistenttable);
+        goto tscan_cmd_err;
+    }
+
 
     bool no_w_c = 0; /* NO WHERE CLAUSE */
     if (argn == (c->argc - 1)) no_w_c = 1;

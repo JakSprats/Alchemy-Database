@@ -110,6 +110,17 @@ int find_table(char *tname) {
     return -1;
 }
 
+int find_table_n(char *tname, int len) {
+    for (int i = 0; i < Num_tbls[server.dbid]; i++) {
+        if (Tbl[server.dbid][i].name) {
+            if (!strncmp(tname, (char *)Tbl[server.dbid][i].name->ptr, len)) {
+                return i;
+            }
+        }
+    }
+    return -1;
+}
+
 int find_column(int tmatch, char *column) {
     if (!Tbl[server.dbid][tmatch].name) return -1;
     for (int j = 0; j < Tbl[server.dbid][tmatch].col_count; j++) {
@@ -164,6 +175,7 @@ static char *parseRowVals(sds      vals,
                           int     *pklen,
                           int      ncols,
                           uint32   cofsts[]) {
+    /* TODO NULLING here is not ok, it effects the AOF line */
     if (vals[sdslen(vals) - 1] == ')') vals[sdslen(vals) - 1] = '\0';
     if (*vals == '(') vals++;
 
@@ -340,7 +352,6 @@ void createTable(redisClient *c) {
         return;
     }
 
-    //TODO break out into function -> sql.c
     char  cnames [MAX_COLUMN_PER_TABLE][MAX_COLUMN_NAME_SIZE];
     char *o_token[MAX_COLUMN_PER_TABLE * 3]; /* can be 2+ times more */
     int   ccount      = 0;
@@ -471,7 +482,6 @@ void insertCommand(redisClient *c) {
     int   ncols = Tbl[server.dbid][tmatch].col_count;
     MATCH_INDICES(tmatch)
 
-    /* TODO column ordering is IGNORED */
     if (strcasecmp(c->argv[3]->ptr, "VALUES")) {
         char *x = c->argv[3]->ptr;
         if (*x == '(') addReply(c, shared.insertsyntax_col_decl);
@@ -536,7 +546,7 @@ void selectRedisqlCommand(redisClient *c) {
         return;
     }
     int    argn  = 1;
-    uchar  sop   = 0; /*used in ARGN_OVERFLOW() */
+    uchar  sop   = 0; /*used in argn_overflow() */
     robj  *pko   = NULL, *range = NULL;
     list  *inl   = NULL;
     sds    clist = sdsempty();
@@ -545,17 +555,21 @@ void selectRedisqlCommand(redisClient *c) {
 
     if (argn == c->argc) {
         addReply(c, shared.selectsyntax_nofrom);
-        goto sel_cmd_err;
+        goto select_cmd_err;
     }
-    ARGN_OVERFLOW()
-    sds  tbl_list = c->argv[argn]->ptr;
+    if (argn_overflow(c, &argn, sop)) goto select_cmd_err;
+    sds tbl_list = c->argv[argn]->ptr;
 
     if (strchr(tbl_list, ',') ||
         strchr(clist,    '.')) { /* TODO: misses COUNT(*) FROM "tbl1 , tbl2" */
         joinReply(c, clist, argn);
     } else {
-        TABLE_CHECK_OR_REPLY(tbl_list,);
-        ARGN_OVERFLOW()
+        int tmatch = find_table(tbl_list);
+        if (tmatch == -1) {
+            addReply(c, shared.nonexistenttable);
+            goto select_cmd_err;
+        }
+        if (argn_overflow(c, &argn, sop)) goto select_cmd_err;
 
         int   imatch = -1;
         int   obc    = -1; /* ORDER BY col */
@@ -565,15 +579,15 @@ void selectRedisqlCommand(redisClient *c) {
         uchar wtype  = checkSQLWhereClauseReply(c, &pko, &range, &imatch, NULL,
                                                 &argn, tmatch, 0, 0,
                                                 &obc, &asc, &lim, &store, &inl);
-        if (!wtype) goto sel_cmd_err;
+        if (wtype == SQL_ERR_LOOKUP) goto select_cmd_err;
 
         if (store) { /* DENORM e.g.: STORE LPUSH list */
             if (!range && !inl) {
                 addReply(c, shared.selectsyntax_store_norange);
-                goto sel_cmd_err;
+                goto select_cmd_err;
             }
             int i = argn;
-            ARGN_OVERFLOW()
+            if (argn_overflow(c, &argn, sop)) goto select_cmd_err;
             istoreCommit(c, tmatch, imatch, c->argv[i]->ptr, clist,
                          range, c->argv[argn], obc, asc, lim, inl);
         } else if (wtype == SQL_RANGE_QUERY || wtype == SQL_IN_LOOKUP) {
@@ -582,14 +596,14 @@ void selectRedisqlCommand(redisClient *c) {
             int  cmatchs[MAX_COLUMN_PER_TABLE];
             bool bdum;
             int  qcols = parseColListOrReply(c, tmatch, clist, cmatchs, &bdum);
-            if (!qcols) goto sel_cmd_err;
+            if (!qcols) goto select_cmd_err;
     
             robj *o = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
             selectReply(c, o, pko, tmatch, cmatchs, qcols);
         }
     }
 
-sel_cmd_err:
+select_cmd_err:
     sdsfree(clist);
     if (pko)   decrRefCount(pko);
     if (inl)   listRelease(inl);
@@ -615,7 +629,7 @@ void deleteCommand(redisClient *c) {
     uchar  wtype  = checkSQLWhereClauseReply(c, &pko, &range, &imatch, NULL,
                                              &argn, tmatch, 1, 0,
                                              &obc, &asc, &lim, &bdum, &inl);
-    if (!wtype) goto del_cmd_err;
+    if (wtype == SQL_ERR_LOOKUP) goto del_cmd_err;
 
     if (Curr_range) sdsfree(Curr_range);
     if (wtype == SQL_RANGE_QUERY || wtype == SQL_IN_LOOKUP) {
@@ -672,7 +686,7 @@ void updateCommand(redisClient *c) {
     uchar  wtype  = checkSQLWhereClauseReply(c, &pko, &range, &imatch, NULL,
                                              &argn, tmatch, 2, 0,
                                              &obc, &asc, &lim, &bdum, &inl);
-    if (!wtype) goto update_cmd_err;
+    if (wtype == SQL_ERR_LOOKUP) goto update_cmd_err;
 
     if (Curr_range) sdsfree(Curr_range);
     if (wtype == SQL_RANGE_QUERY || wtype == SQL_IN_LOOKUP) {

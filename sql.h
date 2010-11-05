@@ -30,6 +30,7 @@ bool parseCreateTable(redisClient *c,
                       int          *parsed_argn,
                       char         *o_token[]);
 
+#define SQL_ERR_LOOKUP    0 
 #define SQL_SINGLE_LOOKUP 1
 #define SQL_RANGE_QUERY   2
 #define SQL_IN_LOOKUP     3
@@ -39,18 +40,7 @@ bool parseCreateTable(redisClient *c,
 #define SQL_UPDATE     2
 #define SQL_SCANSELECT 3
 
-#define WHERE_CLAUSE_ERROR_REPLY(ret)                                 \
-    if      (sop == SQL_SELECT) addReply(c, shared.selectsyntax);     \
-    else if (sop == SQL_DELETE) addReply(c, shared.deletesyntax);     \
-    else if (sop == SQL_UPDATE) addReply(c, shared.updatesyntax);     \
-    else               addReply(c, shared.scanselectsyntax);          \
-    return ret;
-
-#define ARGN_OVERFLOW(ret)            \
-    argn++;                           \
-    if (argn == c->argc) {            \
-        WHERE_CLAUSE_ERROR_REPLY(ret) \
-    }
+bool argn_overflow(redisClient *c, int *pargn, uchar sop);
 
 bool parseWCAddtlSQL(redisClient *c,
                      int         *pargn, 
