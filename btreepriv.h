@@ -52,7 +52,7 @@ typedef struct btree {
 } __attribute__ ((packed)) bt;
 
 typedef struct btreenode { // 2 bytes
-    int    n    : 15; //16K entries
+    int    n    : 31; //2G entries
     int    leaf : 1;
 } bt_n;
 

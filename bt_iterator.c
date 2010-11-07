@@ -89,7 +89,7 @@ static void become_child_recurse(btIterator *iter, bt_n* self) {
     if (!iter->bln->self->leaf) { // depth-first
         if (!iter->bln->child) iter->bln->child = get_new_iter_child(iter);
         struct btree *btr = iter->btr;
-        become_child(iter, NODES(btr, iter->bln->self)[iter->bln->in]);
+        become_child_recurse(iter, NODES(btr, iter->bln->self)[iter->bln->in]);
     }
 }
 
@@ -329,3 +329,16 @@ void btReleaseJoinRangeIterator(btIterator *iter) {
         iter->highc = NULL;
     }
 }
+
+#if 0
+/* used for DEBUGGING the Btrees innards */
+void btreeCommand(redisClient *c) {
+    char buf[192];
+    TABLE_CHECK_OR_REPLY(c->argv[1]->ptr,)
+    robj *o    = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
+    bt   *btr  = (bt *)o->ptr;
+    bool  virt = 1;
+    bt_dumptree(btr, btr->ktype, (virt ? REDIS_ROW : REDIS_BTREE));
+    addReply(c, shared.ok);
+}
+#endif

@@ -37,7 +37,7 @@ void freeBtreeObject(robj *o) {
 
 #define INIT_DATA_BTREE_BYTES        4096
 #define INIT_INDEX_BTREE_BYTES       1024
-#define INIT_NODE_INDEX_BTREE_BYTES  4096
+#define INIT_NODE_INDEX_BTREE_BYTES   128
 bt *btCreate(uchar ktype, int num, uchar is_index) {
     bt *btr;
     if (is_index == BTREE_TABLE) {
