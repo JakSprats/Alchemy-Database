@@ -22,15 +22,18 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <unistd.h>
 
 #include "redis.h"
+#include "zmalloc.h"
+
 #include "sql.h"
 #include "index.h"
 #include "store.h"
 #include "alsosql.h"
 #include "join.h"
-#include "denorm.h"
 #include "bt_iterator.h"
 #include "row.h"
 #include "bt.h"
+#include "parser.h"
+#include "denorm.h"
 
 // FROM redis.c
 #define RL4 redisLog(4,
@@ -41,7 +44,6 @@ extern int      Num_tbls     [MAX_NUM_TABLES];
 extern r_tbl_t  Tbl[MAX_NUM_DB][MAX_NUM_TABLES];
 
 stor_cmd AccessCommands[NUM_ACCESS_TYPES];
-char *DUMP = "DUMP";
 
 static robj *_createStringObject(char *s) {
     return createStringObject(s, strlen(s));
@@ -197,22 +199,20 @@ long fakeClientPipe(redisClient *c,
     return card - 1; /* started at 1 */
 }
 
-/* TODO the protocol-parsing does not exactly follow the line protocol,
-        it follow what the code does ... the code could change */
-void createTableAsObjectOperation(redisClient *c, int  is_ins) {
+void createTableAsObjectOperation(redisClient  *c,
+                                  int           is_ins,
+                                  robj        **rargv,
+                                  int           rargc) {
     robj               *wargv[3];
     struct redisClient *wfc    = rsql_createFakeClient(); /* client to write */
     wfc->argc                  = 3;
     wfc->argv                  = wargv;
     wfc->argv[1]               = c->argv[2]; /* table name */
 
-    robj               **rargv = malloc(sizeof(robj *) * c->argc);
+    /* TODO parse as_cmd */
     struct redisClient *rfc    = rsql_createFakeClient(); /* client to read */
     rfc->argv                  = rargv;
-    for (int i = 4; i < c->argc; i++) {
-        rfc->argv[i - 4] = c->argv[i];
-    }
-    rfc->argc                  = c->argc - 4;
+    rfc->argc                  = rargc;
     rfc->db                    = c->db;
 
     flag flg = 0;
@@ -220,109 +220,109 @@ void createTableAsObjectOperation(redisClient *c, int  is_ins) {
 
     rsql_freeFakeClient(rfc);
     rsql_freeFakeClient(wfc);
-    free(rargv);
+    zfree(rargv);
+    addReply(c, shared.ok); /* TODO return rows created */
+    return;
+}
+
+void createTableAsSelect(redisClient *c, char *as_cmd) {
+    int  cmatchs[MAX_COLUMN_PER_TABLE];
+    bool cstar  = 0;
+    int  qcols  = 0;
+    int  tmatch = -1;
+    bool join   = 0;
+
+    int rargc = 6;
+    robj **rargv = parseSelectCmdToArgv(as_cmd);
+
+    if (!parseSelectReply(c, 0, &tmatch, cmatchs, &qcols, &join,
+                          &cstar,  rargv[1]->ptr, rargv[2]->ptr,
+                          rargv[3]->ptr, rargv[4]->ptr)) return;
+    if (cstar) {
+        addReply(c, shared.select_store_count);
+        return;
+    }
+
+    robj        *argv[3];
+    bool         ret     = 0;
+    bool         ok      = 0;
+    redisClient *rfc     = rsql_createFakeClient();
+    rfc->argv            = argv;
+    rfc->argv[1]         = c->argv[2];
+    if (join) { /* CREATE TABLE AS SELECT JOIN */
+        jb_t jb;
+        init_join_block(&jb, rargv[5]->ptr);
+        ok    = parseJoinReply(c, 1, &jb, rargv[1]->ptr, rargv[3]->ptr);
+        qcols = jb.qcols;
+        if (ok && qcols) {
+            ret = createTableFromJoin(c, rfc, qcols, jb.j_tbls, jb.j_cols);
+        }
+        destroy_join_block(&jb);
+    } else  if (qcols) { /* check WHERE clause for syntax */
+        uchar  sop = SQL_SELECT;
+        cswc_t w;
+        init_check_sql_where_clause(&w, rargv[5]->ptr);
+        uchar wtype  = checkSQLWhereClauseReply(c, &w, tmatch, sop, 1, 0);
+        if (wtype != SQL_ERR_LOOKUP) {
+            ret = internalCreateTable(c, rfc, qcols, cmatchs, tmatch);
+            ok  = 1;
+        }
+        destroy_check_sql_where_clause(&w);
+    }
+    rsql_freeFakeClient(rfc);
+    if (!ret || !ok || !qcols) {
+        addReply(c, shared.create_table_as_select);
+        return;
+    }
+
+    createTableAsObjectOperation(c, 1, rargv, rargc);
+
     addReply(c, shared.ok);
     return;
 }
 
 void createTableAsObject(redisClient *c) {
-    robj *axs_type = c->argv[4];
-    int   axs      = -1;
+    char *as     = c->argv[3]->ptr;
+    char *as_cmd = next_token(as);
+    int   axs    = -1;
     for (int i = 0; i < NUM_ACCESS_TYPES; i++) {
-        if (!strcasecmp(axs_type->ptr, AccessCommands[i].name)) {
+        if (!strncasecmp(as_cmd, AccessCommands[i].name,
+                         strlen(AccessCommands[i].name))) {
             axs = i;
             break;
         }
     }
   
-    if (axs != -1) {
-        if (c->argc < (4 + AccessCommands[axs].argc)) {
-            addReply(c, shared.create_table_as_access_num_args);
-            return;
-        }
-    } else {
-        if (strcasecmp(axs_type->ptr, DUMP)) {
+    char *dumpee = NULL;
+    if (axs == -1) { /* quick argc parsing validation */
+        if (strncasecmp(as_cmd, "DUMP ", 5)) {
             addReply(c, shared.create_table_as_function_not_found);
             return;
         }
-        if (c->argc < 6) {
-            addReply(c, shared.create_table_as_dump_num_args);
-            return;
-        }
     }
 
-    robj *cdef;
-    bool  single;
-    robj *o  = NULL;
     if (axs == ACCESS_SELECT_COMMAND_NUM) {
-        uchar sop   = 0; /*used in argn_overflow() */
-        int   argn  = 5;
-        sds   clist = sdsempty();
-
-        parseSelectColumnList(c, &clist, &argn);
-        /* parseSelectColumnList edits the cargv ----------------\/           */
-        sdsfree(c->argv[5]->ptr);                             /* so free it   */
-        c->argv[5]->ptr = sdsnewlen(clist, sdslen(clist));;   /* and recr8 it */
-        if (argn_overflow(c, &argn, sop)) return; /* skip SQL keyword"FROM" */
-
-        robj               *argv[3];
-        bool                ret   = 0;
-        int                 qcols = 0;
-        uchar               where = 0;
-        struct redisClient *rfc   = rsql_createFakeClient();
-        rfc->argv                 = argv;
-        rfc->argv[1]              = c->argv[2];
-        if (strchr(clist, '.')) { /* CREATE TABLE AS SELECT JOIN */
-            int   j_indxs[MAX_JOIN_INDXS];
-            int   j_tbls [MAX_JOIN_INDXS], j_cols [MAX_JOIN_INDXS];
-            int   idum;
-            bool  bdum;
-            robj *range = NULL;
-            robj *nname = NULL;
-            list *inl   = NULL;
-            /* check WHERE clause for syntax */
-            where = joinParseReply(c, clist, argn, j_indxs, j_tbls, j_cols,
-                                   &qcols, &idum, &nname, &range, &idum,
-                                   &idum, &idum, &bdum, &idum, &inl, &bdum);
-            if (inl)   listRelease(inl);
-            if (range) decrRefCount(range);
-            if (where && qcols)
-                ret = createTableFromJoin(c, rfc, qcols, j_tbls, j_cols);
-        } else {
-            TABLE_CHECK_OR_REPLY(c->argv[argn]->ptr,);
-            int  cmatchs[MAX_COLUMN_PER_TABLE];
-            bool bdum;
-            qcols = parseColListOrReply(c, tmatch, clist, cmatchs, &bdum);
-            if (qcols) { /* check WHERE clause for syntax */
-                bool  bdum;
-                int   obc = -1; /* ORDER BY col */
-                bool  asc = 1;
-                int   lim = -1;
-                list *inl = NULL;
-                if (argn_overflow(c, &argn, sop)) return;
-                where = checkSQLWhereClauseReply(c, NULL, NULL, NULL, NULL,
-                                                 &argn, tmatch, 0, 1,
-                                                 &obc, &asc, &lim, &bdum, &inl);
-                if (inl) listRelease(inl);
-                if (where)
-                    ret = internalCreateTable(c, rfc, qcols, cmatchs, tmatch);
-            }
-        }
-        rsql_freeFakeClient(rfc);
-        if (!ret || !where || !qcols) return;
-
-        createTableAsObjectOperation(c, 1);
-
-        addReply(c, shared.ok);
+        createTableAsSelect(c, as_cmd);
         return;
     }
 
-    robj *key = c->argv[5];
-    o         = lookupKeyReadOrReply(c, key, shared.nullbulk);
-    if (!o) return;
+    dumpee = next_token(as_cmd);
+    if (!dumpee) {
+        addReply(c, shared.create_table_as_dump_num_args);
+        return;
+    }
+    robj *cdef;
+    bool  single;
+    robj *o  = NULL;
+    if (dumpee) {
+        robj *key = createStringObject(dumpee, get_token_len(dumpee));
+        o         = lookupKeyReadOrReply(c, key, shared.nullbulk);
+        decrRefCount(key);
+        if (!o) return;
+    }
 
     bool table_created = 0;
-    if (axs != -1) { /* all ranges are single */
+    if (axs != -1) { /* all Redis COMMANDS produce single results */
         cdef = _createStringObject("pk=INT,value=TEXT");
         single = 1;
     } else if (o->type == REDIS_BTREE) { /* DUMP one table to another */
@@ -331,10 +331,13 @@ void createTableAsObject(redisClient *c) {
             addReply(c, shared.createtable_as_index);
             return;
         }
-        TABLE_CHECK_OR_REPLY(c->argv[5]->ptr,)
-        int  cmatchs[MAX_COLUMN_PER_TABLE];
+        TABLE_CHECK_OR_REPLY(dumpee,)
+
         bool bdum;
-        int  qcols = parseColListOrReply(c, tmatch, "*", cmatchs, &bdum);
+        int  cmatchs[MAX_COLUMN_PER_TABLE];
+        int  qcols  = 0;
+        parseCommaSpaceListReply(NULL, "*", 1, 0, 0, tmatch, cmatchs,
+                                 0, NULL, NULL, NULL, &qcols, &bdum);
 
         robj               *argv[3];
         struct redisClient *cfc = rsql_createFakeClient();
@@ -380,9 +383,11 @@ void createTableAsObject(redisClient *c) {
         rsql_freeFakeClient(fc);
     }
 
-    if (axs != -1) {
-        createTableAsObjectOperation(c, 0);
-    } else {
+    if (axs != -1) { /* DUMP AS redis_command redis_args */
+        int    rargc;
+        robj **rargv = parseCmdToArgv(as_cmd, &rargc);
+        createTableAsObjectOperation(c, 0, rargv, rargc);
+    } else { /* DUMP object to table */
         robj               *argv[3];
         struct redisClient *dfc  = rsql_createFakeClient();
         dfc->argv                = argv;
@@ -426,14 +431,13 @@ void createTableAsObject(redisClient *c) {
         } else if (o->type == REDIS_BTREE) {
             btEntry          *be;
             /* table just created */
-            int               tmatch = Num_tbls[server.dbid] - 1;
-            int               pktype = Tbl[server.dbid][tmatch].col_type[0];
-            robj             *new_o  = lookupKeyWrite(c->db, Tbl[server.dbid][tmatch].name);
-            btStreamIterator *bi     = btGetFullRangeIterator(o, 0, 1);
+            int      tmatch = Num_tbls[server.dbid] - 1;
+            int      pktype = Tbl[server.dbid][tmatch].col_type[0];
+            robj    *tname  = Tbl[server.dbid][tmatch].name;
+            robj    *new_o  = lookupKeyWrite(c->db, tname);
+            btSIter *bi     = btGetFullRangeIterator(o, 0, 1);
             while ((be = btRangeNext(bi, 0)) != NULL) {      // iterate btree
-                robj *key = be->key;
-                robj *row = be->val;
-                btAdd(new_o, key, row, pktype); /* straight row-to-row copy */
+                btAdd(new_o, be->key, be->val, pktype); /* row-to-row copy */
             }
         }
         addReply(c, shared.ok);
@@ -474,7 +478,7 @@ void denormCommand(redisClient *c) {
 
     btEntry          *be;
     robj             *o  = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
-    btStreamIterator *bi = btGetFullRangeIterator(o, 0, 1);
+    btSIter *bi = btGetFullRangeIterator(o, 0, 1);
     while ((be = btRangeNext(bi, 0)) != NULL) {      // iterate btree
         robj *key = be->key;
         robj *row = be->val;

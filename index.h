@@ -22,6 +22,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 #include "alsosql.h"
 #include "btreepriv.h"
+#include "parser.h"
 #include "common.h"
 
 int find_index( int tmatch, int cmatch);
@@ -68,79 +69,53 @@ sds genNRL_Cmd(d_l_t  *nrlind,
 void runCmdInFakeClient(sds s);
 sds rebuildOrigNRLcmd(robj *o);
 
-/* RANGE_CHECK_OR_REPLY(char *range, [retval]) -
-     creates (robj *low, robj *high)     */
-#define RANGE_CHECK_OR_REPLY(RANGE, RET)                             \
-    robj *low, *high;                                                \
-    {                                                                \
-        char *local_range = RANGE;                                   \
-        char *local_nextc = strchr(local_range, CMINUS);             \
-        if (!local_nextc) {                                          \
-            addReply(c, shared.invalidrange);                        \
-            return RET;                                              \
-        }                                                            \
-        *local_nextc = '\0';                                         \
-        local_nextc++;                                               \
-        low  = createStringObject(local_range, strlen(local_range)); \
-        high = createStringObject(local_nextc, strlen(local_nextc)); \
-    }
-bool range_check_or_reply(redisClient *c, char *r, robj **l, robj **h);
 
 void dropIndex(redisClient *c);
 
 void iselectAction(redisClient *c,
-                   robj        *rng,
+                   cswc_t      *w,
                    int          tmatch,
-                   int          i_match,
-                   char        *col_list,
-                   int          obc,
-                   bool         asc,
-                   int          lim,
-                   list        *inl);
+                   int          cmatchs[MAX_COLUMN_PER_TABLE],
+                   int          qcols,
+                   bool         cstar);
 
 void ideleteAction(redisClient *c,
-                   robj        *rng,
-                   int          tmatch,
-                   int          imatch,
-                   int          obc,
-                   bool         asc,
-                   int          lim,
-                   list        *inl);
+                   cswc_t      *w,
+                   int          tmatch);
 
 void iupdateAction(redisClient *c,
-                   robj        *rng,
+                   cswc_t      *w,
                    int          tmatch,
-                   int          imatch,
                    int          ncols,
                    int          matches,
                    int          indices[],
                    char        *vals[],
                    uint32       vlens[],
-                   uchar        cmiss[],
-                   int          obc,
-                   bool         asc,
-                   int          lim,
-                   list        *inl);
+                   uchar        cmiss[]);
 
 ull get_sum_all_index_size_for_table(redisClient *c, int tmatch);
 
 #define RANGE_QUERY_LOOKUP_START                                              \
     btEntry *be, *nbe;                                                        \
     robj *o       = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);      \
-    robj *ind     = Index[server.dbid][imatch].obj;                           \
-    bool  virt    = Index[server.dbid][imatch].virt;                          \
-    robj *bt      = virt ? o : lookupKey(c->db, ind);                         \
-    int   ind_col = (int)Index[server.dbid][imatch].column;                   \
+    robj *ind     = Index[server.dbid][w->imatch].obj;                        \
+    bool  virt    = Index[server.dbid][w->imatch].virt;                       \
+    robj *btt     = virt ? o : lookupKey(c->db, ind);                         \
+    int   ind_col = (int)Index[server.dbid][w->imatch].column;                \
     bool  pktype  = Tbl[server.dbid][tmatch].col_type[0];                     \
-    bool  brk_pk  = (asc && obc == 0);                                        \
-    bool  q_pk    = (!asc || (obc != -1 && obc != 0));                        \
-    bool  brk_fk  = (asc  && obc != -1 && obc == ind_col);                    \
-    bool  q_fk    = (obc != -1);                                              \
+    bool  brk_pk  = (w->asc && w->obc == 0);                                  \
+    bool  q_pk    = (!w->asc || (w->obc != -1 && w->obc != 0));               \
+    bool  brk_fk  = (w->asc  && w->obc != -1 && w->obc == ind_col);           \
+    bool  q_fk    = (w->obc != -1);                                           \
     qed           = virt ? q_pk : q_fk;                                       \
-    bi            = btGetRangeIterator(bt, low, high, virt);                  \
+    bi            = btGetRangeIterator(btt, w->low, w->high, virt);           \
     while ((be = btRangeNext(bi, 1)) != NULL) {     /* iterate btree */       \
         if (virt) {                                                           \
-            if (brk_pk && (uint32)lim == card) break; /* ORDER BY PK LIMIT */ \
+            if (w->ofst > 0) {                                                \
+                w->ofst--;                                                    \
+                continue;                                                     \
+            }                                                                 \
+            if (brk_pk && (uint32)w->lim == card) break; /* ORDRBY PK LIM */  \
             robj *key = be->key;                                              \
             robj *row = be->val;
             /* PK operation specific code comes here */
@@ -148,14 +123,23 @@ ull get_sum_all_index_size_for_table(redisClient *c, int tmatch);
             card++;                                                           \
         } else {                                                              \
             robj *val = be->val;                                              \
-            nbi       = btGetFullRangeIterator(val, 0, 0);                    \
-            while ((nbe = btRangeNext(nbi, 1)) != NULL) {  /* iter8 NodeBT */ \
-                if (brk_fk && (uint32)lim == card) break;                     \
-                robj *key = nbe->key;                                         \
-                robj *row = btFindVal(o, key, pktype);
-                /* FK operation specific code comes here */
-#define RANGE_QUERY_LOOKUP_END                                                \
-                card++;                                                       \
+            if (cstar) {                                                      \
+                bt *nbtr = (bt *)val->ptr;                                    \
+                card    += nbtr->numkeys;                                     \
+            } else {                                                          \
+                nbi       = btGetFullRangeIterator(val, 0, 0);                \
+                while ((nbe = btRangeNext(nbi, 1)) != NULL) {  /* NodeBT */   \
+                    if (w->ofst > 0) {                                        \
+                        w->ofst--;                                            \
+                        continue;                                             \
+                    }                                                         \
+                    if (brk_fk && (uint32)w->lim == card) break;              \
+                    robj *key = nbe->key;                                     \
+                    robj *row = btFindVal(o, key, pktype);
+                    /* FK operation specific code comes here */
+    #define RANGE_QUERY_LOOKUP_END                                            \
+                    card++;                                                   \
+                }                                                             \
             }                                                                 \
             btReleaseRangeIterator(nbi);                                      \
             nbi = NULL; /* explicit in case of goto's in inner loop */        \
@@ -168,16 +152,20 @@ ull get_sum_all_index_size_for_table(redisClient *c, int tmatch);
 
 #define IN_QUERY_LOOKUP_START                                                 \
     listNode  *ln;                                                            \
-    bool  virt   = Index[server.dbid][imatch].virt;                           \
+    bool  virt   = Index[server.dbid][w->imatch].virt;                        \
     robj *o      = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);       \
     bool  pktype = Tbl[server.dbid][tmatch].col_type[0];                      \
-    listIter         *li  = listGetIterator(inl, AL_START_HEAD);              \
+    listIter         *li  = listGetIterator(w->inl, AL_START_HEAD);           \
     if (virt) {                                                               \
-        bool  brk_pk  = (asc && obc == 0);                                    \
-        bool  q_pk    = (!asc || (obc != -1 && obc != 0));                    \
+        bool  brk_pk  = (w->asc && w->obc == 0);                              \
+        bool  q_pk    = (!w->asc || (w->obc != -1 && w->obc != 0));           \
         qed           = q_pk;                                                 \
         while((ln = listNext(li)) != NULL) {                                  \
-            if (brk_pk && (uint32)lim == card) break; /* ORDR BY PK LIMIT */  \
+            if (w->ofst > 0) {                                                \
+                w->ofst--;                                                    \
+                continue;                                                     \
+            }                                                                 \
+            if (brk_pk && (uint32)w->lim == card) break; /* ORDRBY PK LIM */  \
             robj *key = convertRobj(ln->value, pktype);                       \
             robj *row = btFindVal(o, key, pktype);                            \
             if (row) {
@@ -189,25 +177,34 @@ ull get_sum_all_index_size_for_table(redisClient *c, int tmatch);
          }                                                                    \
      } else {                                                                 \
         btEntry *nbe;                                                         \
-        robj *ind     = Index[server.dbid][imatch].obj;                       \
+        robj *ind     = Index[server.dbid][w->imatch].obj;                    \
         robj *ibt     = lookupKey(c->db, ind);                                \
-        int   ind_col = (int)Index[server.dbid][imatch].column;               \
+        int   ind_col = (int)Index[server.dbid][w->imatch].column;            \
         bool  fktype  = Tbl[server.dbid][tmatch].col_type[ind_col];           \
-        bool  brk_fk  = (asc  && obc != -1 && obc == ind_col);                \
-        bool  q_fk    = (obc != -1);                                          \
+        bool  brk_fk  = (w->asc  && w->obc != -1 && w->obc == ind_col);       \
+        bool  q_fk    = (w->obc != -1);                                       \
         qed           = q_fk;                                                 \
         while((ln = listNext(li)) != NULL) {                                  \
             robj *ikey = convertRobj(ln->value, fktype);                      \
             robj *val  = btIndFindVal(ibt->ptr, ikey, fktype);                \
             if (val) {                                                        \
-                nbi = btGetFullRangeIterator(val, 0, 0);                      \
-                while ((nbe = btRangeNext(nbi, 1)) != NULL) {                 \
-                    if (brk_fk && (uint32)lim == card) break;                 \
-                    robj *key = nbe->key;                                     \
-                    robj *row = btFindVal(o, key, pktype);
+                if (cstar) {                                                  \
+                    bt *nbtr = (bt *)val->ptr;                                \
+                    card    += nbtr->numkeys;                                 \
+                } else {                                                      \
+                    nbi = btGetFullRangeIterator(val, 0, 0);                  \
+                    while ((nbe = btRangeNext(nbi, 1)) != NULL) {             \
+                        if (w->ofst > 0) {                                    \
+                            w->ofst--;                                        \
+                            continue;                                         \
+                        }                                                     \
+                        if (brk_fk && (uint32)w->lim == card) break;          \
+                        robj *key = nbe->key;                                 \
+                        robj *row = btFindVal(o, key, pktype);
                /* FK operation specific code comes here */
 #define IN_QUERY_LOOKUP_END                                                   \
-                    card++;                                                   \
+                        card++;                                               \
+                    }                                                         \
                 }                                                             \
                 btReleaseRangeIterator(nbi);                                  \
                 nbi = NULL; /* explicit in case of goto's in inner loop */    \
@@ -216,7 +213,5 @@ ull get_sum_all_index_size_for_table(redisClient *c, int tmatch);
         }                                                                     \
     }                                                                         \
     listReleaseIterator(li);
-
-
 
 #endif /* __INDEX__H */ 

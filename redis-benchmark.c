@@ -218,7 +218,7 @@ static void randomizeClientKey(client c) {
     long r;
 
     if (!randomize_range) {
-        char   *x = strstr(p, " 000");
+        char   *x = strstr(p, "=000");
         if (!x) x = strstr(p, "(000");
         if (x) {
             bool nested_rand = 0;
@@ -793,7 +793,7 @@ void test_select_address_table() {
     prepareForBenchmark();
     client c = createClient();
     if (!c) exit(1);
-    c->obuf = sdscat(c->obuf,"SELECT * FROM address WHERE id = 000100000001\r\n");
+    c->obuf = sdscat(c->obuf,"SELECT * FROM address WHERE 15\r\nid=000100000001\r\n");
     prepareClientForReply(c,REPLY_RETCODE);
     createMissingClients(c);
     aeMain(config.el);
@@ -820,7 +820,7 @@ void test_select_test_table() {
     prepareForBenchmark();
     client c = createClient();
     if (!c) exit(1);
-    c->obuf = sdscat(c->obuf,"SELECT * FROM test WHERE id = 000100000001\n");
+    c->obuf = sdscat(c->obuf,"SELECT * FROM test WHERE 15\r\nid=000100000001\r\n");
     prepareClientForReply(c,REPLY_BULK);
     createMissingClients(c);
     aeMain(config.el);
@@ -832,7 +832,7 @@ void test_update_test_table() {
     prepareForBenchmark();
     client c = createClient();
     if (!c) exit(1);
-    c->obuf = sdscat(c->obuf,"UPDATE test SET field=F,name=N WHERE id = 000100000001\n");
+    c->obuf = sdscat(c->obuf,"UPDATE test SET field=F,name=N WHERE id=000100000001\n");
     prepareClientForReply(c,REPLY_INT);
     createMissingClients(c);
     aeMain(config.el);
@@ -844,7 +844,7 @@ void test_delete_test_table() {
     prepareForBenchmark();
     client c = createClient();
     if (!c) exit(1);
-    c->obuf = sdscat(c->obuf,"DELETE FROM test WHERE id = 000100000001\n");
+    c->obuf = sdscat(c->obuf,"DELETE FROM test WHERE id=000100000001\n");
     prepareClientForReply(c,REPLY_INT);
     createMissingClients(c);
     aeMain(config.el);
@@ -898,7 +898,7 @@ void test_Iselect_test_table() {
     prepareForBenchmark();
     client c = createClient();
     if (!c) exit(1);
-    c->obuf = sdscat(c->obuf,"SELECT * FROM test WHERE id BETWEEN 000100000001 AND 000100000002\n");
+    c->obuf = sdscat(c->obuf,"SELECT * FROM test WHERE 40\r\nid BETWEEN 000100000001 AND 000100000002\r\n");
     prepareClientForReply(c,REPLY_MBULK);
     createMissingClients(c);
     aeMain(config.el);
@@ -910,7 +910,7 @@ void test_Iselect_orderby_test_table() {
     prepareForBenchmark();
     client c = createClient();
     if (!c) exit(1);
-    c->obuf = sdscat(c->obuf,"SELECT * FROM test WHERE id BETWEEN 000100000001 AND 000100000002 ORDER BY name\n");
+    c->obuf = sdscat(c->obuf,"SELECT * FROM test WHERE 54\r\nid BETWEEN 000100000001 AND 000100000002 ORDER BY name\r\n");
     prepareClientForReply(c,REPLY_MBULK);
     createMissingClients(c);
     aeMain(config.el);
@@ -936,7 +936,7 @@ void test_join_test_with_join_table() {
     prepareForBenchmark();
     client c = createClient();
     if (!c) exit(1);
-    c->obuf = sdscat(c->obuf,"SELECT test.id,test.field,join.name FROM test,join WHERE test.id=join.id AND test.id BETWEEN 000100000001 AND 000100000002\n");
+    c->obuf = sdscat(c->obuf,"SELECT test.id,test.field,join.name FROM test,join WHERE 65\r\ntest.id=join.id AND test.id BETWEEN 000100000001 AND 000100000002\r\n");
     prepareClientForReply(c,REPLY_MBULK);
     createMissingClients(c);
     aeMain(config.el);
@@ -948,7 +948,7 @@ void test_join_orderby_test_with_join_table() {
     prepareForBenchmark();
     client c = createClient();
     if (!c) exit(1);
-    c->obuf = sdscat(c->obuf,"SELECT test.id,test.field,join.name FROM test,join WHERE test.id=join.id AND test.id BETWEEN 000100000001 AND 000100000002 ORDER BY join.name\n");
+    c->obuf = sdscat(c->obuf,"SELECT test.id,test.field,join.name FROM test,join WHERE 84\r\ntest.id=join.id AND test.id BETWEEN 000100000001 AND 000100000002 ORDER BY join.name\r\n");
     prepareClientForReply(c,REPLY_MBULK);
     createMissingClients(c);
     aeMain(config.el);
@@ -974,7 +974,7 @@ void test_3way_join() {
     prepareForBenchmark();
     client c = createClient();
     if (!c) exit(1);
-    c->obuf = sdscat(c->obuf,"SELECT test.id,test.field,join.name,third_join.field FROM test,join,third_join WHERE test.id=join.id AND test.id=third_join.id AND test.id BETWEEN 000100000001 AND 000100000002\n");
+    c->obuf = sdscat(c->obuf,"SELECT test.id,test.field,join.name,third_join.field FROM test,join,third_join WHERE 91\r\ntest.id=join.id AND test.id=third_join.id AND test.id BETWEEN 000100000001 AND 000100000002\r\n");
     prepareClientForReply(c,REPLY_MBULK);
     createMissingClients(c);
     aeMain(config.el);
@@ -1001,7 +1001,7 @@ void test_10way_join() {
     prepareForBenchmark();
     client c = createClient();
     if (!c) exit(1);
-    c->obuf = sdscat(c->obuf,"SELECT join_0.id, join_0.field, join_1.field, join_2.field, join_3.field, join_4.field, join_5.field, join_6.field, join_7.field, join_8.field, join_9.field FROM join_0, join_1, join_2, join_3, join_4, join_5, join_6, join_7, join_8, join_9 WHERE join_0.id BETWEEN 000100000001 AND 000100000002 AND join_0.id = join_1.id AND join_0.id = join_2.id AND join_0.id = join_3.id AND join_0.id = join_4.id AND join_0.id = join_5.id AND join_0.id = join_6.id AND join_0.id = join_7.id AND join_0.id = join_8.id AND join_0.id = join_9.id\n");
+    c->obuf = sdscat(c->obuf,"SELECT join_0.id,join_0.field,join_1.field,join_2.field,join_3.field,join_4.field,join_5.field,join_6.field,join_7.field,join_8.field,join_9.field FROM join_0,join_1,join_2,join_3,join_4,join_5,join_6,join_7,join_8,join_9 WHERE 281\r\njoin_0.id = join_1.id AND join_0.id = join_2.id AND join_0.id = join_3.id AND join_0.id = join_4.id AND join_0.id = join_5.id AND join_0.id = join_6.id AND join_0.id = join_7.id AND join_0.id = join_8.id AND join_0.id = join_9.id AND join_0.id BETWEEN 000100000001 AND 000100000002\r\n");
     prepareClientForReply(c,REPLY_MBULK);
     createMissingClients(c);
     aeMain(config.el);
@@ -1027,7 +1027,7 @@ void test_Iselect_FK_table() {
     prepareForBenchmark();
     client c = createClient();
     if (!c) exit(1);
-    c->obuf = sdscat(c->obuf,"SELECT * FROM FK WHERE fk BETWEEN 000100000001 AND 000100000002\n");
+    c->obuf = sdscat(c->obuf,"SELECT * FROM FK WHERE 40\r\nfk BETWEEN 000100000001 AND 000100000002\r\n");
     prepareClientForReply(c,REPLY_MBULK);
     createMissingClients(c);
     aeMain(config.el);
@@ -1053,7 +1053,7 @@ void test_join_FK_table() {
     prepareForBenchmark();
     client c = createClient();
     if (!c) exit(1);
-    c->obuf = sdscat(c->obuf,"SELECT FK.value, FK2.value FROM FK, FK2 WHERE FK.fk = FK2.fk AND FK.fk BETWEEN 000100000001 AND 000100000002\n");
+    c->obuf = sdscat(c->obuf,"SELECT FK.value, FK2.value FROM FK, FK2 WHERE 62\r\nFK.fk = FK2.fk AND FK.fk BETWEEN 000100000001 AND 000100000002\r\n");
     prepareClientForReply(c,REPLY_MBULK);
     createMissingClients(c);
     aeMain(config.el);
@@ -1079,7 +1079,7 @@ void perform_bigrow_sel_test() {
     prepareForBenchmark();
     client c = createClient();
     if (!c) exit(1);
-    c->obuf = sdscat(c->obuf,"SELECT * FROM bigrow WHERE id = 000100000001\n");
+    c->obuf = sdscat(c->obuf,"SELECT * FROM bigrow 15\r\nWHERE id=000100000001\r\n");
     prepareClientForReply(c,REPLY_BULK);
     createMissingClients(c);
     aeMain(config.el);

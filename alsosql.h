@@ -23,6 +23,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 #include "common.h"
 
+
 typedef struct r_tbl {
     robj   *name;
     int     col_count;
@@ -48,8 +49,23 @@ typedef struct r_ind {
     bool   nrl;  /* non relational index - i.e. redis command */
 } r_ind_t;
 
-robj *cloneRobj(robj *r);
-robj *convertRobj(robj *r, int type);
+typedef struct check_sql_where_clause {
+    robj  *key;  
+    robj  *low;  
+    robj  *high; 
+    list  *inl;  
+    char  *stor; 
+    char  *lvr;  
+    int    imatch;
+    int    cmatch;
+    int    obc;    /* ORDER BY col */
+    int    obt;    /* ORDER BY tbl -> JOINS */
+    bool   asc;   
+    int    lim;   
+    int    ofst;
+    sds    token;    
+    int    sto;
+} cswc_t;
 
 int find_table(char *tname);
 int find_table_n(char *tname, int len);
@@ -78,11 +94,34 @@ void createTable(redisClient *c);
         return retval;                             \
     }
 
-int parseColListOrReply(redisClient   *c,
-                        int            tmatch,
-                        char          *clist,
-                        int            cmatchs[],
-                        bool          *cntstr);
+bool parseCommaSpaceListReply(redisClient *c,
+                              char        *y,
+                              bool         col_check,
+                              bool         tbl_check,
+                              bool         join_check,
+                              int          tmatch,    /* COL or TBL */
+                              int          cmatchs[], /* COL or TBL */
+                              int         *numt,      /* JOIN */
+                              int          tmatchs[], /* JOIN */
+                              int          j_tbls[],  /* JOIN */
+                              int          j_cols[],  /* JOIN */
+                              int         *qcols,
+                              bool        *cstar);
+
+bool parseSelectReply(redisClient *c,
+                      bool        *no_wc,
+                      int         *tmatch,
+                      int          cmatchs[MAX_COLUMN_PER_TABLE],
+                      int         *qcols,
+                      bool        *join,
+                      bool        *cstar,
+                      char        *clist,
+                      char        *from,
+                      char        *tlist,
+                      char        *where);
+
+void init_check_sql_where_clause(cswc_t *w, sds token);
+void destroy_check_sql_where_clause(cswc_t *w);
 
 #define ASSIGN_UPDATE_HITS_AND_MISSES               \
     unsigned char  cmiss[MAX_COLUMN_PER_TABLE];     \
@@ -100,8 +139,6 @@ int parseColListOrReply(redisClient   *c,
         }                                           \
         cmiss[i] = miss;                            \
     }
-
-void parseSelectColumnList(redisClient *c, sds *clist, int *argn);
 
 int parseUpdateOrReply(redisClient  *c,
                        int           tmatch,
@@ -126,9 +163,11 @@ int parseUpdateOrReply(redisClient  *c,
     decrRefCount(lenobj);
 
 void createTableCommitReply(redisClient *c,
-                            char         col_names[][MAX_COLUMN_NAME_SIZE],
-                            int          col_count,
-                            char        *tname);
+                            char         cnames[][MAX_COLUMN_NAME_SIZE],
+                            int          ccount,
+                            char        *tname,
+                            int          tlen);
+
 void insertCommitReply(redisClient *c, 
                        sds          vals,
                        int          ncols,

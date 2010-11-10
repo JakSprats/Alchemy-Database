@@ -21,15 +21,17 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include <strings.h>
 #include <unistd.h>
 
-#include "alsosql.h"
+#include "zmalloc.h"
 #include "redis.h"
+
+#include "alsosql.h"
 #include "bt.h"
 #include "bt_iterator.h"
 #include "row.h"
 #include "index.h"
-#include "zmalloc.h"
-#include "common.h"
 #include "orderby.h"
+#include "parser.h"
+#include "common.h"
 #include "store.h"
 
 // FROM redis.c
@@ -40,12 +42,8 @@ extern struct redisServer server;
 // GLOBALS
 extern int Num_tbls[MAX_NUM_DB];
 
-extern char  CCOMMA;
-extern char  CEQUALS;
-extern char  CMINUS;
 extern char *EQUALS;
 extern char *COLON;
-extern char *COMMA;
 extern char *PERIOD;
 
 extern char *Col_type_defs[];
@@ -77,7 +75,7 @@ void legacyTableCommand(redisClient *c) {
         return;
     }
 
-    char *tname = c->argv[1]->ptr;
+    sds tname = c->argv[1]->ptr;
     if (find_table(tname) != -1) {
         addReply(c,shared.nonuniquetablenames);
         return;
@@ -88,8 +86,8 @@ void legacyTableCommand(redisClient *c) {
     char *cname     = c->argv[2]->ptr;
     int   col_count = 0;
     while (1) {
-        char *type  = strchr(cname, CEQUALS);
-        char *nextc = strchr(cname, CCOMMA);
+        char *type  = strchr(cname, '=');
+        char *nextc = strchr(cname, ',');
         if (type) {
             *type = '\0';
             type++;
@@ -127,7 +125,7 @@ void legacyTableCommand(redisClient *c) {
         }
         cname = nextc;
     }
-    createTableCommitReply(c, col_names, col_count, tname);
+    createTableCommitReply(c, col_names, col_count, tname, sdslen(tname));
 }
 
 unsigned char respOk(redisClient *c) {
@@ -171,7 +169,7 @@ static void cpyColDef(char *cdefs,
     memcpy(cdefs + *slot, ctype, ctlen);
     *slot        += ctlen;
     if (loop != (qcols - 1)) {
-        memcpy(cdefs + *slot, COMMA, 1);
+        memcpy(cdefs + *slot, ",", 1);
         *slot = *slot + 1;                       // ,
     }
 }
@@ -262,7 +260,7 @@ static bool istoreAction(redisClient *c,
                          int          sto,
                          robj        *pko,
                          robj        *row,
-                         robj        *nname,
+                         char        *nname,
                          bool         sub_pk,
                          uint32       nargc) {
     aobj  cols[MAX_COLUMN_PER_TABLE];
@@ -275,7 +273,7 @@ static bool istoreAction(redisClient *c,
     char *newrow = NULL;
     int   rowlen = 0;
     fc->argc     = qcols + 1;
-    fc->argv[1]  = cloneRobj(nname); /* the NEW Stored Objects NAME */
+    fc->argv[1]  = createStringObject(nname, strlen(nname));/*NEW Objects NAME*/
     //argv[0] NOT NEEDED
     if (StorageCommands[sto].argc) { // not INSERT
         int    n    = 0;
@@ -306,7 +304,7 @@ static bool istoreAction(redisClient *c,
             memcpy(newrow + slot, cols[i].s, cols[i].len);
             slot += cols[i].len;
             if (i != (qcols - 1)) {
-                memcpy(newrow + slot, COMMA, 1);
+                memcpy(newrow + slot, ",", 1);
                 slot++;
             }
             if (cols[i].sixbit) free(cols[i].s);
@@ -342,7 +340,7 @@ static bool sortedOrderByIstore(redisClient  *c,
                                 int           cmatchs[],
                                 int           qcols,
                                 int           sto,
-                                robj         *nname,
+                                char         *nname,
                                 bool          sub_pk,
                                 int           nargc,
                                 int           lim,
@@ -367,60 +365,92 @@ static bool sortedOrderByIstore(redisClient  *c,
 }
 /* ORDER BY END */
 
-#define ISTORE_OPERATION(Q)                                       \
-    if (Q) {                                                      \
-        addRowToRangeQueryList(ll, row, obc, key, tmatch, icol);  \
-    } else {                                                      \
-        if (!istoreAction(c, fc, tmatch, cmatchs, qcols, sto,     \
-                          key, row, nname, sub_pk, nargc)) {      \
-            err = 1; /* TODO get err from fc */                   \
-            goto istore_err;                                      \
-        }                                                         \
+#define ISTORE_OPERATION(Q)                                         \
+    if (Q) {                                                        \
+        addRowToRangeQueryList(ll, row, w->obc, key, tmatch, icol); \
+    } else {                                                        \
+        if (!istoreAction(c, fc, tmatch, cmatchs, qcols, w->sto,    \
+                          key, row, nname, sub_pk, nargc)) {        \
+            err = 1; /* TODO get err from fc */                     \
+            goto istore_err;                                        \
+        }                                                           \
     }
+
+bool checkStoreTypeReply(redisClient *c, int *sto, char *stot) {
+    char *x   = strchr(stot, ' ');
+    int   len = x ? x - stot : (int)strlen(stot);
+    *sto      = -1;
+    for (int i = 0; i < NUM_STORAGE_TYPES; i++) {
+        if (!strncasecmp(stot, StorageCommands[i].name, len)) {
+            *sto = i;
+            break;
+        }
+    }
+    if (*sto == -1) {
+        addReply(c, shared.storagetypeunkown);
+        return 0;
+    }
+    return 1;
+}
+
+bool prepareToStoreReply(redisClient  *c,
+                         cswc_t       *w,
+                         char        **nname,
+                         int          *nlen,
+                         bool         *sub_pk,
+                         int          *nargc,
+                         char        **last,
+                         int           qcols) {
+    char *stot = next_token(w->stor);
+    if (!stot) {
+        addReply(c, shared.selectsyntax);
+        return 0;
+    }
+    if (!checkStoreTypeReply(c, &w->sto, stot)) return 0;
+    *nname = next_token(stot);
+    if (!*nname) {
+        addReply(c, shared.storagenumargsmismatch);
+        return 0;
+    }
+
+    *nlen   = get_token_len(*nname);
+    *sub_pk = (StorageCommands[w->sto].argc < 0);
+    *nargc  = abs(StorageCommands[w->sto].argc);
+    *last   = *nname + *nlen - 1;
+    if (*nargc) { /* if NOT INSERT check nargc */
+        if (*(*last) == '$') { /* means final arg munging */
+            *sub_pk = 1;
+            *nargc  = *nargc + 1;
+            *(*last)   = '\0';
+            *nlen   = *nlen - 1;
+        }
+        if (*nargc != qcols) {
+            addReply(c, shared.storagenumargsmismatch);
+            return 0;
+        }
+        if (*sub_pk) *nargc = *nargc - 1;
+    }
+    return 1;
+}
 
 void istoreCommit(redisClient *c,
+                  cswc_t      *w,
                   int          tmatch,
-                  int          imatch,
-                  char        *sto_type,
-                  char        *col_list,
-                  robj        *rng,
-                  robj        *nname,
-                  int          obc, 
-                  bool         asc,
-                  int          lim,
-                  list        *inl) {
-    int  sto;
-    CHECK_STORE_TYPE_OR_REPLY(sto_type,sto,)
-    int  cmatchs[MAX_COLUMN_PER_TABLE];
-    bool bdum;
-    int  qcols = parseColListOrReply(c, tmatch, col_list, cmatchs, &bdum);
-    if (!qcols) {
-        addReply(c, shared.nullbulk);
-        return;
-    }
+                  int          cmatchs[MAX_COLUMN_PER_TABLE],
+                  int          qcols) {
+    char *nname;
+    int   nlen;
+    bool  sub_pk;
+    int   nargc;
+    char *last;
+    if (!prepareToStoreReply(c, w, &nname, &nlen,
+                             &sub_pk, &nargc, &last, qcols)) return;
 
-    bool sub_pk    = (StorageCommands[sto].argc < 0);
-    int  nargc     = abs(StorageCommands[sto].argc);
-    sds  last_argv = c->argv[c->argc - 1]->ptr;
-    if (nargc) { /* if NOT INSERT check nargc */
-        if (last_argv[sdslen(last_argv) -1] == '$') {
-            sub_pk = 1;
-            nargc++;
-            last_argv[sdslen(last_argv) -1] = '\0';
-            sdsupdatelen(last_argv);
-        }
-        if (nargc != qcols) {
-            addReply(c, shared.storagenumargsmismatch);
-            return;
-        }
-        if (sub_pk) nargc--;
-    }
-
-    robj               *argv[STORAGE_MAX_ARGC + 1];
-    struct redisClient *fc = rsql_createFakeClient();
-    fc->argv               = argv;
-    if (!StorageCommands[sto].argc) { // create table first if needed
-        fc->argv[1] = cloneRobj(nname);
+    robj        *argv[STORAGE_MAX_ARGC + 1];
+    redisClient *fc = rsql_createFakeClient();
+    fc->argv        = argv;
+    if (!StorageCommands[w->sto].argc) { // create table first if needed
+        fc->argv[1] = createStringObject(nname, nlen);
         if (!internalCreateTable(c, fc, qcols, cmatchs, tmatch)) {
             rsql_freeFakeClient(fc);
             addReply(c, shared.istorecommit_err); /* TODO get err from fc */
@@ -428,24 +458,20 @@ void istoreCommit(redisClient *c,
         }
     }
 
-    char *range = rng ? rng->ptr : NULL;
-    robj *low   = NULL;
-    robj *high  = NULL;
-    if (range && !range_check_or_reply(c, range, &low, &high)) return;
-
     list *ll   = NULL;
     bool  icol = 0;
-    if (obc != -1) {
+    if (w->obc != -1) {
         ll   = listCreate();
-        icol = (Tbl[server.dbid][tmatch].col_type[obc] == COL_TYPE_INT);
+        icol = (Tbl[server.dbid][tmatch].col_type[w->obc] == COL_TYPE_INT);
     }
 
-    bool              err  = 0;
-    bool              qed  = 0;
-    ulong             card = 0;
-    btStreamIterator *bi   = NULL;
-    btStreamIterator *nbi  = NULL;
-    if (range) { /* RANGE QUERY */
+    bool    cstar = 0;
+    bool    err   = 0;
+    bool    qed   = 0;
+    ulong   card  = 0;
+    btSIter *bi   = NULL;
+    btSIter *nbi  = NULL;
+    if (w->low) { /* RANGE QUERY */
         RANGE_QUERY_LOOKUP_START
             ISTORE_OPERATION(q_pk)
         RANGE_QUERY_LOOKUP_MIDDLE
@@ -460,44 +486,25 @@ void istoreCommit(redisClient *c,
     }
 
     if (qed) {
-        obsl_t **vector = sortOrderByToVector(ll, icol, asc);
+        obsl_t **vector = sortOrderByToVector(ll, icol, w->asc);
         err             = sortedOrderByIstore(c, fc, tmatch, cmatchs, qcols,
-                                              sto, nname, sub_pk, nargc, lim,
-                                              vector, listLength(ll));
+                                              w->sto, nname, sub_pk, nargc,
+                                              w->lim, vector, listLength(ll));
         sortedOrderByCleanup(vector, listLength(ll), icol, 0);
         free(vector);
     }
 
-    if (sub_pk) { /* write back in "$" for AOF and Slaves */
-        sds l_argv = sdscatprintf(sdsempty(), "%s$",
-                                             (char *)c->argv[c->argc - 1]->ptr);
-        sdsfree(c->argv[c->argc - 1]->ptr);
-        c->argv[c->argc - 1]->ptr = l_argv;
-    }
+    if (sub_pk) *last = '$';/* write back in "$" for AOF and Slaves */
 
 istore_err:
     if (nbi)  btReleaseRangeIterator(nbi);
     if (bi)   btReleaseRangeIterator(bi);
     if (ll)   listRelease(ll);
-    if (low)  decrRefCount(low);
-    if (high) decrRefCount(high);
     rsql_freeFakeClient(fc);
 
     if (err) addReply(c, shared.istorecommit_err);
     else {
-        if (lim != -1) card = lim;
+        if (w->lim != -1 && (uint32)w->lim < card) card = w->lim;
         addReplyLongLong(c, card);
     }
 }
-
-
-#if 0
-/* LEGACY COMMANDS the ROOTS */
-void istoreCommand(redisClient *c) {
-    int imatch = checkIndexedColumnOrReply(c, c->argv[3]->ptr);
-    if (imatch == -1) return;
-    int tmatch = Index[server.dbid][imatch].table;
-    istoreCommit(c, tmatch, imatch, c->argv[1]->ptr, c->argv[5]->ptr,
-                 c->argv[4]->ptr, c->argv[2]);
-}
-#endif

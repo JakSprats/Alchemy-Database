@@ -1,15 +1,14 @@
 #!/bin/bash
 
 POP_NUM=1000000
-RQ_NUM=20000
 C=200
 
 DO_MINI=0
 #DO_MINI=1
 if [ $DO_MINI -eq 1 ]; then
-   POP_NUM=50000
-   RQ_NUM=3000
-   C=100
+   POP_NUM=100
+   RQ_NUM=100
+   C=10
 fi
 
 JOIN=0
@@ -72,6 +71,8 @@ else
   fi
 fi
 
+C=200
+RQ_NUM=20000
 MAX=20;
 I=2;
 while [ $I -lt $MAX ]; do
@@ -80,6 +81,8 @@ while [ $I -lt $MAX ]; do
    I=$[${I}+1];
 done
 
+C=200
+RQ_NUM=20000
 MAX=50;
 I=20;
 while [ $I -lt $MAX ]; do

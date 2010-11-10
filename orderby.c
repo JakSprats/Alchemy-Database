@@ -27,6 +27,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include "row.h"
 #include "common.h"
 #include "alsosql.h"
+#include "parser.h"
 #include "orderby.h"
 
 // FROM redis.c

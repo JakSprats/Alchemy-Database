@@ -34,9 +34,6 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #define RL4 redisLog(4,
 extern struct sharedObjectsStruct shared;
 
-// GLOBALS
-extern char  CCOMMA;
-extern char  CEQUALS;
 extern char *EQUALS;
 extern char *COMMA;
 
@@ -70,7 +67,7 @@ static robj *createNormRespStringObject(sds nt, robj *cdef) {
     resp->ptr    = sdscatlen(resp->ptr, " (", 2);
     sds sql_cdef = sdsnewlen(cdef->ptr, sdslen(cdef->ptr));
     for (uint32 i = 0; i < sdslen(sql_cdef); i++) {
-        if (sql_cdef[i] == CEQUALS) sql_cdef[i] = ' ';
+        if (sql_cdef[i] == '=') sql_cdef[i] = ' ';
     }
     resp->ptr    = sdscatlen(resp->ptr, sql_cdef, sdslen(sql_cdef));
     sdsfree(sql_cdef);
@@ -152,7 +149,7 @@ void normCommand(redisClient *c) {
         sds   start = c->argv[2]->ptr; 
         char *token = start;
         char *nextc = start;
-        while ((nextc = strchr(nextc, CCOMMA))) {
+        while ((nextc = strchr(nextc, ','))) {
             ext_patt[n_ep] = makeWildcard(pattern, plen, token, nextc - token);
             ext_len [n_ep] = sdslen(ext_patt[n_ep]->ptr);
             new_tbls[n_ep] = makeTblName( pattern, plen, token, nextc - token);

@@ -295,25 +295,26 @@ struct sharedObjectsStruct {
     *insertsyntax_no_values, *index_nonrel_decl_fmt,
 
     *whereclause_in_err,
-    *whereclause_orderby_no_by,
+    *whereclause_orderby_no_by, *whereclause_orderby_err,
 
     *selectsyntax,           *selectsyntax_nofrom,
-    *selectsyntax_nowhere,   *select_notpk,          *selectsyntax_noequals,
+    *selectsyntax_nowhere,   *select_notindxd,       *selectsyntax_noequals,
     *deletesyntax,
-    *deletesyntax_nowhere,   *delete_notpk,          *deletesyntax_noequals,
+    *deletesyntax_nowhere,   *delete_notindxd,       *deletesyntax_noequals,
     *updatesyntax,           *update_pk_range_query, *update_pk_overwrite,
-    *updatesyntax_nowhere,   *update_notpk,          *updatesyntax_noequals,
-    *scanselectsyntax,       *scanselectsyntax_noequals,
+    *updatesyntax_nowhere,   *update_notindxd,       *updatesyntax_noequals,
+    *scanselectsyntax,       *scan_join,             *scanselectsyntax_noequals,
+    *scan_on_index,
     *istorecommit_err,
 
-    *whereclause_no_and,
-    *selectsyntax_store_norange,
+    *whereclause_no_and,     *whereclause_between,
+    *selectsyntax_store_norange, *select_store_count,
     *joinsyntax_no_tablename,
     *drop_virtual_index,
 
-    *createtable_as_on_wrong_type, *createtable_as_index,
+    *createtable_as_on_wrong_type,       *createtable_as_index,
     *create_table_as_function_not_found, *create_table_as_dump_num_args,
-    *create_table_as_access_num_args,
+    *create_table_as_access_num_args,    *create_table_as_select,
 
     *denorm_wildcard_no_star,
 #endif /* ALSOSQL END */

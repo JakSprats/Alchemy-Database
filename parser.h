@@ -1,5 +1,5 @@
 /*
- * Implements jstore and join
+ * This file implements parsing functions
  *
 
 MIT License
@@ -15,27 +15,25 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
  */
 
-#ifndef __JOINSTORE__H
-#define __JOINSTORE__H
+#ifndef __ALC_PARSER__H
+#define __ALC_PARSER__H
 
-#include "adlist.h"
-#include "redis.h"
-
-#include "sql.h"
 #include "common.h"
 
-void freeJoinRowObject(robj *o);
-void freeAppendSetObject(robj *o);
-void freeValSetObject(robj *o);
+char *_strnchr(char *s, int c, int len); /* HELPER */
+robj *cloneRobj(robj *r);                /* HELPER */
+robj *convertRobj(robj *r, int type);    /* HELPER */
 
-int parseIndexedColumnListOrReply(redisClient *c, char *ilist, int j_indxs[]);
+char *rem_backticks(char *token, int *len);
+char *str_next_unescaped_chr(char *beg, char *s, int x);
 
-void joinGeneric(redisClient *c,
-                 redisClient *fc,
-                 jb_t        *jb,
-                 bool         sub_pk,
-                 int          nargc);
+char *next_token(char *nextp);
+int get_token_len(char *tok);
+int get_token_len_delim(char *nextp, char x);
+char *next_token_delim(char *p, char x);
+char *get_next_token_nonparaned_comma(char *token);
 
-void jstoreCommit(redisClient *c, jb_t *jb);
+robj **parseCmdToArgv(char *as_cmd, int *rargc);
+robj **parseSelectCmdToArgv(char *as_cmd);
 
-#endif /* __JOINSTORE__H */ 
+#endif /* __ALC_PARSER__H */

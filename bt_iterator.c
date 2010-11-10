@@ -19,7 +19,7 @@
 #define RL7 if (iter->which == 0) redisLog(4,
 
 /* Currently: BT_Iterators[2] would work UNTIL parallel joining is done, then MAX_NUM_INDICES is needed */
-static btStreamIterator BT_Iterators[MAX_NUM_INDICES]; /* avoid malloc()s */
+static btSIter BT_Iterators[MAX_NUM_INDICES]; /* avoid malloc()s */
 
 /* copy of strdup - compiles w/o warnings */
 static inline char *_strdup(char *s) {
@@ -128,9 +128,9 @@ int init_iterator(bt *btr, bt_data_t simkey, struct btIterator *iter) {
     return 1;
 }
 
-static btStreamIterator *createIterator(bt *btr, bool virt, int which) {
+static btSIter *createIterator(bt *btr, bool virt, int which) {
     assert(which >= 0 || which < MAX_NUM_INDICES);
-    btStreamIterator *iter = &BT_Iterators[which];
+    btSIter *iter = &BT_Iterators[which];
 
     iter->ktype            = (unsigned char)btr->ktype;
     iter->vtype            = (unsigned char)(virt ? REDIS_ROW : REDIS_BTREE);
@@ -154,14 +154,11 @@ static btStreamIterator *createIterator(bt *btr, bool virt, int which) {
 }
 
 //NOTE: can not NEST this function
-btStreamIterator *btGetRangeIterator(robj *o,
-                                     void *low,
-                                     void *high,
-                                     bool  virt) {
+btSIter *btGetRangeIterator(robj *o, void *low, void *high, bool virt) {
     int which = 0;
     struct btree     *btr  = (struct btree *)(o->ptr);
     //bt_dumptree(btr, btr->ktype, (virt ? REDIS_ROW : REDIS_BTREE));
-    btStreamIterator *iter = createIterator(btr, virt, which);
+    btSIter *iter = createIterator(btr, virt, which);
 
     char *s = (char *)(((robj *)high)->ptr);
     if      (btr->ktype == COL_TYPE_STRING) iter->x.highc = _strdup(s);
@@ -179,7 +176,7 @@ btStreamIterator *btGetRangeIterator(robj *o,
     return iter;
 }
 
-btEntry *btRangeNext(btStreamIterator *iter, bool asc) {
+btEntry *btRangeNext(btSIter *iter, bool asc) {
     asc = 0; /* compiler warning */
     if (!iter) return NULL;
     if (iter->key.ptr && iter->ktype == COL_TYPE_STRING) {
@@ -225,14 +222,14 @@ bool assignMaxKey(bt *btr, robj *key) {
 
 //TODO this function and its global vars are hideous - clean this up
 //NOTE: can not NEST this function
-btStreamIterator *btGetFullRangeIterator(robj *o, bool asc, bool virt) {
+btSIter *btGetFullRangeIterator(robj *o, bool asc, bool virt) {
     asc = 0; /* compiler warning */
     struct btree *btr  = (struct btree *)(o->ptr);
     //bt_dumptree(btr, btr->ktype, (virt ? REDIS_ROW : REDIS_BTREE));
     if (!assignMinKey(btr, &BtLow))  return NULL;
     if (!assignMaxKey(btr, &BtHigh)) return NULL;
 
-    btStreamIterator *iter = createIterator(btr, virt, 1);
+    btSIter *iter = createIterator(btr, virt, 1);
     if (       btr->ktype == COL_TYPE_STRING) {
         iter->x.highc = _strdup(BtHigh.ptr);
     } else if (btr->ktype == COL_TYPE_INT) {
@@ -256,7 +253,7 @@ btStreamIterator *btGetFullRangeIterator(robj *o, bool asc, bool virt) {
     return iter;
 }
 
-void btReleaseRangeIterator(btStreamIterator *iter) {
+void btReleaseRangeIterator(btSIter *iter) {
     if (iter) {
         if (iter->x.highc) free(iter->x.highc);
         iter->x.highc = NULL;

@@ -32,6 +32,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include "store.h"
 #include "common.h"
 #include "orderby.h"
+#include "parser.h"
 #include "join.h"
 
 // FROM redis.c
@@ -42,10 +43,6 @@ extern struct redisServer server;
 // GLOBALS
 extern int Num_tbls[MAX_NUM_DB];
 
-extern char  CCOMMA;
-extern char  CEQUALS;
-extern char  CMINUS;
-extern char  CPERIOD;
 extern char *EQUALS;
 extern char *EMPTY_STRING;
 extern char *OUTPUT_DELIM;
@@ -53,9 +50,8 @@ extern char *COLON;
 extern char *COMMA;
 extern char *PERIOD;
 
-extern r_tbl_t  Tbl   [MAX_NUM_DB][MAX_NUM_TABLES];
-extern r_ind_t  Index [MAX_NUM_DB][MAX_NUM_INDICES];
-
+extern r_tbl_t  Tbl  [MAX_NUM_DB][MAX_NUM_TABLES];
+extern r_ind_t  Index[MAX_NUM_DB][MAX_NUM_INDICES];
 
 extern stor_cmd StorageCommands[];
 
@@ -96,66 +92,18 @@ static robj *createValSetObject(void) {
     return r;
 }
 
-// HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS
-// HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS
-int multiColCheckOrReply(redisClient *c,
-                         char        *clist,
-                         int          j_tbls[],
-                         int          j_cols[],
-                         bool        *cntstr) {
-    if (!strcasecmp(clist, "COUNT(*)")) {
-        *cntstr = 1;
-        return 1;
-    }
-    int qcols = 0;
-    while (1) {
-        char *nextc = strchr(clist, CCOMMA);
-        char *nextp = strchr(clist, CPERIOD);
-        if (nextp) {
-            *nextp = '\0';
-            nextp++;
-        } else {
-            addReply(c,shared.indextargetinvalid);
-            return 0;
-        }
-        if (nextc) {
-            *nextc = '\0';
-            nextc++;
-        }
-        int tmatch = find_table(clist);
-        if (tmatch == -1) {
-            addReply(c, shared.nonexistenttable);
-            return 0;
-        }
-        if (*nextp == '*') {
-            for (int i = 0; i < Tbl[server.dbid][tmatch].col_count; i++) {
-                j_tbls[qcols] = tmatch;
-                j_cols[qcols] = i;
-                qcols++;
-            }
-        } else {
-            COLUMN_CHECK_OR_REPLY(nextp,0)
-            j_tbls[qcols]  = tmatch;
-            j_cols[qcols] = cmatch;
-            qcols++;
-        }
-        if (!nextc) break;
-        clist = nextc;
-    }
-    return qcols;
-}
-
+/* HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS */
 int parseIndexedColumnListOrReply(redisClient *c, char *ilist, int j_indxs[]) {
     int   n_ind       = 0;
     char *curr_tname  = ilist;
     char *nextc       = ilist;
-    while ((nextc = strchr(nextc, CCOMMA))) {
+    while ((nextc = strchr(nextc, ','))) {
         if (n_ind == MAX_JOIN_INDXS) {
             addReply(c, shared.toomanyindicesinjoin);
             return 0;
         }
         *nextc = '\0';
-        char *nextp = strchr(curr_tname, CPERIOD);
+        char *nextp = strchr(curr_tname, '.');
         if (!nextp) {
             addReply(c, shared.badindexedcolumnsyntax);
             return 0;
@@ -175,7 +123,7 @@ int parseIndexedColumnListOrReply(redisClient *c, char *ilist, int j_indxs[]) {
         curr_tname     = nextc;
     }
     {
-        char *nextp = strchr(curr_tname, CPERIOD);
+        char *nextp = strchr(curr_tname, '.');
         if (!nextp) {
             addReply(c, shared.badindexedcolumnsyntax);
             return 0;
@@ -243,7 +191,7 @@ typedef struct jrow_reply {
     int           obc;
     list         *ll;
     bool          icol;
-    bool          cntstr;
+    bool          cstar;
 } jrow_reply_t;
 
 static void addJoinOutputRowToList(jrow_reply_t *r, void *resp) {
@@ -334,7 +282,7 @@ static bool jRowReply(jrow_reply_t *r, int lvl) {
                 r->fc->argv[1] = cloneRobj(r->nname);
                 r->fc->argv[2] = resp;
                 if (!performStoreCmdOrReply(r->c, r->fc, r->sto)) return 0;
-            } else if (!r->cntstr) {
+            } else if (!r->cstar) {
                 addReplyBulk(r->c, resp);
                 decrRefCount(resp);
             }
@@ -564,7 +512,7 @@ static void sortJoinOrderByAndReply(redisClient        *c,
                 b->j.fc->argv[2] = ob->row;
                 if (!performStoreCmdOrReply(b->j.c, b->j.fc, b->j.sto)) return;
             }
-        } else if (!b->j.cntstr) {
+        } else if (!b->j.cstar) {
             addReplyBulk(c, ob->row);
             decrRefCount(ob->row);
         }
@@ -621,50 +569,36 @@ void freeDictOfIndRow(dict *d, int num_cols, bool is_ob) {
 
 void joinGeneric(redisClient *c,
                  redisClient *fc,
-                 int          j_indxs[],
-                 int          j_tbls [],
-                 int          j_cols[],
-                 int          n_ind,
-                 int          qcols,
-                 robj        *low,
-                 robj        *high,
-                 int          sto,
+                 jb_t        *jb,
                  bool         sub_pk,
-                 int          nargc,
-                 robj        *nname,
-                 int          obt,
-                 int          obc,
-                 bool         asc,
-                 int          lim,
-                 list        *inl,
-                 bool         cntstr) {
-    Order_by         = (obt != -1);
+                 int          nargc) {
+    Order_by         = (jb->w.obt != -1);
     Order_by_col_val = NULL;
 
     /* sort queried-columns to queried-indices */
     jqo_t o_csort_order[MAX_COLUMN_PER_TABLE];
     jqo_t csort_order  [MAX_COLUMN_PER_TABLE];
-    for (int i = 0; i < qcols; i++) {
-        for (int j = 0; j < n_ind; j++) {
-            if (j_tbls[i] == Index[server.dbid][j_indxs[j]].table) {
-                csort_order[i].t = j_tbls[i];
+    for (int i = 0; i < jb->qcols; i++) {
+        for (int j = 0; j < jb->n_ind; j++) {
+            if (jb->j_tbls[i] == Index[server.dbid][jb->j_indxs[j]].table) {
+                csort_order[i].t = jb->j_tbls[i];
                 csort_order[i].i = j;
-                csort_order[i].c = j_cols[i];
+                csort_order[i].c = jb->j_cols[i];
                 csort_order[i].n = i;
             }
         }
     }
-    memcpy(&o_csort_order, &csort_order, sizeof(jqo_t) * qcols);
-    qsort(&csort_order, qcols, sizeof(jqo_t), cmp_jqo);
+    memcpy(&o_csort_order, &csort_order, sizeof(jqo_t) * jb->qcols);
+    qsort(&csort_order, jb->qcols, sizeof(jqo_t), cmp_jqo);
 
     /* reorder queried-columns to queried-indices, will sort @ output time */
     bool reordered = 0;
-    for (int i = 0; i < qcols; i++) {
-        if (j_tbls[i] != csort_order[i].t ||
-            j_cols[i] != csort_order[i].c) {
+    for (int i = 0; i < jb->qcols; i++) {
+        if (jb->j_tbls[i] != csort_order[i].t ||
+            jb->j_cols[i] != csort_order[i].c) {
                 reordered = 1;
-                j_tbls[i] = csort_order[i].t;
-                j_cols[i] = csort_order[i].c;
+                jb->j_tbls[i] = csort_order[i].t;
+                jb->j_cols[i] = csort_order[i].c;
         }
     }
 
@@ -672,59 +606,61 @@ void joinGeneric(redisClient *c,
     bool  icol = 0;
     if (Order_by) { /* ORDER BY logic */
         ll   = listCreate();
-        icol = (Tbl[server.dbid][obt].col_type[obc] == COL_TYPE_INT);
+        icol = Tbl[server.dbid][jb->w.obt].col_type[jb->w.obc] == COL_TYPE_INT;
     }
 
     EMPTY_LEN_OBJ
-    if (sto == -1) {
+    if (jb->w.sto == -1) {
         INIT_LEN_OBJ
     }
 
     int    j_ind_len [MAX_JOIN_INDXS];
     int    jind_ncols[MAX_JOIN_INDXS];
 
-    uchar  pktype = Tbl[server.dbid]
-                       [Index[server.dbid][j_indxs[0]].table].col_type[0];
+    uchar  pktype = jb->w.inl? COL_TYPE_STRING :
+                      Tbl[server.dbid]
+                         [Index[server.dbid][jb->j_indxs[0]].table].col_type[0];
     bt    *jbtr   = createJoinResultSet(pktype);
 
     robj  *rset[MAX_JOIN_INDXS];
-    for (int i = 1; i < n_ind; i++) {
+    for (int i = 1; i < jb->n_ind; i++) {
         rset[i] = createValSetObject();
     }
 
     join_add_cols_t jc; /* these dont change in the loop below */
-    jc.qcols      = qcols;
-    jc.j_tbls     = j_tbls;
-    jc.j_cols     = j_cols;
+    jc.qcols      = jb->qcols;
+    jc.j_tbls     = jb->j_tbls;
+    jc.j_cols     = jb->j_cols;
     jc.jind_ncols = jind_ncols;
     jc.j_ind_len  = j_ind_len;
     jc.jbtr       = jbtr;
     
-    for (int i = 0; i < n_ind; i++) {    /* iterate indices */
+    for (int i = 0; i < jb->n_ind; i++) {    /* iterate indices */
         btEntry    *be, *nbe;
         j_ind_len[i]  = 0;
         jc.index      = i;
 
-        jc.itable     = Index[server.dbid][j_indxs[i]].table;
+        jc.itable     = Index[server.dbid][jb->j_indxs[i]].table;
         jc.o          = lookupKeyRead(c->db, Tbl[server.dbid][jc.itable].name);
-        jc.virt       = Index[server.dbid][j_indxs[i]].virt;
-        robj *ind     = Index[server.dbid][j_indxs[i]].obj;
+        jc.virt       = Index[server.dbid][jb->j_indxs[i]].virt;
+        robj *ind     = Index[server.dbid][jb->j_indxs[i]].obj;
      
-        if (low) {     /* RANGE QUERY */
-            robj             *bt = jc.virt ? jc.o : lookupKey(c->db, ind);
-            btStreamIterator *bi = btGetRangeIterator(bt, low, high, jc.virt);
+        if (jb->w.low) {     /* RANGE QUERY */
+            robj    *bt = jc.virt ? jc.o : lookupKey(c->db, ind);
+            btSIter *bi = btGetRangeIterator(bt, jb->w.low, jb->w.high,
+                                             jc.virt);
             while ((be = btRangeNext(bi, 1)) != NULL) {
                 if (jc.virt) {
                     jc.jk  = be->key;
                     jc.val = be->val;
-                    joinAddColsFromInd(&jc, rset, obt, obc);
+                    joinAddColsFromInd(&jc, rset, jb->w.obt, jb->w.obc);
                 } else {
                     jc.jk                 = be->key;
                     robj             *val = be->val;
-                    btStreamIterator *nbi = btGetFullRangeIterator(val, 0, 0);
+                    btSIter *nbi = btGetFullRangeIterator(val, 0, 0);
                     while ((nbe = btRangeNext(nbi, 1)) != NULL) {
                         jc.val = nbe->key;
-                        joinAddColsFromInd(&jc, rset, obt, obc);
+                        joinAddColsFromInd(&jc, rset, jb->w.obt, jb->w.obc);
                     }
                     btReleaseRangeIterator(nbi);
                 }
@@ -732,18 +668,19 @@ void joinGeneric(redisClient *c,
             btReleaseRangeIterator(bi);
         } else {       /* IN () QUERY */
             listNode *ln;
-            listIter *li  = listGetIterator(inl, AL_START_HEAD);
+            listIter *li  = listGetIterator(jb->w.inl, AL_START_HEAD);
             if (jc.virt) {
                 bool pktype = Tbl[server.dbid][jc.itable].col_type[0];
                 while((ln = listNext(li)) != NULL) {
                     jc.jk  = ln->value;
                     jc.val = btFindVal(jc.o, jc.jk, pktype);
-                    if (jc.val) joinAddColsFromInd(&jc, rset, obt, obc);
+                    if (jc.val) joinAddColsFromInd(&jc, rset,
+                                                  jb->w.obt, jb->w.obc);
                 }
             } else {
-                int  ind_col = (int)Index[server.dbid][j_indxs[i]].column;
+                int  ind_col = (int)Index[server.dbid][jb->j_indxs[i]].column;
                 bool fktype  = Tbl[server.dbid][jc.itable].col_type[ind_col];
-                btStreamIterator *nbi;
+                btSIter *nbi;
                 robj *ibt = lookupKey(c->db, ind);   
                 while((ln = listNext(li)) != NULL) {
                     jc.jk     = ln->value;
@@ -752,7 +689,7 @@ void joinGeneric(redisClient *c,
                         nbi = btGetFullRangeIterator(val, 0, 0);
                         while ((nbe = btRangeNext(nbi, 1)) != NULL) {
                             jc.val = nbe->key;
-                            joinAddColsFromInd(&jc, rset, obt, obc);
+                            joinAddColsFromInd(&jc, rset, jb->w.obt, jb->w.obc);
                         }
                         btReleaseRangeIterator(nbi);
                     }
@@ -766,7 +703,7 @@ void joinGeneric(redisClient *c,
     bool one_empty = 0;
     if (jbtr->numkeys == 0) one_empty = 1;
     else {
-        for (int i = 1; i < n_ind; i++) {
+        for (int i = 1; i < jb->n_ind; i++) {
             if (dictSize((dict *)rset[i]->ptr) == 0) {
                 one_empty = 1;
                 break;
@@ -776,7 +713,7 @@ void joinGeneric(redisClient *c,
 
     if (!one_empty) {
         int   reply_size = 0;
-        for (int i = 0; i < n_ind; i++) { // figger maxlen possible 4 joined row
+        for (int i = 0; i < jb->n_ind; i++) { // get maxlen possbl 4 joined row
             reply_size += j_ind_len[i] + 1;
         }
         char *reply = malloc(reply_size); /* freed after while() loop */
@@ -787,21 +724,21 @@ void joinGeneric(redisClient *c,
         bjr.j.fc          = fc;
         bjr.j.jind_ncols  = jind_ncols;
         bjr.j.reply       = reply;
-        bjr.j.sto         = sto;
+        bjr.j.sto         = jb->w.sto;
         bjr.j.sub_pk      = sub_pk;
         bjr.j.nargc       = nargc; 
-        bjr.j.nname       = nname;
+        bjr.j.nname       = jb->nname;
         bjr.j.csort_order = csort_order;
         bjr.j.reordered   = reordered;
-        bjr.j.qcols       = qcols;
-        bjr.n_ind         = n_ind;
+        bjr.j.qcols       = jb->qcols;
+        bjr.n_ind         = jb->n_ind;
         bjr.card          = &card;
-        bjr.j.obt         = obt;
-        bjr.j.obc         = obc;
-        bjr.j_indxs       = j_indxs;
+        bjr.j.obt         = jb->w.obt;
+        bjr.j.obc         = jb->w.obc;
+        bjr.j_indxs       = jb->j_indxs;
         bjr.j.ll          = ll;
         bjr.j.icol        = icol;
-        bjr.j.cntstr      = cntstr;
+        bjr.j.cstar       = jb->cstar;
 
         joinRowEntry *be;
         btIterator   *bi = btGetJoinFullRangeIterator(jbtr, pktype);
@@ -836,20 +773,21 @@ void joinGeneric(redisClient *c,
         free(reply);
 
         if (Order_by) {
-            sortJoinOrderByAndReply(c, &bjr, asc, lim);
+            sortJoinOrderByAndReply(c, &bjr, jb->w.asc, jb->w.lim);
             listRelease(ll);
         }
     }
 
     /* free joinRowEntry malloc from joinAddColsFromInd() */
-    bool  is_ob = (obt == Index[server.dbid][j_indxs[0]].table);
+    bool  is_ob = (jb->w.obt == Index[server.dbid][jb->j_indxs[0]].table);
     btJoinRelease(jbtr, jind_ncols[0], is_ob, freeListOfIndRow);
 
     /* free joinRowEntry malloc from joinAddColsFromInd() */
     dictEntry *de;
-    for (int i = 1; i < n_ind; i++) {
+    for (int i = 1; i < jb->n_ind; i++) {
         dict         *set   = rset[i]->ptr;
-        bool          is_ob = (obt == Index[server.dbid][j_indxs[i]].table);
+        bool          is_ob = (jb->w.obt ==
+                               Index[server.dbid][jb->j_indxs[i]].table);
         dictIterator *di    = dictGetIterator(set);
         while((de = dictNext(di)) != NULL) {
             robj *val  = dictGetEntryVal(de);
@@ -859,73 +797,48 @@ void joinGeneric(redisClient *c,
         dictReleaseIterator(di);
     }
 
-    for (int i = 1; i < n_ind; i++) {
+    for (int i = 1; i < jb->n_ind; i++) {
         decrRefCount(rset[i]);
     }
 
-    if (lim != -1) card = lim;
-    if (sto != -1) {
+    if (jb->w.lim != -1 && (uint32)jb->w.lim < card) card = jb->w.lim;
+    if (jb->w.sto != -1) {
         addReplyLongLong(c, card);
-    } else if (cntstr) {
+    } else if (jb->cstar) {
         lenobj->ptr = sdscatprintf(sdsempty(), ":%lu\r\n", card);
     } else {
         lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
     }
 }
 
-void jstoreCommit(redisClient *c,
-                  int          sto,
-                  robj        *low,
-                  robj        *high,
-                  robj        *nname,
-                  int          j_indxs[MAX_JOIN_INDXS],
-                  int          j_tbls [MAX_JOIN_INDXS],
-                  int          j_cols [MAX_JOIN_INDXS],
-                  int          n_ind,
-                  int          qcols,
-                  int          obt,
-                  int          obc,
-                  bool         asc,
-                  int          lim,
-                  list        *inl) {
+void jstoreCommit(redisClient *c, jb_t *jb) {
+    char *nname;
+    int   nlen;  
+    bool  sub_pk;
+    int   nargc; 
+    char *last;
+    if (!prepareToStoreReply(c, &jb->w, &nname, &nlen, 
+                             &sub_pk, &nargc, &last, jb->qcols)) return;
+    jb->nname = createStringObject(nname, nlen);
+
     robj               *argv[STORAGE_MAX_ARGC + 1];
     struct redisClient *fc = rsql_createFakeClient();
     fc->argv               = argv;
-
-    bool sub_pk    = (StorageCommands[sto].argc < 0);
-    int  nargc     = abs(StorageCommands[sto].argc);
-    sds  last_argv = c->argv[c->argc - 1]->ptr;
-    if (nargc) { /* if NOT INSERT check nargc */
-        if (last_argv[sdslen(last_argv) -1] == '$') {
-            sub_pk = 1; 
-            nargc++;
-            last_argv[sdslen(last_argv) -1] = '\0';
-            sdsupdatelen(last_argv);
-        }
-        if (nargc != qcols) {
-            addReply(c, shared.storagenumargsmismatch);
-            return;
-        }
-        if (sub_pk) nargc--;
-    }
-
-    if (!StorageCommands[sto].argc) { /* INSERT -> create table first */
-        fc->argv[1] = cloneRobj(nname);
-        if (!createTableFromJoin(c, fc, qcols, j_tbls, j_cols)) {
+    if (!StorageCommands[jb->w.sto].argc) { /* INSERT -> create table first */
+        fc->argv[1] = cloneRobj(jb->nname);
+        if (!createTableFromJoin(c, fc, jb->qcols, jb->j_tbls, jb->j_cols)) {
             rsql_freeFakeClient(fc);
             return;
         }
     }
 
-    joinGeneric(c, fc, j_indxs, j_tbls, j_cols, n_ind, qcols, low, high, sto,
-                sub_pk, nargc, nname, obt, obc, asc, lim, inl, 0);
+    joinGeneric(c, fc, jb, sub_pk, nargc);
 
+    if (sub_pk) *last = '$';/* write back in "$" for AOF and Slaves */
     rsql_freeFakeClient(fc);
 }
 
-// CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP
-// CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP
-
+/* CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP */
 void freeJoinRowObject(robj *o) {
     //RL4 "freeJoinRowObject: %p", o->ptr);
     free(o->ptr);

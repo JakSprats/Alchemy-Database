@@ -776,8 +776,6 @@ void tscanCommand(redisClient *c);
 void normCommand(redisClient *c);
 void denormCommand(redisClient *c);
 
-void ikeysCommand(redisClient *c);
-
 void legacyTableCommand(redisClient *c);
 void legacyInsertCommand(redisClient *c);
 void legacyIndexCommand(redisClient *c);
@@ -909,19 +907,18 @@ static struct redisCommand cmdTable[] = {
     {"dump",         dumpCommand,          -2,REDIS_CMD_INLINE,NULL,1,1,1,1},
 
     {"insert",       insertCommand,        -5,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
-    {"select",       selectRedisqlCommand, -2,REDIS_CMD_INLINE,NULL,1,1,1,1},
-    {"update",       updateCommand,        -4,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
-    {"delete",       deleteCommand,        -3,REDIS_CMD_INLINE,NULL,1,1,1,1},
+    /* selectRedisqlCommand is CMD_BULK for simplicity in redis-benchmark.s */
+    {"select",       selectRedisqlCommand, -2,REDIS_CMD_BULK,NULL,1,1,1,1},
+    {"update",       updateCommand,         6,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
+    {"delete",       deleteCommand,         5,REDIS_CMD_INLINE,NULL,1,1,1,1},
 
-    {"ikeys",        ikeysCommand,          3,REDIS_CMD_INLINE,NULL,1,1,1,1},
-
-    {"scanselect",   tscanCommand,         -3,REDIS_CMD_INLINE,NULL,1,1,1,1},
+    {"scanselect",   tscanCommand,         -4,REDIS_CMD_INLINE,NULL,1,1,1,1},
     {"norm",         normCommand,          -2,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
-    {"denorm",       denormCommand,        -3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
+    {"denorm",       denormCommand,         3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
 
-    {"legacytable",  legacyTableCommand,   -3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
-    {"legacyinsert", legacyInsertCommand,  -3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
-    {"legacyindex",  legacyIndexCommand,   -3,REDIS_CMD_INLINE,NULL,1,1,1,1},
+    {"legacytable",  legacyTableCommand,    3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
+    {"legacyinsert", legacyInsertCommand,   3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
+    {"legacyindex",  legacyIndexCommand,    3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
 
     {"lua",          luaCommand,            2,REDIS_CMD_INLINE,NULL,1,1,1,1},
 #endif /* ALSOSQL END */
@@ -939,8 +936,6 @@ extern stor_cmd  AccessCommands[];
 extern char     *EQUALS;
 extern char     *PERIOD;
 extern char     *Col_type_defs[];
-
-extern sds       Curr_range;
 #endif /* ALSOSQL END */
 
 /*============================ Utility functions ============================ */
@@ -1756,7 +1751,7 @@ static void createSharedObjects(void) {
     shared.badindexedcolumnsyntax = createObject(REDIS_STRING,sdsnew(
         "-ERR Indexed Column syntax is: ON tablename (columname)\r\n"));
     shared.index_nonrel_decl_fmt = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: CREATE INDEX ind ON tbl NON_RELATIONAL_ADD_CMD [NON_RELATIONAL_DEL_CMD] - syntax for CMD: text $colmn_name text\r\n"));
+        "-ERR SYNTAX: CREATE INDEX ind ON tbl NON_RELATIONAL_ADD_CMD [NON_RELATIONAL_DEL_CMD] - syntax for CMD: [SET,GET,etc...] $col_name text\r\n"));
 
     shared.invalidupdatestring = createObject(REDIS_STRING,sdsnew(
         "-ERR UPDATE: string error, syntax is col1=val1,col2=val2,....\r\n"));
@@ -1774,7 +1769,7 @@ static void createSharedObjects(void) {
     shared.join_on_multi_col = createObject(REDIS_STRING,sdsnew(
         "-ERR SELECT: JOIN: Only SINGLE index joins are supported\r\n"));
     shared.join_requires_range = createObject(REDIS_STRING,sdsnew(
-        "-ERR SELECT: JOIN: A range must be specified when joining, e.g. [tbl.col BETWEEN x AND Y] or [tbl.col IN (1,2,3)] - Use SCANSELECT for FullTableJoins \r\n"));
+        "-ERR SELECT: JOIN: A range must be specified when joining, e.g. [tbl.col BETWEEN x AND y] or [tbl.col IN (1,2,3)] - Use SCANSELECT for FullTableJoins \r\n"));
     shared.join_order_by_tbl = createObject(REDIS_STRING,sdsnew(
         "-ERR SELECT: JOIN: ORDER BY tablename.columname - table does not exist\r\n"));
     shared.join_order_by_col = createObject(REDIS_STRING,sdsnew(
@@ -1805,18 +1800,22 @@ static void createSharedObjects(void) {
 
 
     shared.whereclause_in_err = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: WHERE id IN (...) - \"IN\" requires () delimited list\r\n"));
+        "-ERR SYNTAX: WHERE col IN (...) - \"IN\" requires () delimited list\r\n"));
+    shared.whereclause_between = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: WHERE col BETWEEN x AND y\r\n"));
 
     shared.whereclause_orderby_no_by = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: WHERE ... ORDER BY col - \"BY\" MISSING\r\n"));
+    shared.whereclause_orderby_err = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: WHERE ... ORDER BY col [DESC] [LIMIT N]\r\n"));
 
     shared.selectsyntax = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: SELECT col,,,, FROM tablename WHERE indexed_column = val || WHERE indexed_column BETWEEN x AND y\r\n"));
+        "-ERR SYNTAX: SELECT col,,,, FROM tablename WHERE [indexed_column = val]|| [indexed_column BETWEEN x AND y] [ORDER BY col LIMIT num offset] [STORE redis_cmd redis_args]\r\n"));
     shared.selectsyntax_nofrom = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: SELECT col,,,, FROM tablename WHERE indexed_column = val - \"FROM\" keyword MISSING\r\n"));
     shared.selectsyntax_nowhere = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: SELECT col,,,, FROM tablename WHERE indexed_column = val - \"WHERE\" keyword MISSING\r\n"));
-    shared.select_notpk = createObject(REDIS_STRING,sdsnew(
+    shared.select_notindxd = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: SELECT col,,,, FROM tablename WHERE indexed_column = val - Column must be indexed\r\n"));
     shared.selectsyntax_noequals = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: SELECT col,,,, FROM tablename WHERE indexed_column = val - \"EQUALS SIGN\" MISSING\r\n"));
@@ -1825,7 +1824,7 @@ static void createSharedObjects(void) {
         "-ERR SYNTAX: DELETE FROM tablename WHERE indexed_column = val || WHERE indexed_column BETWEEN x AND y\r\n"));
     shared.deletesyntax_nowhere = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: DELETE FROM tablename WHERE indexed_column = val - \"WHERE\" keyword MISSING\r\n"));
-    shared.delete_notpk = createObject(REDIS_STRING,sdsnew(
+    shared.delete_notindxd = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: DELETE FROM tablename WHERE indexed_column = val - Column must be indexed\r\n"));
     shared.deletesyntax_noequals = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: DELETE FROM tablename WHERE indexed_column = val  - \"EQUALS SIGN\" MISSING\r\n"));
@@ -1834,7 +1833,7 @@ static void createSharedObjects(void) {
         "-ERR SYNTAX: UPDATE tablename SET col1=val1,col2=val2,,,, WHERE indexed_column = val\r\n"));
     shared.updatesyntax_nowhere = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: UPDATE tablename SET col1=val1,col2=val2,,,, WHERE indexed_column = val \"WHERE\" keyword MISSING\r\n"));
-    shared.update_notpk = createObject(REDIS_STRING,sdsnew(
+    shared.update_notindxd = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: UPDATE tablename SET col1=val1,col2=val2,,,, WHERE indexed_column = val - Column must be indexed\r\n"));
     shared.updatesyntax_noequals = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: UPDATE tablename SET col1=val1,col2=val2,,,, WHERE indexed_column = val - \"EQUALS SIGN\" MISSING\r\n"));
@@ -1847,11 +1846,17 @@ static void createSharedObjects(void) {
         "-ERR SYNTAX: WHERE-CLAUSE: WHERE indexed_column BETWEEN start AND finish - \"AND\" MISSING\r\n"));
     shared.selectsyntax_store_norange = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: SELECT w/ STORE requires WHERE indexed_column BETWEEN x AND y OR indexed_column IN (list)\r\n"));
+    shared.select_store_count = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: SELECT COUNT(*) FROM tbl STORE - is disallowed because the result is a single value\r\n"));
 
     shared.scanselectsyntax = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: SCANSELECT col,,,, FROM tablename WHERE col = val\r\n"));
     shared.scanselectsyntax_noequals = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: SELECT col,,,, FROM tablename WHERE col = val - \"EQUALS SIGN\" MISSING\r\n"));
+    shared.scan_join = createObject(REDIS_STRING,sdsnew(
+        "-ERR: UNSUPPORTED: SCANSELECT JOINs\r\n"));
+    shared.scan_on_index = createObject(REDIS_STRING,sdsnew(
+        "-ERR: SCANSELECT on an indexed column -> use SELECT\r\n"));
 
     shared.istorecommit_err = createObject(REDIS_STRING,sdsnew(
         "-ERR INTERNAL: SELECT STORE failed (generic)\r\n"));
@@ -1867,12 +1872,15 @@ static void createSharedObjects(void) {
     shared.createtable_as_index = createObject(REDIS_STRING,sdsnew(
         "-ERR TYPE: CREATE TABLE tablename AS INDEX - not allowed\r\n"));
 
-    shared.create_table_as_function_not_found = createObject(REDIS_STRING,sdsnew(
+    shared.create_table_as_function_not_found =
+      createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: CREATE TABLE tablename AS [DUMP,SELECT,LRANGE,ZRANGE,ZRANGEBYSCORE,ZREVRANGE,HMGET,HKEYS,HVALS,HGETALL,SUNION,SDIFF,SINTER,SMEMBERS,SORT] redis_object - redis function name not recognized\r\n"));
     shared.create_table_as_dump_num_args = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: CREATE TABLE tablename AS DUMP redis_object - too few arguments\r\n"));
     shared.create_table_as_access_num_args = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: CREATE TABLE tablename AS [SELECT,LRANGE,ZRANGE,ZRANGEBYSCORE,ZREVRANGE,HMGET,HKEYS,HVALS,HGETALL,SUNION,SDIFF,SINTER,SMEMBERS,SORT] redis_object MIN MAX - too few arguments\r\n"));
+    shared.create_table_as_select = createObject(REDIS_STRING,sdsnew(
+        "-ERR TYPE: CREATE TABLE tbl AS SELECT - SELECT failed executing\r\n"));
 
     shared.denorm_wildcard_no_star = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: NORM tablename wildcard - wildcard must have '*'\r\n"));
@@ -1972,7 +1980,6 @@ static void initServerConfig() {
     server.daemonize = 0;
     server.appendonly = 0;
     /* ALSOSQL START */
-    Curr_range         = sdsempty();
     server.luafilename = NULL;
     /* ALSOSQL END */
     server.appendfsync = APPENDFSYNC_EVERYSEC;
@@ -5080,7 +5087,8 @@ static void existsCommand(redisClient *c) {
 }
 
 void selectCommand(redisClient *c) {
-    int id = atoi(c->argv[1]->ptr);
+    int id = (c->argv[1]->encoding == REDIS_ENCODING_RAW) ?
+               atoi(c->argv[1]->ptr) : (int)(long)c->argv[1]->ptr;
 
     if (selectDb(c,id) == REDIS_ERR) {
         addReplySds(c,sdsnew("-ERR invalid DB index\r\n"));
@@ -5088,6 +5096,7 @@ void selectCommand(redisClient *c) {
         addReply(c,shared.ok);
     }
 }
+
 #ifdef ALSOSQL
 static void changedbCommand(redisClient *c) {
     selectCommand(c);
@@ -9184,13 +9193,15 @@ static bool appendOnlyDumpTable(FILE *fp, robj *o, bt *btr, int tmatch) {
 
     /* Dump Table DATA */
     if (btr->numkeys) {
-        int  cmatchs[MAX_COLUMN_PER_TABLE];
-        bool bdum;
         char cmd2[] = "*3\r\n$12\r\nLEGACYINSERT\r\n";
-        int  qcols = parseColListOrReply(NULL, tmatch, "*", cmatchs, &bdum);
+        bool bdum;
+        int  cmatchs[MAX_COLUMN_PER_TABLE];
+        int  qcols  = 0;
+        parseCommaSpaceListReply(NULL, "*", 1, 0, 0, tmatch, cmatchs,
+                                 0, NULL, NULL, NULL, &qcols, &bdum);
 
-        btEntry          *be;
-        btStreamIterator *bi = btGetFullRangeIterator(o, 0, 1);
+        btEntry *be;
+        btSIter *bi = btGetFullRangeIterator(o, 0, 1);
         while ((be = btRangeNext(bi, 1)) != NULL) {
             robj *pko = be->key;
             robj *row = be->val;

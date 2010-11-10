@@ -208,19 +208,17 @@ static struct redisCommand cmdTable[] = {
 
     {"insert",       -5,CMDFLAG_NONE},
     {"select",       -2,CMDFLAG_NONE},
-    {"update",       -4,CMDFLAG_NONE},
-    {"delete",       -3,CMDFLAG_NONE},
+    {"update",        6,CMDFLAG_NONE},
+    {"delete",        5,CMDFLAG_NONE},
 
     {"scanselect",   -4,CMDFLAG_NONE},
     {"norm",         -2,CMDFLAG_NONE},
-    {"denorm",       -3,CMDFLAG_NONE},
-
-    {"ikeys",         3,CMDFLAG_NONE},
+    {"denorm",        3,CMDFLAG_NONE},
 
     {"legacyjoin",    4,CMDFLAG_NONE},
-    {"legacytable",  -3,CMDFLAG_NONE},
-    {"legacyinsert", -3,CMDFLAG_NONE},
-    {"legacyindex",  -3,CMDFLAG_NONE},
+    {"legacytable",   3,CMDFLAG_NONE},
+    {"legacyinsert",  3,CMDFLAG_NONE},
+    {"legacyindex",   3,CMDFLAG_NONE},
 
     {"lua",           2,CMDFLAG_NONE},
 #endif
@@ -474,6 +472,8 @@ static int cliSendCommand(int argc, char **argv, int repeat) {
     return 0;
 }
 
+static int cliSendCommandWrapper(int argc, char **argv, int repeat);
+
 static int parseOptions(int argc, char **argv) {
     int i;
 
@@ -620,20 +620,21 @@ static void repl() {
     int argc, j;
     char *line, **argv;
 
-    while((line = linenoise("redis> ")) != NULL) {
+    while((line = linenoise("redisql> ")) != NULL) {
         if (line[0] != '\0') {
             argv = splitArguments(line,&argc);
+            int o_argc = argc;
             linenoiseHistoryAdd(line);
             if (argc > 0) {
                 if (strcasecmp(argv[0],"quit") == 0 ||
                     strcasecmp(argv[0],"exit") == 0)
                         exit(0);
                 else
-                    cliSendCommand(argc, argv, 1);
+                    cliSendCommandWrapper(argc, argv, 1);
             }
             /* Free the argument vector */
-            for (j = 0; j < argc; j++)
-                sdsfree(argv[j]);
+            for (j = 0; j < o_argc; j++)
+                if (argv[j]) sdsfree(argv[j]);
             zfree(argv);
         }
         /* linenoise() returns malloc-ed lines like readline() */
@@ -643,63 +644,132 @@ static void repl() {
 }
 
 
-void merge_vals(int *argc, char **argvcopy, int first, int second) {
+static void merge_vals(int   *argc,
+                       char **argv,
+                       int    first,
+                       int    second,
+                       bool   space) {
+    //printf("merge_vals: first: %d second: %d\n", first, second);
+    if (first == second) return;
     int len = 0;
     for (int i = first; i <= second; i++) {
-        len += sdslen(argvcopy[i]);
+        if (space && i != first) len++;
+        len += sdslen(argv[i]);
     }
 
-    char *x = malloc(len);
+    char *x = zmalloc(len);
     int slot = 0;
     for (int i = first; i <= second; i++) {
-        memcpy(x + slot, argvcopy[i], sdslen(argvcopy[i]));
-        slot += sdslen(argvcopy[i]);
+        if (space && i != first) {
+            memcpy(x + slot, " ", 1);
+            slot++;
+        }
+        memcpy(x + slot, argv[i], sdslen(argv[i]));
+        slot += sdslen(argv[i]);
     }
 
-    sds s = sdsnewlen(x, len);
-    free(x);
-    argvcopy[first] = s;
+    sds s          = sdsnewlen(x, len);
+    zfree(x);
+    argv[first]    = s;
     int first_copy = first;
     for (int i = second + 1; i < *argc; i++) {
-        argvcopy[++first_copy] = argvcopy[i];
+        argv[++first_copy] = argv[i];
+        argv[i]            = NULL; /* no double frees */
     }
 
     *argc = *argc - (second - first);
 }
+
 /* INSERT SYNTAX IS:
     INSERT INTO tablename (colname,,,,,) VALUES (val1,val2,val3,,,) 
     NOTE: (val1,val2,val3,,,) must contain no spaces */
-void merge_insert_vals(int *argc, char **argvcopy) {
+static void insert_vals_mod(int *argc, char **argv) {
     int i;
     for (i = 0; i < *argc; i++) {
-        if (!strcasecmp(argvcopy[i], "VALUES")) break;
+        if (!strcasecmp(argv[i], "VALUES")) break;
     }
     if (i == *argc) return; // SYNTAX is BAD, server will return ERROR
     int first = i + 1;
     for (; i < *argc; i++) {
-        int len = sdslen(argvcopy[i]);
-        if (*(argvcopy[i]) == ')' || argvcopy[i][len - 1] == ')') break;
+        int len = sdslen(argv[i]);
+        if (*(argv[i]) == ')' || argv[i][len - 1] == ')') break;
     }
     if (i == *argc) return; // SYNTAX is BAD, server will return ERROR
     int second = i;
-    merge_vals(argc, argvcopy, first, second);
+    merge_vals(argc, argv, first, second, 0);
 }
 
-void merge_update_vals(int *argc, char **argvcopy) {
+static void update_vals_mod(int *argc, char **argv) {
     int i;
     for (i = 0; i < *argc; i++) {
-        if (!strcasecmp(argvcopy[i], "SET")) break;
+        if (!strcasecmp(argv[i], "SET")) break;
     }
     if (i == *argc) return; // SYNTAX is BAD, server will return ERROR
     int first = i + 1;
     for (; i < *argc; i++) {
-        if (!strcasecmp(argvcopy[i], "WHERE")) break;
+        if (!strcasecmp(argv[i], "WHERE")) break;
     }
     if (i == *argc) return; // SYNTAX is BAD, server will return ERROR
     int second = i - 1;
-    merge_vals(argc, argvcopy, first, second);
+    merge_vals(argc, argv, first, second, 0);
 }
 
+static void create_table_mod(int *argc, char **argv) {
+    merge_vals(argc, argv, 3, (*argc - 1), 1);
+}
+static void update_where_mod(int *argc, char **argv) {
+    merge_vals(argc, argv, 5, (*argc - 1), 1);
+}
+static void delete_where_mod(int *argc, char **argv) {
+    merge_vals(argc, argv, 4, (*argc - 1), 1);
+}
+static void select_mod_from(int *argc, char **argv) {
+    if (*argc < 6) return;
+    int j;
+    for (j = 1; j < *argc; j++) {
+        if (!strcasecmp(argv[j], "FROM")) break;
+    }
+     if ((j >= (*argc -1)) || (j == 1)) return; // SYNTAX BAD, server ERROR
+    if (j != 2) merge_vals(argc, argv, 1, (j - 1), 1);     /* ColumnList */
+}
+static void select_mod_where(int *argc, char **argv) {
+    int k;
+    for (k = 4; k < *argc; k++) {
+        if (!strcasecmp(argv[k], "WHERE")) break;
+    }
+    if ((k >= (*argc - 1))) return; // SYNTAX BAD server ERROR
+    if (k != 4) merge_vals(argc, argv, 3, (k - 1), 1);  /* TableList */
+    merge_vals(argc, argv, 5, (*argc - 1), 1); /* WHERE */
+}
+static void select_mod(int *argc, char **argv) {
+    select_mod_from(argc, argv);
+    select_mod_where(argc, argv);
+}
+static void scanselect_mod_orderby(int *argc, char **argv) {
+    if (!strcasecmp(argv[4], "ORDER") && (*argc > 5)) {
+        merge_vals(argc, argv, 4, (*argc - 1), 1); /* WHERE */
+    }
+}
+static void scanselect_mod(int *argc, char **argv) {
+    select_mod_from(argc, argv);
+    select_mod_where(argc, argv);
+    scanselect_mod_orderby(argc, argv);
+}
+
+static int cliSendCommandWrapper(int argc, char **argv, int repeat) {
+    if      (!strcasecmp(argv[0], "INSERT")) insert_vals_mod(&argc, argv);
+    else if (!strcasecmp(argv[0], "UPDATE")) update_vals_mod(&argc, argv);
+    else if (!strcasecmp(argv[0], "CREATE") &&
+             !strcasecmp(argv[1], "TABLE"))  create_table_mod(&argc, argv);
+
+    if      (!strcasecmp(argv[0], "UPDATE"))     update_where_mod(&argc, argv);
+    else if (!strcasecmp(argv[0], "DELETE"))     delete_where_mod(&argc, argv);
+    else if (!strcasecmp(argv[0], "SELECT"))     select_mod(&argc, argv);
+    else if (!strcasecmp(argv[0], "SCANSELECT")) scanselect_mod(&argc, argv);
+
+    //for (int i = 0; i < argc; i++) printf("argv[%d]: %s\n", i, argv[i]);
+    return cliSendCommand(argc, argv, repeat);
+}
 
 int main(int argc, char **argv) {
     int firstarg;
@@ -742,10 +812,5 @@ int main(int argc, char **argv) {
       }
     }
 
-    if (!strcasecmp(argvcopy[0], "INSERT")) merge_insert_vals(&argc, argvcopy);
-    if (!strcasecmp(argvcopy[0], "UPDATE")) merge_update_vals(&argc, argvcopy);
-
-//for (int i = 0; i < argc; i++) printf("%d: argv: %s\n", i, argvcopy[i]);
-
-    return cliSendCommand(argc, argvcopy, config.repeat);
+    return cliSendCommandWrapper(argc, argvcopy, config.repeat);
 }

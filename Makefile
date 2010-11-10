@@ -24,7 +24,7 @@ EXTRA_LD= -llua
 CCOPT= $(CFLAGS) $(CCLINK) $(ARCH) $(PROF)
 DEBUG?= -g -rdynamic -ggdb 
 
-OBJ = adlist.o ae.o anet.o dict.o redis.o sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o zipmap.o sha1.o bt.o bt_code.o bt_output.o alsosql.o sixbit.o row.o index.o rdb_alsosql.o join.o norm.o bt_iterator.o sql.o denorm.o store.o scan.o orderby.o lua_integration.o
+OBJ = adlist.o ae.o anet.o dict.o redis.o sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o zipmap.o sha1.o bt.o bt_code.o bt_output.o alsosql.o sixbit.o row.o index.o rdb_alsosql.o join.o norm.o bt_iterator.o sql.o denorm.o store.o scan.o orderby.o lua_integration.o parser.o
 BENCHOBJ = ae.o anet.o redis-benchmark.o sds.o adlist.o zmalloc.o
 CLIOBJ = anet.o sds.o adlist.o redis-cli.o zmalloc.o linenoise.o
 CHECKDUMPOBJ = redis-check-dump.o lzf_c.o lzf_d.o
@@ -129,16 +129,17 @@ alsosql.o: redis.h alsosql.h bt_iterator.h index.h bt.h sixbit.h row.h common.h 
 index.o: redis.h index.h common.h bt_iterator.h alsosql.h orderby.h
 bt_iterator.o: redis.h bt_iterator.h btree.h btreepriv.h
 norm.o: redis.h sql.h bt_iterator.h
-join.o: redis.h join.h bt_iterator.h alsosql.h orderby.h
+join.o: redis.h join.h bt_iterator.h alsosql.h orderby.h store.h
 store.o: redis.h store.h bt_iterator.h alsosql.h orderby.h
 rdb_alsosql.o: redis.h rdb_alsosql.h common.h bt_iterator.h alsosql.h
 sixbit.o: sixbit.h
 row.o: row.h common.h alsosql.h
 sql.o: redis.h sql.h bt_iterator.h
-denorm.o: redis.h denorm.h bt_iterator.h alsosql.h
-scan.o: alsosql.h bt_iterator.h
+denorm.o: redis.h denorm.h bt_iterator.h alsosql.h parser.h
+scan.o: alsosql.h bt_iterator.h sql.h
 orderby.o: orderby.h
 lua_integration.o: lua_integration.h redis.h zmalloc.h denorm.h
+parser.o: parser.h redis.h zmalloc.h
 
 redisql-server: $(OBJ)
 	$(CC) -o $(PRGNAME) $(CCOPT) $(DEBUG) $(OBJ) $(EXTRA_LD)

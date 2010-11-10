@@ -15,76 +15,62 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
  */
 
-#ifndef __ALSOSQL_SQL__H
-#define __ALSOSQL_SQL__H
+#ifndef __REDISQL_SQL__H
+#define __REDISQL_SQL__H
 
 #include "redis.h"
-#include "common.h"
 #include "adlist.h"
 
-char *rem_backticks(char *token, int *len);
+#include "alsosql.h"
+#include "common.h"
+
+typedef struct join_block {
+    cswc_t  w;
+    int     j_indxs[MAX_JOIN_INDXS];
+    int     j_tbls [MAX_JOIN_INDXS];
+    int     j_cols [MAX_JOIN_INDXS];
+    int     n_ind;
+    int     qcols;
+    robj   *nname; /* NewName - jstore */
+    bool    cstar;
+} jb_t;
 
 bool parseCreateTable(redisClient *c,
                       char          cnames[][MAX_COLUMN_NAME_SIZE],
                       int          *ccount,
-                      int          *parsed_argn,
-                      char         *o_token[]);
+                      sds           as_line);
 
-#define SQL_ERR_LOOKUP    0 
-#define SQL_SINGLE_LOOKUP 1
-#define SQL_RANGE_QUERY   2
-#define SQL_IN_LOOKUP     3
+#define SQL_ERR_LOOKUP       0 
+#define SQL_SINGLE_LOOKUP    1
+#define SQL_RANGE_QUERY      2
+#define SQL_IN_LOOKUP        3
+#define SQL_SINGLE_FK_LOOKUP 4
 
 #define SQL_SELECT     0
 #define SQL_DELETE     1
 #define SQL_UPDATE     2
 #define SQL_SCANSELECT 3
 
-bool argn_overflow(redisClient *c, int *pargn, uchar sop);
-
 bool parseWCAddtlSQL(redisClient *c,
-                     int         *pargn, 
-                     int         *obc,  
-                     bool        *store,
-                     uchar        sop,   
-                     bool        *asc,  
-                     int         *lim,  
+                     char        *token,
+                     cswc_t      *w,
                      int          tmatch,
                      bool         reply);
 
-unsigned char checkSQLWhereClauseReply(redisClient  *c,
-                                       robj       **key, 
-                                       robj       **range,
-                                       int         *imatch,
-                                       int         *cmatch,
-                                       int         *argn, 
-                                       int          tmatch,
-                                       bool         sop,
-                                       bool         just_parse,
-                                       int         *oba,
-                                       bool        *asc,
-                                       int         *lim,
-                                       bool        *store,
-                                       list       **inl);
+uchar checkSQLWhereClauseReply(redisClient *c,
+                               cswc_t      *w,
+                               int          tmatch,
+                               uchar        sop,
+                               bool         just_parse,
+                               bool         is_scan);
 
-bool joinParseReply(redisClient  *c,
-                    sds           clist,
-                    int           argn,
-                    int           j_indxs[],
-                    int           j_tbls [],
-                    int           j_cols [],
-                    int          *qcols,
-                    int          *sto,
-                    robj        **nname,
-                    robj        **range,
-                    int          *n_ind,
-                    int          *obt,
-                    int          *obc,
-                    bool         *asc,
-                    int          *lim,
-                    list        **inl,
-                    bool         *cntstr);
+void init_join_block(jb_t *jb, char *wc);
+void destroy_join_block(jb_t *jb);
+bool parseJoinReply(redisClient *c, 
+                    bool         just_parse,
+                    jb_t        *jb,
+                    char        *clist,
+                    char        *tlist);
+void joinReply(redisClient *c);
 
-void joinReply(redisClient *c, sds clist, int argn);
-
-#endif /*__ALSOSQL_SQL__H */ 
+#endif /*__REDISQL_SQL__H */ 

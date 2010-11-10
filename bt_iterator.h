@@ -52,7 +52,7 @@ typedef struct btIterator { // 2*ptr(16) int(4) 2*char(2) long(8) ptr(8)
     bt_ll_n        nodes[MAX_BTREE_DEPTH];
 } btIterator;
 
-typedef struct btStreamIterator { // btIterator(?500?) 2*char(2) int(1)
+typedef struct btSIter { // btIterator(?500?) 2*char(2) int(1)
                                   // btEntry(16) 2*robj(?200?) i.e. dont malloc
     btIterator     x;
     unsigned char  ktype;
@@ -62,7 +62,7 @@ typedef struct btStreamIterator { // btIterator(?500?) 2*char(2) int(1)
     robj           key;
     robj           val;
 
-} btStreamIterator;
+} btSIter;
 
 #define RET_LEAF_EXIT  1
 #define RET_ONLY_RIGHT 2
@@ -72,10 +72,10 @@ void become_child(btIterator *iter, bt_n* self);
 int init_iterator(bt *btr, bt_data_t simkey, struct btIterator *iter);
 void *btNext(btIterator *iter);
 
-btStreamIterator *btGetRangeIterator(robj *o, void *low, void *high, bool virt);
-btStreamIterator *btGetFullRangeIterator(robj *o, bool asc, bool virt);
-btEntry    *btRangeNext(           btStreamIterator *iter, bool asc);
-void        btReleaseRangeIterator(btStreamIterator *iter);
+btSIter *btGetRangeIterator(robj *o, void *low, void *high, bool virt);
+btSIter *btGetFullRangeIterator(robj *o, bool asc, bool virt);
+btEntry *btRangeNext(           btSIter *iter, bool asc);
+void     btReleaseRangeIterator(btSIter *iter);
 
 bool assignMinKey(bt *btr, robj *key);
 bool assignMaxKey(bt *btr, robj *key);

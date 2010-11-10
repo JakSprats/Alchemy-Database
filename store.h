@@ -21,6 +21,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 #include "redis.h"
 #include "adlist.h"
 
+#include "alsosql.h"
 #include "common.h"
 
 #define NUM_STORAGE_TYPES 11
@@ -35,17 +36,19 @@ bool internalCreateTable(redisClient *c,
 
 bool performStoreCmdOrReply(redisClient *c, redisClient *fc, int sto);
 
+bool prepareToStoreReply(redisClient  *c,
+                         cswc_t       *w,
+                         char        **nname,
+                         int          *nlen,
+                         bool         *sub_pk,
+                         int          *nargc,
+                         char        **last,
+                         int           qcols);
 void istoreCommit(redisClient *c,
+                  cswc_t      *w,
                   int          tmatch,
-                  int          imatch,
-                  char        *sto_type,
-                  char        *col_list,
-                  robj        *rng,
-                  robj        *new_name,
-                  int          obc,
-                  bool         asc,
-                  int          lim,
-                  list        *inl);
+                  int          cmatchs[MAX_COLUMN_PER_TABLE],
+                  int          qcols);
 
 void legacyTableCommand(redisClient *c); /* LEGACY syntax for createTable() */
 void legacyInsertCommand(redisClient *c);
