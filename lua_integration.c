@@ -2,17 +2,25 @@
  * This file implements Lua c bindings for lua function "redis"
  *
 
-MIT License
+GPL License
 
 Copyright (c) 2010 Russell Sullivan <jaksprats AT gmail DOT com>
 ALL RIGHTS RESERVED 
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+   This file is part of AlchemyDatabase
 
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+    AlchemyDatabase is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+    AlchemyDatabase is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
 
+    You should have received a copy of the GNU General Public License
+    along with AlchemyDatabase.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include <stdio.h>
@@ -33,12 +41,60 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 extern struct sharedObjectsStruct shared;
 extern struct redisServer server;
+extern lua_State   *Lua;
 
 extern redisClient *LuaClient;
 extern flag         LuaFlag;
 
 // FROM redis.c
 #define RL4 redisLog(4,
+
+void luaCommand(redisClient *c) {
+    LuaClient = c;             /* used in func redisLua */
+    LuaFlag   = PIPE_NONE_FLAG;
+    int s     = luaL_dostring(Lua, c->argv[1]->ptr);
+    if (s) {
+        const char *x = lua_tostring(Lua, -1);
+        lua_pop(Lua, 1);
+        addReplySds(c, sdscatprintf(sdsempty(), "-ERR: Lua error: %s \r\n", x));
+        return;
+    }
+
+    int lret = lua_gettop(Lua);
+    if (lua_istable(Lua, -1)) {
+        const int len = lua_objlen(Lua, -1 );
+        addReplySds(c, sdscatprintf(sdsempty(), "*%d\r\n", len));
+        for (int i = 1; i <= len; ++i ) {
+            lua_pushinteger(Lua, i);
+            lua_gettable(Lua, -2);
+            char *x = (char *)lua_tostring(Lua, -1);
+            robj *r = createStringObject(x, strlen(x));
+            addReplyBulk(c, r);
+            decrRefCount(r);
+            lua_pop(Lua, 1);
+        }
+        lua_pop(Lua, 1);
+    } else if (LuaFlag == PIPE_EMPTY_SET_FLAG) {
+        addReply(c, shared.emptymultibulk);
+    } else if (LuaFlag == PIPE_ONE_LINER_FLAG || LuaFlag == PIPE_ERR_FLAG) {
+        char *x = (char *)lua_tostring(Lua, -1);
+        if (!x) {
+            addReply(c, shared.nullbulk);
+        } else {
+            addReplySds(c, sdsnewlen(x, strlen(x)));
+            addReply(c,shared.crlf);
+        }
+        lua_pop(Lua, 1);
+    } else if (!lret) {
+        addReply(c, shared.nullbulk);
+    } else {
+        char *x = (char *)lua_tostring(Lua, -1);
+        lua_pop(Lua, 1);
+        robj *r = createStringObject(x, strlen(x));
+        addReplyBulk(c, r);
+        decrRefCount(r);
+    }
+}
 
 // TODO use Lua tables
 static bool luaLine(redisClient *c,

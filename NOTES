@@ -1,0 +1,6 @@
+
+LUA
+1.) readline may need to be installed
+2.) for lua functions "connect_mysql(), etc..." install Luasql @ http://www.keplerproject.org/luasql/index.html
+    A.) download and configure your platform in ./config
+    B.) type "sudo make install"

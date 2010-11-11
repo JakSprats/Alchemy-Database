@@ -1079,3 +1079,34 @@ function pk_string_join_tests() {
   echo $CLI SELECT s_one.val,s_three.val FROM s_one,s_three WHERE s_one.id = s_three.id AND s_one.id  IN "(1,2,3,4,5,6,7,8,9)"
   $CLI SELECT s_one.val,s_three.val FROM "s_one,s_three" WHERE "s_one.id = s_three.id AND s_one.id  IN (1,2,3,4,5,6,7,8,9)"
 }
+
+RECONF="$CLI CONFIG SET luafilename helper.lua"
+
+function lua_return_value_test() {
+  echo LUA "NOT LUA ERROR"
+  echo -ne "  "; $CLI LUA "NOT LUA ERROR"
+  echo "No return"
+  echo -ne "  "; $CLI LUA "i=2+2;"
+  echo "return 4"
+  echo -ne "  "; $CLI LUA "i=2+2; return i;"
+  echo "ERR: Unknown command"
+  echo -ne "  "; $CLI LUA "return client('XXX','XXX');"
+  echo "ERR wrong number of arguments"
+  echo -ne "  "; $CLI LUA "return client('SET');"
+  echo "DEL X"
+  echo -ne "  "; $CLI LUA "return client('DEL', 'X');"
+  echo "GET X"
+  echo -ne "  "; $CLI LUA "return client('GET', 'X');"
+  echo "SET X valX"
+  echo -ne "  "; $CLI LUA "return client('SET', 'X', 'valX');"
+  echo "GET X"
+  echo -ne "  "; $CLI LUA "return client('GET', 'X');"
+  $CLI ZADD ZZZ 1 ONE
+  $CLI ZADD ZZZ 2 TWO
+  $CLI ZADD ZZZ 3 THREE
+  $CLI CREATE TABLE copy_ZZZ "AS DUMP ZZZ"
+  $CLI LUA "return client('ZRANGE', 'ZZZ', 0, -1);"
+  $CLI DESC copy_ZZZ
+  $CLI DUMP copy_ZZZ
+  $CLI LUA "return client('SELECT','*','FROM','copy_ZZZ','WHERE','pk BETWEEN 1 AND 2');"}
+}

@@ -1945,7 +1945,9 @@ static unsigned char am_big_endian() {
 #ifdef ALSOSQL
 static bool loadLuaHelperFile() {
     if (luaL_loadfile(Lua, server.luafilename) || lua_pcall(Lua, 0, 0, 0)) {
-        printf("loadLuaHelperFile: error: %s", lua_tostring(Lua, -1));
+        /* TODO return as -ERR */
+        printf("loadLuaHelperFile: error: %s\r\n", lua_tostring(Lua, -1));
+        lua_pop(Lua, 1); /* pop error from stack */
         return 0;
     }
     return 1;
@@ -4686,51 +4688,6 @@ static int prepareForShutdown() {
     }
     redisLog(REDIS_WARNING,"Server exit now, bye bye...");
     return REDIS_OK;
-}
-
-/* ==================================== LUA ================================= */
-
-void luaCommand(redisClient *c) {
-    LuaClient = c;             /* used in func redisLua */
-    int s     = luaL_dostring(Lua, c->argv[1]->ptr);
-    if (s) {
-        const char *x = lua_tostring(Lua, -1);
-        lua_pop(Lua, 1);
-        addReplySds(c, sdscatprintf(sdsempty(), "-ERR: Lua error: %s \r\n", x));
-        return;
-    }
-
-    int lret = lua_gettop(Lua);
-    if (LuaFlag == PIPE_EMPTY_SET_FLAG) {
-        addReply(c, shared.emptymultibulk);
-    } else if (LuaFlag == PIPE_ONE_LINER_FLAG || LuaFlag == PIPE_ERR_FLAG) {
-        char *x = (char *)lua_tostring(Lua, -1);
-        lua_pop(Lua, 1);
-        addReplySds(c, sdsnewlen(x, strlen(x)));
-    } else if (!lret) {
-        addReply(c, shared.nullbulk);
-    } else {
-        if (!lua_istable(Lua, -1)) { /* single line return */
-            char *x = (char *)lua_tostring(Lua, -1);
-            lua_pop(Lua, 1);
-            robj *r = createStringObject(x, strlen(x));
-            addReplyBulk(c, r);
-            decrRefCount(r);
-        } else {
-            const int len = lua_objlen(Lua, -1 );
-            addReplySds(c, sdscatprintf(sdsempty(), "*%d\r\n", len));
-            for ( int i = 1; i <= len; ++i ) {
-                lua_pushinteger(Lua, i);
-                lua_gettable(Lua, -2);
-                char *x = (char *)lua_tostring(Lua, -1);
-                robj *r = createStringObject(x, strlen(x));
-                addReplyBulk(c, r);
-                decrRefCount(r);
-                lua_pop(Lua, 1);
-            }
-            lua_pop(Lua, 1);
-        }
-    }
 }
 
 /*================================== Commands =============================== */
@@ -8951,12 +8908,14 @@ struct redisClient *createFakeClient(void) {
     return c;
 }
 
+#ifdef ALSOSQL
 struct redisClient *rsql_createFakeClient(void) {
     int                 curr_db_id = server.dbid;
     struct redisClient *fc         = createFakeClient();
     selectDb(fc, curr_db_id);
     return fc;
 }
+#endif
 
 void freeFakeClient(struct redisClient *c) {
     sdsfree(c->querybuf);
@@ -8965,11 +8924,13 @@ void freeFakeClient(struct redisClient *c) {
     zfree(c);
 }
 
+#ifdef ALSOSQL
 static void rsql_resetFakeClient(struct redisClient *c) {
     /* Discard the reply objects list from the fake client */
     while(listLength(c->reply))
         listDelNode(c->reply, listFirst(c->reply));
 }
+#endif
 
 void rsql_freeFakeClient(struct redisClient *c) {
     rsql_resetFakeClient(c);
