@@ -61,6 +61,7 @@ void luaCommand(redisClient *c) {
         return;
     }
 
+    RL4 "LuaFlag: %d", LuaFlag);
     int lret = lua_gettop(Lua);
     if (lua_istable(Lua, -1)) {
         const int len = lua_objlen(Lua, -1 );
@@ -81,9 +82,13 @@ void luaCommand(redisClient *c) {
         char *x = (char *)lua_tostring(Lua, -1);
         if (!x) {
             addReply(c, shared.nullbulk);
-        } else {
+        } else if (!strncmp(x, "+OK", 3) || !strncmp(x, "-ERR", 4)) {
             addReplySds(c, sdsnewlen(x, strlen(x)));
             addReply(c,shared.crlf);
+        } else { /* PIPE_ONE_LINER_FLAG passed to a lua_func() */
+            robj *r = createStringObject(x, strlen(x));
+            addReplyBulk(c, r);
+            decrRefCount(r);
         }
         lua_pop(Lua, 1);
     } else if (!lret) {
