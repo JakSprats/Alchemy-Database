@@ -61,7 +61,7 @@ void luaCommand(redisClient *c) {
         return;
     }
 
-    RL4 "LuaFlag: %d", LuaFlag);
+    //RL4 "LuaFlag: %d", LuaFlag);
     int lret = lua_gettop(Lua);
     if (lua_istable(Lua, -1)) {
         const int len = lua_objlen(Lua, -1 );
