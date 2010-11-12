@@ -52,6 +52,7 @@ extern flag         LuaFlag;
 void luaCommand(redisClient *c) {
     LuaClient = c;             /* used in func redisLua */
     LuaFlag   = PIPE_NONE_FLAG;
+    //RL4 "LUA: %s", c->argv[1]->ptr);
     int s     = luaL_dostring(Lua, c->argv[1]->ptr);
     if (s) {
         const char *x = lua_tostring(Lua, -1);

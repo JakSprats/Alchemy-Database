@@ -170,9 +170,17 @@ long fakeClientPipe(redisClient *c,
                 break; /* OK */
             }
             if (*s == ':') {
+                robj *r;
                 char *x = s + 1;
                 char *y = strchr(x, '\r'); /* ignore the final \r\n */
-                robj *r = createStringObject(x, y - x);
+                if (!y) { /* colon is coming in next ln->value [incrCommand] */
+                    if (!(ln = listNext(li))) return -1;
+                    o = ln->value;
+                    x = o->ptr;
+                    y = strchr(x, '\r'); /* ignore the final \r\n */
+                    if (!y) y = x + sdslen(x);
+                }
+                r = createStringObject(x, y - x);
                 if (!(*adder)(c, wfc, r, &card, is_ins, nlines)) return -1;
                 break; /* single integer reply */
             }
@@ -188,10 +196,12 @@ long fakeClientPipe(redisClient *c,
         if (*s == '$') { /* parse doubles which are w/in this list element */
             if (*(s + 1) == '-') continue; /* $-1 -> nil */
             char   *x    = strchr(s, '\r');
+            if (!x) return -1;
             uint32  llen = x - s;
             if (llen + 2 < sdslen(s)) { /* got a double */
                 x += 2; /* move past \r\n */
                 char *y = strchr(x, '\r'); /* ignore the final \r\n */
+                if (!y) return -1;
                 robj *r = createStringObject(x, y - x);
                 if (!(*adder)(c, wfc, r, &card, is_ins, nlines)) return -1;
             }

@@ -116,6 +116,14 @@ static struct config {
     bool populate_fk_table;
     bool populate_fk2_table;
 
+    bool lua_set_test;
+    bool lua_get_test;
+    bool lua_session_set_test;
+    bool lua_session_get_test;
+
+    bool just_set;
+    bool just_get;
+
     long range_query_len;
     long second_random_modulo;
 
@@ -215,39 +223,50 @@ static void reset_non_rand() {
 static void randomizeClientKey(client c) {
     char *p = c->obuf;
     char buf[64];
-    long r;
 
     if (!randomize_range) {
-        char   *x = strstr(p, "=000");
-        if (!x) x = strstr(p, "(000");
-        if (x) {
-            bool nested_rand = 0;
-            char *y = strstr(x, ",0001");
-            if (y) nested_rand = 1;
-            if (config.random_force) {
-                r = start_first_id + random() % config.randomkeys_keyspacelen;
-            } else {
-                r = start_first_id + config.not_rand++;
-            }
-            sprintf(buf, "%ld", r);
-            int diff = 9 - strlen(buf);
-            memcpy(x + 4 + diff, buf, strlen(buf));
-            if (nested_rand) {
-                if ((config.not_rand % config.second_random_modulo) == 0)
-                    config.second_not_rand++;
-                sprintf(buf, "%ld", config.second_not_rand);
-                diff = 9 - strlen(buf);
-                memcpy(x + 17 + diff, buf, strlen(buf));
-            }
-            //if ((r % 1000000) == 0) RL4 "%ld: buf: %s", r, c->obuf);
-        } else {
-            while ((p = strstr(p, "_rand"))) {
-                if (!p) return;
-                p += 5;
-                r = random() % config.randomkeys_keyspacelen;
+        long ran     = random() % config.randomkeys_keyspacelen;
+        long not_ran = config.not_rand;
+        bool hit     = 0;
+        while (p) {
+            long    r;
+            char   *x = strstr(p, "=000");
+            if (!x) x = strstr(p, "(000");
+            if (!x) x = strstr(p, "_000");
+            if (x) {
+                hit = 1;
+                bool nested_rand = 0;
+                char *y = strstr(x, ",0001");
+                if (y) nested_rand = 1;
+                if (config.random_force) {
+                    r = start_first_id + ran;
+                } else {
+                    r = start_first_id + not_ran;
+                }
                 sprintf(buf, "%ld", r);
-                memcpy(p, buf, strlen(buf));
+                int diff = 9 - strlen(buf);
+                memcpy(x + 4 + diff, buf, strlen(buf));
+                if (nested_rand) {
+                    sprintf(buf, "%ld", config.second_not_rand);
+                    diff = 9 - strlen(buf);
+                    memcpy(x + 17 + diff, buf, strlen(buf));
+                }
+                p += 4;
+                //if ((r % 1000000) == 0) RL4 "%ld: buf: %s", r, c->obuf);
+            } else {
+                while ((p = strstr(p, "_rand"))) {
+                    if (!p) return;
+                    p += 5;
+                    long r = random() % config.randomkeys_keyspacelen;
+                    sprintf(buf, "%ld", r);
+                    memcpy(p, buf, strlen(buf));
+                }
             }
+        }
+        if (hit) {
+            config.not_rand++;
+            if ((config.not_rand % config.second_random_modulo) == 0)
+                config.second_not_rand++;
         }
     } else {
         char *z = strstr(p, "BETWEEN 00010");
@@ -612,6 +631,18 @@ void parseOptions(int argc, char **argv) {
             config.populate_10way_join_table = 1;
         } else if (!strcmp(argv[i],"-PF")) {
             config.populate_fk_table         = 1;
+        } else if (!strcmp(argv[i],"-LS")) {
+            config.lua_set_test              = 1;
+        } else if (!strcmp(argv[i],"-LG")) {
+            config.lua_get_test              = 1;
+        } else if (!strcmp(argv[i],"-LSS")) {
+            config.lua_session_set_test      = 1;
+        } else if (!strcmp(argv[i],"-LSG")) {
+            config.lua_session_get_test      = 1;
+        } else if (!strcmp(argv[i],"-JS")) {
+            config.just_set                  = 1;
+        } else if (!strcmp(argv[i],"-JG")) {
+            config.just_get                  = 1;
         } else if (!strcmp(argv[i],"-PF2")) {
             config.populate_fk2_table        = 1;
         } else if (!strcmp(argv[i],"-RF")) {
@@ -686,6 +717,7 @@ void parseOptions(int argc, char **argv) {
             printf(" -BS                  SELECT FROM into bigrow table\n");
             printf(" -Q <range-query-len> SELECT * BETWEEN X AND (X + range-query-len)\n");
             printf(" -M <modulo-for-fk>   INSERT of FKs modulo\n");
+            printf(" -LS                  LUA SET\n");
             exit(1);
         }
     }
@@ -695,6 +727,54 @@ void parseOptions(int argc, char **argv) {
         config.perform_3way_join_test || config.perform_fk_test           ||
         config.perform_fk_join_test   || config.perform_10way_join_test)
             randomize_range = 1; 
+}
+
+void lua_set_test() {
+    reset_non_rand();
+    prepareForBenchmark();
+    client c = createClient();
+    if (!c) exit(1);
+    c->obuf = sdscat(c->obuf,"*2\r\n$3\r\nLUA\r\n$39\r\nreturn set('lua_000100000001', 'valX');\r\n");
+    prepareClientForReply(c,REPLY_INT);
+    createMissingClients(c);
+    aeMain(config.el);
+    endBenchmark("LUA SET TEST");
+}
+
+void lua_get_test() {
+    reset_non_rand();
+    prepareForBenchmark();
+    client c = createClient();
+    if (!c) exit(1);
+    c->obuf = sdscat(c->obuf,"*2\r\n$3\r\nLUA\r\n$31\r\nreturn get('lua_000100000001');\r\n");
+    prepareClientForReply(c,REPLY_INT);
+    createMissingClients(c);
+    aeMain(config.el);
+    endBenchmark("LUA GET TEST");
+}
+
+void lua_session_set_test() {
+    reset_non_rand();
+    prepareForBenchmark();
+    client c = createClient();
+    if (!c) exit(1);
+    c->obuf = sdscat(c->obuf,"*2\r\n$3\r\nLUA\r\n$86\r\nreturn member_session_add(000100000001, 'sess_000100000001', 600, '[[session data]]');\r\n");
+    prepareClientForReply(c,REPLY_INT);
+    createMissingClients(c);
+    aeMain(config.el);
+    endBenchmark("LUA SET SESSION TEST");
+}
+
+void lua_session_get_test() {
+    reset_non_rand();
+    prepareForBenchmark();
+    client c = createClient();
+    if (!c) exit(1);
+    c->obuf = sdscat(c->obuf,"*2\r\n$3\r\nLUA\r\n$52\r\nreturn get_member_session_data('sess_000100000001');\r\n");
+    prepareClientForReply(c,REPLY_INT);
+    createMissingClients(c);
+    aeMain(config.el);
+    endBenchmark("LUA GET SESSION TEST");
 }
 
 void test_denormalised_address() {
@@ -1137,8 +1217,17 @@ int main(int argc, char **argv) {
     config.perform_bigrow_table_test = 0;
     config.perform_bigrow_sel_test   = 0;
 
+    config.lua_set_test              = 0;
+    config.lua_get_test              = 0;
+    config.lua_session_set_test      = 0;
+    config.lua_session_get_test      = 0;
+
     config.random_force              = 0;
     config.dump_every_x_reqs         = 0;
+
+    config.just_get                  = 0;
+    config.just_set                  = 0;
+
     reset_non_rand();
 
     parseOptions(argc,argv);
@@ -1301,39 +1390,67 @@ int main(int argc, char **argv) {
             return 0;
         }
 
-        prepareForBenchmark();
-        c = createClient();
-        if (!c) exit(1);
-        c->obuf = sdscat(c->obuf,"PING\r\n");
-        prepareClientForReply(c,REPLY_RETCODE);
-        createMissingClients(c);
-        aeMain(config.el);
-        endBenchmark("PING");
-
-        prepareForBenchmark();
-        c = createClient();
-        if (!c) exit(1);
-        c->obuf = sdscat(c->obuf,"*1\r\n$4\r\nPING\r\n");
-        prepareClientForReply(c,REPLY_RETCODE);
-        createMissingClients(c);
-        aeMain(config.el);
-        endBenchmark("PING (multi bulk)");
-
-        prepareForBenchmark();
-        c = createClient();
-        if (!c) exit(1);
-        c->obuf = sdscatprintf(c->obuf,"SET foo_rand000000000000 %d\r\n",config.datasize);
-        {
-            char *data = zmalloc(config.datasize+2);
-            memset(data,'x',config.datasize);
-            data[config.datasize] = '\r';
-            data[config.datasize+1] = '\n';
-            c->obuf = sdscatlen(c->obuf,data,config.datasize+2);
+        if (config.lua_set_test) {
+            printf("lua_SET_test\n");
+            lua_set_test();
+            return 0;
         }
-        prepareClientForReply(c,REPLY_RETCODE);
-        createMissingClients(c);
-        aeMain(config.el);
-        endBenchmark("SET");
+        if (config.lua_get_test) {
+            printf("lua_GET_test\n");
+            lua_get_test();
+            return 0;
+        }
+        if (config.lua_session_set_test) {
+            printf("lua_SESSION_SET_test\n");
+            lua_session_set_test();
+            return 0;
+        }
+        if (config.lua_session_get_test) {
+            printf("lua_SESSION_GET_test\n");
+            lua_session_get_test();
+            return 0;
+        }
+
+        if (!config.just_set && !config.just_get) {
+            prepareForBenchmark();
+            c = createClient();
+            if (!c) exit(1);
+            c->obuf = sdscat(c->obuf,"PING\r\n");
+            prepareClientForReply(c,REPLY_RETCODE);
+            createMissingClients(c);
+            aeMain(config.el);
+            endBenchmark("PING");
+
+            prepareForBenchmark();
+            c = createClient();
+            if (!c) exit(1);
+            c->obuf = sdscat(c->obuf,"*1\r\n$4\r\nPING\r\n");
+            prepareClientForReply(c,REPLY_RETCODE);
+            createMissingClients(c);
+            aeMain(config.el);
+            endBenchmark("PING (multi bulk)");
+        }
+
+        if (!config.just_get) {
+            prepareForBenchmark();
+            c = createClient();
+            if (!c) exit(1);
+            c->obuf = sdscatprintf(c->obuf,
+                                   "SET foo_rand000000000000 %d\r\n",
+                                   config.datasize);
+            {
+                char *data = zmalloc(config.datasize+2);
+                memset(data,'x',config.datasize);
+                data[config.datasize] = '\r';
+                data[config.datasize+1] = '\n';
+                c->obuf = sdscatlen(c->obuf,data,config.datasize+2);
+            }
+            prepareClientForReply(c,REPLY_RETCODE);
+            createMissingClients(c);
+            aeMain(config.el);
+            endBenchmark("SET");
+            if (config.just_set) continue;
+        }
 
         prepareForBenchmark();
         c = createClient();
@@ -1343,6 +1460,7 @@ int main(int argc, char **argv) {
         createMissingClients(c);
         aeMain(config.el);
         endBenchmark("GET");
+        if (config.just_get) continue;
 
         prepareForBenchmark();
         c = createClient();
