@@ -752,8 +752,10 @@ static void scanselect_mod_orderby(int *argc, char **argv) {
 }
 static void scanselect_mod(int *argc, char **argv) {
     select_mod_from(argc, argv);
-    select_mod_where(argc, argv);
-    scanselect_mod_orderby(argc, argv);
+    if (*argc > 4) {
+        select_mod_where(argc, argv);
+        scanselect_mod_orderby(argc, argv);
+    }
 }
 
 static int cliSendCommandWrapper(int argc, char **argv, int repeat) {
