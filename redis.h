@@ -299,6 +299,7 @@ struct sharedObjectsStruct {
 
     *selectsyntax,           *selectsyntax_nofrom,
     *selectsyntax_nowhere,   *select_notindxd,       *selectsyntax_noequals,
+    *rangequery_index_not_found,
     *deletesyntax,
     *deletesyntax_nowhere,   *delete_notindxd,       *deletesyntax_noequals,
     *updatesyntax,           *update_pk_range_query, *update_pk_overwrite,

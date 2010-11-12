@@ -720,6 +720,10 @@ void selectRedisqlCommand(redisClient *c) {
         }
         istoreCommit(c, &w, tmatch, cmatchs, qcols);
     } else if (wtype == SQL_RANGE_QUERY || wtype == SQL_IN_LOOKUP) { /* RQ */
+        if (w.imatch == -1) {
+            addReply(c, shared.rangequery_index_not_found);
+            goto select_cmd_err;
+        }
         iselectAction(c, &w, tmatch, cmatchs, qcols, cstar);
     } else {
         robj *o = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
