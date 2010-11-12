@@ -1820,7 +1820,7 @@ static void createSharedObjects(void) {
     shared.selectsyntax_noequals = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: SELECT col,,,, FROM tablename WHERE indexed_column = val - \"EQUALS SIGN\" MISSING\r\n"));
     shared.rangequery_index_not_found = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: SELECT ,, FROM tablename WHERE indexed_column = val - indexed_column either non-existent or not indexed\r\n"));
+        "-ERR SYNTAX: WHERE indexed_column = val - indexed_column either non-existent or not indexed\r\n"));
 
     shared.deletesyntax = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: DELETE FROM tablename WHERE indexed_column = val || WHERE indexed_column BETWEEN x AND y\r\n"));

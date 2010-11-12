@@ -753,12 +753,16 @@ void deleteCommand(redisClient *c) {
     cswc_t w;
     init_check_sql_where_clause(&w, c->argv[4]->ptr);
     uchar wtype  = checkSQLWhereClauseReply(c, &w, tmatch, sop, 0, 0);
-    if (wtype == SQL_ERR_LOOKUP)      goto del_cmd_err;
-    if (!leftoverParsingReply(c, &w)) goto del_cmd_err;
+    if (wtype == SQL_ERR_LOOKUP)      goto delete_cmd_err;
+    if (!leftoverParsingReply(c, &w)) goto delete_cmd_err;
 
     if (wtype == SQL_SINGLE_FK_LOOKUP) singleFKHack(&w, &wtype);
 
     if (wtype == SQL_RANGE_QUERY || wtype == SQL_IN_LOOKUP) {
+        if (w.imatch == -1) {
+            addReply(c, shared.rangequery_index_not_found);
+            goto delete_cmd_err;
+        }
         ideleteAction(c, &w, tmatch);
     } else {
         MATCH_INDICES(tmatch)
@@ -766,7 +770,7 @@ void deleteCommand(redisClient *c) {
         addReply(c, del ? shared.cone :shared.czero);
     }
 
-del_cmd_err:
+delete_cmd_err:
     destroy_check_sql_where_clause(&w);
 }
 
@@ -816,6 +820,10 @@ void updateCommand(redisClient *c) {
     if (wtype == SQL_RANGE_QUERY || wtype == SQL_IN_LOOKUP) {
         if (pk_up_col != -1) {
             addReply(c, shared.update_pk_range_query);
+            goto update_cmd_err;
+        }
+        if (w.imatch == -1) {
+            addReply(c, shared.rangequery_index_not_found);
             goto update_cmd_err;
         }
         iupdateAction(c, &w, tmatch, ncols, matches, indices,
