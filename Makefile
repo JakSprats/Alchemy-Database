@@ -11,18 +11,41 @@ PLAT= none
 # Convenience platforms targets.
 PLATS= aix ansi bsd freebsd generic linux macosx mingw posix solaris
 
+# STEPS for LUAJIT compilation
+# 1.) git clone https://github.com/tycho/luajit.git
+# 2.) cd luajit*
+# 3.) make install
+# 4.) export LD_LIBRARY_PATH=/usr/local/lib/
+# 5.) set LUAJIT= yes
+LUAJIT= no
 uname_S := $(shell sh -c 'uname -s 2>/dev/null || echo not')
 OPTIMIZATION?=-O2
 ifeq ($(uname_S),SunOS)
   CFLAGS?= -std=c99 -pedantic $(OPTIMIZATION) -Wall -W -D__EXTENSIONS__ -D_XPG6
   CCLINK?= -ldl -lnsl -lsocket -lm -lpthread
 else
-  CFLAGS?= -std=c99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF) -I./lua-5.1.4/src/
-  CCLINK?= -lm -pthread -L./lua-5.1.4/src/ -llua -ldl
+  ifeq ($(LUAJIT),yes)
+    CFLAGS?= -std=c99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF) -I./luajit-2.0/src/
+    CCLINK?= -lm -pthread -L./luajit-2.0/src/ -lluajit -ldl
+  else
+    CFLAGS?= -std=c99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF) -I./lua-5.1.4/src/
+    CCLINK?= -lm -pthread -L./lua-5.1.4/src/ -llua -ldl
+  endif
 endif
-EXTRA_LD= -llua
+ifeq ($(LUAJIT),yes)
+  EXTRA_LD= -lluajit
+else
+  EXTRA_LD= -llua
+endif
 CCOPT= $(CFLAGS) $(CCLINK) $(ARCH) $(PROF)
 DEBUG?= -g -rdynamic -ggdb 
+ifeq ($(LUAJIT),yes)
+  LUADIR=./luajit-2.0/src/
+  MTYPE=
+else
+  LUADIR=./lua-5.1.4/src/
+  MTYPE=$@
+endif
 
 OBJ = adlist.o ae.o anet.o dict.o redis.o sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o zipmap.o sha1.o bt.o bt_code.o bt_output.o alsosql.o sixbit.o row.o index.o rdb_alsosql.o join.o norm.o bt_iterator.o sql.o denorm.o store.o scan.o orderby.o lua_integration.o parser.o
 BENCHOBJ = ae.o anet.o redis-benchmark.o sds.o adlist.o zmalloc.o
@@ -43,46 +66,46 @@ all:    $(PLAT)
 bins : $(ALL)
 
 aix:
-	cd lua-5.1.4 && $(MAKE) $@
+	cd $(LUADIR) && $(MAKE) $(MTYPE)
 	make bins
 
 ansi:
-	cd lua-5.1.4 && $(MAKE) $@
+	cd $(LUADIR) && $(MAKE) $(MTYPE)
 	make bins
 
 bsd:
-	cd lua-5.1.4 && $(MAKE) $@
+	cd $(LUADIR) && $(MAKE) $(MTYPE)
 	make bins
 
 freebsd:
-	cd lua-5.1.4 && $(MAKE) $@
+	cd $(LUADIR) && $(MAKE) $(MTYPE)
 	make bins
 
 generic:
-	cd lua-5.1.4 && $(MAKE) $@
+	cd $(LUADIR) && $(MAKE) $(MTYPE)
 	make bins
 
 linux:
-	cd lua-5.1.4 && $(MAKE) linux
+	cd $(LUADIR) && $(MAKE) $(MTYPE)
 	make bins
 
 macosx:
-	cd lua-5.1.4 && $(MAKE) $@
+	cd $(LUADIR) && $(MAKE) $(MTYPE)
 	make bins
 
 # use this on Mac OS X 10.3-
 #       $(MAKE) all MYCFLAGS=-DLUA_USE_MACOSX
 
 mingw:
-	cd lua-5.1.4 && $(MAKE) $@
+	cd $(LUADIR) && $(MAKE) $(MTYPE)
 	make bins
 
 posix:
-	cd lua-5.1.4 && $(MAKE) $@
+	cd $(LUADIR) && $(MAKE) $(MTYPE)
 	make bins
 
 solaris:
-	cd lua-5.1.4 && $(MAKE) $@
+	cd $(LUADIR) && $(MAKE) $(MTYPE)
 	make bins
 
 none:
