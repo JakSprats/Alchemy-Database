@@ -168,6 +168,7 @@ sds genNRL_Cmd(d_l_t  *nrlind,
 }
 
 void runCmdInFakeClient(sds s) {
+    //RL4 "runCmdInFakeClient: %s", s);
     char *end = strchr(s, ' ');
     if (!end) return;
 

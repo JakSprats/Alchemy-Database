@@ -121,11 +121,14 @@ static struct config {
     bool lua_session_set_test;
     bool lua_session_get_test;
 
+    bool message_test;
+
     bool just_set;
     bool just_get;
 
     long range_query_len;
     long second_random_modulo;
+    long second_random_max;
 
     bool random_force;
     long not_rand;
@@ -208,6 +211,7 @@ long start_first_id = 100000001;
 bool randomize_range = 0;
 
 long default_second_random_modulo = 50;
+long default_second_random_max    = 0;
 long default_range_query_len      = 5;
 
 long start_range_query      = 100000001;
@@ -247,9 +251,10 @@ static void randomizeClientKey(client c) {
                 int diff = 9 - strlen(buf);
                 memcpy(x + 4 + diff, buf, strlen(buf));
                 if (nested_rand) {
+                    memcpy(y, ",000100000001", 13);
                     sprintf(buf, "%ld", config.second_not_rand);
                     diff = 9 - strlen(buf);
-                    memcpy(x + 17 + diff, buf, strlen(buf));
+                    memcpy(y + 4 + diff, buf, strlen(buf));
                 }
                 p += 4;
                 //if ((r % 1000000) == 0) RL4 "%ld: buf: %s", r, c->obuf);
@@ -265,8 +270,14 @@ static void randomizeClientKey(client c) {
         }
         if (hit) {
             config.not_rand++;
-            if ((config.not_rand % config.second_random_modulo) == 0)
+            if (config.second_random_max) {
                 config.second_not_rand++;
+                if (config.second_not_rand > config.second_random_max) {
+                    config.second_not_rand = second_not_rand_reset_val;
+                }
+            } else if ((config.not_rand % config.second_random_modulo) == 0) {
+                config.second_not_rand++;
+            }
         }
     } else {
         char *z = strstr(p, "BETWEEN 00010");
@@ -639,6 +650,8 @@ void parseOptions(int argc, char **argv) {
             config.lua_session_set_test      = 1;
         } else if (!strcmp(argv[i],"-LSG")) {
             config.lua_session_get_test      = 1;
+        } else if (!strcmp(argv[i],"-MSG")) {
+            config.message_test              = 1;
         } else if (!strcmp(argv[i],"-JS")) {
             config.just_set                  = 1;
         } else if (!strcmp(argv[i],"-JG")) {
@@ -659,6 +672,12 @@ void parseOptions(int argc, char **argv) {
             config.second_random_modulo = atoi(argv[i+1]);
             if (config.second_random_modulo < 0)
                 config.second_random_modulo = default_second_random_modulo;
+            i++;
+        } else if (!strcmp(argv[i],"-SRM") && !lastarg) {
+            config.second_random_max = default_second_random_max;
+            config.second_random_max = atoi(argv[i+1]);
+            if (config.second_random_max < 0)
+                config.second_random_max = default_second_random_max;
             i++;
         } else if (!strcmp(argv[i],"-NR") && !lastarg) {
             int val = atoi(argv[i+1]);
@@ -775,6 +794,18 @@ void lua_session_get_test() {
     createMissingClients(c);
     aeMain(config.el);
     endBenchmark("LUA GET SESSION TEST");
+}
+
+void message_test() {
+    reset_non_rand();
+    prepareForBenchmark();
+    client c = createClient();
+    if (!c) exit(1);
+    c->obuf = sdscat(c->obuf,"INSERT INTO messages VALUES (000100000001,000100000001,'POST_TO_000100000001')\r\n");
+    prepareClientForReply(c,REPLY_INT);
+    createMissingClients(c);
+    aeMain(config.el);
+    endBenchmark("NonRelationalIndex PubSub Message TEST");
 }
 
 void test_denormalised_address() {
@@ -1196,6 +1227,7 @@ int main(int argc, char **argv) {
     /* ALSOSQL */
     config.range_query_len          = default_range_query_len;
     config.second_random_modulo     = default_second_random_modulo;
+    config.second_random_max        = default_second_random_max;
 
     config.perform_address_test      = 0;
     config.perform_test_table_test   = 0;
@@ -1221,6 +1253,8 @@ int main(int argc, char **argv) {
     config.lua_get_test              = 0;
     config.lua_session_set_test      = 0;
     config.lua_session_get_test      = 0;
+
+    config.message_test              = 0;
 
     config.random_force              = 0;
     config.dump_every_x_reqs         = 0;
@@ -1408,6 +1442,11 @@ int main(int argc, char **argv) {
         if (config.lua_session_get_test) {
             printf("lua_SESSION_GET_test\n");
             lua_session_get_test();
+            return 0;
+        }
+        if (config.message_test) {
+            printf("message_test: %ld\n", config.second_random_max);
+            message_test();
             return 0;
         }
 

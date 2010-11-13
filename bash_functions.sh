@@ -1110,3 +1110,8 @@ function lua_return_value_test() {
   $CLI DUMP copy_ZZZ
   $CLI LUA "return client('SELECT','*','FROM','copy_ZZZ','WHERE','pk BETWEEN 1 AND 2');"}
 }
+
+function init_messages_table() {
+  $CLI CREATE TABLE messages "(id int primary key, cat INT, text TEXT)"
+  $CLI CREATE INDEX nrl:messages:index ON messages "PUBLISH MSG:\$cat message=\$text"
+}
