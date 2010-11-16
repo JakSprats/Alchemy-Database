@@ -64,6 +64,8 @@ void redisLog(int level, const char *fmt, ...) {
 
 #define REDIS_NOTUSED(V) ((void) V)
 
+bool Lua_mode = 0;
+
 static struct config {
     char *hostip;
     int hostport;
@@ -220,7 +222,7 @@ static struct redisCommand cmdTable[] = {
     {"legacyinsert",  3,CMDFLAG_NONE},
     {"legacyindex",   3,CMDFLAG_NONE},
 
-    {"lua",           2,CMDFLAG_NONE},
+    {"lua",          -1,CMDFLAG_NONE},
 #endif
     {NULL,0,CMDFLAG_NONE}
 };
@@ -619,18 +621,40 @@ static char **splitArguments(char *line, int *argc) {
 static void repl() {
     int argc, j;
     char *line, **argv;
+    char *o_prompt   = "redisql> ";
+    char *prompt_lua = "redisql-lua> ";
+    char *prompt     = o_prompt;
 
-    while((line = linenoise("redisql> ")) != NULL) {
+    while((line = linenoise(prompt)) != NULL) {
         if (line[0] != '\0') {
-            argv = splitArguments(line,&argc);
-            int o_argc = argc;
             linenoiseHistoryAdd(line);
+            if (Lua_mode) {
+                if (strcasecmp(line, "quit") == 0 ||
+                    strcasecmp(line, "exit") == 0) {
+                    Lua_mode = 0;
+                    prompt   = o_prompt;
+                    free(line);
+                    continue;
+                } else {
+                    argc = 2;
+                    argv = malloc(2 * sizeof(char *));
+                    argv[0] = sdsnewlen("LUA", 3);
+                    argv[1] = sdsnewlen(line, strlen(line));
+                }
+            } else {
+                argv = splitArguments(line,&argc);
+            }
+            int o_argc = argc;
             if (argc > 0) {
                 if (strcasecmp(argv[0],"quit") == 0 ||
-                    strcasecmp(argv[0],"exit") == 0)
-                        exit(0);
-                else
+                    strcasecmp(argv[0],"exit") == 0) {
+                    exit(0);
+                } else if (strcasecmp(argv[0],"lua") == 0 && argc == 1) {
+                    Lua_mode = 1;
+                    prompt = prompt_lua;
+                } else {
                     cliSendCommandWrapper(argc, argv, 1);
+                }
             }
             /* Free the argument vector */
             for (j = 0; j < o_argc; j++)
