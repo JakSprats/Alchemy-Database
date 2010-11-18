@@ -38,8 +38,8 @@ char *str_next_unescaped_chr(char *beg, char *s, int x);
 
 char *next_token(char *nextp);
 int get_token_len(char *tok);
-int get_token_len_delim(char *nextp, char x);
-char *next_token_delim(char *p, char x);
+int get_token_len_delim(char *nextp, char x, char z);
+char *next_token_delim(char *p, char x, char z);
 char *get_next_token_nonparaned_comma(char *token);
 
 robj **parseCmdToArgv(char *as_cmd, int *rargc);

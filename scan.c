@@ -50,17 +50,14 @@ extern r_tbl_t  Tbl[MAX_NUM_DB][MAX_NUM_TABLES];
 
 // HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS
 // HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS
-static int col_cmp(char *a, char *b, int type, bool bchar) {
-    if (type == COL_TYPE_INT) {
-        if (bchar) {
-            return (int)(long)a - atoi(b);
-        } else {
-            return a - b;
-        }
-    } else if (type == COL_TYPE_STRING) {
+static int col_cmp(char *a, char *b, int ctype) {
+    if (ctype == COL_TYPE_INT) {
+        return atoi(a) - atoi(b);
+    } else if (ctype == COL_TYPE_FLOAT) {
+        float f = atof(a) - atof(b);
+        return (f == 0.0) ? 0 : ((f > 0.0) ? 1: -1);
+    } else if (ctype == COL_TYPE_STRING) {
         return strcmp(a, b);
-    } else {
-        assert(!"col_cmp DOUBLE not supported");
     }
     return 0;
 }
@@ -79,27 +76,22 @@ static void condSelectReply(redisClient   *c,
                             int            cmatchs[],
                             unsigned long *card,
                             bool           no_wc,
-                            bool           icol,
+                            uchar          ctype,
                             list          *ll,
-                            bool           cstar,
-                            bool           bchar) {
-    char *s;
-    robj *cr = NULL;
-    if (w->cmatch == -1) {
-        s = key->ptr;
-    } else {
-        cr = createColObjFromRow(row, w->cmatch, NULL, tmatch); // freeME
-        s = cr->ptr;
-    }
-
-    unsigned char hit = 0;
+                            bool           cstar) {
+    char  *s;
+    robj  *cr  = NULL;
+    uchar  hit = 0;
     if (no_wc) {
+        s = key->ptr;
         hit = 1;
     } else {
+        cr       = createColObjFromRow(row, w->cmatch, NULL, tmatch); // freeME
+        s        = cr->ptr;
         int type = Tbl[server.dbid][tmatch].col_type[w->cmatch];
         if (w->low) { /* RANGE QUERY */
-            if (col_cmp(s, w->low->ptr,  type, bchar) >= 0 &&
-                col_cmp(s, w->high->ptr, type, bchar) <= 0) {
+            if (col_cmp(s, w->low->ptr,  type) >= 0 &&
+                col_cmp(s, w->high->ptr, type) <= 0) {
                 hit = 1;
             }
         } else {    /* IN () QUERY */
@@ -107,7 +99,7 @@ static void condSelectReply(redisClient   *c,
             listIter *li  = listGetIterator(w->inl, AL_START_HEAD);
             while((ln = listNext(li)) != NULL) {
                 robj *ink = ln->value;     
-                if (col_cmp(s, ink->ptr, type, bchar) == 0) {
+                if (col_cmp(s, ink->ptr, type) == 0) {
                     hit = 1;
                     break;
                 }
@@ -118,10 +110,11 @@ static void condSelectReply(redisClient   *c,
 
     if (hit) {
         if (!cstar) {
-            robj *row = btFindVal(o, key, Tbl[server.dbid][tmatch].col_type[0]);
-            robj *r   = outputRow(row, qcols, cmatchs, key, tmatch, 0);
+            uchar  pktype = Tbl[server.dbid][tmatch].col_type[0];
+            robj  *row    = btFindVal(o, key, pktype);
+            robj  *r      = outputRow(row, qcols, cmatchs, key, tmatch, 0);
             if (w->obc != -1) {
-                addORowToRQList(ll, r, row, w->obc, key, tmatch, icol);
+                addORowToRQList(ll, r, row, w->obc, key, tmatch, ctype);
             } else {
                 addReplyBulk(c, r);
                 decrRefCount(r);
@@ -159,7 +152,6 @@ void tscanCommand(redisClient *c) {
     }
 
     bool rq    = 0;
-    bool bchar = 0; /* means the b(2nd) arg in cmp() is type: "char *" */
     if (!no_wc && w.obc == -1) {
         uchar wtype  = checkSQLWhereClauseReply(c, &w, tmatch, sop, 0, 1);
         if (wtype == SQL_ERR_LOOKUP) goto tscan_cmd_err;
@@ -171,18 +163,16 @@ void tscanCommand(redisClient *c) {
         if (wtype == SQL_RANGE_QUERY) {
             rq          = 1;
         } else { /* TODO this should be an SINGLE op */
-            bchar = 1;
             w.low  = w.key;
             w.high = w.key;
         }
     }
 
-    bool  icol = 0;
-    list *ll   = NULL;
+    uchar ctype = COL_TYPE_NONE;
+    list *ll    = NULL;
     if (w.obc != -1) {
         ll    = listCreate();
-        icol  = (Tbl[server.dbid][tmatch].col_type[w.obc] == COL_TYPE_INT);
-        bchar = 1;
+        ctype = Tbl[server.dbid][tmatch].col_type[w.obc];
     }
 
     LEN_OBJ
@@ -191,22 +181,28 @@ void tscanCommand(redisClient *c) {
     btSIter *bi = btGetFullRangeIterator(o, 0, 1);
     while ((be = btRangeNext(bi, 0)) != NULL) {      // iterate btree
         condSelectReply(c, &w, o, be->key, be->val, tmatch, qcols, cmatchs,
-                        &card, no_wc, icol, ll, cstar, bchar);
+                        &card, no_wc, ctype, ll, cstar);
     }
     btReleaseRangeIterator(bi);
 
+    int sent = 0;
     if (w.obc != -1 && card) {
-        obsl_t **vector = sortOrderByToVector(ll, icol, w.asc);
+        obsl_t **vector = sortOrderByToVector(ll, ctype, w.asc);
         for (int k = 0; k < (int)listLength(ll); k++) {
-            if (w.lim != -1 && k == w.lim) break;
-            obsl_t *ob = vector[k];
-            addReplyBulk(c, ob->row);
+            if (w.lim != -1 && sent == w.lim) break;
+            if (w.ofst > 0) {
+                w.ofst--;
+            } else {
+                sent++;
+                obsl_t *ob = vector[k];
+                addReplyBulk(c, ob->row);
+            }
         }
-        sortedOrderByCleanup(vector, listLength(ll), icol, 1);
+        sortedOrderByCleanup(vector, listLength(ll), ctype, 1);
         free(vector);
     }
 
-    if (w.lim != -1 && (uint32)w.lim < card) card = w.lim;
+    if (w.lim != -1 && (uint32)sent < card) card = sent;
     if (cstar) lenobj->ptr = sdscatprintf(sdsempty(), ":%lu\r\n", card);
     else       lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
 

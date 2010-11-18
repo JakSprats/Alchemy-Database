@@ -48,14 +48,15 @@ typedef struct bTreeLinkedListNode { // 3ptr(24) 2int(8) -> 32 bytes
 
 /* using 16 as 8^16 can hold 2.8e14 elements (8 is min members in a btn)*/
 #define MAX_BTREE_DEPTH 16
-typedef struct btIterator { // 2*ptr(16) int(4) 2*char(2) long(8) ptr(8)
-                            // int(4) 16*bt_ll_n(512) -> i.e. dont malloc
+typedef struct btIterator { // 2*ptr(16) int(4) 2*char(2) long(8) float(4)
+                            // ptr(8) int(4) 16*bt_ll_n(512) -> i.e. dont malloc
     bt            *btr;
     bt_ll_n       *bln;
     int            depth;
  
     bool           finished;
     unsigned long  high;
+    float          highf;
     char          *highc;
     unsigned char  num_nodes;
     bt_ll_n        nodes[MAX_BTREE_DEPTH];

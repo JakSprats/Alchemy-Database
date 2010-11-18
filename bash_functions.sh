@@ -340,6 +340,7 @@ function in_test_cust_id() {
     $CLI SELECT \* FROM customer WHERE "id IN (LRANGE LINDEX_cust_id 0 3)"
 }
 function in_test_cust_hobby() {
+    $CLI DEL list_index_customer_hobby
     $CLI LPUSH list_index_customer_hobby yachting
     $CLI LPUSH list_index_customer_hobby painting
     $CLI LPUSH list_index_customer_hobby violin
@@ -464,6 +465,60 @@ function scan_customer() {
   $CLI SCANSELECT \* FROM customer WHERE "name in (bethany,gregory,jennifer) ORDER BY hobby"
   echo SCANSELECT \* FROM customer WHERE "name BETWEEN a AND z ORDER BY hobby DESC"
   $CLI SCANSELECT \* FROM customer WHERE "name BETWEEN a AND z ORDER BY hobby DESC"
+}
+
+function init_x3() {
+  $CLI CREATE TABLE X3  "(id int, f float, t text, i int)";
+}
+function insert_x3() {
+  $CLI INSERT INTO X3 VALUES "(1,1.11,text1,33)";
+  $CLI INSERT INTO X3 VALUES "(2,2.22,text2,22)";
+  $CLI INSERT INTO X3 VALUES "(3,3.33,text3,11)"
+}
+function scan_x3() {
+  echo SCANSELECT \* FROM X3 WHERE i BETWEEN 11 AND 33
+  $CLI SCANSELECT \* FROM X3 WHERE i BETWEEN 11 AND 33
+  echo SCANSELECT \* FROM X3 WHERE i BETWEEN 12 AND 33
+  $CLI SCANSELECT \* FROM X3 WHERE i BETWEEN 12 AND 33
+  echo SCANSELECT \* FROM X3 WHERE i BETWEEN 12 AND 32
+  $CLI SCANSELECT \* FROM X3 WHERE i BETWEEN 12 AND 32
+  echo SCANSELECT \* FROM X3 WHERE f BETWEEN 1.1 AND 3.33
+  $CLI SCANSELECT \* FROM X3 WHERE f BETWEEN 1.1 AND 3.33
+  echo SCANSELECT \* FROM X3 WHERE f BETWEEN 1.2 AND 3.2
+  $CLI SCANSELECT \* FROM X3 WHERE f BETWEEN 1.2 AND 3.2
+  echo SCANSELECT \* FROM X3 WHERE f BETWEEN 1.2 AND 3.1
+  $CLI SCANSELECT \* FROM X3 WHERE f BETWEEN 1.2 AND 3.1
+
+  echo SCANSELECT \* FROM X3 ORDER BY f DESC LIMIT 2
+  $CLI SCANSELECT \* FROM X3 ORDER BY f DESC LIMIT 2
+  echo SCANSELECT \* FROM X3 ORDER BY f DESC LIMIT 2  1
+  $CLI SCANSELECT \* FROM X3 ORDER BY f DESC LIMIT 2  1
+  echo SCANSELECT \* FROM X3 ORDER BY f DESC LIMIT 2  2
+  $CLI SCANSELECT \* FROM X3 ORDER BY f DESC LIMIT 2  2
+
+}
+
+
+function init_x4() {
+  $CLI CREATE TABLE X4 "(id int, f float, t text)";
+  $CLI CREATE INDEX X4:f:index ON X4 "(f)"
+}
+function insert_x4() {
+  $CLI INSERT INTO X4 VALUES "(1,1.11,text1)";
+  $CLI INSERT INTO X4 VALUES "(2,2.22,text2)";
+  $CLI INSERT INTO X4 VALUES "(3,3.33,text3)"
+  $CLI INSERT INTO X4 VALUES "(4,4.44,text4)"
+  $CLI INSERT INTO X4 VALUES "(5,5.55,text5)"
+  $CLI INSERT INTO X4 VALUES "(6,6.66,text6)"
+  $CLI INSERT INTO X4 VALUES "(7,7.77,text7)"
+}
+function select_x4() {
+  echo SELECT \* FROM X4 WHERE id BETWEEN 2 AND 5
+  $CLI SELECT \* FROM X4 WHERE id BETWEEN 2 AND 5
+  echo SELECT \* FROM X4 WHERE f BETWEEN 2 AND 5
+  $CLI SELECT \* FROM X4 WHERE f BETWEEN 2 AND 5
+  echo SELECT \* FROM X4 WHERE f BETWEEN 2 AND 5 ORDER BY f DESC
+  $CLI SELECT \* FROM X4 WHERE f BETWEEN 2 AND 5 ORDER BY f DESC
 }
 
 function istore_worker_name_list() {
@@ -970,7 +1025,7 @@ function pk_tester() {
 }
 
 
-# MYSQL
+# MYSQL MYSQL MYSQL MYSQL MYSQL MYSQL MYSQL MYSQL MYSQL MYSQL MYSQL
 function dump_redisql_table_to_mysql() {
   if [ -z "$2" ]; then
     echo "Usage: $0 database-name table-name"
@@ -1021,6 +1076,44 @@ function dump_mysql_table_to_redisql() {
     done
   ) | $CLI
 }
+
+# LUA LUA LUA LUA LUA LUA LUA LUA LUA LUA LUA LUA LUA LUA LUA
+RECONF="$CLI CONFIG SET luafilename helper.lua"
+
+function lua_return_value_test() {
+  echo LUA "NOT LUA ERROR"
+  echo -ne "  "; $CLI LUA "NOT LUA ERROR"
+  echo "No return"
+  echo -ne "  "; $CLI LUA "i=2+2;"
+  echo "return 4"
+  echo -ne "  "; $CLI LUA "i=2+2; return i;"
+  echo "ERR: Unknown command"
+  echo -ne "  "; $CLI LUA "return client('XXX','XXX');"
+  echo "ERR wrong number of arguments"
+  echo -ne "  "; $CLI LUA "return client('SET');"
+  echo "DEL X"
+  echo -ne "  "; $CLI LUA "return client('DEL', 'X');"
+  echo "GET X"
+  echo -ne "  "; $CLI LUA "return client('GET', 'X');"
+  echo "SET X valX"
+  echo -ne "  "; $CLI LUA "return client('SET', 'X', 'valX');"
+  echo "GET X"
+  echo -ne "  "; $CLI LUA "return client('GET', 'X');"
+  $CLI ZADD ZZZ 1 ONE
+  $CLI ZADD ZZZ 2 TWO
+  $CLI ZADD ZZZ 3 THREE
+  $CLI CREATE TABLE copy_ZZZ "AS DUMP ZZZ"
+  $CLI LUA "return client('ZRANGE', 'ZZZ', 0, -1);"
+  $CLI DESC copy_ZZZ
+  $CLI DUMP copy_ZZZ
+  $CLI LUA "return client('SELECT','*','FROM','copy_ZZZ','WHERE','pk BETWEEN 1 AND 2');"}
+}
+
+function init_messages_table() {
+  $CLI CREATE TABLE messages "(id int primary key, cat INT, text TEXT)"
+  $CLI CREATE INDEX nrl:messages:index ON messages "PUBLISH MSG:\$cat message=\$text"
+}
+
 
 # STRING_PK STRING_PK STRING_PK STRING_PK STRING_PK STRING_PK STRING_PK
 function init_string_pk_one() {
@@ -1080,38 +1173,63 @@ function pk_string_join_tests() {
   $CLI SELECT s_one.val,s_three.val FROM "s_one,s_three" WHERE "s_one.id = s_three.id AND s_one.id  IN (1,2,3,4,5,6,7,8,9)"
 }
 
-RECONF="$CLI CONFIG SET luafilename helper.lua"
 
-function lua_return_value_test() {
-  echo LUA "NOT LUA ERROR"
-  echo -ne "  "; $CLI LUA "NOT LUA ERROR"
-  echo "No return"
-  echo -ne "  "; $CLI LUA "i=2+2;"
-  echo "return 4"
-  echo -ne "  "; $CLI LUA "i=2+2; return i;"
-  echo "ERR: Unknown command"
-  echo -ne "  "; $CLI LUA "return client('XXX','XXX');"
-  echo "ERR wrong number of arguments"
-  echo -ne "  "; $CLI LUA "return client('SET');"
-  echo "DEL X"
-  echo -ne "  "; $CLI LUA "return client('DEL', 'X');"
-  echo "GET X"
-  echo -ne "  "; $CLI LUA "return client('GET', 'X');"
-  echo "SET X valX"
-  echo -ne "  "; $CLI LUA "return client('SET', 'X', 'valX');"
-  echo "GET X"
-  echo -ne "  "; $CLI LUA "return client('GET', 'X');"
-  $CLI ZADD ZZZ 1 ONE
-  $CLI ZADD ZZZ 2 TWO
-  $CLI ZADD ZZZ 3 THREE
-  $CLI CREATE TABLE copy_ZZZ "AS DUMP ZZZ"
-  $CLI LUA "return client('ZRANGE', 'ZZZ', 0, -1);"
-  $CLI DESC copy_ZZZ
-  $CLI DUMP copy_ZZZ
-  $CLI LUA "return client('SELECT','*','FROM','copy_ZZZ','WHERE','pk BETWEEN 1 AND 2');"}
+
+
+# FLOAT_PK FLOAT_PK FLOAT_PK FLOAT_PK FLOAT_PK FLOAT_PK FLOAT_PK FLOAT_PK
+function init_float_pk_one() {
+  $CLI CREATE TABLE f_one "(id FLOAT, val TEXT)"
+}
+function init_float_pk_two() {
+  $CLI CREATE TABLE f_two "(id FLOAT, val TEXT)"
+}
+function init_float_pk_three() {
+  $CLI CREATE TABLE f_three "(id FLOAT, val TEXT)"
+}
+function insert_float_pk_one() {
+  $CLI INSERT INTO f_one VALUES \("1.1","1_1"\)
+  $CLI INSERT INTO f_one VALUES \("2.2","1_2"\)
+  $CLI INSERT INTO f_one VALUES \("3.3","1_3"\)
+  $CLI INSERT INTO f_one VALUES \("4.4","1_4"\)
+  $CLI INSERT INTO f_one VALUES \("5.5","1_5"\)
+  $CLI INSERT INTO f_one VALUES \("6.6","1_6"\)
+  $CLI INSERT INTO f_one VALUES \("7.7","1_7"\)
+  $CLI INSERT INTO f_one VALUES \("8.8","1_8"\)
+  $CLI INSERT INTO f_one VALUES \("9.9","1_9"\)
+}
+function insert_float_pk_two() {
+  $CLI INSERT INTO f_two VALUES \("1.1","2_1"\)
+  $CLI INSERT INTO f_two VALUES \("3.3","2_3"\)
+  $CLI INSERT INTO f_two VALUES \("5.5","2_5"\)
+  $CLI INSERT INTO f_two VALUES \("7.7","2_7"\)
+  $CLI INSERT INTO f_two VALUES \("9.9","2_9"\)
+}
+function insert_float_pk_three() {
+  $CLI INSERT INTO f_three VALUES \("2.2","3_2"\)
+  $CLI INSERT INTO f_three VALUES \("4.4","3_4"\)
+  $CLI INSERT INTO f_three VALUES \("6.6","3_6"\)
+  $CLI INSERT INTO f_three VALUES \("8.8","3_8"\)
 }
 
-function init_messages_table() {
-  $CLI CREATE TABLE messages "(id int primary key, cat INT, text TEXT)"
-  $CLI CREATE INDEX nrl:messages:index ON messages "PUBLISH MSG:\$cat message=\$text"
+function pk_float_join_tests() {
+  $CLI DROP TABLE f_one
+  $CLI DROP TABLE f_two
+  $CLI DROP TABLE f_three
+  init_float_pk_one
+  init_float_pk_two
+  init_float_pk_three
+  insert_float_pk_one
+  insert_float_pk_two
+  insert_float_pk_three
+  echo $CLI SELECT f_one.val,f_two.val FROM f_one,f_two WHERE f_one.id = f_two.id AND f_one.id BETWEEN 1 AND 10 
+  $CLI SELECT "f_one.val,f_two.val" FROM "f_one,f_two" WHERE "f_one.id = f_two.id AND f_one.id BETWEEN 1 AND 10"
+
+  echo $CLI SELECT f_one.val,f_two.val FROM f_one,f_two WHERE f_one.id = f_two.id AND f_one.id IN "(1.1,2.2,3.3,4.4,5.5,6.6,7.7,8.8,9.9)"
+  $CLI SELECT "f_one.val,f_two.val" FROM "f_one,f_two" WHERE "f_one.id = f_two.id AND f_one.id IN (1.1,2.2,3.3,4.4,5.5,6.6,7.7,8.8,9.9)"
+
+  echo $CLI SELECT f_one.val,f_three.val FROM f_one,f_three WHERE f_one.id = f_three.id AND f_one.id BETWEEN 1 AND 10 
+  $CLI SELECT f_one.val,f_three.val FROM "f_one,f_three" WHERE "f_one.id = f_three.id AND f_one.id BETWEEN 1 AND 10"
+
+  echo $CLI SELECT f_one.val,f_three.val FROM f_one,f_three WHERE f_one.id = f_three.id AND f_one.id  IN "(1.1,2.2,3.3,4.4,5.5,6.6,7.7,8.8,9.9)"
+  $CLI SELECT f_one.val,f_three.val FROM "f_one,f_three" WHERE "f_one.id = f_three.id AND f_one.id  IN (1.1,2.2,3.3,4.4,5.5,6.6,7.7,8.8,9.9)"
 }

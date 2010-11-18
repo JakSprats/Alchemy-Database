@@ -64,7 +64,7 @@ robj *convertRobj(robj *r, int type) {
         n->encoding = REDIS_ENCODING_INT;
     } else {                                /* int    -> want string */
         char buf[32];
-        sprintf(buf, "%d", (int)(long)r->ptr);
+        snprintf(buf, 32, "%d", (int)(long)r->ptr);
         n = createStringObject(buf, strlen(buf));
     }
     decrRefCount(r);
@@ -119,22 +119,38 @@ int get_token_len(char *tok) {
     char *x = strchr(tok, ' ');
     return x ? x - tok : (int)strlen(tok);
 }
-int get_token_len_delim(char *nextp, char x) {
-    char *q = strchr(nextp, x);
-    char *p = strchr(nextp, ' ');
-    if (p && q) {
-        if (p > q) return q - nextp;
-        else       return p - nextp;
-    } else if (q) {
-        return q - nextp;
-    } else if (p) {
-        return p - nextp;
-    } else {
-        return 0;
+
+static char *min2(char *p, char *q) {
+    if (!p)         return q;
+    else if (!q)    return p;
+    else if (p < q) return p;
+    else            return q;
+}
+
+static char *min3(char *p, char *q, char *o) {
+    if (!p)      return min2(q, o);
+    else if (!q) return min2(p, o);
+    else if (!o) return min2(p, q);
+    else { /* p && q && o */
+        if (p < q) {
+            if (p < o) return p;
+            else       return o;
+        } else {
+            if (q < o) return q;
+            else       return o;
+        }
     }
 }
-char *next_token_delim(char *p, char x) {
-    int len  = get_token_len_delim(p, x);
+
+int get_token_len_delim(char *nextp, char x, char z) {
+    char *p = strchr(nextp, x);
+    char *q = strchr(nextp, z);
+    char *o = strchr(nextp, ' ');
+    return min3(q, p, o) - nextp;
+}
+
+char *next_token_delim(char *p, char x, char z) {
+    int len  = get_token_len_delim(p, x, z);
     if (!len) return NULL;
     p       += len + 1;
     while (isblank(*p)) p++;

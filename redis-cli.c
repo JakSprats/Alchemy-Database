@@ -35,6 +35,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <ctype.h>
+#include <stdarg.h>
 
 #include "anet.h"
 #include "sds.h"
@@ -42,7 +43,7 @@
 #include "zmalloc.h"
 #include "linenoise.h"
 
-#include <stdarg.h>
+#include "common.h"
 
 void redisLog(int level, const char *fmt, ...) {
     va_list ap;
@@ -56,7 +57,6 @@ void redisLog(int level, const char *fmt, ...) {
 }
 
 #define RL4 redisLog(4, 
-#define bool unsigned char
 
 #define REDIS_CMD_INLINE 1
 #define REDIS_CMD_BULK 2

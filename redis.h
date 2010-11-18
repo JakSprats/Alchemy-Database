@@ -275,6 +275,7 @@ struct sharedObjectsStruct {
     *toomanycolumns,      *columnnametoobig,    *insertcannotoverwrite,
     *uint_pk_too_big,     *uint_no_negative_values,
     *col_uint_too_big,    *col_uint_no_negative_values,
+    *col_uint_string_too_long, *col_float_string_too_long,
     *toofewcolumns,       *toomanyindices,      *nonuniquecolumns,
     *nonuniquetablenames, *nonuniqueindexnames, *indextargetinvalid,
     *indexedalready,      *index_wrong_num_args,

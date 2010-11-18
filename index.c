@@ -607,12 +607,12 @@ void dropIndex(redisClient *c) {
 /* RANGE_OPS RANGE_OPS RANGE_OPS RANGE_OPS RANGE_OPS RANGE_OPS RANGE_OPS */
 /* RANGE_OPS RANGE_OPS RANGE_OPS RANGE_OPS RANGE_OPS RANGE_OPS RANGE_OPS */
 
-#define ISELECT_OPERATION(Q)                                           \
-    if (!cstar) {                                                     \
-        robj *r = outputRow(row, qcols, cmatchs, key, tmatch, 0);      \
-        if (Q) addORowToRQList(ll, r, row, w->obc, key, tmatch, icol); \
-        else   addReplyBulk(c, r);                                     \
-        decrRefCount(r);                                               \
+#define ISELECT_OPERATION(Q)                                            \
+    if (!cstar) {                                                       \
+        robj *r = outputRow(row, qcols, cmatchs, key, tmatch, 0);       \
+        if (Q) addORowToRQList(ll, r, row, w->obc, key, tmatch, ctype); \
+        else   addReplyBulk(c, r);                                      \
+        decrRefCount(r);                                                \
     }
 
 void iselectAction(redisClient *c,
@@ -621,11 +621,11 @@ void iselectAction(redisClient *c,
                    int          cmatchs[MAX_COLUMN_PER_TABLE],
                    int          qcols,
                    bool         cstar) {
-    list *ll   = NULL;
-    bool  icol = 0;
+    list *ll    = NULL;
+    uchar ctype = COL_TYPE_NONE;
     if (w->obc != -1) {
-        ll   = listCreate();
-        icol = (Tbl[server.dbid][tmatch].col_type[w->obc] == COL_TYPE_INT);
+        ll    = listCreate();
+        ctype = Tbl[server.dbid][tmatch].col_type[w->obc];
     }
 
     bool     qed = 0;
@@ -646,19 +646,25 @@ void iselectAction(redisClient *c,
         IN_QUERY_LOOKUP_END
     }
 
+    int sent = 0;
     if (qed && card) {
-        obsl_t **vector = sortOrderByToVector(ll, icol, w->asc);
+        obsl_t **vector = sortOrderByToVector(ll, ctype, w->asc);
         for (int k = 0; k < (int)listLength(ll); k++) {
-            if (w->lim != -1 && k == w->lim) break;
-            obsl_t *ob = vector[k];
-            addReplyBulk(c, ob->row);
+            if (w->lim != -1 && sent == w->lim) break;
+            if (w->ofst > 0) {
+                w->ofst--;
+            } else {
+                sent++;
+                obsl_t *ob = vector[k];
+                addReplyBulk(c, ob->row);
+            }
         }
-        sortedOrderByCleanup(vector, listLength(ll), icol, 1);
+        sortedOrderByCleanup(vector, listLength(ll), ctype, 1);
         free(vector);
     }
     if (ll) listRelease(ll);
 
-    if (w->lim != -1 && (uint32)w->lim < card) card = w->lim;
+    if (w->lim != -1 && (uint32)sent < card) card = sent;
     if (cstar) {
         lenobj->ptr = sdscatprintf(sdsempty(), ":%lu\r\n", card);
     } else {
@@ -671,13 +677,13 @@ static void addPKtoRQList(list *ll,
                           robj *row,
                           int   obc,
                           int   tmatch,
-                          bool  icol) {
-    addORowToRQList(ll, pko, row, obc, pko, tmatch, icol);
+                          bool  ctype) {
+    addORowToRQList(ll, pko, row, obc, pko, tmatch, ctype);
 }
 
 #define BUILD_RQ_OPERATION(Q)                                    \
     if (Q) {                                                     \
-        addPKtoRQList(ll, key, row, w->obc, tmatch, icol);       \
+        addPKtoRQList(ll, key, row, w->obc, tmatch, ctype);      \
     } else {                                                     \
         robj *cln  = cloneRobj(key); /* clone orig is BtRobj */  \
         listAddNodeTail(ll, cln);                                \
@@ -685,17 +691,17 @@ static void addPKtoRQList(list *ll,
 
 
 #define BUILD_RANGE_QUERY_LIST                                                \
-    list *ll   = listCreate();                                                \
-    bool  icol = 0;                                                           \
+    list *ll    = listCreate();                                               \
+    uchar ctype = COL_TYPE_NONE;                                              \
     if (w->obc != -1) {                                                       \
-        icol = (Tbl[server.dbid][tmatch].col_type[w->obc] == COL_TYPE_INT);   \
+        ctype = Tbl[server.dbid][tmatch].col_type[w->obc];                    \
     }                                                                         \
                                                                               \
-    bool              cstar = 0;                                              \
-    bool              qed   = 0;                                              \
-    ulong             card  = 0;                                              \
-    btSIter *bi   = NULL;                                                     \
-    btSIter *nbi  = NULL;                                                     \
+    bool     cstar = 0;                                                       \
+    bool     qed   = 0;                                                       \
+    ulong    card  = 0;                                                       \
+    btSIter *bi    = NULL;                                                    \
+    btSIter *nbi   = NULL;                                                    \
     if (w->low) { /* RANGE QUERY */                                           \
         RANGE_QUERY_LOOKUP_START                                              \
             BUILD_RQ_OPERATION(q_pk)                                          \
@@ -717,16 +723,22 @@ void ideleteAction(redisClient *c,
 
     MATCH_INDICES(tmatch)
 
+    int sent = 0;
     if (card) {
         if (qed) {
-            obsl_t **vector = sortOrderByToVector(ll, icol, w->asc);
+            obsl_t **vector = sortOrderByToVector(ll, ctype, w->asc);
             for (int k = 0; k < (int)listLength(ll); k++) {
-                if (w->lim != -1 && k == w->lim) break;
-                obsl_t *ob = vector[k];
-                robj *nkey = ob->row;
-                deleteRow(c, tmatch, nkey, matches, indices);
+                if (w->lim != -1 && sent == w->lim) break;
+                if (w->ofst > 0) {
+                    w->ofst--;
+                } else {
+                    sent++;
+                    obsl_t *ob = vector[k];
+                    robj *nkey = ob->row;
+                    deleteRow(c, tmatch, nkey, matches, indices);
+                }
             }
-            sortedOrderByCleanup(vector, listLength(ll), icol, 1);
+            sortedOrderByCleanup(vector, listLength(ll), ctype, 1);
             free(vector);
         } else {
             listNode  *ln;
@@ -740,7 +752,7 @@ void ideleteAction(redisClient *c,
         }
     }
 
-    if (w->lim != -1 && (uint32)w->lim < card) card = w->lim;
+    if (w->lim != -1 && (uint32)sent < card) card = sent;
     addReplyLongLong(c, card);
 
     listRelease(ll);
@@ -757,20 +769,26 @@ void iupdateAction(redisClient *c,
                    uchar        cmiss[]) {
     BUILD_RANGE_QUERY_LIST
 
+    int sent = 0;
     if (card) {
         robj *o        = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
         bool  pktype   = Tbl[server.dbid][tmatch].col_type[0];
         if (qed) {
-            obsl_t **vector = sortOrderByToVector(ll, icol, w->asc);
+            obsl_t **vector = sortOrderByToVector(ll, ctype, w->asc);
             for (int k = 0; k < (int)listLength(ll); k++) {
-                if (w->lim != -1 && k == w->lim) break;
-                obsl_t *ob = vector[k];
-                robj *nkey = ob->row;
-                robj *row  = btFindVal(o, nkey, pktype);
-                updateRow(c, o, nkey, row,
-                          tmatch, ncols, matches, indices, vals, vlens, cmiss);
+                if (w->lim != -1 && sent == w->lim) break;
+                if (w->ofst > 0) {
+                    w->ofst--;
+                } else {
+                    sent++;
+                    obsl_t *ob = vector[k];
+                    robj *nkey = ob->row;
+                    robj *row  = btFindVal(o, nkey, pktype);
+                    updateRow(c, o, nkey, row, tmatch, ncols,
+                              matches, indices, vals, vlens, cmiss);
+                }
             }
-            sortedOrderByCleanup(vector, listLength(ll), icol, 1);
+            sortedOrderByCleanup(vector, listLength(ll), ctype, 1);
             free(vector);
         } else {
             listNode  *ln;
@@ -786,7 +804,7 @@ void iupdateAction(redisClient *c,
         }
     }
 
-    if (w->lim != -1 && (uint32)w->lim < card) card = w->lim;
+    if (w->lim != -1 && (uint32)sent < card) card = sent;
     addReplyLongLong(c, card);
 
     listRelease(ll);
@@ -823,9 +841,11 @@ void dumpCommand(redisClient *c) {
             to_mysql = 1;
             if (c->argc > 4) m_tname = c->argv[4]->ptr;
             robj *r;
-            sprintf(buf, "DROP TABLE IF EXISTS `%s`;", m_tname);
+            snprintf(buf, 191, "DROP TABLE IF EXISTS `%s`;", m_tname);
+            buf[191] = '\0';
             ADD_REPLY_BULK(r, buf)
-            sprintf(buf, "CREATE TABLE `%s` ( ", m_tname);
+            snprintf(buf, 191, "CREATE TABLE `%s` ( ", m_tname);
+            buf[191] = '\0';
             r = createStringObject(buf, strlen(buf));
             for (int i = 0; i < Tbl[server.dbid][tmatch].col_count; i++) {
                 bool is_int =
@@ -840,13 +860,15 @@ void dumpCommand(redisClient *c) {
             addReplyBulk(c, r);
             decrRefCount(r);
             card++;
-            sprintf(buf, "LOCK TABLES `%s` WRITE;", m_tname);
+            snprintf(buf, 191, "LOCK TABLES `%s` WRITE;", m_tname);
+            buf[191] = '\0';
             ADD_REPLY_BULK(r, buf)
         } else if (!strcasecmp(c->argv[2]->ptr, "RETURN") &&
                    !strcasecmp(c->argv[3]->ptr, "SIZE")      ) {
             ret_size = 1;
-            sprintf(buf, "KEYS: %d BT-DATA: %lld BT-MALLOC: %lld",
+            snprintf(buf, 191, "KEYS: %d BT-DATA: %lld BT-MALLOC: %lld",
                           btr->numkeys, btr->data_size, btr->malloc_size);
+            buf[191] = '\0';
             robj *r = createStringObject(buf, strlen(buf));
             addReplyBulk(c, r);
             decrRefCount(r);
@@ -865,7 +887,8 @@ void dumpCommand(redisClient *c) {
                 addReplyBulk(c, r);
                 decrRefCount(r);
             } else {
-                sprintf(buf, "INSERT INTO `%s` VALUES (", m_tname);
+                snprintf(buf, 191, "INSERT INTO `%s` VALUES (", m_tname);
+                buf[191] = '\0';
                 robj *ins = createStringObject(buf, strlen(buf));
                 ins->ptr  = sdscatlen(ins->ptr, r->ptr, sdslen(r->ptr));
                 ins->ptr  = sdscatlen(ins->ptr, ");", 2);
@@ -879,7 +902,8 @@ void dumpCommand(redisClient *c) {
 
     if (to_mysql) {
         robj *r;
-        sprintf(buf, "UNLOCK TABLES;");
+        snprintf(buf, 191, "UNLOCK TABLES;");
+        buf[191] = '\0'; /* not necessary, rule -> no sprintf's */
         ADD_REPLY_BULK(r, buf)
     }
     lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
@@ -952,15 +976,17 @@ void descCommand(redisClient *c) {
             char *x = (char *)(maxkey.ptr);
             x[64] ='\0';
         }
-        sprintf(buf, "INFO: KEYS: [NUM: %d MIN: %s MAX: %s]"\
+        snprintf(buf, 255, "INFO: KEYS: [NUM: %d MIN: %s MAX: %s]"\
                           " BYTES: [BT-DATA: %lld BT-TOTAL: %lld INDEX: %lld]",
                 btr->numkeys, (char *)minkey.ptr, (char *)maxkey.ptr,
                 btr->data_size, btr->malloc_size, index_size);
+        buf[255] = '\0';
     } else {
-        sprintf(buf, "INFO: KEYS: [NUM: %d MIN: %u MAX: %u]"\
+        snprintf(buf, 255, "INFO: KEYS: [NUM: %d MIN: %u MAX: %u]"\
                           " BYTES: [BT-DATA: %lld BT-TOTAL: %lld INDEX: %lld]",
             btr->numkeys, (uint32)(long)minkey.ptr, (uint32)(long)maxkey.ptr,
             btr->data_size, btr->malloc_size, index_size);
+        buf[255] = '\0';
     }
     robj *r = createStringObject(buf, strlen(buf));
     addReplyBulk(c, r);

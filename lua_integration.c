@@ -126,7 +126,9 @@ static bool luaLine(redisClient *c,
 
 static int redisLuaArityErr(lua_State *L, char *name) {
     char buf[64];
-    sprintf(buf, "-ERR wrong number of arguments for '%s' command\r\n", name);
+    snprintf(buf, 63, "-ERR wrong number of arguments for '%s' command\r\n",
+              name);
+    buf[63] = '\0';
     lua_pushstring(L, buf);
     LuaFlag = PIPE_ERR_FLAG;
     return 1;
@@ -143,7 +145,8 @@ int redisLua(lua_State *L) {
 
     if (!cmd) {
         char buf[64];
-        sprintf(buf, "-ERR: Unknown command '%s'\r\n", arg1);
+        snprintf(buf, 63, "-ERR: Unknown command '%s'\r\n", arg1);
+        buf[63] = '\0';
         lua_pushstring(L, buf);
         LuaFlag = PIPE_ERR_FLAG;
         return 1;

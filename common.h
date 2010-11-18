@@ -67,7 +67,7 @@ ALL RIGHTS RESERVED
 #define INDEX_DELIM     "index"
 #define INDEX_DELIM_LEN  5
 
-#define NUM_COL_TYPES           2
+#define NUM_COL_TYPES           3
 
 //TODO make array dynamic in size
 #define MAX_COLUMN_NAME_SIZE  128

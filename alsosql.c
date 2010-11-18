@@ -64,7 +64,7 @@ char *COMMA        = ",";
 char *PERIOD       = ".";
 char *SPACE        = " ";
 
-char *Col_type_defs[] = {"TEXT", "INT" };
+char *Col_type_defs[] = {"TEXT", "INT", "FLOAT" };
 
 extern int     Num_indx[MAX_NUM_DB];
 extern r_ind_t Index   [MAX_NUM_DB][MAX_NUM_INDICES];
@@ -515,9 +515,10 @@ void insertCommitReply(redisClient *c,
         char buf[128];
         bt  *btr        = (bt *)o->ptr;
         ull  index_size = get_sum_all_index_size_for_table(c, tmatch);
-        sprintf(buf,
+        snprintf(buf, 127,
               "INFO: BYTES: [ROW: %d BT-DATA: %lld BT-TOTAL: %lld INDEX: %lld]",
                    len, btr->data_size, btr->malloc_size, index_size);
+        buf[127] = '\0';
         robj *r = createStringObject(buf, strlen(buf));
         addReplyBulk(c, r);
         decrRefCount(r);

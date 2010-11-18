@@ -343,34 +343,38 @@ static void init_IstoreOrderByRobj() {
     IstoreOrderByRobj.refcount = 1;
 }
 
-static bool sortedOrderByIstore(redisClient  *c,
-                                redisClient  *fc,
-                                int           tmatch,
-                                int           cmatchs[],
-                                int           qcols,
-                                int           sto,
-                                char         *nname,
-                                bool          sub_pk,
-                                int           nargc,
-                                int           lim,
-                                obsl_t      **vector,
-                                int           vlen) {
+static int sortedOrderByIstore(redisClient  *c,
+                               cswc_t       *w,
+                               redisClient  *fc,
+                               int           tmatch,
+                               int           cmatchs[],
+                               int           qcols,
+                               char         *nname,
+                               bool          sub_pk,
+                               int           nargc,
+                               obsl_t      **vector,
+                               int           vlen) {
     static bool inited_IstoreOrderByRobj = 0;
     if (!inited_IstoreOrderByRobj) {
         init_IstoreOrderByRobj();
         inited_IstoreOrderByRobj = 1;
     }
 
+    int sent = 0;
     for (int k = 0; k < vlen; k++) {
-        if (lim != -1 && k == lim) break;
-        obsl_t *ob = vector[k];
-        IstoreOrderByRobj.ptr = ob->row;
-        if (!istoreAction(c, fc, tmatch, cmatchs, qcols, sto,
-                          ob->val, &IstoreOrderByRobj, nname, sub_pk, nargc)) {
-            return 1; /* TODO get err from fs */
+        if (w->lim != -1 && sent == w->lim) break;
+        if (w->ofst > 0) {
+            w->ofst--;
+        } else {
+            sent++;
+            obsl_t *ob = vector[k];
+            IstoreOrderByRobj.ptr = ob->row;
+            if (!istoreAction(c, fc, tmatch, cmatchs, qcols, w->sto, ob->val,
+                              &IstoreOrderByRobj, nname, sub_pk, nargc)) 
+                                  return 0; /* TODO get err from fs */
         }
     }
-    return 0;
+    return sent;
 }
 /* ORDER BY END */
 
@@ -494,11 +498,13 @@ void istoreCommit(redisClient *c,
         IN_QUERY_LOOKUP_END
     }
 
+    int sent = 0;
     if (qed) {
         obsl_t **vector = sortOrderByToVector(ll, icol, w->asc);
-        err             = sortedOrderByIstore(c, fc, tmatch, cmatchs, qcols,
-                                              w->sto, nname, sub_pk, nargc,
-                                              w->lim, vector, listLength(ll));
+        sent            = sortedOrderByIstore(c, w, fc, tmatch, cmatchs, qcols,
+                                              nname, sub_pk, nargc,
+                                              vector, listLength(ll));
+        if (sent == 0) err = 1;
         sortedOrderByCleanup(vector, listLength(ll), icol, 0);
         free(vector);
     }
@@ -513,7 +519,7 @@ istore_err:
 
     if (err) addReply(c, shared.istorecommit_err);
     else {
-        if (w->lim != -1 && (uint32)w->lim < card) card = w->lim;
+        if (w->lim != -1 && (uint32)sent < card) card = sent;
         addReplyLongLong(c, card);
     }
 }

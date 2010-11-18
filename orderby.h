@@ -33,22 +33,24 @@ typedef struct order_by_sort_element {
 
 int intOrderBySort(      const void *s1, const void *s2);
 int intOrderByRevSort(   const void *s1, const void *s2);
+int floatOrderBySort(    const void *s1, const void *s2);
+int floatOrderByRevSort( const void *s1, const void *s2);
 int stringOrderBySort(   const void *s1, const void *s2);
 int stringOrderByRevSort(const void *s1, const void *s2);
 
-void addORowToRQList(list *ll,
-                     robj *r,
-                     robj *row,
-                     int   obc,
-                     robj *pko,
-                     int   tmatch,
-                     bool  icol);
+void addORowToRQList(list  *ll,
+                     robj  *r,
+                     robj  *row,
+                     int    obc,
+                     robj  *pko,
+                     int    tmatch,
+                     uchar  ctype);
 
-obsl_t **sortOrderByToVector(list *ll, bool icol, bool asc);
+obsl_t **sortOrderByToVector(list *ll, uchar ctype, bool asc);
 
 void sortedOrderByCleanup(obsl_t **vector,
                           int      vlen,
-                          bool     icol,
+                          uchar    ctype,
                           bool     decr_row);
 
 #endif /* __ORDER_BY__H */ 

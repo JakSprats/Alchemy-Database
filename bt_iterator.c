@@ -2,6 +2,27 @@
  *
  * This file implements in memory b-tree tables with insert/del/replace/find/
  * operations.
+
+GPL License
+
+Copyright (c) 2010 Russell Sullivan <jaksprats AT gmail DOT com>
+ALL RIGHTS RESERVED 
+
+   This file is part of AlchemyDatabase
+
+    AlchemyDatabase is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    AlchemyDatabase is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with AlchemyDatabase.  If not, see <http://www.gnu.org/licenses/>.
+
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,6 +58,7 @@ bt_ll_n *get_new_iter_child(btIterator *iter) {
     nn->child   = NULL;
     return nn;
 }
+
 void become_child(btIterator *iter, bt_n* self) {
     iter->depth++;
     iter->bln->child->parent = iter->bln;
@@ -163,6 +185,7 @@ btSIter *btGetRangeIterator(robj *o, void *low, void *high, bool virt) {
     char *s = (char *)(((robj *)high)->ptr);
     if      (btr->ktype == COL_TYPE_STRING) iter->x.highc = _strdup(s);
     else if (btr->ktype == COL_TYPE_INT)    iter->x.high  = atoi(s);
+    else if (btr->ktype == COL_TYPE_FLOAT)  iter->x.highf = atof(s);
 
     bool med; uchar sflag; unsigned int ksize;
     char *simkey = createSimKey(low, btr->ktype, &med, &sflag, &ksize); /*FREE*/
@@ -196,6 +219,12 @@ btEntry *btRangeNext(btSIter *iter, bool asc) {
         //if (l <= iter->high) RL4 "I: btRangeNext: %p key:%ld", be, l);
         if (l == iter->x.high) iter->x.finished = 1; /* exact match of high */
         return ((l <= iter->x.high) ? &(iter->be) : NULL);
+    } else if (iter->ktype == COL_TYPE_FLOAT) {
+        float f = atof(k);
+        //if (f <= iter->x.highf) RL4 "F: btRangeNext: %p key:%f", be, f);
+        if (f == iter->x.highf) iter->x.finished = 1; /* exact match of highf */
+        return ((f <= iter->x.highf) ? &(iter->be) : NULL);
+
     } else if (iter->ktype == COL_TYPE_STRING) {
         int r = strcmp(k, iter->x.highc);
         //if (r <= 0) RL4 "S: btRangeNext: %p key: %s", be, k);
@@ -230,19 +259,14 @@ btSIter *btGetFullRangeIterator(robj *o, bool asc, bool virt) {
     if (!assignMaxKey(btr, &BtHigh)) return NULL;
 
     btSIter *iter = createIterator(btr, virt, 1);
-    if (       btr->ktype == COL_TYPE_STRING) {
-        iter->x.highc = _strdup(BtHigh.ptr);
-    } else if (btr->ktype == COL_TYPE_INT) {
-        //RL4 "GetFullRangeIterator: low: %u high: %u", BtLow.ptr, BtHigh.ptr);
-        iter->x.high  = (long)BtHigh.ptr;
-    }
+    if      (btr->ktype == COL_TYPE_STRING) iter->x.highc = _strdup(BtHigh.ptr);
+    else if (btr->ktype == COL_TYPE_INT)    iter->x.high  = (long)BtHigh.ptr;
+    else if (btr->ktype == COL_TYPE_FLOAT)  iter->x.highf = atof(BtHigh.ptr);
 
     bool med; uchar sflag; unsigned int ksize;
-    char *simkey = createSimKeyFromRaw(BtLow.ptr,
-                                       btr->ktype,
-                                       &med,
-                                       &sflag,
-                                       &ksize); /* FREE me*/
+    char *simkey = /* FREE me*/
+               createSimKeyFromRaw(BtLow.ptr, btr->ktype, &med, &sflag, &ksize);
+
     if (!simkey) return NULL;
     if (!init_iterator(btr, simkey, &(iter->x))) {
         btReleaseRangeIterator(iter);
@@ -288,12 +312,15 @@ btIterator *btGetJoinRangeIterator(bt           *btr,
         btReleaseJoinRangeIterator(iter);
         return NULL;
     }
+
     robj *hkey = high->key;
-    //RL4 "hkey->ptr: %p", hkey->ptr);
+    //robj *lkey = low->key;
     if      (ktype == COL_TYPE_STRING) iter->highc = _strdup(hkey->ptr);
     else if (ktype == COL_TYPE_INT)    iter->high  = (int)(long)(hkey->ptr);
+    else if (ktype == COL_TYPE_FLOAT)  iter->highf = atof(hkey->ptr);
     return iter;
 }
+
 btIterator *btGetJoinFullRangeIterator(bt *btr, int ktype) {
     joinRowEntry *low  = bt_min(btr);
     joinRowEntry *high = bt_max(btr);
@@ -316,6 +343,10 @@ joinRowEntry *btJoinRangeNext(btIterator *iter, int ktype) {
         //if (r <= 0) RL4 "S: btJoinRangeNext: %p key: %s", k, k);
         if (r == 0) iter->finished = 1; /* exact match of the high */
         return ((r <= 0) ? jre : NULL);
+    } else if (ktype == COL_TYPE_FLOAT) {
+        float f = atof(k);
+        if (f == iter->highf) iter->finished = 1; /* exact match of high */
+        return ((f <= iter->highf) ? jre : NULL);
     }
     return NULL; /* never happens */
 }

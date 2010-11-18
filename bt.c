@@ -1,6 +1,27 @@
 /* B-tree Implementation.
  *
  * Implements in memory b-tree tables with insert/del/replace/find/ ops
+
+GPL License
+
+Copyright (c) 2010 Russell Sullivan <jaksprats AT gmail DOT com>
+ALL RIGHTS RESERVED 
+
+   This file is part of AlchemyDatabase
+
+    AlchemyDatabase is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    AlchemyDatabase is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with AlchemyDatabase.  If not, see <http://www.gnu.org/licenses/>.
+
  */
 
 #include <stdio.h>
@@ -76,15 +97,21 @@ void btRelease(bt *nbtr, bt *btr) {
     }
 }
 
-// STREAM STREAM STREAM STREAM STREAM STREAM STREAM STREAM STREAM STREAM
-// STREAM STREAM STREAM STREAM STREAM STREAM STREAM STREAM STREAM STREAM
+/* STREAM STREAM STREAM STREAM STREAM STREAM STREAM STREAM STREAM STREAM */
+/* STREAM STREAM STREAM STREAM STREAM STREAM STREAM STREAM STREAM STREAM */
+
+/* TODO these flags should be #defines */
 static uchar getSflag(uchar b1) {
     if      (b1 & 1)  return 1;
     else if (b1 & 2)  return 2;
     else if (b1 & 4)  return 4;
     else if (b1 & 8)  return 8;
     else if (b1 & 16) return 16;
-    else              assert(!"getSflag programming error");
+    else if (b1 & 32) return 32;
+    else {
+        RL4 "b1: %d", b1);
+        assert(!"getSflag programming error");
+    }
 }
 
 static inline uint32 get14BitInt(uchar *s) {
@@ -115,6 +142,12 @@ static inline uchar *getString(uchar *s, uint32 *slen) {
     s     += 4;
     return s;
 }
+static inline float getFloat(uchar *s) {
+    s++;
+    float f;
+    memcpy(&f, s, 4);
+    return f;
+}
 
 int btStreamCmp(void *a, void *b) {
     if (!a || !b) return -1;
@@ -137,7 +170,7 @@ int btStreamCmp(void *a, void *b) {
             int ret = strncmp((char *)s1, (char *)s2, i); 
             return (ret == 0) ? ((slen1 < slen2) ? -1 : 1) : ret;
         }
-    } else {                          // INT
+    } else if (sflag1 <= 16) {        // INT
         uint32 key1, key2;
         if (sflag1 == 2)      key1  = get14BitInt(s1);
         else if (sflag1 == 8) key1  = get28BitInt(s1);
@@ -147,6 +180,11 @@ int btStreamCmp(void *a, void *b) {
         else if (sflag2 == 8) key2  = get28BitInt(s2);
         else                  key2  = getInt(&s2);
         return (key1 == key2) ? 0 : ((key1 > key2) ? 1 : -1);
+    } else {                          // FLOAT
+        float key1 = getFloat(s1);
+        float key2 = getFloat(s2);
+        float f    = key1 - key2;
+        return (f == 0.0) ? 0 : ((f > 0.0) ? 1: -1);
     }
     return 0;
 }
@@ -163,12 +201,14 @@ char *createSimKeyFromRaw(void    *key_ptr,
                           bool    *med,
                           uchar   *sflag,
                           uint32  *ksize) {
-    assert(key_ptr || ktype == COL_TYPE_INT); /* INT can be 0 */
-    char   *simkey;
+    assert(key_ptr || ktype != COL_TYPE_STRING); /* INT & FLOAT can be 0 */
+
+    *med           = 0;
+    char   *simkey = NULL; /* compiler warning */
     uint32  data = 0;
     if (ktype == COL_TYPE_STRING) {
         assert(sdslen(key_ptr) < TWO_POW_32);
-        if (sdslen(key_ptr) < TWO_POW_7) {
+        if (sdslen(key_ptr) < TWO_POW_7) { // tiny STRING
             *sflag = 1;
             *ksize = sdslen(key_ptr) + 1;
             data   = sdslen(key_ptr) * 2 + 1;
@@ -177,11 +217,10 @@ char *createSimKeyFromRaw(void    *key_ptr,
                 *med   = 1;
             } else {
                 simkey = SimKeyBuffer;
-                *med   = 0;
             }
             *simkey = (char)data;
             memcpy(simkey + 1, key_ptr, sdslen(key_ptr));
-        } else {
+        } else {                           // STRING
             uint32 len = sdslen(key_ptr);
             *sflag     = 4;
             *ksize     = sdslen(key_ptr) + 5;
@@ -190,16 +229,14 @@ char *createSimKeyFromRaw(void    *key_ptr,
                 *med   = 1;
             } else {
                 simkey = SimKeyBuffer;
-                *med   = 0;
             }
             *simkey = 4;
             data    = len;
             memcpy(simkey + 1, &data, 4);
             memcpy(simkey + 5, key_ptr, sdslen(key_ptr));
         }
-    } else {     /* COL_TYPE_INT */
+    } else if (ktype == COL_TYPE_INT) {
         unsigned long i = (unsigned long)key_ptr;
-        *med            = 0;
         simkey          = SimKeyBuffer;
         if (i >= TWO_POW_32) {
             redisLog(REDIS_WARNING, "column value > UINT_MAX");
@@ -215,13 +252,20 @@ char *createSimKeyFromRaw(void    *key_ptr,
             memcpy(simkey, &data, 4);
             *sflag = 8;
             *ksize = 4;
-        } else {                    // INT
+        } else {                     // INT
             *simkey = 16;
             data    = i;
             memcpy(simkey + 1, &data, 4);
             *sflag = 16;
             *ksize = 5;
         }
+    } else if (ktype == COL_TYPE_FLOAT) {
+        *sflag  = 32;
+        *ksize  = 5;
+        float f = atof(key_ptr);
+        simkey  = SimKeyBuffer;
+        *simkey = 32;
+        memcpy(simkey + 1, &f, 4);
     }
     return simkey; /* MUST be freed soon */
 }
@@ -231,14 +275,15 @@ char *createSimKey(const robj *key,
                    bool       *med,
                    uchar      *sflag,
                    uint32     *ksize) {
-    void *ptr;
+    void *ptr     = NULL;
     sds   tempkey = NULL;
     if (ktype == COL_TYPE_INT) {
         if (key->encoding == REDIS_ENCODING_INT) ptr = (key->ptr);
         else                                     ptr = (void *)atol(key->ptr);
-    } else {
-        if (key->encoding == REDIS_ENCODING_RAW) ptr = key->ptr;
-        else                                     ptr = NULL;/*compiler warning*/
+    } else if (ktype == COL_TYPE_STRING) {
+        ptr = key->ptr;
+    } else if (ktype == COL_TYPE_FLOAT) {
+        ptr = key->ptr;
     }
     char *x = createSimKeyFromRaw(ptr, ktype, med, sflag, ksize);
     if (tempkey) sdsfree(tempkey);
@@ -249,26 +294,33 @@ void assignKeyRobj(uchar *stream, robj *key) {
     uint32  k, slen;
     uchar   b1     = *stream;
     uchar   sflag  = getSflag(b1);
-    if (sflag == 1) {        // tiny string
-        stream = getTinyString(stream, &slen);
+    if (sflag == 1) {         // tiny STRING
+        stream        = getTinyString(stream, &slen);
         key->encoding = REDIS_ENCODING_RAW;
-        key->ptr      = sdsnewlen(stream, slen); /* MEM LEAK - must be freed */
-    } else if (sflag == 2) { // tiny short
-        k = get14BitInt(stream);
+        key->ptr      = sdsnewlen(stream, slen); /* must be freed */
+    } else if (sflag == 2) {  // tiny short
+        k             = get14BitInt(stream);
         key->encoding = REDIS_ENCODING_INT;
         key->ptr      = (void*)((long)k);
-    } else if (sflag == 4) { // string
-        stream = getString(stream, &slen);
+    } else if (sflag == 4) {  // STRING
+        stream        = getString(stream, &slen);
         key->encoding = REDIS_ENCODING_RAW;
-        key->ptr      = sdsnewlen(stream, slen); /* MEM LEAK - must be freed */
-    } else if (sflag == 8) { // 28bit INT
-        k = get28BitInt(stream);
+        key->ptr      = sdsnewlen(stream, slen); /* must be freed */
+    } else if (sflag == 8) {  // 28bit INT
+        k             = get28BitInt(stream);
         key->encoding = REDIS_ENCODING_INT;
         key->ptr      = (void*)((long)k);
-    } else {                 // flag->16,INT
-        k = getInt(&stream);
+    } else if (sflag == 16) { // INT
+        k             = getInt(&stream);
         key->encoding = REDIS_ENCODING_INT;
         key->ptr      = (void*)((long)k);
+    } else if (sflag == 32) { // FLOAT
+        double f      = getFloat(stream);
+        char buf[32];
+        snprintf(buf, 31, "%10.10g", f);
+        buf[31] = '\0';
+        key->encoding = REDIS_ENCODING_RAW;
+        key->ptr      = sdsnewlen(buf, strlen(buf)); /* must be freed */
     }
     key->type     = REDIS_STRING;
     key->refcount = 1;
@@ -278,17 +330,19 @@ static uint32 skipToVal(uchar **stream) {
     uchar   sflag = getSflag(**stream);
     uint32  klen  = 0;
     uint32  slen  = 0;
-    if (sflag == 1) {        // TINY STRING
+    if (sflag == 1) {         // TINY STRING
         getTinyString(*stream, &slen);
         klen = 1 + slen;
-    } else if (sflag == 2) { // 14bit INT
+    } else if (sflag == 2) {  // 14bit INT
         klen = 2;
-    } else if (sflag == 4) { // STRING
+    } else if (sflag == 4) {  // STRING
         getString(*stream, &slen);
         klen = 5 + slen;
-    } else if (sflag == 8) { // 28bit INT
+    } else if (sflag == 8) {  // 28bit INT
         klen = 4;
-    } else {                 // INT
+    } else if (sflag == 16) { // INT
+        klen = 5;
+    } else if (sflag == 32) { // FLOAT
         klen = 5;
     }
     *stream += klen;
@@ -483,10 +537,26 @@ static int strJoinRowCmp(void *a, void *b) {
     return strcmp(ra->ptr, rb->ptr);
 }
 
+static int floatJoinRowCmp(void *a, void *b) {
+    joinRowEntry *ja = (joinRowEntry *)a;
+    joinRowEntry *jb = (joinRowEntry *)b;
+    robj         *ra = ja->key;
+    robj         *rb = jb->key;
+    float         fa = atof(ra->ptr);
+    float         fb = atof(rb->ptr);
+    float         f  = fa - fb;
+    return (f == 0.0) ? 0 : ((f > 0.0) ? 1: -1);
+}
+
 bt *createJoinResultSet(uchar pkt) {
-    bt *btr = (pkt == COL_TYPE_INT) ?
-                  bt_create(intJoinRowCmp, INIT_JOIN_BTREE_BYTES) :
-                  bt_create(strJoinRowCmp, INIT_JOIN_BTREE_BYTES);
+    bt *btr = NULL; /* compiler warning */
+    if (pkt == COL_TYPE_INT) {
+        btr = bt_create(intJoinRowCmp,   INIT_JOIN_BTREE_BYTES);
+    } else if (pkt == COL_TYPE_STRING) {
+        btr = bt_create(strJoinRowCmp,   INIT_JOIN_BTREE_BYTES);
+    } else if (pkt == COL_TYPE_FLOAT) {
+        btr = bt_create(floatJoinRowCmp, INIT_JOIN_BTREE_BYTES);
+    }
     return btr;
 }
 

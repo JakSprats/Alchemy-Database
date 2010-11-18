@@ -430,7 +430,7 @@ static bt_data_t nodedeletekey(struct btree     *btr,
              * if both y and z have only t - 1 keys, merge k
              * and all of z into y, so that x loses both k and
              * the pointer to z, and y now contains 2t - 1
-             * keys. */ /* JakSprats fixed a bug here, the return ptr was wrong */
+             * keys. */ /* RUSS fixed a bug here, the return ptr was wrong */
             y       = NODES(btr, x)[i];
             z       = NODES(btr, x)[i + 1];
             void *v = KEYS(btr, x)[i];

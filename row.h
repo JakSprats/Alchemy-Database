@@ -34,6 +34,7 @@ typedef struct AlsoSqlObject {
     char   *s;
     uint32  len;
     uint32  i;
+    float   f;
     uint32  s_i;
     flag    type;
     flag    enc;
@@ -49,8 +50,8 @@ void freeRowObject(robj *o);
 
 uint32 getRowMallocSize(uchar *stream);
 
-aobj getRawCol(robj *r,     int   cmatch, robj *okey,        int   tmatch,
-               flag *cflag, bool  icol,   bool  force_string);
+aobj getRawCol(robj *r, int cmatch, robj *okey, int  tmatch, flag *cflag,
+               uchar ctype, bool force_string);
 aobj getColStr(robj *r, int cmatch, robj *okey, int tmatch);
 
 robj *createColObjFromRow(robj *r, int cmatch, robj *okey, int tmatch);

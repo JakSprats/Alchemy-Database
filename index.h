@@ -119,10 +119,6 @@ ull get_sum_all_index_size_for_table(redisClient *c, int tmatch);
     bi            = btGetRangeIterator(btt, w->low, w->high, virt);           \
     while ((be = btRangeNext(bi, 1)) != NULL) {     /* iterate btree */       \
         if (virt) {                                                           \
-            if (w->ofst > 0) {                                                \
-                w->ofst--;                                                    \
-                continue;                                                     \
-            }                                                                 \
             if (brk_pk && (uint32)w->lim == card) break; /* ORDRBY PK LIM */  \
             robj *key = be->key;                                              \
             robj *row = be->val;
@@ -137,10 +133,6 @@ ull get_sum_all_index_size_for_table(redisClient *c, int tmatch);
             } else {                                                          \
                 nbi       = btGetFullRangeIterator(val, 0, 0);                \
                 while ((nbe = btRangeNext(nbi, 1)) != NULL) {  /* NodeBT */   \
-                    if (w->ofst > 0) {                                        \
-                        w->ofst--;                                            \
-                        continue;                                             \
-                    }                                                         \
                     if (brk_fk && (uint32)w->lim == card) break;              \
                     robj *key = nbe->key;                                     \
                     robj *row = btFindVal(o, key, pktype);
@@ -169,10 +161,6 @@ ull get_sum_all_index_size_for_table(redisClient *c, int tmatch);
         bool  q_pk    = (!w->asc || (w->obc != -1 && w->obc != 0));           \
         qed           = q_pk;                                                 \
         while((ln = listNext(li)) != NULL) {                                  \
-            if (w->ofst > 0) {                                                \
-                w->ofst--;                                                    \
-                continue;                                                     \
-            }                                                                 \
             if (brk_pk && (uint32)w->lim == card) break; /* ORDRBY PK LIM */  \
             robj *key = convertRobj(ln->value, pktype);                       \
             robj *row = btFindVal(o, key, pktype);                            \
@@ -202,10 +190,6 @@ ull get_sum_all_index_size_for_table(redisClient *c, int tmatch);
                 } else {                                                      \
                     nbi = btGetFullRangeIterator(val, 0, 0);                  \
                     while ((nbe = btRangeNext(nbi, 1)) != NULL) {             \
-                        if (w->ofst > 0) {                                    \
-                            w->ofst--;                                        \
-                            continue;                                         \
-                        }                                                     \
                         if (brk_fk && (uint32)w->lim == card) break;          \
                         robj *key = nbe->key;                                 \
                         robj *row = btFindVal(o, key, pktype);

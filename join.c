@@ -28,6 +28,7 @@ ALL RIGHTS RESERVED
 #include <string.h>
 #include <strings.h>
 #include <unistd.h>
+#include <float.h>
 
 #include "zmalloc.h"
 #include "redis.h"
@@ -198,17 +199,20 @@ typedef struct jrow_reply {
     int           obt;
     int           obc;
     list         *ll;
-    bool          icol;
+    bool          ctype;
     bool          cstar;
 } jrow_reply_t;
 
 static void addJoinOutputRowToList(jrow_reply_t *r, void *resp) {
     obsl_t *ob = (obsl_t *)malloc(sizeof(obsl_t));
     ob->row    = resp;
-    if (r->icol) {
+    if (r->ctype == COL_TYPE_INT) {
         ob->val = Order_by_col_val ? (void *)(long)atoi(Order_by_col_val) :
-                                     (void *)-1;
-    } else {
+                                     (void *)-1; /* -1 for UINT */
+    } else if (r->ctype == COL_TYPE_FLOAT) {
+        float f = Order_by_col_val ? atof(Order_by_col_val) : FLT_MIN;
+        memcpy(&(ob->val), &f, sizeof(float));
+    } else if (r->ctype == COL_TYPE_STRING) {
         ob->val = Order_by_col_val;
     }
     listAddNodeTail(r->ll, ob);
@@ -486,10 +490,9 @@ static void joinAddColsFromInd(join_add_cols_t *a,
     }
 }
 
-static void sortJoinOrderByAndReply(redisClient        *c,
+static int sortJoinOrderByAndReply(redisClient        *c,
                                     build_jrow_reply_t *b,
-                                    bool                asc,
-                                    int                 lim) {
+                                    cswc_t             *w) {
     listNode  *ln;
     int        vlen   = listLength(b->j.ll);
     obsl_t   **vector = malloc(sizeof(obsl_t *) * vlen); /* freed in function */
@@ -500,29 +503,40 @@ static void sortJoinOrderByAndReply(redisClient        *c,
         j++;
     }
     listReleaseIterator(li);
-    if (b->j.icol) {
-        asc ? qsort(vector, vlen, sizeof(obsl_t *), intOrderBySort) :
-              qsort(vector, vlen, sizeof(obsl_t *), intOrderByRevSort);
-    } else {
-        asc ? qsort(vector, vlen, sizeof(obsl_t *), stringOrderBySort) :
-              qsort(vector, vlen, sizeof(obsl_t *), stringOrderByRevSort);
+    if (       b->j.ctype == COL_TYPE_INT) {
+        w->asc ? qsort(vector, vlen, sizeof(obsl_t *), intOrderBySort) :
+                 qsort(vector, vlen, sizeof(obsl_t *), intOrderByRevSort);
+    } else if (b->j.ctype == COL_TYPE_STRING) {
+        w->asc ? qsort(vector, vlen, sizeof(obsl_t *), stringOrderBySort) :
+                 qsort(vector, vlen, sizeof(obsl_t *), stringOrderByRevSort);
+    } else if (b->j.ctype == COL_TYPE_FLOAT) {
+        w->asc ? qsort(vector, vlen, sizeof(obsl_t *), floatOrderBySort) :
+                 qsort(vector, vlen, sizeof(obsl_t *), floatOrderByRevSort);
     }
+    int sent = 0;
     for (int k = 0; k < vlen; k++) {
-        if (lim != -1 && k == lim) break;
-        obsl_t *ob = vector[k];
-        if (b->j.sto != -1) {
-            if (StorageCommands[b->j.sto].argc) { /* JSTORE not INSERT */
-                b->j.fc->argv = ob->row; /* argv's in list */
-                if (!performStoreCmdOrReply(b->j.c, b->j.fc, b->j.sto)) return;
-            } else { /* JSTORE INSERT */
-                b->j.fc->argc    = 3;
-                b->j.fc->argv[1] = cloneRobj(b->j.nname);
-                b->j.fc->argv[2] = ob->row;
-                if (!performStoreCmdOrReply(b->j.c, b->j.fc, b->j.sto)) return;
+        if (w->lim != -1 && sent == w->lim) break;
+        if (w->ofst > 0) {
+            w->ofst--;
+        } else {
+            sent++;
+            obsl_t *ob = vector[k];
+            if (b->j.sto != -1) {
+                if (StorageCommands[b->j.sto].argc) { /* JSTORE not INSERT */
+                    b->j.fc->argv = ob->row; /* argv's in list */
+                    if (!performStoreCmdOrReply(b->j.c, b->j.fc, b->j.sto))
+                        return 0;
+                } else { /* JSTORE INSERT */
+                    b->j.fc->argc    = 3;
+                    b->j.fc->argv[1] = cloneRobj(b->j.nname);
+                    b->j.fc->argv[2] = ob->row;
+                    if (!performStoreCmdOrReply(b->j.c, b->j.fc, b->j.sto))
+                        return 0;
+                }
+            } else if (!b->j.cstar) {
+                addReplyBulk(c, ob->row);
+                decrRefCount(ob->row);
             }
-        } else if (!b->j.cstar) {
-            addReplyBulk(c, ob->row);
-            decrRefCount(ob->row);
         }
     }
     for (int k = 0; k < vlen; k++) {
@@ -530,6 +544,7 @@ static void sortJoinOrderByAndReply(redisClient        *c,
         free(ob);               /* free malloc in addJoinOutputRowToList */
     }
     free(vector);
+    return sent;
 }
 
 
@@ -610,11 +625,11 @@ void joinGeneric(redisClient *c,
         }
     }
 
-    list *ll   = NULL;
-    bool  icol = 0;
+    list *ll    = NULL;
+    uchar ctype = COL_TYPE_NONE;
     if (Order_by) { /* ORDER BY logic */
-        ll   = listCreate();
-        icol = Tbl[server.dbid][jb->w.obt].col_type[jb->w.obc] == COL_TYPE_INT;
+        ll    = listCreate();
+        ctype = Tbl[server.dbid][jb->w.obt].col_type[jb->w.obc];
     }
 
     EMPTY_LEN_OBJ
@@ -625,10 +640,10 @@ void joinGeneric(redisClient *c,
     int    j_ind_len [MAX_JOIN_INDXS];
     int    jind_ncols[MAX_JOIN_INDXS];
 
-    uchar  pktype = jb->w.inl? COL_TYPE_STRING :
-                      Tbl[server.dbid]
+    uchar  pk1type = jb->w.inl? COL_TYPE_STRING :
+                       Tbl[server.dbid]
                          [Index[server.dbid][jb->j_indxs[0]].table].col_type[0];
-    bt    *jbtr   = createJoinResultSet(pktype);
+    bt    *jbtr    = createJoinResultSet(pk1type);
 
     robj  *rset[MAX_JOIN_INDXS];
     for (int i = 1; i < jb->n_ind; i++) {
@@ -678,7 +693,7 @@ void joinGeneric(redisClient *c,
             listNode *ln;
             listIter *li  = listGetIterator(jb->w.inl, AL_START_HEAD);
             if (jc.virt) {
-                bool pktype = Tbl[server.dbid][jc.itable].col_type[0];
+                uchar pktype = Tbl[server.dbid][jc.itable].col_type[0];
                 while((ln = listNext(li)) != NULL) {
                     jc.jk  = ln->value;
                     jc.val = btFindVal(jc.o, jc.jk, pktype);
@@ -719,6 +734,7 @@ void joinGeneric(redisClient *c,
         }
     }
 
+    int sent = 0;
     if (!one_empty) {
         int   reply_size = 0;
         for (int i = 0; i < jb->n_ind; i++) { // get maxlen possbl 4 joined row
@@ -745,12 +761,12 @@ void joinGeneric(redisClient *c,
         bjr.j.obc         = jb->w.obc;
         bjr.j_indxs       = jb->j_indxs;
         bjr.j.ll          = ll;
-        bjr.j.icol        = icol;
+        bjr.j.ctype       = ctype;
         bjr.j.cstar       = jb->cstar;
 
         joinRowEntry *be;
-        btIterator   *bi = btGetJoinFullRangeIterator(jbtr, pktype);
-        while ((be = btJoinRangeNext(bi, pktype)) != NULL) { /* iter BT */
+        btIterator   *bi = btGetJoinFullRangeIterator(jbtr, pk1type);
+        while ((be = btJoinRangeNext(bi, pk1type)) != NULL) { /* iter BT */
             listNode *ln;
             bjr.jk       = be->key;
             list     *ll = (list *)be->val;
@@ -781,7 +797,7 @@ void joinGeneric(redisClient *c,
         free(reply);
 
         if (Order_by) {
-            sortJoinOrderByAndReply(c, &bjr, jb->w.asc, jb->w.lim);
+            sent = sortJoinOrderByAndReply(c, &bjr, &jb->w);
             listRelease(ll);
         }
     }
@@ -809,7 +825,7 @@ void joinGeneric(redisClient *c,
         decrRefCount(rset[i]);
     }
 
-    if (jb->w.lim != -1 && (uint32)jb->w.lim < card) card = jb->w.lim;
+    if (jb->w.lim != -1 && (uint32)sent < card) card = sent;
     if (jb->w.sto != -1) {
         addReplyLongLong(c, card);
     } else if (jb->cstar) {

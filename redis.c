@@ -83,17 +83,17 @@
 #include "sha1.h"         /* SHA1 is used for DEBUG DIGEST */
 #include "release.h"      /* Release and/or git repository information */
 
-#include "bt.h"           /* ALSOSQL B-trees */
-#include "bt_iterator.h"  /* ALSOSQL B-tree Iterators */
-#include "alsosql.h"      /* ALSOSQL */
-#include "sixbit.h"       /* ALSOSQL six-bit-string packing */
-#include "rdb_alsosql.h"  /* save ALSOSQL datastructures to rdb */
-#include "join.h"         /* relational join in ALSOSQL */
-#include "row.h"          /* ALSOSQL's bit-packed rows */
-#include "index.h"        /* ALSOSQL's indices */
-#include "denorm.h"       /* PIPE_ flags */
-#include "common.h"       /* ALSOSQL's common definitions */
-#include "lua_integration.h" /* Lua c bindings for lua function "redis" */
+#include "bt.h"              /* ALSOSQL B-trees */
+#include "bt_iterator.h"     /* ALSOSQL B-tree Iterators */
+#include "alsosql.h"         /* ALSOSQL */
+#include "sixbit.h"          /* ALSOSQL six-bit-string packing */
+#include "rdb_alsosql.h"     /* save ALSOSQL datastructures to rdb */
+#include "join.h"            /* relational join in ALSOSQL */
+#include "row.h"             /* ALSOSQL's bit-packed rows */
+#include "index.h"           /* ALSOSQL's indices */
+#include "denorm.h"          /* PIPE_ flags */
+#include "common.h"          /* ALSOSQL's common definitions */
+#include "lua_integration.h" /* Lua c bindings for lua function "client */
 
 lua_State   *Lua       = NULL;
 redisClient *LuaClient = NULL;
@@ -1737,10 +1737,14 @@ static void createSharedObjects(void) {
         "-ERR INSERT: PK greater than UINT_MAX(4GB)\r\n"));
     shared.uint_no_negative_values = createObject(REDIS_STRING,sdsnew(
         "-ERR INSERT: UINT PK can not be negative\r\n"));
+    shared.col_uint_string_too_long = createObject(REDIS_STRING,sdsnew(
+        "-ERR INSERT: UINT Column longer than 32 bytes\r\n"));
     shared.col_uint_too_big = createObject(REDIS_STRING,sdsnew(
         "-ERR INSERT: UINT Column greater than UINT_MAX(4GB)\r\n"));
     shared.col_uint_no_negative_values = createObject(REDIS_STRING,sdsnew(
         "-ERR INSERT: UINT Column can not be negative\r\n"));
+    shared.col_float_string_too_long = createObject(REDIS_STRING,sdsnew(
+        "-ERR INSERT: FLOAT Column longer than 32 bytes\r\n"));
 
     shared.columntoolarge = createObject(REDIS_STRING,sdsnew(
         "-ERR INSERT - MAX column size is 1GB\r\n"));

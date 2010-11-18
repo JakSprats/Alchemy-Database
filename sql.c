@@ -100,15 +100,19 @@ bool parseCreateTable(redisClient *c,
         if (!token) break;
         if (!cCpyOrReply(c, token, cnames[*ccount], clen)) return 0;
 
-        token       = next_token_delim(token, ','); /* parse ctype + flags */
+        token       = next_token_delim(token, ',', ')'); /* parse ctype, flags*/
         if (!token) break;
-        sds   type  = sdsnewlen(token, get_token_len_delim(token, ','));
+        sds   type  = sdsnewlen(token, get_token_len_delim(token, ',', ')'));
         token = get_next_token_nonparaned_comma(token);
 
         /* in type search for INT (but not BIGINT - too big @8 Bytes) */
         int ntbls = Num_tbls[server.dbid];
         if (strcasestr(type, "INT") && !strcasestr(type, "BIGINT")) {
             Tbl[server.dbid][ntbls].col_type[*ccount] = COL_TYPE_INT;
+        } else if (strcasestr(type, "FLOAT") ||
+                   strcasestr(type, "REAL")  ||
+                   strcasestr(type, "DOUBLE")) {
+            Tbl[server.dbid][ntbls].col_type[*ccount] = COL_TYPE_FLOAT;
         } else {
             Tbl[server.dbid][ntbls].col_type[*ccount] = COL_TYPE_STRING;
         }
@@ -197,19 +201,19 @@ static bool parseOrderBy(redisClient  *c,
     if (nextp) {
         while (isblank(*nextp)) nextp++;
         if (!strncasecmp(nextp, "DESC", 4)) {
-            w->asc  = 0;
-            nextp = next_token(nextp);
+            w->asc = 0;
+            nextp  = next_token(nextp);
         }
     }
 
     if (nextp) { /* isblank() loop already done above */
         if (!strncasecmp(nextp, "LIMIT", 5)) {
-            nextp = next_token(nextp);
+            nextp  = next_token(nextp);
             w->lim = atoi(nextp);
-            nextp = next_token(nextp);
+            nextp  = next_token(nextp);
             if (nextp) {
                 w->ofst = atoi(nextp); /* LIMIT N OFFSET */
-                nextp = next_token(nextp);
+                nextp   = next_token(nextp);
             }
         }
     }

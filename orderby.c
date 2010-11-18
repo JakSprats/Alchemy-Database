@@ -57,6 +57,23 @@ int intOrderByRevSort(const void *s1, const void *s2) {
     return *i2 - *i1;
 }
 
+int floatOrderBySort(const void *s1, const void *s2) {
+    obsl_t *o1 = (obsl_t *)s1;
+    obsl_t *o2 = (obsl_t *)s2;
+    float  *i1 = (float *)(o1->val);
+    float  *i2 = (float *)(o2->val);
+    float   f  = *i1 - *i2;
+    return (f == 0.0) ? 0 : ((f > 0.0) ? 1: -1);
+}
+int floatOrderByRevSort(const void *s1, const void *s2) {
+    obsl_t *o1 = (obsl_t *)s1;
+    obsl_t *o2 = (obsl_t *)s2;
+    float  *i1 = (float *)(o1->val);
+    float  *i2 = (float *)(o2->val);
+    float   f  = *i1 - *i2;
+    return (f == 0.0) ? 0 : ((f > 0.0) ? -1: 1);
+}
+
 int stringOrderBySort(const void *s1, const void *s2) {
     obsl_t  *o1 = (obsl_t *)s1;
     obsl_t  *o2 = (obsl_t *)s2;
@@ -76,13 +93,13 @@ int stringOrderByRevSort(const void *s1, const void *s2) {
     return (x1 && x2) ? strcmp(x2, x1) : x2 - x1; /* strcmp() not ok w/ NULLs */
 }
 
-void addORowToRQList(list *ll,
-                     robj *r,
-                     robj *row,
-                     int   obc,
-                     robj *pko,
-                     int   tmatch,
-                     bool  icol) {
+void addORowToRQList(list  *ll,
+                     robj  *r,
+                     robj  *row,
+                     int    obc,
+                     robj  *pko,
+                     int    tmatch,
+                     uchar  ctype) {
     flag cflag;
     obsl_t *ob  = (obsl_t *)malloc(sizeof(obsl_t));/*freed sortedOrdrByCleanup*/
     if (r) {
@@ -90,9 +107,11 @@ void addORowToRQList(list *ll,
     } else {
         ob->row = row->ptr; /* used ONLY in istoreCommit */
     }
-    aobj    ao  = getRawCol(row, obc, pko, tmatch, &cflag, icol, 0);
-    if (icol) {
+    aobj    ao  = getRawCol(row, obc, pko, tmatch, &cflag, ctype, 0);
+    if (ctype == COL_TYPE_INT) {
         ob->val   = (void *)(long)ao.i;
+    } else if (ctype == COL_TYPE_FLOAT) {
+        memcpy(&(ob->val), &ao.f, sizeof(float));
     } else {
         char *s   = malloc(ao.len + 1); /*free()d in sortedOrderByCleanup() */
         memcpy(s, ao.s, ao.len);
@@ -103,7 +122,7 @@ void addORowToRQList(list *ll,
     listAddNodeTail(ll, ob);
 }
 
-obsl_t **sortOrderByToVector(list *ll, bool icol, bool asc) {
+obsl_t **sortOrderByToVector(list *ll, uchar ctype, bool asc) {
     listNode  *ln;
     listIter   li;
     int        vlen   = listLength(ll);
@@ -114,9 +133,12 @@ obsl_t **sortOrderByToVector(list *ll, bool icol, bool asc) {
         vector[j] = (obsl_t *)ln->value;
         j++;
     }
-    if (icol) {
+    if (ctype == COL_TYPE_INT) {
         asc ? qsort(vector, vlen, sizeof(obsl_t *), intOrderBySort) :
               qsort(vector, vlen, sizeof(obsl_t *), intOrderByRevSort);
+    } else if (ctype == COL_TYPE_FLOAT) {
+        asc ? qsort(vector, vlen, sizeof(obsl_t *), floatOrderBySort) :
+              qsort(vector, vlen, sizeof(obsl_t *), floatOrderByRevSort);
     } else {
         asc ? qsort(vector, vlen, sizeof(obsl_t *), stringOrderBySort) :
               qsort(vector, vlen, sizeof(obsl_t *), stringOrderByRevSort);
@@ -126,12 +148,12 @@ obsl_t **sortOrderByToVector(list *ll, bool icol, bool asc) {
 
 void sortedOrderByCleanup(obsl_t **vector,
                           int      vlen,
-                          bool     icol,
+                          uchar    ctype,
                           bool     decr_row) {
     for (int k = 0; k < vlen; k++) {
         obsl_t *ob = vector[k];
-        if (decr_row) decrRefCount(ob->row);
-        if (!icol)    free(ob->val);
+        if (decr_row)                 decrRefCount(ob->row);
+        if (ctype == COL_TYPE_STRING) free(ob->val);
         free(ob);
     }
 }
