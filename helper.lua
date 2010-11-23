@@ -22,10 +22,10 @@ function create_table(tname, col_defs)
   return client('create', 'table', tname, "(" .. col_defs .. ")");
 end
 function create_table_from_redis_object(tname, redis_obj)
-  return client('create', 'table', tname, "AS DUMP " .. redis_obj)
+  return client('create', 'table', tname, "AS DUMP " .. redis_obj);
 end
 function create_table_as(tname, redis_command)
-  return client('create', 'table', tname, "AS " .. redis_command)
+  return client('create', 'table', tname, "AS " .. redis_command);
 end
 function drop_table(tname)
   return client('drop', 'table', tname);
@@ -37,12 +37,12 @@ function dump(tname)
   return client('dump', tname);
 end
 function dump_to_mysql(tname, msname)
-  return client('dump', tname, "TO", "MYSQL", msname)
+  return client('dump', tname, "TO", "MYSQL", msname);
 end
 
 function create_index(iname, tname, column)
-   col_w_paren = "(" .. column .. ")"
-  return client('create', "INDEX", iname, "ON", tname, col_w_paren)
+   col_w_paren = "(" .. column .. ")";
+  return client('create', "INDEX", iname, "ON", tname, col_w_paren);
 end
 
 function drop_index(iname)
@@ -50,47 +50,53 @@ function drop_index(iname)
 end
 
 function insert(tname, values_list)
-  return client('insert', "INTO", tname, "VALUES", values_list)
+  return client('insert', "INTO", tname, "VALUES", values_list);
 end
 
 function insert_and_return_size(tname, values_list)
-  return client('insert', "INTO", tname, "VALUES", values_list, "RETURN", "SIZE")
+  return client('insert', "INTO", tname, "VALUES", values_list, "RETURN", "SIZE");
 end
 
 -- "select" is used in both redis and Redisql, so it must be overridden here
 -- for redis: select(db)
 -- for SQL: select(col_list, tname, where_clause)
 function select(...)
-  if ( argCount == 1 ) then
-    return client('select', arg[1])
+  argCount = #arg;
+  if (argCount == 1) then
+    return client('select', arg[1]);
   else
-    return client('select', arg[1], "FROM", arg[2], "WHERE", arg[3])
+    return client('select', arg[1], "FROM", arg[2], "WHERE", arg[3]);
   end
 end
 
 function select_store(col_list, tname, where_clause, redis_command)
-  wc = where_clause .. " STORE " .. redis_command
-  return client('select', col_list, "FROM", tname, "WHERE", wc)
+  wc = where_clause .. " STORE " .. redis_command;
+  return client('select', col_list, "FROM", tname, "WHERE", wc);
 end
 
-function scanselect(col_list, tname, where_clause)
-  return client('scanselect', col_list, "FROM", tname, "WHERE", where_clause)
+function scanselect(...)
+  argCount = #arg;
+  if (argCount == 2) then
+    return client('scanselect', arg[1], "FROM", arg[2]);
+  else
+    return client('scanselect', arg[1], "FROM", arg[2], "WHERE", arg[3]);
+  end
 end
 
 function delete(tname, where_clause)
-  return client('delete', "FROM", tname, "WHERE", where_clause)
+  return client('delete', "FROM", tname, "WHERE", where_clause);
 end
 
 function update(tname, update_list, where_clause)
-  return client('update', tname, "SET", update_list, "WHERE", where_clause)
+  return client('update', tname, "SET", update_list, "WHERE", where_clause);
 end
 
 function normalize(main_wildcard, secondary_wildcard_list)
-  return client('norm', main_wildcard, secondary_wildcard_list)
+  return client('norm', main_wildcard, secondary_wildcard_list);
 end
 
 function denormalize(tname, main_wildcard)
-  return client('denorm', main_wildcard)
+  return client('denorm', main_wildcard);
 end
 
 -- REDIS_INTEGRATION REDIS_INTEGRATION REDIS_INTEGRATION REDIS_INTEGRATION
