@@ -147,9 +147,9 @@ int rdbSaveBT(FILE *fp, robj *o) {
     }
 
     if (fwrite(&(btr->is_index), 1, 1, fp) == 0) return -1;
-    if (rdbSaveLen(fp, btr->num) == -1) return -1;
-
     int tmatch = btr->num;
+    if (rdbSaveLen(fp, tmatch) == -1) return -1;
+
     int dbid   = server.dbid;
     if (btr->is_index == BTREE_TABLE) {
         //RL4 "%d: saving table: %s virt_index: %d",
@@ -206,8 +206,8 @@ robj *rdbLoadBT(FILE *fp, redisDb *db) {
 
     if (is_index == BTREE_TABLE) {
         if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR) return NULL;
-        int inum = u;
-        Tbl[dbid][tmatch].virt_indx  = inum;
+        int inum                        = u;
+        Tbl[dbid][tmatch].virt_indx     = inum;
         Index[server.dbid][inum].virt   = 1;
         Index[server.dbid][inum].nrl    = 0;
         Index[server.dbid][inum].table  = tmatch;
@@ -247,7 +247,8 @@ robj *rdbLoadBT(FILE *fp, redisDb *db) {
         for (int unsigned i = 0; i < bt_num; i++) {
             if (rdbLoadRow(fp, btr) == -1) return NULL;
         }
-
+        //RL4 "load tmatch: %d name: %s inum: %d imatch: %s", tmatch,
+        //Tbl[dbid][tmatch].name->ptr, inum, Index[server.dbid][inum].obj->ptr);
         if (Num_tbls[dbid] < (tmatch + 1)) Num_tbls[dbid] = tmatch + 1;
     } else { /* BTREE_INDEX */
         int imatch = tmatch;

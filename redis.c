@@ -2037,6 +2037,18 @@ static void initServerConfig() {
     R_Nan = R_Zero/R_Zero;
 }
 
+static void init_Tbl_and_Index() {
+    bzero(&Num_tbls, sizeof(int) * MAX_NUM_DB);
+    bzero(&Num_indx, sizeof(int) * MAX_NUM_DB);
+
+    for (int i = 0; i < MAX_NUM_TABLES; i++) {
+        Tbl[server.dbid][i].name = NULL;
+    }
+    for (int i = 0; i < MAX_NUM_TABLES; i++) {
+        Index[server.dbid][i].obj = NULL;
+    }
+}
+
 static void initServer() {
     int j;
 
@@ -2189,15 +2201,7 @@ static void initServer() {
 
     init_six_bit_strings();
 
-    bzero(&Num_tbls, sizeof(int) * MAX_NUM_DB);
-    bzero(&Num_indx, sizeof(int) * MAX_NUM_DB);
-
-    for (int i = 0; i < MAX_NUM_TABLES; i++) {
-        Tbl[server.dbid][i].name = NULL;
-    }
-    for (int i = 0; i < MAX_NUM_TABLES; i++) {
-        Index[server.dbid][i].obj = NULL;
-    }
+    init_Tbl_and_Index();
 
     bool il = initLua();
     if (!il) exit(-1);
@@ -2209,6 +2213,7 @@ static long long emptyDb() {
     int j;
     long long removed = 0;
 
+    int dbid = server.dbid;
     for (j = 0; j < server.dbnum; j++) {
         removed += dictSize(server.db[j].dict);
 #ifdef ALSOSQL
@@ -2222,6 +2227,10 @@ static long long emptyDb() {
         dictEmpty(server.db[j].dict);
         dictEmpty(server.db[j].expires);
     }
+#ifdef ALSOSQL
+    init_Tbl_and_Index();
+#endif
+    server.dbid = dbid;
     return removed;
 }
 
@@ -4256,7 +4265,6 @@ werr:
 }
 
 static int rdbSaveBackground(char *filename) {
-return 0;
     pid_t childpid;
 
     if (server.bgsavechildpid != -1) return REDIS_ERR;
@@ -4587,6 +4595,7 @@ static int rdbLoad(char *filename) {
                 exit(1);
             }
             db = server.db+dbid;
+            server.dbid = dbid;
             d = db->dict;
             continue;
         }
