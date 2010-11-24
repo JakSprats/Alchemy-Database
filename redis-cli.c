@@ -450,6 +450,7 @@ static int cliSendCommand(int argc, char **argv, int repeat) {
             cmd = sdscatlen(cmd,argv[j],sdslen(argv[j]));
             cmd = sdscatlen(cmd,"\r\n",2);
         }
+        //printf("cmd: %s\n", cmd);
         anetWrite(fd,cmd,sdslen(cmd));
         sdsfree(cmd);
 

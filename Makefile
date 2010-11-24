@@ -49,17 +49,19 @@ endif
 
 OBJ = adlist.o ae.o anet.o dict.o redis.o sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o zipmap.o sha1.o bt.o bt_code.o bt_output.o alsosql.o sixbit.o row.o index.o rdb_alsosql.o join.o norm.o bt_iterator.o sql.o denorm.o store.o scan.o orderby.o lua_integration.o parser.o
 BENCHOBJ = ae.o anet.o redis-benchmark.o sds.o adlist.o zmalloc.o
+GENBENCHOBJ = ae.o anet.o gen-benchmark.o sds.o adlist.o zmalloc.o
 CLIOBJ = anet.o sds.o adlist.o redis-cli.o zmalloc.o linenoise.o
 CHECKDUMPOBJ = redis-check-dump.o lzf_c.o lzf_d.o
 CHECKAOFOBJ = redis-check-aof.o
 
 PRGNAME = redisql-server
 BENCHPRGNAME = redisql-benchmark
+GENBENCHPRGNAME = gen-benchmark
 CLIPRGNAME = redisql-cli
 CHECKDUMPPRGNAME = redisql-check-dump
 CHECKAOFPRGNAME = redisql-check-aof
 
-ALL = $(PRGNAME) $(BENCHPRGNAME) $(CLIPRGNAME) $(CHECKDUMPPRGNAME) $(CHECKAOFPRGNAME)
+ALL = $(PRGNAME) $(GENBENCHPRGNAME) $(BENCHPRGNAME) $(CLIPRGNAME) $(CHECKDUMPPRGNAME) $(CHECKAOFPRGNAME)
 
 all:    $(PLAT)
 
@@ -170,6 +172,9 @@ redisql-server: $(OBJ)
 redisql-benchmark: $(BENCHOBJ)
 	$(CC) -o $(BENCHPRGNAME) $(CCOPT) $(DEBUG) $(BENCHOBJ)
 
+gen-benchmark: $(GENBENCHOBJ)
+	$(CC) -o $(GENBENCHPRGNAME) $(CCOPT) $(DEBUG) $(GENBENCHOBJ)
+
 redisql-cli: $(CLIOBJ)
 	$(CC) -o $(CLIPRGNAME) $(CCOPT) $(DEBUG) $(CLIOBJ)
 
@@ -183,7 +188,7 @@ redisql-check-aof: $(CHECKAOFOBJ)
 	$(CC) -c $(CFLAGS) $(DEBUG) $(COMPILE_TIME) $<
 
 clean:
-	rm -rf $(PRGNAME) $(BENCHPRGNAME) $(CLIPRGNAME) $(CHECKDUMPPRGNAME) $(CHECKAOFPRGNAME) *.o *.gcda *.gcno *.gcov
+	rm -rf $(PRGNAME) $(GENBENCHPRGNAME) $(BENCHPRGNAME) $(CLIPRGNAME) $(CHECKDUMPPRGNAME) $(CHECKAOFPRGNAME) *.o *.gcda *.gcno *.gcov
 
 dep:
 	$(CC) -MM *.c
