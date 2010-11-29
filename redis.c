@@ -5268,7 +5268,8 @@ static void renamenxCommand(redisClient *c) {
     } else if (ret == 0) {
         addReply(c,shared.czero);
     } else if (ret == 1) {
-        addReply(c, shared.ok);
+        addReply(c,shared.cone);
+        //addReply(c, shared.ok);
     }
 }
 
