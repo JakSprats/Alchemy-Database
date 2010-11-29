@@ -708,6 +708,10 @@ function init_bigrow_table() {
   $CLI CREATE TABLE bigrow "(id int primary key, field TEXT)"
 }
 
+function init_message_list_table() {
+  $CLI CREATE TABLE message_list "(id int primary key, fk int, count INT)"
+  $CLI CREATE INDEX message_list:fk:index ON message_list \(fk\)
+}
 # TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS
 # TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS TESTS
 

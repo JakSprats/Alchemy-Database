@@ -100,6 +100,10 @@ redisClient *LuaClient = NULL;
 flag         LuaFlag   = PIPE_NONE_FLAG;
 #define ALSOSQL
 
+#ifdef ALSOSQL
+//#define SAVE_BY_DEFAULT
+#endif
+
 #if 0
 /* Error codes */
 #define REDIS_OK                0
@@ -1570,7 +1574,7 @@ static int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientD
          for (j = 0; j < server.saveparamslen; j++) {
             struct saveparam *sp = server.saveparams+j;
 
-            if (0 && server.dirty >= sp->changes &&
+            if (server.dirty >= sp->changes &&
                 now-server.lastsave > sp->seconds) {
                 redisLog(REDIS_NOTICE,"%d changes in %d seconds. Saving...",
                     sp->changes, sp->seconds);
@@ -2019,9 +2023,11 @@ static void initServerConfig() {
 
     resetServerSaveParams();
 
+#ifdef  SAVE_BY_DEFAULT
     appendServerSaveParams(60*60,1);  /* save after 1 hour and 1 change */
     appendServerSaveParams(300,100);  /* save after 5 minutes and 100 changes */
     appendServerSaveParams(60,10000); /* save after 1 minute and 10000 changes */
+#endif
     /* Replication related */
     server.isslave = 0;
     server.masterauth = NULL;

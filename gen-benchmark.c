@@ -1,4 +1,4 @@
-/* Redis benchmark utility.
+/* Alchemy's generic benchmark utility.
  *
  * Copyright (c) 2009-2010, Salvatore Sanfilippo <antirez at gmail dot com>
  * All rights reserved.
@@ -75,6 +75,10 @@ static struct config {
     list        *clients;
     int          quiet;
     int          loop;
+
+    int          sequential;
+    int          modulo;
+
     sds          query;
     int          qargc;
     int          reply_type;
@@ -179,11 +183,10 @@ static void clientDone(client c) {
         return;
     }
     resetClient(c);
-    if (config.randomkeys) randomizeClientKey(c);
+    if (config.randomkeys || config.sequential) randomizeClientKey(c);
 }
 
-static void readHandler(aeEventLoop *el, int fd, void *privdata, int mask)
-{
+static void readHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     char buf[1024];
     int nread;
     client c = privdata;
@@ -282,8 +285,7 @@ processdata:
     }
 }
 
-static void writeHandler(aeEventLoop *el, int fd, void *privdata, int mask)
-{
+static void writeHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     client c = privdata;
     REDIS_NOTUSED(el);
     REDIS_NOTUSED(fd);
@@ -342,18 +344,17 @@ static void createMissingClients(client c) {
         if (!new) continue;
         sdsfree(new->obuf);
         new->obuf = sdsdup(c->obuf);
-        if (config.randomkeys) randomizeClientKey(c);
+        if (config.randomkeys || config.sequential) randomizeClientKey(c);
         prepareClientForReply(new,c->replytype);
     }
 }
 
-static void showLatencyReport(char *title) {
+static void showLatencyReport() {
     int j, seen = 0;
     float perc, reqpersec;
 
     reqpersec = (float)config.donerequests/((float)config.totlatency/1000);
     if (!config.quiet) {
-        printf("====== %s ======\n", title);
         printf("  %d requests completed in %.2f seconds\n", config.donerequests,
             (float)config.totlatency/1000);
         printf("  %d parallel clients\n", config.numclients);
@@ -367,20 +368,19 @@ static void showLatencyReport(char *title) {
         }
         printf("%.2f requests per second\n\n", reqpersec);
     } else {
-        printf("%s: %.2f requests per second\n", title, reqpersec);
+        printf("%.2f requests per second\n", reqpersec);
     }
 }
 
-static void prepareForBenchmark(void)
-{
+static void prepareForBenchmark(void) {
     memset(config.latency,0,sizeof(int)*(MAX_LATENCY+1));
     config.start = mstime();
     config.donerequests = 0;
 }
 
-static void endBenchmark(char *title) {
+static void endBenchmark() {
     config.totlatency = mstime()-config.start;
-    showLatencyReport(title);
+    showLatencyReport();
     freeAllClients();
 }
 
@@ -449,10 +449,16 @@ void parseOptions(int argc, char **argv) {
                 usage(rtype);
             }
             i++;
+        } else if (!strcmp(argv[i],"-m") && !lastarg) {
+            config.modulo = atoi(argv[i+1]);
+            if (config.modulo < 0) config.modulo = 0;
+            i++;
         } else if (!strcmp(argv[i],"-q")) {
-            config.quiet = 1;
+            config.quiet      = 1;
         } else if (!strcmp(argv[i],"-l")) {
-            config.loop = 1;
+            config.loop       = 1;
+        } else if (!strcmp(argv[i],"-s")) {
+            config.sequential = 1;
         } else {
             usage(argv[i]);
         }
@@ -461,14 +467,16 @@ void parseOptions(int argc, char **argv) {
 
 static void usage(char *arg) {
     if (arg) printf("Wrong option '%s' or option argument missing\n\n", arg);
-    printf("Usage: redis-benchmark [-h <host>] [-p <port>] [-c <concurrency>] [-n <requests]> -Q query_arg1 query_arg2 ...\n\n");
-    printf(" -Q \"QUERY\"            QUERY to be sent to server each command line arg passed to redis line protocol as a seperate arg\n");
+    printf("Usage: redis-benchmark [-h <host>] [-p <port>] [-c <concurrency>] [-n <requests]> -A [OK,INT,LINE,MULTI] -Q query_arg1 query_arg2 ...\n\n");
+    printf(" -Q \"QUERY\"            QUERY to be sent to server each command line arg passed to redis line protocol as a seperate arg [-Q MUST COME LAST]\n");
     printf(" -A [OK,INT,LINE,MULTI] response type must be one of them\n");
     printf(" -h <hostname>           Server hostname (default 127.0.0.1)\n");
     printf(" -p <hostname>           Server port (default 6379)\n");
-    printf(" -c <clients>            Number of parallel connections (default 50)\n");
-    printf(" -n <requests>           Total number of requests (default 10000)\n");
+    printf(" -c <clients>            Num parallel connections (default 50)\n");
+    printf(" -n <requests>           Total num requests (default 10000)\n");
     printf(" -r <keyspacelen>        Use random keys\n");
+    printf(" -s                      Use sequential keys\n");
+    printf(" -m <modulo>             Modulo for foreign keys (2nd instance of \"0000\")\n");
     printf("  Using this option the benchmark will string replace queries\n");
     printf("  in the form 000012345678 instead of constant 000000000001\n");
     printf("  The <keyspacelen> argument determines the max\n");
@@ -481,25 +489,30 @@ static void usage(char *arg) {
 
 static char *rand_replace(char *p, long r) {
     char buf[32];
-    p      += 5;
+    p      += 4;
     sprintf(buf, "%08ld", r);
     memcpy(p, buf, strlen(buf));
     return p;
 }
 
+long Sequence = 1;
 static void randomizeClientKey(client c) {
-    char *op = c->obuf;
-    char *p  = op;
-    long  r  = random() % config.randomkeys_keyspacelen;
-    while ((p = strstr(p, "(0000"))) 
-        p = rand_replace(p, r);
-    p = op;
-    while ((p = strstr(p, ",0000"))) 
-        p = rand_replace(p, r);
-    p = op;
-    while ((p = strstr(p, "_0000"))) 
-        p = rand_replace(p, r);
-    //printf("buf: %s\n", c->obuf);
+    char *p = c->obuf;
+    long  r;
+    if (config.sequential) r = Sequence++;
+    else                   r = random() % config.randomkeys_keyspacelen;
+    int hits = 0;
+    while ((p = strstr(p, "0000"))) {
+        char x = *(p - 1);
+        if (x == '(' || x == ',' || x == '_' || x == '=') {
+            if (hits > 0 && config.modulo) r %= config.modulo;
+            p  = rand_replace(p, r);
+            hits++;
+        } else {
+            p +=4;
+        }
+    }
+    //printf("hits: %d buf: %s\n", hits, c->obuf);
 }
 
 int main(int argc, char **argv) {
@@ -523,6 +536,8 @@ int main(int argc, char **argv) {
     config.hostip                 = "127.0.0.1";
     config.hostport               = 6379;
 
+    config.sequential             = 0;
+    config.modulo                 = 0;
     config.query                  = NULL;
     config.reply_type             = -1;
 
@@ -540,7 +555,7 @@ int main(int argc, char **argv) {
         prepareClientForReply(c, config.reply_type);
         createMissingClients(c);
         aeMain(config.el);
-        endBenchmark(config.query);
+        endBenchmark();
         printf("\n");
     } while(config.loop);
 
