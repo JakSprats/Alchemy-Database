@@ -6,25 +6,26 @@ C=400
 REQ=300000
 MOD=100
 
-if [ -z "$1" ]; then
-  echo "Usage: $0 server-ip"
+if [ -z "$3" ]; then
+  echo "Usage: $0 core ip port"
   exit 1
 fi
-HOST="$1"
-if [ -n "$2" -a "$2" == "TEST" ]; then
+CORE="$1"
+HOST="$2"
+PORT="$3"
+if [ -n "$4" -a "$4" == "TEST" ]; then
   C=1
   REQ=1
 fi
 
-#TASKSET="taskset -c 1 "
-TASKSET=""
-ARGS=" -h ${HOST} -q "
+TASKSET="taskset -c ${CORE} "
+ARGS=" -h ${HOST} -p ${PORT} -q "
 
 pushd ..
 
 function recreate() {
-  $CLI -h ${HOST} DROP TABLE sessions
-  $CLI -h ${HOST} CREATE TABLE sessions "(id INT, account_id INT, user_id INT, timestamp INT, session__data TEXT)"
+  $CLI -h ${HOST} -p ${PORT} DROP TABLE sessions
+  $CLI -h ${HOST} -p ${PORT} CREATE TABLE sessions "(id INT, account_id INT, user_id INT, timestamp INT, session__data TEXT)"
 }
 
 recreate
