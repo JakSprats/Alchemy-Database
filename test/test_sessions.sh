@@ -1,9 +1,9 @@
-#!/bin/sh
+#!/bin/bash
 
-. ../bash_functions.sh
+CLI="./redisql-cli"
 
 C=400
-REQ=100000
+REQ=500000
 MOD=100
 
 if [ -z "$3" ]; then
