@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 . ../bash_functions.sh
 
