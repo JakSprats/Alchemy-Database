@@ -137,7 +137,7 @@ ull get_sum_all_index_size_for_table(redisClient *c, int tmatch);
                     robj *key = nbe->key;                                     \
                     robj *row = btFindVal(o, key, pktype);
                     /* FK operation specific code comes here */
-    #define RANGE_QUERY_LOOKUP_END                                            \
+#define RANGE_QUERY_LOOKUP_END                                                \
                     card++;                                                   \
                 }                                                             \
             }                                                                 \
@@ -147,7 +147,6 @@ ull get_sum_all_index_size_for_table(redisClient *c, int tmatch);
     }                                                                         \
     btReleaseRangeIterator(bi);                                               \
     bi = NULL; /* explicit in case of goto's in inner loop */
-
 
 
 #define IN_QUERY_LOOKUP_START                                                 \

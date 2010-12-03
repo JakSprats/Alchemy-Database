@@ -334,6 +334,7 @@ void bt_insert(struct btree *btr, bt_data_t k) {
     btreeinsertnonfull(btr, r, k);
 }
 
+void *case_2c_ptr = NULL;
 /*
  * remove an existing key from the tree, if the key doesn't exist in it,
  * unexpected results may happen.
@@ -430,15 +431,16 @@ static bt_data_t nodedeletekey(struct btree     *btr,
              * if both y and z have only t - 1 keys, merge k
              * and all of z into y, so that x loses both k and
              * the pointer to z, and y now contains 2t - 1
-             * keys. */ /* RUSS fixed a bug here, the return ptr was wrong */
-            y       = NODES(btr, x)[i];
-            z       = NODES(btr, x)[i + 1];
-            void *v = KEYS(btr, x)[i];
-
-            memmove(KEYS(btr, y)  + y->n, KEYS(btr, z),  (z->n + 1) * sizeof k);
+             * keys. */
+            /* RUSS fixed a bug here, the return ptr was wrong */
+            if (!case_2c_ptr) case_2c_ptr = KEYS(btr, x)[i];
+            y                    = NODES(btr, x)[i];
+            z                    = NODES(btr, x)[i + 1];
+            KEYS(btr, y)[y->n++] = k;
+            memmove(KEYS(btr, y)  + y->n, KEYS(btr, z),   z->n      * sizeof k);
             memmove(NODES(btr, y) + y->n, NODES(btr, z), (z->n + 1) * sizeof y);
             y->n += z->n;
-
+   
             memmove(KEYS(btr, x) + i,
                     KEYS(btr, x) + i + 1,
                     (x->n - i - 1) * sizeof k);
@@ -447,7 +449,8 @@ static bt_data_t nodedeletekey(struct btree     *btr,
                     (x->n - i - 1) * sizeof k);
             x->n--;
             bt_free_btreenode(z, btr);
-            return v;
+            return nodedeletekey(btr, y, k, s);
+
         }
     }
     /* Case 3
@@ -530,6 +533,7 @@ bt_data_t bt_delete(struct btree *btr, bt_data_t k) {
     struct btreenode *x;
     bt_data_t r;
 
+    case_2c_ptr = NULL;
     r = nodedeletekey(btr, btr->root, k, 0);
 
     /* remove an empty, non-leaf node from root, this is the ONLY
@@ -541,7 +545,9 @@ bt_data_t bt_delete(struct btree *btr, bt_data_t k) {
         bt_free_btreenode(x, btr);
     }
     btr->numkeys--;
-    return r;
+
+    if (case_2c_ptr) return case_2c_ptr;
+    else             return r;
 }
 
 static bt_data_t findmaxnode(struct btree *btr, struct btreenode *x) {

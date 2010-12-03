@@ -769,10 +769,10 @@ void iupdateAction(redisClient *c,
                    uchar        cmiss[]) {
     BUILD_RANGE_QUERY_LIST
 
-    int sent = 0;
+    bool pktype = Tbl[server.dbid][tmatch].col_type[0];
+    int  sent   = 0;
     if (card) {
-        robj *o        = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
-        bool  pktype   = Tbl[server.dbid][tmatch].col_type[0];
+        robj *o = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
         if (qed) {
             obsl_t **vector = sortOrderByToVector(ll, ctype, w->asc);
             for (int k = 0; k < (int)listLength(ll); k++) {
@@ -796,8 +796,8 @@ void iupdateAction(redisClient *c,
             while((ln = listNext(li)) != NULL) {
                 robj *nkey = ln->value;
                 robj *row  = btFindVal(o, nkey, pktype);
-                updateRow(c, o, nkey, row,
-                          tmatch, ncols, matches, indices, vals, vlens, cmiss);
+                updateRow(c, o, nkey, row, tmatch, ncols, matches, indices,
+                          vals, vlens, cmiss);
                 decrRefCount(nkey); /* from cloneRobj in BUILD_RQ_OPERATION */
             }
             listReleaseIterator(li);

@@ -467,7 +467,7 @@ void parseOptions(int argc, char **argv) {
 
 static void usage(char *arg) {
     if (arg) printf("Wrong option '%s' or option argument missing\n\n", arg);
-    printf("Usage: redis-benchmark [-h <host>] [-p <port>] [-c <concurrency>] [-n <requests]> -A [OK,INT,LINE,MULTI] -Q query_arg1 query_arg2 ...\n\n");
+    printf("Usage: gen-benchmark [-h <host>] [-p <port>] [-c <concurrency>] [-n <requests]> -A [OK,INT,LINE,MULTI] -Q query_arg1 query_arg2 ...\n\n");
     printf(" -Q \"QUERY\"            QUERY to be sent to server each command line arg passed to redis line protocol as a seperate arg [-Q MUST COME LAST]\n");
     printf(" -A [OK,INT,LINE,MULTI] response type must be one of them\n");
     printf(" -h <hostname>           Server hostname (default 127.0.0.1)\n");
