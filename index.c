@@ -184,7 +184,7 @@ void runCmdInFakeClient(sds s) {
     if (arity > 2) {
         args = strchr(end, ' ');
         if (!args) goto run_cmd_err;
-        else      args++;
+        else       args++;
     }
 
     argv                = malloc(sizeof(sds) * arity);

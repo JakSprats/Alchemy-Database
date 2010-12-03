@@ -121,7 +121,7 @@ int get_token_len(char *tok) {
 }
 
 static char *min2(char *p, char *q) {
-    if (!p)         return q;
+    if      (!p)    return q;
     else if (!q)    return p;
     else if (p < q) return p;
     else            return q;

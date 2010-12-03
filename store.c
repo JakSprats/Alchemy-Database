@@ -97,12 +97,12 @@ void legacyTableCommand(redisClient *c) {
     while (1) {
         char *type  = strchr(cname, '=');
         char *nextc = strchr(cname, ',');
-        if (type) {
-            *type = '\0';
-            type++;
-        } else {
+        if (!type) {
             addReply(c,shared.missingcolumntype);
             return;
+        } else {
+            *type = '\0';
+            type++;
         }
         if (nextc) {
             *nextc = '\0';
@@ -126,9 +126,8 @@ void legacyTableCommand(redisClient *c) {
         }
         strcpy(col_names[col_count], cname);
         col_count++;
-        if (!nextc) {
-            break;
-        } else if (col_count == MAX_COLUMN_PER_TABLE) {
+        if (!nextc) break;
+        if (col_count == MAX_COLUMN_PER_TABLE) {
             addReply(c,shared.toomanycolumns);
             return;
         }
