@@ -330,6 +330,10 @@ struct sharedObjectsStruct {
 } shared;
 
 struct redisServer {
+#ifdef ALSOSQL
+    unsigned int  dbid;
+    char         *luafilename;
+#endif   
     int port;
     int fd;
     redisDb *db;
@@ -436,10 +440,6 @@ struct redisServer {
     FILE *devnull;
     unsigned char big_endian;
     unsigned char psize;
-#ifdef ALSOSQL
-    int   dbid;
-    char *luafilename;
-#endif   
 };
 
 /* Structure to hold hash iteration abstration. Note that iteration over
