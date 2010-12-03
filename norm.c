@@ -197,7 +197,9 @@ void normCommand(redisClient *c) {
             sds e = ext_patt[i]->ptr;
             if (stringmatchlen(e, sdslen(e), key, sdslen(key), 0)) { /* MATCH */
                 robj *val    = dictGetEntryVal(de);
-                char *pk     = strchr(key, ':') + 1;
+                char *pk     = strchr(key, ':');
+                if (!pk) goto norm_end;
+                pk++;
                 char *end_pk = strchr(pk, ':');
                 int   pklen  = end_pk ? end_pk - pk : (int)strlen(pk);
                 robj *pko    = createStringObject(pk, pklen);
@@ -217,7 +219,9 @@ void normCommand(redisClient *c) {
                 } else if (val->type == REDIS_STRING) {
                     char *cname;
                     if (i == (n_ep - 1)) { /* primary key */
-                        cname = strchr(key + ext_len[i], ':') + 1;
+                        cname = strchr(key + ext_len[i], ':');
+                        if (!cname) goto norm_end;
+                        cname++;
                     } else {
                         /* 2ndary matches of REDIS_STRINGs MUST have the format
                             "primarywildcard:pk:secondarywildcard:columnname" */
@@ -239,7 +243,7 @@ void normCommand(redisClient *c) {
 
     if (!nrows) {
         addReply(c, shared.czero);
-        return;
+        goto norm_end;
     }
 
     robj               *argv[STORAGE_MAX_ARGC + 1];
@@ -273,7 +277,7 @@ void normCommand(redisClient *c) {
         legacyTableCommand(fc);
         if (!respOk(fc)) { /* most likely table already exists */
             handleTableCreationError(fc, lenobj);
-            goto norm_err;
+            goto norm_end;
         }
         decrRefCount(cdef);
 
@@ -307,7 +311,7 @@ void normCommand(redisClient *c) {
                 dictReleaseIterator(di);
                 decrRefCount(resp);
                 decrRefCount(ir);
-                goto norm_err;
+                goto norm_end;
             }
             decrRefCount(ir);
         }
@@ -319,7 +323,7 @@ void normCommand(redisClient *c) {
     }
     lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
 
-norm_err:
+norm_end:
     for (int i = 0; i < n_ep; i++) {
         decrRefCount(new_tbls[i]);
         decrRefCount(ext_patt[i]);

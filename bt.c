@@ -384,6 +384,15 @@ uint32 getStreamMallocSize(uchar *stream,
     return klen + vlen;
 }
 
+static void *_bt_access_raw_val(bt *btr, const robj *key, int ktype, bool del) {
+    bool  med; uchar sflag; uint32 ksize;
+    char *simkey = createSimKey(key, ktype, &med, &sflag, &ksize); /* FREE ME */
+    if (!simkey) return NULL;
+    uchar *stream = del ? bt_delete(btr, simkey) : bt_find(btr, simkey);
+    destroySimKey(simkey, med);                                    /* freeD */
+    return stream;
+}
+
 /* NOTE: this function can NOT be used in nested loops
           - it relies on a single GLOBAL variable (BtRobj[2]) */
 #define NUM_ROBJ_NESTING 2
@@ -394,11 +403,7 @@ static robj* _bt_find_val(bt         *btr,
                           int         ktype,
                           int         vtype,
                           int         nesting) {
-    bool  med; uchar sflag; uint32 ksize;
-    char *simkey = createSimKey(key, ktype, &med, &sflag, &ksize); /* FREE ME */
-    if (!simkey) return NULL;
-    uchar *stream = bt_find(btr, simkey);
-    destroySimKey(simkey, med);                                    /* freeD */
+    uchar *stream = _bt_access_raw_val(btr, key, ktype, 0);
     if (!stream) return NULL;
 
     BtRobj[nesting].type     = ktype;
@@ -409,11 +414,7 @@ static robj* _bt_find_val(bt         *btr,
 }
 
 static int _bt_del(bt *btr, const robj *key, int ktype, int vtype) {
-    bool  med; uchar sflag; uint32 ksize;
-    char *simkey = createSimKey(key, ktype, &med, &sflag, &ksize); /* FREE ME */
-    if (!simkey) return 0;
-    uchar *stream = bt_delete(btr, simkey);
-    destroySimKey(simkey, med);                                    /* freeD */
+    uchar *stream = _bt_access_raw_val(btr, key, ktype, 1);
     if (!stream) return 0;
 
     uint32 ssize  = getStreamMallocSize(stream, vtype, btr->is_index);
@@ -458,6 +459,8 @@ int btAdd(robj *o, void *key, void *val, int ktype) {
     else   return _bt_insert(btr, key, val, ktype, REDIS_ROW);
 }
 
+//TODO need a _bt_replace, no need to mess w/ the btree for a replace
+//                         just replace pointer
 int btReplace(robj *o, void *key, void *val, int ktype) {
     bt  *btr = (bt *)(o->ptr);
     int  del = _bt_del(btr, key, ktype, REDIS_ROW);

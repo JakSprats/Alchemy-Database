@@ -111,15 +111,20 @@ ull get_sum_all_index_size_for_table(redisClient *c, int tmatch);
     robj *btt     = virt ? o : lookupKey(c->db, ind);                         \
     int   ind_col = (int)Index[server.dbid][w->imatch].column;                \
     bool  pktype  = Tbl[server.dbid][tmatch].col_type[0];                     \
-    bool  brk_pk  = (w->asc && w->obc == 0);                                  \
     bool  q_pk    = (!w->asc || (w->obc != -1 && w->obc != 0));               \
-    bool  brk_fk  = (w->asc  && w->obc != -1 && w->obc == ind_col);           \
-    bool  q_fk    = (w->obc != -1);                                           \
+    bool  brk_pk  = (w->asc && w->obc == 0);                                  \
+    bool  q_fk    = (w->obc != -1 && w->obc != ind_col);                      \
+    bool  brk_fk  = (w->asc && !q_fk);                                        \
     qed           = virt ? q_pk : q_fk;                                       \
+    long  loops   = -1;                                                       \
     bi            = btGetRangeIterator(btt, w->low, w->high, virt);           \
     while ((be = btRangeNext(bi, 1)) != NULL) {     /* iterate btree */       \
         if (virt) {                                                           \
-            if (brk_pk && (uint32)w->lim == card) break; /* ORDRBY PK LIM */  \
+            loops++;                                                          \
+            if (brk_pk) {                                                     \
+                if (w->ofst != -1 && loops < w->ofst) continue;               \
+                if ((uint32)w->lim == card) break; /* ORDRBY PK LIM */        \
+            }                                                                 \
             robj *key = be->key;                                              \
             robj *row = be->val;
             /* PK operation specific code comes here */
@@ -133,13 +138,18 @@ ull get_sum_all_index_size_for_table(redisClient *c, int tmatch);
             } else {                                                          \
                 nbi       = btGetFullRangeIterator(val, 0, 0);                \
                 while ((nbe = btRangeNext(nbi, 1)) != NULL) {  /* NodeBT */   \
-                    if (brk_fk && (uint32)w->lim == card) break;              \
+                    loops++;                                                  \
+                    if (brk_fk) {                                             \
+                        if (w->ofst != -1 && loops < w->ofst) continue;       \
+                        if ((uint32)w->lim == card) break; /* ORDRBY FK LIM */\
+                    }                                                         \
                     robj *key = nbe->key;                                     \
                     robj *row = btFindVal(o, key, pktype);
                     /* FK operation specific code comes here */
-    #define RANGE_QUERY_LOOKUP_END                                            \
+#define RANGE_QUERY_LOOKUP_END                                                \
                     card++;                                                   \
                 }                                                             \
+                if (brk_fk && (uint32)w->lim == card) break; /*ORDRBY FK LIM*/\
             }                                                                 \
             btReleaseRangeIterator(nbi);                                      \
             nbi = NULL; /* explicit in case of goto's in inner loop */        \
@@ -147,7 +157,6 @@ ull get_sum_all_index_size_for_table(redisClient *c, int tmatch);
     }                                                                         \
     btReleaseRangeIterator(bi);                                               \
     bi = NULL; /* explicit in case of goto's in inner loop */
-
 
 
 #define IN_QUERY_LOOKUP_START                                                 \

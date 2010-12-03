@@ -121,7 +121,7 @@ int get_token_len(char *tok) {
 }
 
 static char *min2(char *p, char *q) {
-    if (!p)         return q;
+    if      (!p)    return q;
     else if (!q)    return p;
     else if (p < q) return p;
     else            return q;
@@ -143,10 +143,11 @@ static char *min3(char *p, char *q, char *o) {
 }
 
 int get_token_len_delim(char *nextp, char x, char z) {
-    char *p = strchr(nextp, x);
-    char *q = strchr(nextp, z);
-    char *o = strchr(nextp, ' ');
-    return min3(q, p, o) - nextp;
+    char *p  = strchr(nextp, x);
+    char *q  = strchr(nextp, z);
+    char *o  = strchr(nextp, ' ');
+    char *mn = min3(q, p, o);
+    return mn ? mn - nextp : 0;
 }
 
 char *next_token_delim(char *p, char x, char z) {

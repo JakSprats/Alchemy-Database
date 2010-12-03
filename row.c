@@ -628,7 +628,13 @@ bool updateRow(redisClient *c,
     uchar  *sixbitstr[MAX_COLUMN_PER_TABLE];
     int     sixbitlen[MAX_COLUMN_PER_TABLE];
     uint32  n_6b_s  = 0;
-    bool    can_six = 1;
+    bool    can_six = 0;
+    for (int i = 1; i < ncols; i++) {       // can_six needs a string
+        if (Tbl[server.dbid][tmatch].col_type[i] == COL_TYPE_STRING) {
+            can_six = 1;
+            break;
+        }
+    }
     for (int i = 1; i < ncols; i++) {       // check can_six, create sixbitstr
         if (Tbl[server.dbid][tmatch].col_type[i] == COL_TYPE_STRING) {
             uint32  s_len;
@@ -674,6 +680,7 @@ bool updateRow(redisClient *c,
 
     uint32 k = 0;
     for (int i = 1; i < ncols; i++) {       // SET data
+        // TODO COL_TYPE_FLOAT
         if (Tbl[server.dbid][tmatch].col_type[i] == COL_TYPE_INT) {
             writeUIntCol(&row, sflags[i], avals[i].s_i);
         } else {
@@ -699,18 +706,21 @@ bool updateRow(redisClient *c,
         btDelete(o, okey,    Tbl[server.dbid][tmatch].col_type[0]);
         btAdd(   o, npk,  r, Tbl[server.dbid][tmatch].col_type[0]);
         decrRefCount(npk);
-    } else if (matches) {
-        robj *npk = createStringObjectFromAobj(&avals[0]);
-        for (int i = 0; i < matches; i++) { //redo ALL affected indices
-            int inum   = indices[i];
-            int cmatch = Index[server.dbid][inum].column;
-            if (!cmiss[cmatch]) {
-                robj *new_val = createStringObjectFromAobj(&avals[cmatch]);
-                updateIndex(c->db, okey, npk, new_val, orow, inum, 0, tmatch);
-                decrRefCount(new_val);
+    } else {
+        if (matches) {
+            robj *npk = createStringObjectFromAobj(&avals[0]);
+            for (int i = 0; i < matches; i++) { //redo ALL affected indices
+                int inum   = indices[i];
+                int cmatch = Index[server.dbid][inum].column;
+                if (!cmiss[cmatch]) {
+                    robj *new_val = createStringObjectFromAobj(&avals[cmatch]);
+                    updateIndex(c->db, okey, npk, new_val, orow,
+                                inum, 0, tmatch);
+                    decrRefCount(new_val);
+                }
             }
+            decrRefCount(npk);
         }
-        decrRefCount(npk);
         // overwrite w/ new row
         btReplace(o, okey, r, Tbl[server.dbid][tmatch].col_type[0]);
     }

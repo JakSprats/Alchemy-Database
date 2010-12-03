@@ -302,6 +302,10 @@ void createTableAsSelect(redisClient *c, char *as_cmd) {
 void createTableAsObject(redisClient *c) {
     char *as     = c->argv[3]->ptr;
     char *as_cmd = next_token(as);
+    if (!as_cmd) {
+        addReply(c, shared.create_table_as_access_num_args);
+        return;
+    }
     int   axs    = -1;
     for (int i = 0; i < NUM_ACCESS_TYPES; i++) {
         if (!strncasecmp(as_cmd, AccessCommands[i].name,
@@ -486,7 +490,8 @@ void denormCommand(redisClient *c) {
     s_wldcrd         = sdscatlen(s_wldcrd, "%s", 2);
     if (restlen) s_wldcrd = sdscatlen(s_wldcrd, &wildcard[spot + 1], restlen);
     sds     d_wldcrd = sdsdup(s_wldcrd);
-    char   *fmt      = strstr(d_wldcrd, "%s") + 1;
+    char   *fmt      = strstr(d_wldcrd, "%s"); /* written 2 lines up cant fail*/
+    fmt++;
     *fmt             = 'd';
 
     robj               *argv[4];

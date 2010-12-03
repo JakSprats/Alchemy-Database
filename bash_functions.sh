@@ -283,8 +283,8 @@ function join_div_sub_wrkr() {
 
 function order_by_test() {
   echo "ORDER BY TEST"
-  echo SELECT id,name,salary,division FROM employee WHERE id BETWEEN 4 AND 9 ORDER BY id LIMIT 4 1;
-  $CLI SELECT "id,name,salary,division" FROM employee WHERE "id BETWEEN 4 AND 9 ORDER BY id LIMIT 4 1"
+  echo SELECT id,name,salary,division FROM employee WHERE id BETWEEN 4 AND 9 ORDER BY id LIMIT 4 OFFSET 1;
+  $CLI SELECT "id,name,salary,division" FROM employee WHERE "id BETWEEN 4 AND 9 ORDER BY id LIMIT 4 OFFSET 1"
 
   echo SELECT id,name,salary,division FROM employee WHERE id BETWEEN 4 AND 9 ORDER BY id DESC LIMIT 4;
   $CLI SELECT "id,name,salary,division" FROM employee WHERE "id BETWEEN 4 AND 9 ORDER BY id DESC LIMIT 4"
@@ -302,6 +302,38 @@ function order_by_test() {
   $CLI SELECT "id,name,salary,division" FROM employee WHERE "division BETWEEN 22 AND 77 ORDER BY name DESC LIMIT 4"
 }
 
+function order_by_limit_offset_test() {
+    echo "PK O(PK)"
+    $CLI SELECT id,name,salary,division FROM employee WHERE id BETWEEN 1 AND 9 ORDER BY id
+    echo LIMIT 3
+    $CLI SELECT id,name,salary,division FROM employee WHERE name BETWEEN a AND z ORDER BY id LIMIT 3
+    echo LIMIT 3 OFFSET 1
+    $CLI SELECT id,name,salary,division FROM employee WHERE name BETWEEN a AND z ORDER BY id LIMIT 3 OFFSET 1
+
+    echo
+    echo "PK O(name)"
+    $CLI SELECT id,name,salary,division FROM employee WHERE id BETWEEN 1 AND 11 ORDER BY name
+    echo LIMIT 3
+    $CLI SELECT id,name,salary,division FROM employee WHERE id BETWEEN 1 AND 11 ORDER BY name LIMIT 3
+    echo LIMIT 3 OFFSET 1
+    $CLI SELECT id,name,salary,division FROM employee WHERE id BETWEEN 1 AND 11 ORDER BY name LIMIT 3 OFFSET 1
+
+    echo
+    echo "FK O(FK) - FK=name"
+    $CLI SELECT id,name,salary,division FROM employee WHERE name BETWEEN a AND z ORDER BY name
+    echo LIMIT 3
+    $CLI SELECT id,name,salary,division FROM employee WHERE name BETWEEN a AND z ORDER BY name LIMIT 3
+    echo LIMIT 3 OFFSET 1
+    $CLI SELECT id,name,salary,division FROM employee WHERE name BETWEEN a AND z ORDER BY name LIMIT 3 OFFSET 1
+
+    echo
+    echo "FK O(salary) - FK=name"
+    $CLI SELECT id,name,salary,division FROM employee WHERE name BETWEEN a AND z ORDER BY salary
+    echo LIMIT 3
+    $CLI SELECT id,name,salary,division FROM employee WHERE name BETWEEN a AND z ORDER BY salary LIMIT 3
+    echo LIMIT 3 OFFSET 1
+    $CLI SELECT id,name,salary,division FROM employee WHERE name BETWEEN a AND z ORDER BY salary LIMIT 3 OFFSET 1
+}
 
 function order_by_test_joins() {
   echo SELECT division.name,division.location,subdivision.name,worker.name,worker.salary FROM division,subdivision,worker WHERE division.id = subdivision.division AND division.id = worker.division AND division.id BETWEEN 11 AND 33 ORDER BY worker.salary
@@ -489,12 +521,15 @@ function scan_x3() {
   echo SCANSELECT \* FROM X3 WHERE f BETWEEN 1.2 AND 3.1
   $CLI SCANSELECT \* FROM X3 WHERE f BETWEEN 1.2 AND 3.1
 
+  echo
+  echo SCANSELECT \* FROM X3 ORDER BY f DESC
+  $CLI SCANSELECT \* FROM X3 ORDER BY f DESC
   echo SCANSELECT \* FROM X3 ORDER BY f DESC LIMIT 2
   $CLI SCANSELECT \* FROM X3 ORDER BY f DESC LIMIT 2
-  echo SCANSELECT \* FROM X3 ORDER BY f DESC LIMIT 2  1
-  $CLI SCANSELECT \* FROM X3 ORDER BY f DESC LIMIT 2  1
-  echo SCANSELECT \* FROM X3 ORDER BY f DESC LIMIT 2  2
-  $CLI SCANSELECT \* FROM X3 ORDER BY f DESC LIMIT 2  2
+  echo SCANSELECT \* FROM X3 ORDER BY f DESC LIMIT 2 OFFSET 1
+  $CLI SCANSELECT \* FROM X3 ORDER BY f DESC LIMIT 2 OFFSET 1
+  echo SCANSELECT \* FROM X3 ORDER BY f DESC LIMIT 2 OFFSET 2
+  $CLI SCANSELECT \* FROM X3 ORDER BY f DESC LIMIT 2 OFFSET 2
 
 }
 
