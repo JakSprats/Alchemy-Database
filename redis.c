@@ -3168,7 +3168,6 @@ static int selectDb(redisClient *c, int id) {
     c->db       = &server.db[id];
     c->dictid   = id;
     server.dbid = id;
-RL4 "server.dbid: %d", server.dbid);
     return REDIS_OK;
 }
 
