@@ -486,7 +486,8 @@ void denormCommand(redisClient *c) {
     s_wldcrd         = sdscatlen(s_wldcrd, "%s", 2);
     if (restlen) s_wldcrd = sdscatlen(s_wldcrd, &wildcard[spot + 1], restlen);
     sds     d_wldcrd = sdsdup(s_wldcrd);
-    char   *fmt      = strstr(d_wldcrd, "%s") + 1;
+    char   *fmt      = strstr(d_wldcrd, "%s"); /* written 2 lines up cant fail*/
+    fmt++;
     *fmt             = 'd';
 
     robj               *argv[4];
