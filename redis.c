@@ -1816,6 +1816,8 @@ static void createSharedObjects(void) {
         "-ERR SYNTAX: WHERE ... ORDER BY col - \"BY\" MISSING\r\n"));
     shared.whereclause_orderby_err = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: WHERE ... ORDER BY col [DESC] [LIMIT N]\r\n"));
+    shared.orderby_limit_needs_number = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: WHERE ... ORDER BY col [DESC] LIMIT N = \"N\" MISSING\r\n"));
 
     shared.selectsyntax = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: SELECT col,,,, FROM tablename WHERE [indexed_column = val]|| [indexed_column BETWEEN x AND y] [ORDER BY col LIMIT num offset] [STORE redis_cmd redis_args]\r\n"));
@@ -11297,6 +11299,7 @@ static void computeDatasetDigest(unsigned char *final) {
                 }
                 hashReleaseIterator(hi);
             } else {
+                //TODO add Tables and Indices
                 redisPanic("Unknown object type");
             }
             /* If the key has an expire, add it to the mix */

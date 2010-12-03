@@ -184,7 +184,7 @@ void runCmdInFakeClient(sds s) {
     if (arity > 2) {
         args = strchr(end, ' ');
         if (!args) goto run_cmd_err;
-        else       args++;
+        args++;
     }
 
     argv                = malloc(sizeof(sds) * arity);
@@ -1006,41 +1006,3 @@ void freeNrlIndexObject(robj *o) {
     listRelease(nrlind->l2);
     free(nrlind);
 }
-
-#if 0
-/* LEGACY CODE - the ROOTS */
-void iselectCommand(redisClient *c) {
-    int imatch = checkIndexedColumnOrReply(c, c->argv[1]->ptr);
-    if (imatch == -1) return;
-    int tmatch = Index[server.dbid][imatch].table;
-
-    iselectAction(c, c->argv[2], tmatch, imatch, c->argv[3]->ptr);
-}
-
-void iupdateCommand(redisClient *c) {
-    int   imatch = checkIndexedColumnOrReply(c, c->argv[1]->ptr);
-    if (imatch == -1) return;
-    int   tmatch = Index[server.dbid][imatch].table;
-    int   ncols   = Tbl[server.dbid][tmatch]._col_count;
-
-    int   cmatchs  [MAX_COLUMN_PER_TABLE];
-    char *mvals    [MAX_COLUMN_PER_TABLE];
-    int   mvlens   [MAX_COLUMN_PER_TABLE];
-    int   qcols = parseUpdateOrReply(c, tmatch, c->argv[3]->ptr, cmatchs,
-                                     mvals, mvlens);
-    if (!qcols) return;
-
-    MATCH_INDICES(tmatch)
-    ASSIGN_UPDATE_HITS_AND_MISSES
-
-    iupdateAction(c, c->argv[2]->ptr, tmatch, imatch, ncols, matches, indices,
-                  vals, vlens, cmiss);
-}
-
-void ideleteCommand(redisClient *c) {
-    int   imatch = checkIndexedColumnOrReply(c, c->argv[1]->ptr);
-    if (imatch == -1) return;
-    int   tmatch = Index[server.dbid][imatch].table;
-    ideleteAction(c, c->argv[2]->ptr, tmatch, imatch);
-}
-#endif

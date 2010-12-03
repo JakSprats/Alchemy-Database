@@ -89,8 +89,8 @@ bool parseCreateTable(redisClient *c,
     while (token) {
         int clen;
         while (token) { /* first parse column name */
-            clen  = get_token_len(token);
-            token = rem_backticks(token, &clen);
+            clen      = get_token_len(token);
+            token     = rem_backticks(token, &clen);
             if (ignore_cname(token)) {
                 token = get_next_token_nonparaned_comma(token);
             } else {
@@ -103,7 +103,7 @@ bool parseCreateTable(redisClient *c,
         token       = next_token_delim(token, ',', ')'); /* parse ctype, flags*/
         if (!token) break;
         sds   type  = sdsnewlen(token, get_token_len_delim(token, ',', ')'));
-        token = get_next_token_nonparaned_comma(token);
+        token       = get_next_token_nonparaned_comma(token);
 
         /* in type search for INT (but not BIGINT - too big @8 Bytes) */
         int ntbls = Num_tbls[server.dbid];
@@ -176,6 +176,10 @@ static bool parseOrderBy(redisClient  *c,
     }
 
     char *token = next_token(by);
+    if (!token) {
+        if (reply) addReply(c, shared.whereclause_orderby_no_by);
+        return 0;
+    }
     char *nextp = strchr(token, ' ');
     int   tlen  = nextp ? nextp - token : (int)strlen(token);
     char *prd   = strchr(token, '.');
@@ -209,6 +213,10 @@ static bool parseOrderBy(redisClient  *c,
     if (nextp) { /* isblank() loop already done above */
         if (!strncasecmp(nextp, "LIMIT", 5)) {
             nextp  = next_token(nextp);
+            if (!nextp) {
+                addReply(c, shared.orderby_limit_needs_number);
+                return 0;
+            }
             w->lim = atoi(nextp);
             nextp  = next_token(nextp);
             if (nextp) {
@@ -230,6 +238,11 @@ bool parseWCAddtlSQL(redisClient *c,
     bool check_sto = 1;
     if (!strncasecmp(token, "ORDER ", 6)) {
         char *by      = next_token(token);
+        if (!by) {
+            if (reply) addReply(c, shared.whereclause_orderby_no_by);
+            return 0;
+        }
+
         char *lfin    = NULL;
         if (!parseOrderBy(c, by, tmatch, w, &lfin, reply)) return 0;
         if (lfin) {
@@ -376,9 +389,11 @@ uchar checkSQLWhereClauseReply(redisClient *c,
     char  *finish = NULL;
     if (!strncasecmp(tkn, "IN ", 3)) {
         tkn   = next_token(tkn);
+        if (!tkn) goto check_sql_wc_err;
         wtype = parseWC_IN(c, tkn, &w->inl, just_parse, &finish);
     } else if (!strncasecmp(tkn, "BETWEEN ", 8)) { /* RANGE QUERY */
         tkn = next_token(tkn);
+        if (!tkn) goto check_sql_wc_err;
         wtype = parseRangeReply(c, tkn, w, &finish);
     } else {
         goto check_sql_wc_err;
@@ -425,7 +440,7 @@ static bool joinParseWCReply(redisClient  *c,
             char *start = eq + 1;
             if (isblank(*start))  tok2 = next_token(start); /* col= x */
             else                  tok2 = start; /* col=x */
-            if (tok2 > and) goto joincmd_end;
+            if (!tok2 || tok2 > and) goto joincmd_end;
             char *x     = strchr(tok2, ' ');
             int t2len   = x ? x - tok2 : (int)strlen(tok2);
             jind2       = createStringObject(tok2, t2len);
@@ -444,9 +459,11 @@ static bool joinParseWCReply(redisClient  *c,
             char *end     = NULL;
             if (!strncasecmp(tok2, "IN ", 3)) {
                 char *tkn = next_token(tok2);
+                if (!tkn) goto joincmd_end;
                 wtype     = parseWC_IN(c, tkn, &jb->w.inl, just_parse, &end);
             } else if (!strncasecmp(tok2, "BETWEEN ", 8)) { /* RANGE QUERY */
                 char *tkn = next_token(tok2);
+                if (!tkn) goto joincmd_end;
                 wtype     = parseRangeReply(c, tkn, &jb->w, &end);
             } else {
                 goto joincmd_end;
@@ -479,6 +496,7 @@ static bool joinParseWCReply(redisClient  *c,
         if (*next) { /* Parse Next AND-Tuplet */
             if (!strncasecmp(*next, "AND ", 4)) {
                 *next = next_token(*next);
+                if (!*next) goto joincmd_end;
                 fin = 0; /* i.e. loop */
             } else {
                 if (!parseWCAddtlSQL(c, *next, &jb->w, -1, 1)) goto joincmd_end;

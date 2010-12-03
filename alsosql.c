@@ -407,7 +407,7 @@ void createTableCommitReply(redisClient *c,
     Num_tbls[server.dbid]++;
 }
 
-void createTable(redisClient *c) {
+static void createTable(redisClient *c) {
     if (Num_tbls[server.dbid] >= MAX_NUM_TABLES) {
         addReply(c, shared.toomanytables);
         return;

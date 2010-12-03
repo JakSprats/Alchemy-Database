@@ -82,7 +82,6 @@ int find_column(int tmatch, char *column);
 int find_column_n(int tmatch, char *column, int len);
 
 bool cCpyOrReply(redisClient *c, char *src, char *dest, unsigned int len);
-void createTable(redisClient *c);
 
 /* TABLE_CHECK_OR_REPLY(char *TBL, RET) -
      creates (int tmatch) */

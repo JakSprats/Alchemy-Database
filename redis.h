@@ -297,6 +297,7 @@ struct sharedObjectsStruct {
 
     *whereclause_in_err,
     *whereclause_orderby_no_by, *whereclause_orderby_err,
+    *orderby_limit_needs_number,
 
     *selectsyntax,           *selectsyntax_nofrom,
     *selectsyntax_nowhere,   *select_notindxd,       *selectsyntax_noequals,
