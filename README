@@ -1,11 +1,11 @@
-NOTE The Redisql project's documentation has been moved to http://code.google.com/p/redisql/
+NOTE The Redisql project's documentation has been moved to http://code.google.com/p/alchemydatabase/
 
 Redisql: A Hybrid Relational-Database/NOSQL-Datastore
 
 Redisql is a full RDBMS and a full NOSQL datastore combined into one server
 In Redisql, SQL Tables, Statements, and Data-types are supported. Redisql is built on top of the NOSQL datastore redis, supports all redis data-structures and commands and supports (de)normalisation of these data structures (lists,sets,hash-tables) to/from SQL tables. Redisql can also easily import/export tables to/from Mysql. Redisql is more than a data storage Swiss Army Knife, it is also extremely fast and extremely efficient w/ memory.
 
-NOTE The Redisql project's documentation has been moved to http://code.google.com/p/redisql/
+NOTE The Redisql project's documentation has been moved to http://code.google.com/p/alchemydatabase/
 
 The code will still reside in github, but the documentation and issue tracking will be done in google code
 
