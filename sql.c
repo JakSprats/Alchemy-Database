@@ -202,8 +202,9 @@ static bool parseOrderBy(redisClient  *c,
         w->obc = find_column_n(tmatch, token, tlen);
     }
 
+    if (nextp) while (isblank(*nextp)) nextp++;
+
     if (nextp) {
-        while (isblank(*nextp)) nextp++;
         if (!strncasecmp(nextp, "DESC", 4)) {
             w->asc = 0;
             nextp  = next_token(nextp);
@@ -220,8 +221,15 @@ static bool parseOrderBy(redisClient  *c,
             w->lim = atoi(nextp);
             nextp  = next_token(nextp);
             if (nextp) {
-                w->ofst = atoi(nextp); /* LIMIT N OFFSET */
-                nextp   = next_token(nextp);
+                if (!strncasecmp(nextp, "OFFSET", 6)) {
+                    nextp  = next_token(nextp);
+                    if (!nextp) {
+                        addReply(c, shared.orderby_offset_needs_number);
+                        return 0;
+                    }
+                    w->ofst = atoi(nextp); /* LIMIT N OFFSET X */
+                    nextp   = next_token(nextp);
+                }
             }
         }
     }

@@ -647,20 +647,24 @@ void iselectAction(redisClient *c,
     }
 
     int sent = 0;
-    if (qed && card) {
-        obsl_t **vector = sortOrderByToVector(ll, ctype, w->asc);
-        for (int k = 0; k < (int)listLength(ll); k++) {
-            if (w->lim != -1 && sent == w->lim) break;
-            if (w->ofst > 0) {
-                w->ofst--;
-            } else {
-                sent++;
-                obsl_t *ob = vector[k];
-                addReplyBulk(c, ob->row);
+    if (card) {
+        if (qed) {
+            obsl_t **vector = sortOrderByToVector(ll, ctype, w->asc);
+            for (int k = 0; k < (int)listLength(ll); k++) {
+                if (w->lim != -1 && sent == w->lim) break;
+                if (w->ofst > 0) {
+                    w->ofst--;
+                } else {
+                    sent++;
+                    obsl_t *ob = vector[k];
+                    addReplyBulk(c, ob->row);
+                }
             }
+            sortedOrderByCleanup(vector, listLength(ll), ctype, 1);
+            free(vector);
+        } else {
+            sent = card;
         }
-        sortedOrderByCleanup(vector, listLength(ll), ctype, 1);
-        free(vector);
     }
     if (ll) listRelease(ll);
 
