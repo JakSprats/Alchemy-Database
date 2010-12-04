@@ -317,8 +317,7 @@ void assignKeyRobj(uchar *stream, robj *key) {
     } else if (sflag == 32) { // FLOAT
         double f      = getFloat(stream);
         char buf[32];
-        snprintf(buf, 31, "%10.10g", f);
-        buf[31] = '\0';
+        sprintfOutputFloat(buf, 32, f);
         key->encoding = REDIS_ENCODING_RAW;
         key->ptr      = sdsnewlen(buf, strlen(buf)); /* must be freed */
     }

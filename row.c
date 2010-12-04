@@ -111,7 +111,6 @@ static uint32 createICol(redisClient *c,
     if (!checkUIntReply(c, l)) return 0;
     return _createICol(l, sflag, col);
 }
-
 static uint32 createFCol(redisClient *c,
                          char        *start,
                          uint32       len,
@@ -216,14 +215,14 @@ static float streamFloatToFloat(uchar *data, uint32 *clen) {
     row++;
 
 #define SET_COL_OFFSET(row, c_ofst)                        \
-    if (rflag & RFLAG_1BYTE_INT) {                         \
-        *row = (uchar)c_ofst[i];                   \
+    if (rflag        & RFLAG_1BYTE_INT) {                  \
+        *row = (uchar)c_ofst[i];                           \
         row++;                                             \
     } else if (rflag & RFLAG_2BYTE_INT) {                  \
         unsigned short m = (unsigned short)c_ofst[i];      \
         memcpy(row, &m, USHORT_SIZE);                      \
         row += USHORT_SIZE;                                \
-    } else {                                               \
+    } else {        /* RFLAG_4BYTE_INT */                  \
         memcpy(row, &(c_ofst[i]), UINT_SIZE);              \
         row += UINT_SIZE;                                  \
     }
@@ -276,7 +275,7 @@ robj *createRow(redisClient *c,
     for (int i = 1; i < ncols; i++) { // modify cofsts (INTs are binary streams)
         int   len   = col_ofsts[i] - col_ofsts[i - 1] - 1;
         int   diff  = 0;
-        if (Tbl[server.dbid][tmatch].col_type[i] == COL_TYPE_INT) {
+        if (Tbl[server.dbid][tmatch].col_type[i]        == COL_TYPE_INT) {
             char   *start = vals + col_ofsts[i - 1];
             uint32  clen  = createICol(c, start, len, &sflags[i], &icols[i]);
             if (!clen) return NULL;
@@ -286,7 +285,7 @@ robj *createRow(redisClient *c,
             uint32  clen  = createFCol(c, start, len, &fcols[i]);
             if (!clen) return NULL;
             diff          = (len - clen);  
-        } else if (can_six) {       /* COL_TYPE_STRING */
+        } else if (can_six) {                           /* COL_TYPE_STRING */
             diff          = (len - sixbitlen[k]);  
             k++;
         }
@@ -304,11 +303,11 @@ robj *createRow(redisClient *c,
 
     k = 0;
     for (int i = 1; i < ncols; i++) { // SET data      (size+=rlen)
-        if (Tbl[server.dbid][tmatch].col_type[i] == COL_TYPE_INT) {
+        if (Tbl[server.dbid][tmatch].col_type[i]        == COL_TYPE_INT) {
             writeUIntCol(&row, sflags[i], icols[i]);
         } else if (Tbl[server.dbid][tmatch].col_type[i] == COL_TYPE_FLOAT) {
             writeFloatCol(&row, fcols[i]);
-        } else {
+        } else {                                        /* COL_TYPE_STRING */
             if (can_six) {
                 memcpy(row, sixbitstr[k], sixbitlen[k]);
                 row += sixbitlen[k];
@@ -328,27 +327,27 @@ robj *createRow(redisClient *c,
     return r;
 }
 
-//IMPORTANT: do not modify buffer(row) here [READ-OP]
+/* IMPORTANT: do not modify buffer(row) here [READ-OP] */
 static uchar *getRowPayload(uchar  *row,
                             uchar  *rflag,
                             uint32 *ncols,
                             uint32 *rlen) {
     uchar *o_row     = row;
-    *rflag           = *row;                          // GET flag
+    *rflag           = *row;                          /* GET flag */
     row++;
     char   sflag     = *rflag & RFLAG_SIZE_FLAG;
-    *ncols           = *row;                          // GET ncols
+    *ncols           = *row;                          /* GET ncols */
     row++;
-    row             += (*ncols * sflag);              // SKIP col_ofsts
+    row             += (*ncols * sflag);              /* SKIP col_ofsts */
     uint32 meta_len  = row - o_row;
 
-    if (*rflag & RFLAG_1BYTE_INT) {                   // rlen is final cofst
+    if (*rflag        & RFLAG_1BYTE_INT) {            /* rlen is final cofst */
         uchar *x = (uchar*)row - 1;
         *rlen    = (uint32)*x;
     } else if (*rflag & RFLAG_2BYTE_INT) {
         uchar *x = row - 2;
         *rlen    = (uint32)(*((unsigned short *)x));
-    } else {
+    } else {         /* RFLAG_4BYTE_INT */
         uchar *x = row - 4;
         *rlen    = *((uint32 *)x);
     }
@@ -393,6 +392,12 @@ static aobj getPk(robj *okey, uchar ctype, bool force_string) {
     return a;
 }
 
+void sprintfOutputFloat(char *buf, int len, float f) {
+    //snprintf(buf, len, "%10.10f", f);
+    snprintf(buf, len, "%.10g", f);
+    buf[len - 1] = '\0';
+}
+
 char RawCols[MAX_COLUMN_PER_TABLE][32];
 
 //IMPORTANT: do not modify buffer(meta) here [READ-OP]
@@ -420,7 +425,7 @@ aobj getRawCol(robj  *r,
     cmatch--; // key was not stored
     uint32 start = 0;
     uint32 next;
-    if (rflag & RFLAG_1BYTE_INT) {
+    if (rflag        & RFLAG_1BYTE_INT) {
         if (cmatch) start = (uint32)*(cofst + cmatch - 1);
         next  = (uint32)*(cofst + cmatch);
     } else if (rflag & RFLAG_2BYTE_INT) {
@@ -431,7 +436,7 @@ aobj getRawCol(robj  *r,
         }
         m = (unsigned short *)(char *)(cofst + (cmatch * sflag));
         next = (uint32)*m;
-    } else {
+    } else {        /* RFLAG_4BYTE_INT */
         uint32 *i;
         if (cmatch) {
             i = (uint32 *)(char *)(cofst + ((cmatch - 1) * sflag));
@@ -441,7 +446,7 @@ aobj getRawCol(robj  *r,
         next = *i;
     }
 
-    if (Tbl[server.dbid][tmatch].col_type[o_cmatch] == COL_TYPE_INT) {
+    if (Tbl[server.dbid][tmatch].col_type[o_cmatch]        == COL_TYPE_INT) {
         uint32  clen;
         a.type       = COL_TYPE_INT;
         uchar  *data = row + start;
@@ -460,18 +465,18 @@ aobj getRawCol(robj  *r,
         uint32  clen;
         uchar  *data = row + start;
         a.type       = COL_TYPE_FLOAT;
-        float   val  = streamFloatToFloat(data, &clen);
+        float   f    = streamFloatToFloat(data, &clen);
         if (!force_string && ctype == COL_TYPE_FLOAT) { /* request for FLOAT */
-            a.f    = val;
+            a.f    = f;
             a.enc  = COL_TYPE_FLOAT;
             a.len  = clen;
         } else {
-            snprintf(RawCols[o_cmatch], 32, "%10.10g", val);
+            sprintfOutputFloat(RawCols[o_cmatch], 32, f);
             a.len = strlen(RawCols[o_cmatch]);
             a.s   = RawCols[o_cmatch];
             a.enc  = COL_TYPE_STRING;
         }
-    } else {
+    } else {                                               /* COL_TYPE_STRING */
         a.type     = COL_TYPE_STRING;
         a.enc      = COL_TYPE_STRING;
         uint32 len = next - start;
@@ -486,6 +491,7 @@ aobj getRawCol(robj  *r,
     }
     return a;
 }
+
 
 aobj getColStr(robj *r, int cmatch, robj *okey, int tmatch) {
     uchar ctype = Tbl[server.dbid][tmatch].col_type[cmatch];
@@ -562,19 +568,21 @@ int deleteRow(redisClient *c,
 }
 
 static robj *createStringObjectFromAobj(aobj *a) {
-    if (a->type == COL_TYPE_STRING && a->enc == COL_TYPE_STRING) {
+    if (a->type == COL_TYPE_STRING && a->enc        == COL_TYPE_STRING) {
         return createStringObject(a->s, a->len);
+    } else if (a->type == COL_TYPE_FLOAT  && a->enc == COL_TYPE_FLOAT) {
+        char buf[32];
+        sprintfOutputFloat(buf, 32, a->f);
+        return createStringObject(buf, strlen(buf));
+    } else {                                        /* COL_TYPE_INT */
+        robj *r     = createObject(REDIS_STRING, NULL);
+        int   i;
+        if (a->enc == COL_TYPE_STRING) i = atoi(a->s);
+        else                           i = a->i;
+        r->ptr      = (void *)(long)i;
+        r->encoding = REDIS_ENCODING_INT;
+        return r;
     }
-    robj *r = createObject(REDIS_STRING, NULL);
-    int   i;
-    if (a->enc == COL_TYPE_STRING) {
-        i = atoi(a->s);
-    } else {
-        i = a->i;
-    }
-    r->ptr      = (void *)(long)i;
-    r->encoding = REDIS_ENCODING_INT;
-    return r;
 }
 
 //TODO simultaneous PK and normal update
@@ -600,7 +608,7 @@ bool updateRow(redisClient *c,
                                  Tbl[server.dbid][tmatch].col_type[i], 0);
         } else {
             avals[i].sixbit = 0;
-            if (Tbl[server.dbid][tmatch].col_type[i] == COL_TYPE_INT) {
+            if (Tbl[server.dbid][tmatch].col_type[i]        == COL_TYPE_INT) {
                 long l        = atol(vals[i]);
                 if (!checkUIntReply(c, l)) return 0;
                 avals[i].i    = l;
@@ -612,49 +620,51 @@ bool updateRow(redisClient *c,
                 avals[i].len  = sizeof(float);
                 avals[i].type = COL_TYPE_FLOAT;
                 avals[i].enc  = COL_TYPE_FLOAT;
-            } else {
+            } else {                                        /* COL_TYPE_STRING*/
                 avals[i].s    = vals[i];
                 avals[i].len  = vlens[i];
                 avals[i].type = COL_TYPE_STRING;
                 avals[i].enc  = COL_TYPE_STRING;
             }
         }
-        if (i && Tbl[server.dbid][tmatch].col_type[i] == COL_TYPE_INT) {
+        if (i && Tbl[server.dbid][tmatch].col_type[i] == COL_TYPE_INT) { /*!PK*/
             avals[i].len = _createICol(avals[i].i, &sflags[i], &(avals[i].s_i));
         }
         col_ofsts[i]  = rlen + avals[i].len;
-        if (i) rlen  += avals[i].len; // dont store pk
+        if (i) rlen  += avals[i].len; /* dont store PK */
     }
 
     uchar  *sixbitstr[MAX_COLUMN_PER_TABLE];
     int     sixbitlen[MAX_COLUMN_PER_TABLE];
     uint32  n_6b_s  = 0;
     bool    can_six = 0;
-    for (int i = 1; i < ncols; i++) {       // can_six needs a string
+    for (int i = 1; i < ncols; i++) {       /* can_six needs a string */
         if (Tbl[server.dbid][tmatch].col_type[i] == COL_TYPE_STRING) {
             can_six = 1;
             break;
         }
     }
-    for (int i = 1; i < ncols; i++) {       // check can_six, create sixbitstr
-        if (Tbl[server.dbid][tmatch].col_type[i] == COL_TYPE_STRING) {
-            uint32  s_len;
-            uint32  len   = avals[i].len;
-            char   *start = avals[i].s;
-            uchar  *dest  = _createSixBitString(start, len, &s_len);
-            if (!dest) {
-                can_six = 0;
-                break;
-            } else {
-                sixbitstr[n_6b_s] = dest;
-                sixbitlen[n_6b_s] = s_len;
-                n_6b_s++;
+
+    if (can_six) {
+        for (int i = 1; i < ncols; i++) {  /* check can_six, create sixbitstr */
+            if (Tbl[server.dbid][tmatch].col_type[i] == COL_TYPE_STRING) {
+                uint32  s_len;
+                uint32  len   = avals[i].len;
+                char   *start = avals[i].s;
+                uchar  *dest  = _createSixBitString(start, len, &s_len);
+                if (!dest) {
+                    can_six = 0;
+                    break;
+                } else {
+                    sixbitstr[n_6b_s] = dest;
+                    sixbitlen[n_6b_s] = s_len;
+                    n_6b_s++;
+                }
+                /* free SixBitStr from getRawCol() */
+                if (avals[i].sixbit) free(avals[i].s);
             }
-            // free SixBitStr from getRawCol()
-            if (avals[i].sixbit) free(avals[i].s);
         }
     }
-
 
     if (can_six) {
         uint32 k      = 0;
@@ -681,11 +691,11 @@ bool updateRow(redisClient *c,
 
     uint32 k = 0;
     for (int i = 1; i < ncols; i++) {       // SET data
-        if (Tbl[server.dbid][tmatch].col_type[i] == COL_TYPE_INT) {
+        if (Tbl[server.dbid][tmatch].col_type[i]        == COL_TYPE_INT) {
             writeUIntCol(&row, sflags[i], avals[i].s_i);
         } else if (Tbl[server.dbid][tmatch].col_type[i] == COL_TYPE_FLOAT) {
             writeFloatCol(&row, avals[i].f);
-        } else {
+        } else {                                        /* COL_TYPE_STRING */
            if (can_six) {
                 memcpy(row, sixbitstr[k], sixbitlen[k]);
                 row += sixbitlen[k];
@@ -735,4 +745,3 @@ void freeRowObject(robj *o) {
     //RL4 "freeRowObject %p", o->ptr);
     free(o->ptr);
 }
-

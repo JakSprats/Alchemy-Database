@@ -585,9 +585,33 @@ function test_x4() {
   select_x4
 }
 
+function init_x5() {
+  $CLI CREATE TABLE X5  "(id float, t text, i int)";
+}
+function insert_x5() {
+  $CLI INSERT INTO X5 VALUES "(1.11,text1,33)";
+  $CLI INSERT INTO X5 VALUES "(2.22,text2,22)";
+  $CLI INSERT INTO X5 VALUES "(3.33,text3,11)"
+}
+function update_x5() {
+  $CLI DUMP X5
+  echo UPDATE X5 SET id=4.4 WHERE id = 2.2200000286102295
+  $CLI UPDATE X5 SET id=4.4 WHERE id = 2.2200000286102295
+  $CLI DUMP X5
+}
+function test_x5() {
+  init_x5
+  insert_x5
+  update_x5
+}
+
 function float_tests() {
+  $CLI DROP TABLE X3
+  $CLI DROP TABLE X4
+  $CLI DROP TABLE X5
   test_x3
   test_x4
+  test_x5
 }
 
 function istore_worker_name_list() {
