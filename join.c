@@ -62,8 +62,6 @@ extern char *PERIOD;
 extern r_tbl_t  Tbl  [MAX_NUM_DB][MAX_NUM_TABLES];
 extern r_ind_t  Index[MAX_NUM_DB][MAX_NUM_INDICES];
 
-extern stor_cmd StorageCommands[];
-
 static unsigned int dictAppendHash(const void *key) {
     unsigned long long ll = (unsigned long long)key;
     return (unsigned int)(ll % UINT_MAX);
@@ -261,7 +259,7 @@ static bool jRowReply(jrow_reply_t *r, int lvl) {
         }
     }
 
-    if (r->sto != -1 && StorageCommands[r->sto].argc) { /* JSTORE not INSERT */
+    if (r->sto != -1) { /* JSTORE */
         if (Order_by) { /* add the argv's to the list */
             prepare_jRowStore(r);
             robj **argv = cloneArgv(r->fc->argv, r->fc->argc);
@@ -277,11 +275,7 @@ static bool jRowReply(jrow_reply_t *r, int lvl) {
             int rlen  = Jrc_lens[i];
             memcpy(r->reply + slot, s, rlen);
             slot     += rlen;
-            if (r->sto != -1) { // insert
-                memcpy(r->reply + slot, COMMA, 1);
-            } else {
-                memcpy(r->reply + slot, OUTPUT_DELIM, 1);
-            }
+            memcpy(r->reply + slot, OUTPUT_DELIM, 1);
             slot++;
         }
         robj *resp = createStringObject(r->reply, slot -1);
@@ -289,12 +283,7 @@ static bool jRowReply(jrow_reply_t *r, int lvl) {
         if (Order_by) {
             addJoinOutputRowToList(r, resp);
         } else {
-            if (r->sto != -1) { /* JSTORE INSERT */
-                r->fc->argc    = 3;
-                r->fc->argv[1] = cloneRobj(r->nname);
-                r->fc->argv[2] = resp;
-                if (!performStoreCmdOrReply(r->c, r->fc, r->sto)) return 0;
-            } else if (!r->cstar) {
+            if (!r->cstar) {
                 addReplyBulk(r->c, resp);
                 decrRefCount(resp);
             }
@@ -521,18 +510,10 @@ static int sortJoinOrderByAndReply(redisClient        *c,
         } else {
             sent++;
             obsl_t *ob = vector[k];
-            if (b->j.sto != -1) {
-                if (StorageCommands[b->j.sto].argc) { /* JSTORE not INSERT */
-                    b->j.fc->argv = ob->row; /* argv's in list */
-                    if (!performStoreCmdOrReply(b->j.c, b->j.fc, b->j.sto))
-                        return 0;
-                } else { /* JSTORE INSERT */
-                    b->j.fc->argc    = 3;
-                    b->j.fc->argv[1] = cloneRobj(b->j.nname);
-                    b->j.fc->argv[2] = ob->row;
-                    if (!performStoreCmdOrReply(b->j.c, b->j.fc, b->j.sto))
-                        return 0;
-                }
+            if (b->j.sto != -1) { /* JSTORE */
+                b->j.fc->argv = ob->row; /* argv's in list */
+                if (!performStoreCmdOrReply(b->j.c, b->j.fc, b->j.sto))
+                    return 0;
             } else if (!b->j.cstar) {
                 addReplyBulk(c, ob->row);
                 decrRefCount(ob->row);
@@ -846,14 +827,9 @@ void jstoreCommit(redisClient *c, jb_t *jb) {
     jb->nname = createStringObject(nname, nlen);
 
     robj               *argv[STORAGE_MAX_ARGC + 1];
+    //TODO fc can be pushed into joinGeneric
     struct redisClient *fc = rsql_createFakeClient();
     fc->argv               = argv;
-    if (!StorageCommands[jb->w.sto].argc) { /* INSERT */
-        //TODO temp solution SELECT STORE INSERT being backed out
-        //      CREATE TABLE AS SELECT makes more sense
-        addReply(c, shared.select_store_insert);
-        return;
-    }
 
     joinGeneric(c, fc, jb, sub_pk, nargc);
 

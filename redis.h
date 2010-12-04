@@ -309,7 +309,7 @@ struct sharedObjectsStruct {
     *updatesyntax_nowhere,   *update_notindxd,       *updatesyntax_noequals,
     *scanselectsyntax,       *scan_join,             *scanselectsyntax_noequals,
     *scan_on_index,
-    *istorecommit_err, *select_store_insert,
+    *istorecommit_err,
 
     *whereclause_no_and,     *whereclause_between,
     *selectsyntax_store_norange, *select_store_count,

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-CLI=./redisql-cli
+CLI=../redisql-cli
 
 $CLI CREATE TABLE test "(obj_id int primary key, score int)"
 $CLI CREATE INDEX test_score_idx ON test \(score\)

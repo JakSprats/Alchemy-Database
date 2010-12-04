@@ -1873,7 +1873,7 @@ static void createSharedObjects(void) {
     shared.selectsyntax_store_norange = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: SELECT w/ STORE requires WHERE indexed_column BETWEEN x AND y OR indexed_column IN (list)\r\n"));
     shared.select_store_count = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: SELECT COUNT(*) FROM tbl STORE - is disallowed because the result is a single value\r\n"));
+        "-ERR SYNTAX: SELECT COUNT(*) FROM tbl STORE - is disallowed\r\n"));
 
     shared.scanselectsyntax = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: SCANSELECT col,,,, FROM tablename WHERE col = val\r\n"));
@@ -1886,8 +1886,6 @@ static void createSharedObjects(void) {
 
     shared.istorecommit_err = createObject(REDIS_STRING,sdsnew(
         "-ERR INTERNAL: SELECT STORE failed (generic)\r\n"));
-    shared.select_store_insert = createObject(REDIS_STRING,sdsnew(
-        "-ERR UNSUPPORTED: SELECT STORE INSERT - use CREATE TABLE AS SELECT\r\n"));
 
     shared.joinsyntax_no_tablename = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: SELECT tbl.col,,,, FROM tbl1,tbl2 WHERE tbl1.indexed_column = tbl2.indexed_column AND tbl1.indexed_column BETWEEN x AND y - MISSING table-name in WhereClause\r\n"));
@@ -2168,11 +2166,6 @@ static void initServer() {
     StorageCommands[9].func = setexCommand;
     StorageCommands[9].name = "SETEX";
     StorageCommands[9].argc = -2;      /* < 0 means combine 1st arg w/ name */
-//#define STO_FUNC_INSERT 10
-    StorageCommands[10].func  = legacyInsertCommand;
-    StorageCommands[10].name  = "INSERT";
-    StorageCommands[10].argc  = 0;
-//#define STORAGE_MAX_ARGC 3
 
     //#define ACCESS_SELECT_COMMAND_NUM 0
     AccessCommands[0].func   = selectRedisqlCommand;

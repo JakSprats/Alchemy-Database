@@ -33,9 +33,10 @@ ALL RIGHTS RESERVED
 #include "alsosql.h"
 #include "common.h"
 
-#define NUM_STORAGE_TYPES 11
+#define NUM_STORAGE_TYPES 10
 
 unsigned char respOk(redisClient *c);
+unsigned char respNotErr(redisClient *c);
 
 bool internalCreateTable(redisClient *c,
                          redisClient *fc,

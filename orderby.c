@@ -105,7 +105,8 @@ void addORowToRQList(list  *ll,
     if (r) {
         ob->row = cloneRobj(r); /*decrRefCount()d N sortedOrderByCleanup() */
     } else {
-        ob->row = row->ptr; /* used ONLY in istoreCommit */
+         /* used ONLY in istoreCommit SELECT PK ORDER BY notPK (preserve pk) */
+        ob->row = row->ptr;
     }
     aobj    ao  = getRawCol(row, obc, pko, tmatch, &cflag, ctype, 0);
     if (ctype == COL_TYPE_INT) {

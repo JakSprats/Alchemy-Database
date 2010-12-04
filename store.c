@@ -144,7 +144,7 @@ unsigned char respOk(redisClient *c) {
     else                            return 0;
 }
 
-static unsigned char respNotErr(redisClient *c) {
+unsigned char respNotErr(redisClient *c) {
     listNode *ln = listFirst(c->reply);
     robj     *o  = ln->value;
     char     *s  = o->ptr;
@@ -279,45 +279,23 @@ static bool istoreAction(redisClient *c,
     }
 
     char *newrow = NULL;
-    int   rowlen = 0;
     fc->argc     = qcols + 1;
     fc->argv[1]  = createStringObject(nname, strlen(nname));/*NEW Objects NAME*/
     //argv[0] NOT NEEDED
-    if (StorageCommands[sto].argc) { // not INSERT
-        int    n    = 0;
-        robj **argv = fc->argv;
-        if (sub_pk) { /* overwrite pk=nname:cols[0] */
-            argv[1]->ptr = sdscatlen(argv[1]->ptr, COLON,   1);
-            argv[1]->ptr = sdscatlen(argv[1]->ptr, cols[0].s, cols[0].len);
-            n++;
-        }
-        argv[2] = createStringObject(cols[n].s, cols[n].len);
-        if (nargc > 1) {
-            n++;
-            argv[3]  = createStringObject(cols[n].s, cols[n].len);
-        }
-        for (int i = 0; i < qcols; i++) {
-            if (cols[i].sixbit) free(cols[i].s);
-        }
-    } else {                         // INSERT - about to be erased
-        //TODO this can be done simpler w/ sdscatlen()
-        int len = totlen + qcols -1;
-        if (len > rowlen) {
-            rowlen = len;
-            if (newrow) newrow = zrealloc(newrow, rowlen); /* sds */
-            else        newrow = zmalloc(         rowlen); /* sds */
-        }
-        int slot = 0;
-        for (int i = 0; i < qcols; i++) {
-            memcpy(newrow + slot, cols[i].s, cols[i].len);
-            slot += cols[i].len;
-            if (i != (qcols - 1)) {
-                memcpy(newrow + slot, ",", 1);
-                slot++;
-            }
-            if (cols[i].sixbit) free(cols[i].s);
-        }
-        fc->argv[2] = createStringObject(newrow, len);
+    int    n     = 0;
+    robj **argv  = fc->argv;
+    if (sub_pk) { /* overwrite pk=nname:cols[0] */
+        argv[1]->ptr = sdscatlen(argv[1]->ptr, COLON,   1);
+        argv[1]->ptr = sdscatlen(argv[1]->ptr, cols[0].s, cols[0].len);
+        n++;
+    }
+    argv[2] = createStringObject(cols[n].s, cols[n].len);
+    if (nargc > 1) {
+        n++;
+        argv[3]  = createStringObject(cols[n].s, cols[n].len);
+    }
+    for (int i = 0; i < qcols; i++) {
+        if (cols[i].sixbit) free(cols[i].s);
     }
 
     if (newrow) zfree(newrow);
@@ -443,19 +421,17 @@ bool prepareToStoreReply(redisClient  *c,
     *sub_pk = (StorageCommands[w->sto].argc < 0);
     *nargc  = abs(StorageCommands[w->sto].argc);
     *last   = *nname + *nlen - 1;
-    if (*nargc) { /* if NOT INSERT check nargc */
-        if (*(*last) == '$') { /* means final arg munging */
-            *sub_pk = 1;
-            *nargc  = *nargc + 1;
-            *(*last)   = '\0';
-            *nlen   = *nlen - 1;
-        }
-        if (*nargc != qcols) {
-            addReply(c, shared.storagenumargsmismatch);
-            return 0;
-        }
-        if (*sub_pk) *nargc = *nargc - 1;
+    if (*(*last) == '$') { /* means final arg munging */
+        *sub_pk = 1;
+        *nargc  = *nargc + 1;
+        *(*last)   = '\0';
+        *nlen   = *nlen - 1;
     }
+    if (*nargc != qcols) {
+        addReply(c, shared.storagenumargsmismatch);
+        return 0;
+    }
+    if (*sub_pk) *nargc = *nargc - 1;
     return 1;
 }
 
@@ -472,16 +448,6 @@ void istoreCommit(redisClient *c,
     if (!prepareToStoreReply(c, w, &nname, &nlen,
                              &sub_pk, &nargc, &last, qcols)) return;
 
-    robj        *argv[STORAGE_MAX_ARGC + 1];
-    redisClient *fc = rsql_createFakeClient();
-    fc->argv        = argv;
-    if (!StorageCommands[w->sto].argc) { // INSERT
-        //TODO temp solution SELECT STORE INSERT being backed out
-        //      CREATE TABLE AS SELECT makes more sense
-        addReply(c, shared.select_store_insert);
-        return;
-    }
-
     list *ll    = NULL;
     uchar ctype = COL_TYPE_NONE;
     if (w->obc != -1) {
@@ -489,6 +455,11 @@ void istoreCommit(redisClient *c,
         ctype = Tbl[server.dbid][tmatch].col_type[w->obc];
     }
 
+    robj        *argv[STORAGE_MAX_ARGC + 1];
+    redisClient *fc = rsql_createFakeClient();
+    fc->argv        = argv;
+
+    int     sent  = 0; /* come before first goto */
     bool    cstar = 0;
     bool    err   = 0;
     bool    qed   = 0;
@@ -509,7 +480,6 @@ void istoreCommit(redisClient *c,
         IN_QUERY_LOOKUP_END
     }
 
-    int sent = 0;
     if (qed) {
         obsl_t **vector = sortOrderByToVector(ll, ctype, w->asc);
         sent            = sortedOrderByIstore(c, w, fc, tmatch, cmatchs, qcols,

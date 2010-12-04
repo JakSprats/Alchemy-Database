@@ -126,6 +126,7 @@ function inserter() {
   insert_external
 }
 function dropper() {
+  echo "DROPPER"
   $CLI DROP TABLE worker
   $CLI DROP TABLE customer
   $CLI DROP TABLE employee
@@ -300,6 +301,9 @@ function order_by_test() {
 
   echo SELECT id,name,salary,division FROM employee WHERE division BETWEEN 22 AND 77 ORDER BY name DESC LIMIT 4
   $CLI SELECT "id,name,salary,division" FROM employee WHERE "division BETWEEN 22 AND 77 ORDER BY name DESC LIMIT 4"
+
+  echo SELECT "id,name,salary,division" FROM employee WHERE "division = 22 ORDER BY name DESC LIMIT 2"
+  $CLI SELECT "id,name,salary,division" FROM employee WHERE "division = 22 ORDER BY name DESC LIMIT 2"
 }
 
 function order_by_limit_offset_test() {
@@ -599,7 +603,7 @@ function insert_actionlist() {
 }
 function denorm_actionlist_to_many_zsets() {
   echo SELECT user_id, timestamp, action FROM actionlist WHERE id BETWEEN 1 AND 20 STORE ZADD user_action_zset$
-  $CLI SELECT "user_id, timestamp, action" FROM "actionlist WHERE id BETWEEN 1 AND 20 STORE ZADD user_action_zset$"
+  $CLI SELECT "user_id, timestamp, action" FROM actionlist WHERE "id BETWEEN 1 AND 20 STORE ZADD user_action_zset$"
   echo ZREVRANGE user_action_zset:1 0 1
   $CLI ZREVRANGE user_action_zset:1 0 1
 }
@@ -623,13 +627,6 @@ function istore_worker_hash_name_salary() {
   $CLI HGETALL h_worker_name_to_salary
 }
 
-function jstore_div_subdiv() {
-  echo "USE CREATE TABLE AS SELECT"
-  echo SELECT subdivision.id,subdivision.name,division.name FROM subdivision,division WHERE subdivision.division = division.id AND division.id BETWEEN 11 AND 44 STORE INSERT normal_div_subdiv
-  $CLI SELECT "subdivision.id,subdivision.name,division.name" FROM "subdivision,division" WHERE "subdivision.division = division.id AND division.id BETWEEN 11 AND 44 STORE INSERT normal_div_subdiv"
-  echo DUMP normal_div_subdiv
-  $CLI DUMP normal_div_subdiv
-}
 
 function jstore_worker_location_hash() {
   echo SELECT worker.name,division.location FROM worker,division WHERE worker.division=division.id AND division.id BETWEEN 11 AND 80 STORE HSET worker_city_hash
@@ -638,13 +635,6 @@ function jstore_worker_location_hash() {
   $CLI HGETALL worker_city_hash
 }
 
-function jstore_worker_location_table() {
-  echo "USE CREATE TABLE AS SELECT"
-  echo SELECT external.name,division.location FROM external,division WHERE external.division=division.id AND division.id BETWEEN 11 AND 80 STORE INSERT w_c_tbl
-  $CLI SELECT "external.name,division.location" FROM "external,division" WHERE "external.division=division.id AND division.id BETWEEN 11 AND 80 STORE INSERT w_c_tbl"
-  echo dump w_c_tbl
-  $CLI dump w_c_tbl
-}
 
 function jstore_city_wrkr_denorm_to_many_hash() {
   echo SELECT division.location, worker.name, worker.salary FROM worker,division WHERE division.id=worker.division AND worker.division BETWEEN 11 AND 66 STORE HSET city_wrkr$
@@ -861,9 +851,7 @@ function istorer() {
 
 function jstorer() {
   echo JSTORER
-  jstore_div_subdiv
   jstore_worker_location_hash
-  jstore_worker_location_table
   jstore_city_wrkr_denorm_to_many_hash
 }
 

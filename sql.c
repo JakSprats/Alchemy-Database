@@ -51,7 +51,6 @@ extern struct redisServer server;
 extern int      Num_tbls[MAX_NUM_DB];
 extern r_tbl_t  Tbl     [MAX_NUM_DB][MAX_NUM_TABLES];
 extern r_ind_t  Index   [MAX_NUM_DB][MAX_NUM_INDICES];
-extern stor_cmd StorageCommands[];
 extern stor_cmd AccessCommands[];
 
 char   *Col_keywords_to_ignore[] = {"PRIMARY", "CONSTRAINT", "UNIQUE",
@@ -190,7 +189,7 @@ static bool parseOrderBy(redisClient  *c,
         }
         char *cname = prd + 1;
         int   clen  = get_token_len(cname);
-        if ((w->obc = find_column_n(w->obt, cname, clen)) == -1) {
+        if (!clen || (w->obc = find_column_n(w->obt, cname, clen)) == -1) {
             addReply(c, shared.join_order_by_col);
             return 0;
         }
@@ -202,7 +201,12 @@ static bool parseOrderBy(redisClient  *c,
         }
     }
 
-    if (nextp) while (isblank(*nextp)) nextp++;
+    if (nextp) {
+        while (isblank(*nextp)) nextp++;
+    } else { /* ORDER BY X - no DESC, LIMIT, OFFSET */
+        *finish = NULL;
+        return 1;
+    }
 
     if (nextp) {
         if (!strncasecmp(nextp, "DESC", 4)) {
@@ -360,7 +364,8 @@ uchar checkSQLWhereClauseReply(redisClient *c,
                                bool         just_parse,
                                bool         is_scan) {
     uchar  wtype;
-    char  *eq = strchr(w->token, '=');
+    char  *finish = NULL;
+    char  *eq     = strchr(w->token, '=');
     if (eq) { /* "col = X" */
         char *end = eq - 1;
         while (isblank(*end)) end--; /* find end of PK */
@@ -379,35 +384,37 @@ uchar checkSQLWhereClauseReply(redisClient *c,
 
         char *start  = eq + 1;
         while (isblank(*start)) start++; /* find start of value */
-        w->lvr       = strchr(start, ' ');
-        int   len    = w->lvr ? w->lvr - start : 
+        finish       = strchr(start, ' ');
+        int   len    = finish ? finish - start : 
                                 (int)sdslen(w->token) - (start - w->token);
         w->key       = createStringObject(start, len);
-        return wtype;
-    }
-
-    char *nextp = strchr(w->token, ' ');
-    if (!nextp) goto check_sql_wc_err;
-    w->cmatch   = find_column_n(tmatch, w->token, nextp - w->token);
-    w->imatch   = find_index(tmatch, w->cmatch); 
-
-    char *tkn = nextp;
-    while (isblank(*tkn)) tkn++; /* find start of next token */
-
-    char  *finish = NULL;
-    if (!strncasecmp(tkn, "IN ", 3)) {
-        tkn   = next_token(tkn);
-        if (!tkn) goto check_sql_wc_err;
-        wtype = parseWC_IN(c, tkn, &w->inl, just_parse, &finish);
-    } else if (!strncasecmp(tkn, "BETWEEN ", 8)) { /* RANGE QUERY */
-        tkn = next_token(tkn);
-        if (!tkn) goto check_sql_wc_err;
-        wtype = parseRangeReply(c, tkn, w, &finish);
+        if (!w->cmatch || !finish) { /* return on PK=X or nutn 2 parse */
+            w->lvr = finish;
+            return wtype;
+        }
+        while (isblank(*finish)) finish++; /* find start of next token */
     } else {
-        goto check_sql_wc_err;
-    }
+        char *nextp = strchr(w->token, ' ');
+        if (!nextp) goto check_sql_wc_err;
+        w->cmatch   = find_column_n(tmatch, w->token, nextp - w->token);
+        w->imatch   = find_index(tmatch, w->cmatch); 
 
-    if (wtype == SQL_ERR_LOOKUP) return SQL_ERR_LOOKUP;
+        char *tkn = nextp;
+        while (isblank(*tkn)) tkn++; /* find start of next token */
+
+        if (!strncasecmp(tkn, "IN ", 3)) {
+            tkn   = next_token(tkn);
+            if (!tkn) goto check_sql_wc_err;
+            wtype = parseWC_IN(c, tkn, &w->inl, just_parse, &finish);
+        } else if (!strncasecmp(tkn, "BETWEEN ", 8)) { /* RANGE QUERY */
+            tkn = next_token(tkn);
+            if (!tkn) goto check_sql_wc_err;
+            wtype = parseRangeReply(c, tkn, w, &finish);
+        } else {
+            goto check_sql_wc_err;
+        }
+        if (wtype == SQL_ERR_LOOKUP) return SQL_ERR_LOOKUP;
+    }
 
     if (finish) { /* additional SQL */
         if (!parseWCAddtlSQL(c, finish, w, tmatch, 1)) return SQL_ERR_LOOKUP;

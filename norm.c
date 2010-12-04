@@ -47,8 +47,6 @@ extern char *COMMA;
 
 extern char *Col_type_defs[];
 
-#define STO_FUNC_INSERT 10 
-
 // HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS
 // HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS
 static bool is_int(robj *pko) {
@@ -307,7 +305,10 @@ void normCommand(redisClient *c) {
             fc->argv[1] = createStringObject(nt, sdslen(nt));
             fc->argv[2] = ir;
             fc->argc    = 3;
-            if (!performStoreCmdOrReply(c, fc, STO_FUNC_INSERT)) {
+            legacyInsertCommand(fc);
+            if (!respNotErr(fc)) {
+                listNode *ln = listFirst(fc->reply);
+                addReply(c, ln->value);
                 dictReleaseIterator(di);
                 decrRefCount(resp);
                 decrRefCount(ir);
