@@ -190,24 +190,21 @@ static bool parseOrderBy(redisClient  *c,
         }
     }
 
-    if (nextp) {
-        while (isblank(*nextp)) nextp++;
-    } else { /* ORDER BY X - no DESC, LIMIT, OFFSET */
+    if (!nextp) { /* ORDER BY X - no DESC, LIMIT, OFFSET */
         *finish = NULL;
         return 1;
     }
+    while (isblank(*nextp)) nextp++;
 
-    if (nextp) {
-        if (!strncasecmp(nextp, "DESC", 4)) {
-            w->asc = 0;
-            nextp  = next_token(nextp);
-        } else if (!strncasecmp(nextp, "ASC", 3)) {
-            w->asc = 1;
-            nextp  = next_token(nextp);
-        }
+    if (!strncasecmp(nextp, "DESC", 4)) {
+        w->asc = 0;
+        nextp  = next_token(nextp);
+    } else if (!strncasecmp(nextp, "ASC", 3)) {
+        w->asc = 1;
+        nextp  = next_token(nextp);
     }
 
-    if (nextp) { /* isblank() loop already done above */
+    if (nextp) {
         if (!strncasecmp(nextp, "LIMIT", 5)) {
             nextp  = next_token(nextp);
             if (!nextp) {
@@ -280,76 +277,123 @@ static bool addRCmdToINList(redisClient *c,
     return 1;
 }
 
-/* TODO improve parsing 
-        1.) "\)" and "\," are ignored and 
-        s.) if Redis commands had ')' or ',' there are issues */
+#define IN_RCMD_ERR_MSG "-ERR IN(Redis_cmd) - inner command had error: "
+
 static uchar parseWC_IN(redisClient  *c,
                         char         *token,
                         list        **inl,
                         bool          just_parse,
                         char        **finish) {
-    char *t  = strchr(token, ')');
-    if ((*token != '(') || !t) {
+    char *end = str_next_unescaped_chr(token, token, ')');
+    if (!end || (*token != '(')) {
         if (!just_parse) addReply(c, shared.whereclause_in_err);
         return SQL_ERR_LOOKUP;
     }
 
-    bool  hit   = 0;
-    bool  piped = 0;
-    char *s     = token + 1;
-    *inl        = listCreate();
-    while (1) {
-        char *nextc = strchr(s, ',');
-        if (!nextc) break;
-        robj *r = createStringObject(s, nextc - s);
-        listAddNodeTail(*inl, r);
-        hit     = 1;
-        nextc++;
-        s           = nextc;
-        while (isblank(*s)) s++;
-    }
+    *inl = listCreate();
 
-    int slen = t - s;
-    if (!hit) {
-        int   axs = -1;
-        char *u   = _strnchr(s, ' ', slen);
-        if (u) {
-            int len = u - s;
-            for (int i = 0; i < NUM_ACCESS_TYPES; i++) {
-                if (!strncasecmp(s, AccessCommands[i].name, len)) {
-                    axs = i;
-                    break;
-                }
-            }
-            if (axs != -1 ) {
-                if (just_parse) return SQL_IN_LOOKUP;
-                int     argc;
-                sds    *argv     = sdssplitlen(s, slen, " ", 1, &argc);
-                robj **rargv     = zmalloc(sizeof(robj *) * argc);
-                for (int j = 0; j < argc; j++) {
-                    rargv[j]     = createObject(REDIS_STRING, argv[j]);
-                }
-                zfree(argv);
-                redisClient *rfc = rsql_createFakeClient();
-                rfc->argv        = rargv;
-                rfc->argc        = argc;
+    bool piped = 0;
+    token++;
+    if (*token == '$') piped = 1;
 
-                uchar f = 0;
-                fakeClientPipe(c, rfc, inl, 0, &f, addRCmdToINList, emptyNoop);
-                /* TODO do something on error in the pipe */
-
-                rsql_freeFakeClient(rfc);
-                zfree(rargv);
-                piped = 1;
+    if (piped) {
+        int   axs  = -1;
+        char *s    = token + 1;
+        int   slen = end - s;
+        char *u    =_strnchr(s, ' ', slen);
+        if (!u) {
+            if (!just_parse) addReply(c, shared.whereclause_in_err);
+            return SQL_ERR_LOOKUP;
+        }
+        int   len  = u - s;
+        for (int i = 0; i < NUM_ACCESS_TYPES; i++) {
+            if (!strncasecmp(s, AccessCommands[i].name, len)) {
+                axs = i;
+                break;
             }
         }
-    }
-    if (!piped) { /* last item IN -> IN (,,,3) */
-        robj *r = createStringObject(s, slen);
+        if (axs == -1 ) {
+            if (!just_parse) addReply(c, shared.accesstypeunknown);
+            return SQL_ERR_LOOKUP;
+        }
+        int     argc;
+        robj **rargv;
+        if (axs == ACCESS_SELECT_COMMAND_NUM) { /* SELECT has 6 args */
+            argc  = 6;
+            sds x = sdsnewlen(s, slen);
+            rargv = parseSelectCmdToArgv(x);
+            sdsfree(x);
+            if (!rargv) {
+                if (!just_parse) addReply(c, shared.where_in_select);
+                return SQL_ERR_LOOKUP;
+            }
+            if (just_parse) { /* do not go any further if just parsing */
+                zfree(rargv);
+                return SQL_IN_LOOKUP;
+            }
+        } else {
+            sds *argv  = sdssplitlen(s, slen, " ", 1, &argc);
+            int  xargc = AccessCommands[axs].argc;
+            if ((xargc > 0 && argc != xargc) ||
+                (xargc < 0 && argc <= abs(xargc))) { /* arg mismatch */
+                zfree(argv);
+                addReply(c, shared.accessnumargsmismatch);
+                return SQL_ERR_LOOKUP;
+            }
+            if (just_parse) { /* do not go any further if just parsing */
+                zfree(argv);
+                return SQL_IN_LOOKUP;
+            }
+            rargv = zmalloc(sizeof(robj *) * argc);
+            for (int j = 0; j < argc; j++) {
+                rargv[j]     = createStringObject(argv[j], sdslen(argv[j]));
+            }
+            zfree(argv);
+        }
+        redisClient *rfc = rsql_createFakeClient();
+        rfc->argv        = rargv;
+        rfc->argc        = argc;
+
+        uchar f = 0;
+        fakeClientPipe(c, rfc, inl, 0, &f, addRCmdToINList, emptyNoop);
+        bool err = 0;
+        if (!respNotErr(rfc)) {
+            listNode *ln     = listFirst(rfc->reply);
+            robj     *errmsg = ln->value;
+            err              = 1;
+            robj     *repl   = createStringObject(IN_RCMD_ERR_MSG,
+                                                  strlen(IN_RCMD_ERR_MSG));
+            repl->ptr        = sdscatlen(repl->ptr, errmsg->ptr,
+                                                    sdslen(errmsg->ptr));
+            addReply(c, repl);
+            decrRefCount(repl);
+        }
+
+        rsql_freeFakeClient(rfc);
+        zfree(rargv);
+        if (err) return SQL_ERR_LOOKUP;
+    } else {
+        char *s   = token;
+        char *beg = s;
+        while (1) {
+            char *nextc = str_next_unescaped_chr(beg, s, ',');
+            if (!nextc) break;
+            robj *r     = createStringObject(s, nextc - s);
+            listAddNodeTail(*inl, r);
+            nextc++;
+            s           = nextc;
+            while (isblank(*s)) s++;
+        }
+        robj *r = createStringObject(s, end - s);
         listAddNodeTail(*inl, r);
     }
 
-    *finish = next_token(t);
+
+    end++;
+    if (*end) {
+        while (isblank(*end)) end++;
+        *finish = end;
+    }
     return SQL_IN_LOOKUP;
 }
 

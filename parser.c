@@ -86,9 +86,12 @@ char *rem_backticks(char *token, int *len) {
     return token;
 }
 
-char *str_next_unescaped_chr(char *beg, char *s, int x) {
+char *_strn_next_unescaped_chr(char *beg, char *s, int x, int len) {
+    bool  isn = (len >= 0);
     char *nextc = s;
-    while ((nextc = strchr(nextc, x))) {
+    while (1) {
+        nextc = isn ? _strnchr(nextc, x, len) : strchr(nextc, x);
+        if (!nextc) break;
         if (nextc - beg > 1) { /* handle backslash-escaped commas */
             if  (*(nextc - 1) == '\\') {
                 char *backslash = nextc - 1;
@@ -106,6 +109,12 @@ char *str_next_unescaped_chr(char *beg, char *s, int x) {
         return nextc;
     }
     return NULL;
+}
+char *str_next_unescaped_chr(char *beg, char *s, int x) {
+    return _strn_next_unescaped_chr(beg, s, x, -1);
+}
+char *strn_next_unescaped_chr(char *beg, char *s, int x, int len) {
+    return _strn_next_unescaped_chr(beg, s, x, len);
 }
 
 /* This is essentially the inner-argv[] parser */
@@ -204,18 +213,18 @@ robj **parseSelectCmdToArgv(char *as_cmd) {
     int    argc;
     robj **rargv = NULL;
     sds   *argv  = sdssplitlen(as_cmd, strlen(as_cmd), " ", 1, &argc);
-    if (argc < 6)                            goto parse_sel_2argv_err;
-    if (strcasecmp(argv[0], "SELECT"))       goto parse_sel_2argv_err;
+    if (argc < 6)                            goto parse_sel_2argv_end;
+    if (strcasecmp(argv[0], "SELECT"))       goto parse_sel_2argv_end;
     int j;
     for (j = 1; j < argc; j++) {
         if (!strcasecmp(argv[j], "FROM")) break;
     }
-    if ((j == (argc -1)) || (j == 1))        goto parse_sel_2argv_err;
+    if ((j == (argc -1)) || (j == 1))        goto parse_sel_2argv_end;
     int k;
     for (k = j + 1; k < argc; k++) {
         if (!strcasecmp(argv[k], "WHERE")) break;
     }
-    if ((k == (argc - 1)) || (k == (j + 1))) goto parse_sel_2argv_err;
+    if ((k == (argc - 1)) || (k == (j + 1))) goto parse_sel_2argv_end;
 
     rargv      = zmalloc(sizeof(robj *) * 6);
     rargv[0]   = createStringObject("SELECT", 6);
@@ -240,7 +249,7 @@ robj **parseSelectCmdToArgv(char *as_cmd) {
     }
     rargv[5]   = createObject(REDIS_STRING, wc);
 
-parse_sel_2argv_err:
+parse_sel_2argv_end:
     for (int i = 0; i < argc; i++) sdsfree(argv[i]);
     zfree(argv);
     return rargv;

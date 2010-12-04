@@ -30,10 +30,10 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "redis.h"
 
-#define NUM_ACCESS_TYPES 14
-#define ACCESS_SELECT_COMMAND_NUM 0
+#define NUM_ACCESS_TYPES              14
+#define ACCESS_SELECT_COMMAND_NUM      0
+//#define ACCESS_SCANSELECT_COMMAND_NUM  1
 void createTableAsObject(redisClient *c);
-
 
 bool emptyNoop(redisClient *c);
 #define PIPE_NONE_FLAG      0

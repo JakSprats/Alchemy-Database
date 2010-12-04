@@ -373,8 +373,12 @@ function in_test_cust_id() {
     $CLI LPUSH LINDEX_cust_id 2
     $CLI LPUSH LINDEX_cust_id 1
     $CLI LPUSH LINDEX_cust_id 3
-    echo SELECT \* FROM customer WHERE "id IN (LRANGE LINDEX_cust_id 0 3)"
-    $CLI SELECT \* FROM customer WHERE "id IN (LRANGE LINDEX_cust_id 0 3)"
+    echo SELECT \* FROM customer WHERE "id IN (\$LRANGE LINDEX_cust_id 0 3)"
+    $CLI SELECT \* FROM customer WHERE "id IN (\$LRANGE LINDEX_cust_id 0 3)"
+}
+function in_test_select() {
+    echo SELECT \* FROM customer WHERE "id IN (\$SELECT id FROM customer WHERE id between 1 AND 3) ORDER BY name"
+    $CLI SELECT \* FROM customer WHERE "id IN (\$SELECT id FROM customer WHERE id between 1 AND 3) ORDER BY name"
 }
 function in_test_cust_hobby() {
     $CLI DEL list_index_customer_hobby
@@ -382,8 +386,8 @@ function in_test_cust_hobby() {
     $CLI LPUSH list_index_customer_hobby painting
     $CLI LPUSH list_index_customer_hobby violin
     $CLI LPUSH list_index_customer_hobby choir
-    echo SELECT \* FROM customer WHERE "hobby IN (LRANGE list_index_customer_hobby 0 2)" ORDER BY name
-    $CLI SELECT \* FROM customer WHERE "hobby IN (LRANGE list_index_customer_hobby 0 2)" ORDER BY name
+    echo SELECT \* FROM customer WHERE "hobby IN (\$LRANGE list_index_customer_hobby 0 2)" ORDER BY name
+    $CLI SELECT \* FROM customer WHERE "hobby IN (\$LRANGE list_index_customer_hobby 0 2)" ORDER BY name
 }
 
 function in_test_join_nonrelational() {
@@ -400,13 +404,14 @@ function in_test_join_nonrelational() {
     $CLI LPUSH L_IND_div_id 55
     echo LPUSH L_IND_div_id 44
     $CLI LPUSH L_IND_div_id 44
-    echo SELECT division.id,division.name,division.location,external.name,external.salary FROM division,external WHERE division.id=external.division AND division.id IN "(LRANGE L_IND_div_id 0 -1)"
-    $CLI SELECT "division.id,division.name,division.location,external.name,external.salary" FROM "division,external" WHERE "division.id=external.division AND division.id IN (LRANGE L_IND_div_id 0 -1)"
+    echo SELECT division.id,division.name,division.location,external.name,external.salary FROM division,external WHERE division.id=external.division AND division.id IN "(\$LRANGE L_IND_div_id 0 -1)"
+    $CLI SELECT "division.id,division.name,division.location,external.name,external.salary" FROM "division,external" WHERE "division.id=external.division AND division.id IN (\$LRANGE L_IND_div_id 0 -1)"
 }
 
 function in_tester() {
   echo IN_TESTER
   in_test_cust_id
+  in_test_select
   in_test_cust_hobby
   in_test_join_nonrelational
 }

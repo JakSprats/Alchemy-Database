@@ -1795,8 +1795,12 @@ static void createSharedObjects(void) {
     shared.join_table_not_in_query = createObject(REDIS_STRING,sdsnew(
         "-ERR SELECT: JOIN: ORDER BY tablename.columname - table not in SELECT *\r\n"));
 
+    shared.accesstypeunknown = createObject(REDIS_STRING,sdsnew(
+        "-ERR STORE: AccessType must be read commands (SELECT,LRANGE,ZRANGE,ZRANGEBYSCORE,ZREVRANGE,HMGET,HKEYS,HVALS,HGETALL,SUNION,SDIFF,SINTER,SMEMBERS,SORT)\r\n"));
+    shared.accessnumargsmismatch = createObject(REDIS_STRING,sdsnew(
+        "-ERR WHERE col IN(redis_cmd): Argc to redis_cmd is wrong\r\n"));
     shared.storagetypeunkown = createObject(REDIS_STRING,sdsnew(
-        "-ERR STORE: StorageType must be write commands (LPUSH,SADD,ZADD,INSERT,SET,etc...)\r\n"));
+        "-ERR STORE: StorageType must be write commands (LPUSH,RPUSH,LSET,SADD,ZADD,HSET,SET,SETNX,APPEND,SETEX)\r\n"));
     shared.storagenumargsmismatch = createObject(REDIS_STRING,sdsnew(
         "-ERR STORE: NumberSelectedColumns must match StorageType InputNumargs(1||2)\r\n"));
     shared.erronstoretotable = createObject(REDIS_STRING,sdsnew(
@@ -1819,6 +1823,8 @@ static void createSharedObjects(void) {
 
     shared.whereclause_in_err = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: WHERE col IN (...) - \"IN\" requires () delimited list\r\n"));
+    shared.where_in_select = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: WHERE col IN ($SELECT col ....) INNER SELECT SYNTAX ERROR \r\n"));
     shared.whereclause_between = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: WHERE col BETWEEN x AND y\r\n"));
 
@@ -1870,11 +1876,11 @@ static void createSharedObjects(void) {
     shared.scanselectsyntax = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: SCANSELECT col,,,, FROM tablename [WHERE [indexed_column = val]|| [indexed_column BETWEEN x AND y] [ORDER BY col LIMIT num offset] ]\r\n"));
     shared.scan_join = createObject(REDIS_STRING,sdsnew(
-        "-ERR: UNSUPPORTED: SCANSELECT JOINs\r\n"));
+        "-ERR UNSUPPORTED: SCANSELECT JOINs\r\n"));
     shared.scan_on_index = createObject(REDIS_STRING,sdsnew(
-        "-ERR: SCANSELECT on an indexed column -> use SELECT\r\n"));
+        "-ERR SCANSELECT on an indexed column -> use SELECT\r\n"));
     shared.scan_store = createObject(REDIS_STRING,sdsnew(
-        "-ERR: SCANSELECT STORE not yet supported\r\n"));
+        "-ERR SCANSELECT STORE not yet supported\r\n"));
 
     shared.istorecommit_err = createObject(REDIS_STRING,sdsnew(
         "-ERR INTERNAL: SELECT STORE failed (generic)\r\n"));
@@ -2164,48 +2170,55 @@ static void initServer() {
     AccessCommands[0].name   = "SELECT";
     AccessCommands[0].argc   = 4;
 
-    AccessCommands[1].func   = lrangeCommand;
-    AccessCommands[1].name   = "LRANGE";
+#if 0
+    //#define ACCESS_SCANSELECT_COMMAND_NUM 1
+    AccessCommands[1].func   = tscanCommand;
+    AccessCommands[1].name   = "SCANSELECT";
     AccessCommands[1].argc   = 4;
+#endif
 
-    AccessCommands[2].func   = zrangeCommand;
-    AccessCommands[2].name   = "ZRANGE";
+    AccessCommands[1].func   = sortCommand;
+    AccessCommands[1].name   = "SORT";
+    AccessCommands[1].argc   = -2;
+
+    AccessCommands[2].func   = lrangeCommand;
+    AccessCommands[2].name   = "LRANGE";
     AccessCommands[2].argc   = 4;
-    AccessCommands[3].func   = zrangebyscoreCommand;
-    AccessCommands[3].name   = "ZRANGEBYSCORE";
+
+    AccessCommands[3].func   = zrangeCommand;
+    AccessCommands[3].name   = "ZRANGE";
     AccessCommands[3].argc   = 4;
-    AccessCommands[4].func   = zrevrangeCommand;
-    AccessCommands[4].name   = "ZREVRANGE";
-    AccessCommands[4].argc   = 3;
-
-    AccessCommands[5].func   = hmgetCommand;
-    AccessCommands[5].name   = "HMGET";
+    AccessCommands[4].func   = zrangebyscoreCommand;
+    AccessCommands[4].name   = "ZRANGEBYSCORE";
+    AccessCommands[4].argc   = 4;
+    AccessCommands[5].func   = zrevrangeCommand;
+    AccessCommands[5].name   = "ZREVRANGE";
     AccessCommands[5].argc   = 3;
-    AccessCommands[6].func   = hkeysCommand;
-    AccessCommands[6].name   = "HKEYS";
-    AccessCommands[6].argc   = 2;
-    AccessCommands[7].func   = hvalsCommand;
-    AccessCommands[7].name   = "HVALS";
+
+    AccessCommands[6].func   = hmgetCommand;
+    AccessCommands[6].name   = "HMGET";
+    AccessCommands[6].argc   = -3;
+    AccessCommands[7].func   = hkeysCommand;
+    AccessCommands[7].name   = "HKEYS";
     AccessCommands[7].argc   = 2;
-    AccessCommands[8].func   = hgetallCommand;
-    AccessCommands[8].name   = "HGETALL";
+    AccessCommands[8].func   = hvalsCommand;
+    AccessCommands[8].name   = "HVALS";
     AccessCommands[8].argc   = 2;
+    AccessCommands[9].func   = hgetallCommand;
+    AccessCommands[9].name   = "HGETALL";
+    AccessCommands[9].argc   = 2;
 
-    AccessCommands[9].func   = sunionCommand;
-    AccessCommands[9].name   = "SUNION";
-    AccessCommands[9].argc   = 3;
-    AccessCommands[10].func   = sdiffCommand;
-    AccessCommands[10].name   = "SDIFF";
-    AccessCommands[10].argc   = 3;
-    AccessCommands[11].func  = sinterCommand;
-    AccessCommands[11].name  = "SINTER";
-    AccessCommands[11].argc  = 3;
+    AccessCommands[10].func   = sunionCommand;
+    AccessCommands[10].name   = "SUNION";
+    AccessCommands[10].argc   = -3;
+    AccessCommands[11].func   = sdiffCommand;
+    AccessCommands[11].name   = "SDIFF";
+    AccessCommands[11].argc   = -3;
     AccessCommands[12].func  = sinterCommand;
-    AccessCommands[12].name  = "SMEMBERS";
-    AccessCommands[12].argc  = 2;
-
-    AccessCommands[13].func  = sortCommand;
-    AccessCommands[13].name  = "SORT";
+    AccessCommands[12].name  = "SINTER";
+    AccessCommands[12].argc  = -3;
+    AccessCommands[13].func  = sinterCommand;
+    AccessCommands[13].name  = "SMEMBERS";
     AccessCommands[13].argc  = 2;
 
     init_six_bit_strings();

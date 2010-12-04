@@ -57,7 +57,7 @@ void luaCommand(redisClient *c) {
     if (s) {
         const char *x = lua_tostring(Lua, -1);
         lua_pop(Lua, 1);
-        addReplySds(c, sdscatprintf(sdsempty(), "-ERR: Lua error: %s \r\n", x));
+        addReplySds(c, sdscatprintf(sdsempty(), "-ERR Lua error: %s \r\n", x));
         return;
     }
 
@@ -145,7 +145,7 @@ int redisLua(lua_State *L) {
 
     if (!cmd) {
         char buf[64];
-        snprintf(buf, 63, "-ERR: Unknown command '%s'\r\n", arg1);
+        snprintf(buf, 63, "-ERR Unknown command '%s'\r\n", arg1);
         buf[63] = '\0';
         lua_pushstring(L, buf);
         LuaFlag = PIPE_ERR_FLAG;

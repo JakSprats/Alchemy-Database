@@ -665,7 +665,7 @@ bool leftoverParsingReply(redisClient *c, cswc_t *w) {
         while (isblank(*x)) x++;
         if (*x) {
             addReplySds(c, sdscatprintf(sdsempty(),
-                                        "-ERR: could not parse '%s'\r\n", x));
+                                        "-ERR could not parse '%s'\r\n", x));
             return 0;
         }
     }

@@ -35,6 +35,7 @@ robj *convertRobj(robj *r, int type);    /* HELPER */
 
 char *rem_backticks(char *token, int *len);
 char *str_next_unescaped_chr(char *beg, char *s, int x);
+char *strn_next_unescaped_chr(char *beg, char *s, int x, int len);
 
 char *next_token(char *nextp);
 int get_token_len(char *tok);

@@ -148,6 +148,7 @@ unsigned char respNotErr(redisClient *c) {
     listNode *ln = listFirst(c->reply);
     robj     *o  = ln->value;
     char     *s  = o->ptr;
+    //TODO DOCUMENT: this imposes an error message format
     if (!strncmp(s, "-ERR ", 5)) return 0;
     else                         return 1;
 }
@@ -414,7 +415,7 @@ bool prepareToStoreReply(redisClient  *c,
     if (!checkStoreTypeReply(c, &w->sto, stot)) return 0;
     *nname = next_token(stot);
     if (!*nname) {
-        addReply(c, shared.storagenumargsmismatch);
+        addReply(c, shared.selectsyntax);
         return 0;
     }
 
@@ -423,10 +424,10 @@ bool prepareToStoreReply(redisClient  *c,
     *nargc  = abs(StorageCommands[w->sto].argc);
     *last   = *nname + *nlen - 1;
     if (*(*last) == '$') { /* means final arg munging */
-        *sub_pk = 1;
-        *nargc  = *nargc + 1;
-        *(*last)   = '\0';
-        *nlen   = *nlen - 1;
+        *sub_pk  = 1;
+        *nargc   = *nargc + 1;
+        *(*last) = '\0';
+        *nlen    = *nlen - 1;
     }
     if (*nargc != qcols) {
         addReply(c, shared.storagenumargsmismatch);

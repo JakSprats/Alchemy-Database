@@ -291,13 +291,14 @@ struct sharedObjectsStruct {
     *join_table_not_in_query,
 
     *storagetypeunkown, *storagenumargsmismatch, *erronstoretotable,
+    *accesstypeunknown, *accessnumargsmismatch,
 
     *createsyntax, *dropsyntax, *drop_virtual_index,
 
     *insertsyntax,           *insertsyntax_no_into,  *insertsyntax_col_decl,
     *insertsyntax_no_values, *index_nonrel_decl_fmt,
 
-    *whereclause_in_err,
+    *whereclause_in_err,         *where_in_select,
     *whereclause_orderby_no_by,  *whereclause_orderby_err,
     *order_by_col_not_found,
     *orderby_limit_needs_number, *orderby_offset_needs_number,
