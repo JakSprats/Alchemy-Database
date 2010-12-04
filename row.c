@@ -65,7 +65,17 @@ extern r_ind_t  Index   [MAX_NUM_DB][MAX_NUM_INDICES];
 // ROW_COMMANDS ROW_COMMANDS ROW_COMMANDS ROW_COMMANDS ROW_COMMANDS ROW_COMMANDS
 // ROW_COMMANDS ROW_COMMANDS ROW_COMMANDS ROW_COMMANDS ROW_COMMANDS ROW_COMMANDS
 
-uint32 _createICol(uint32 i, flag *sflag, uint32 *col) {
+static bool checkUIntReply(redisClient *c, long l) {
+    if (l >= TWO_POW_32) {
+        addReply(c, shared.col_uint_too_big);
+        return 0;
+    } else if (l < 0) {
+        addReply(c, shared.col_uint_no_negative_values);
+        return 0;
+    }
+    return 1;
+}
+static uint32 _createICol(uint32 i, flag *sflag, uint32 *col) {
     if (i < TWO_POW_7) {
         *sflag = COL_1BYTE_INT;
         *col   = (i * 2) + 1;
@@ -84,11 +94,11 @@ uint32 _createICol(uint32 i, flag *sflag, uint32 *col) {
         return 5;
     }
 }
-uint32 createICol(redisClient *c,
-                  char        *start,
-                  uint32       len,
-                  flag        *sflag,
-                  uint32      *col) {
+static uint32 createICol(redisClient *c,
+                         char        *start,
+                         uint32       len,
+                         flag        *sflag,
+                         uint32      *col) {
     char buf[32];
     if (len >= 31) {
         addReply(c, shared.col_uint_string_too_long);
@@ -97,20 +107,15 @@ uint32 createICol(redisClient *c,
     memcpy(buf, start, len);
     buf[len] = '\0';
     long l   = atol(buf);
-    if (l >= TWO_POW_32) {
-        addReply(c, shared.col_uint_too_big);
-        return 0;
-    } else if (l < 0) {
-        addReply(c, shared.col_uint_no_negative_values);
-        return 0;
-    }
+
+    if (!checkUIntReply(c, l)) return 0;
     return _createICol(l, sflag, col);
 }
 
-uint32 createFCol(redisClient *c,
-                  char        *start,
-                  uint32       len,
-                  float       *col) {
+static uint32 createFCol(redisClient *c,
+                         char        *start,
+                         uint32       len,
+                         float       *col) {
     char buf[32];
     if (len >= 31) {
         addReply(c, shared.col_float_string_too_long);
@@ -223,7 +228,7 @@ static float streamFloatToFloat(uchar *data, uint32 *clen) {
         row += UINT_SIZE;                                  \
     }
 
-//  [ 1B | 1B  |NC*(1-4B)|data ....no key, no commas]
+//  [ 1B | 1B  |NC*(1-4B)|data ....no PK, no commas]
 //  [flag|ncols|col_ofsts|a,b,c,....................]
 robj *createRow(redisClient *c,
                 int          tmatch,
@@ -323,11 +328,6 @@ robj *createRow(redisClient *c,
     return r;
 }
 
-void freeRowObject(robj *o) {
-//RL4 "freeRowObject %p", o->ptr);
-    free(o->ptr);
-}
-
 //IMPORTANT: do not modify buffer(row) here [READ-OP]
 static uchar *getRowPayload(uchar  *row,
                             uchar  *rflag,
@@ -383,7 +383,7 @@ static aobj getPk(robj *okey, uchar ctype, bool force_string) {
             a.s    = RawColPKIntBuf;
             a.len  = strlen(RawColPKIntBuf);
         }
-    } else { /* NOTE FLOAT is STRING because PK exists ONLY as KEY, not VAL */
+    } else { /* NOTE FLOAT is STRING cuz PK is stored in key, not in row */
         a.type = COL_TYPE_STRING;
         a.enc  = COL_TYPE_STRING;
         a.s    = okey->ptr;
@@ -503,6 +503,7 @@ robj *createColObjFromRow(robj *r, int cmatch, robj *okey, int tmatch) {
 #define OUPUT_BUFFER_SIZE 4096
 static char OutputBuffer[OUPUT_BUFFER_SIZE]; /*avoid malloc()s */
 #define QUOTE_COL if (quote_text_cols) { memcpy(s + slot, "'", 1); slot++; }
+
 robj *outputRow(robj *row,
                 int   qcols,
                 int   cmatchs[],
@@ -600,17 +601,17 @@ bool updateRow(redisClient *c,
         } else {
             avals[i].sixbit = 0;
             if (Tbl[server.dbid][tmatch].col_type[i] == COL_TYPE_INT) {
-                long l   = atol(vals[i]);
-                if (l >= TWO_POW_32) {
-                    addReply(c, shared.col_uint_too_big);
-                    return 0;
-                } else if (l < 0) {
-                    addReply(c, shared.col_uint_no_negative_values);
-                    return 0;
-                }
+                long l        = atol(vals[i]);
+                if (!checkUIntReply(c, l)) return 0;
                 avals[i].i    = l;
                 avals[i].type = COL_TYPE_INT;
                 avals[i].enc  = COL_TYPE_INT;
+            } else if (Tbl[server.dbid][tmatch].col_type[i] == COL_TYPE_FLOAT) {
+                float f  = atof(vals[i]);
+                avals[i].f    = f;
+                avals[i].len  = sizeof(float);
+                avals[i].type = COL_TYPE_FLOAT;
+                avals[i].enc  = COL_TYPE_FLOAT;
             } else {
                 avals[i].s    = vals[i];
                 avals[i].len  = vlens[i];
@@ -649,11 +650,11 @@ bool updateRow(redisClient *c,
                 sixbitlen[n_6b_s] = s_len;
                 n_6b_s++;
             }
+            // free SixBitStr from getRawCol()
+            if (avals[i].sixbit) free(avals[i].s);
         }
     }
 
-    // free SixBitStr from getRawCol()
-    for (int i = 1; i < ncols; i++) if (avals[i].sixbit) free(avals[i].s);
 
     if (can_six) {
         uint32 k      = 0;
@@ -680,9 +681,10 @@ bool updateRow(redisClient *c,
 
     uint32 k = 0;
     for (int i = 1; i < ncols; i++) {       // SET data
-        // TODO COL_TYPE_FLOAT
         if (Tbl[server.dbid][tmatch].col_type[i] == COL_TYPE_INT) {
             writeUIntCol(&row, sflags[i], avals[i].s_i);
+        } else if (Tbl[server.dbid][tmatch].col_type[i] == COL_TYPE_FLOAT) {
+            writeFloatCol(&row, avals[i].f);
         } else {
            if (can_six) {
                 memcpy(row, sixbitstr[k], sixbitlen[k]);
@@ -728,3 +730,9 @@ bool updateRow(redisClient *c,
     server.dirty++;
     return 1;
 }
+
+void freeRowObject(robj *o) {
+    //RL4 "freeRowObject %p", o->ptr);
+    free(o->ptr);
+}
+

@@ -12,7 +12,7 @@ function NL() {
 }
 
 function init_external() {
-  $CLI CREATE TABLE external "(id int primary key, division int, health int, salary TEXT, name TEXT)"
+  $CLI CREATE TABLE external "(id int primary key, division int, health int, salary FLOAT, name TEXT)"
   $CLI CREATE INDEX external:division:index ON external \(division\)
   $CLI CREATE INDEX external:health:index   ON external \(health\)
 }
@@ -28,7 +28,7 @@ function init_subdivision() {
   $CLI CREATE INDEX subdivision:division:index ON subdivision \(division\)
 }
 function init_employee() {
-  $CLI CREATE TABLE employee "(id int primary key, division int, salary TEXT, name TEXT)"
+  $CLI CREATE TABLE employee "(id int primary key, division int, salary FLOAT, name TEXT)"
   $CLI CREATE INDEX employee:name:index     ON employee \(name\)
   $CLI CREATE INDEX employee:division:index ON employee \(division\)
 }
@@ -38,7 +38,7 @@ function init_customer() {
   $CLI CREATE INDEX customer:hobby:index    ON customer \(hobby\)
 }
 function init_worker() {
-  $CLI CREATE TABLE worker "(id int primary key, division int, health int, salary TEXT, name TEXT)"
+  $CLI CREATE TABLE worker "(id int primary key, division int, health int, salary FLOAT, name TEXT)"
   $CLI CREATE INDEX worker:division:index ON worker \(division\)
   $CLI CREATE INDEX worker:health:index   ON worker \(health\)
 }
@@ -165,8 +165,8 @@ function updater() {
   echo "UPDATE"
   echo SELECT "*" FROM employee WHERE id = 1
   T; $CLI SELECT "*" FROM employee WHERE "id = 1"                  | $T2P; NL
-  echo UPDATE employee SET "salary=50000,name=NEWNAME,division=66" WHERE id = 1
-  $CLI UPDATE employee SET "salary=50000,name=NEWNAME,division=66" WHERE "id=1"
+  echo UPDATE employee SET "salary=5.55,name=NEWNAME,division=66" WHERE id = 1
+  $CLI UPDATE employee SET "salary=5.55,name=NEWNAME,division=66" WHERE "id=1"
   echo SELECT "*" FROM employee WHERE id = 1
   T; $CLI SELECT "*" FROM employee WHERE "id = 1"                  | $T2P; NL
   echo UPDATE employee SET id=100 WHERE "id = 1"
@@ -538,6 +538,11 @@ function scan_x3() {
 
 }
 
+function test_x3() {
+  init_x3
+  insert_x3
+  scan_x3
+}
 
 function init_x4() {
   $CLI CREATE TABLE X4 "(id int, f float, t text)";
@@ -551,6 +556,15 @@ function insert_x4() {
   $CLI INSERT INTO X4 VALUES "(5,5.55,text5)"
   $CLI INSERT INTO X4 VALUES "(6,6.66,text6)"
   $CLI INSERT INTO X4 VALUES "(7,7.77,text7)"
+  $CLI INSERT INTO X4 VALUES "(15,5.55,text15)"
+  $CLI INSERT INTO X4 VALUES "(16,6.66,text16)"
+  $CLI INSERT INTO X4 VALUES "(17,7.77,text17)"
+  $CLI INSERT INTO X4 VALUES "(25,5.55,text25)"
+  $CLI INSERT INTO X4 VALUES "(26,6.66,text26)"
+  $CLI INSERT INTO X4 VALUES "(27,7.77,text27)"
+  $CLI INSERT INTO X4 VALUES "(35,5.55,text35)"
+  $CLI INSERT INTO X4 VALUES "(36,6.66,text36)"
+  $CLI INSERT INTO X4 VALUES "(37,7.77,text37)"
 }
 function select_x4() {
   echo SELECT \* FROM X4 WHERE id BETWEEN 2 AND 5
@@ -559,6 +573,21 @@ function select_x4() {
   $CLI SELECT \* FROM X4 WHERE f BETWEEN 2 AND 5
   echo SELECT \* FROM X4 WHERE f BETWEEN 2 AND 5 ORDER BY f DESC
   $CLI SELECT \* FROM X4 WHERE f BETWEEN 2 AND 5 ORDER BY f DESC
+  echo SELECT \* FROM X4 WHERE f = 5.550000191
+  $CLI SELECT \* FROM X4 WHERE f = 5.550000191
+  echo SELECT \* FROM X4 WHERE f = 5.550000191 order by t LIMIT 2 OFFSET 1
+  $CLI SELECT \* FROM X4 WHERE f = 5.550000191 order by t LIMIT 2 OFFSET 1
+}
+
+function test_x4() {
+  init_x4
+  insert_x4
+  select_x4
+}
+
+function float_tests() {
+  test_x3
+  test_x4
 }
 
 function istore_worker_name_list() {
@@ -884,6 +913,7 @@ function all_tests() {
   works
   dropper
 
+  float_tests
   populate
   scanner
   in_tester
