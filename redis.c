@@ -1839,10 +1839,6 @@ static void createSharedObjects(void) {
         "-ERR SYNTAX: SELECT col,,,, FROM tablename WHERE indexed_column = val - \"FROM\" keyword MISSING\r\n"));
     shared.selectsyntax_nowhere = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: SELECT col,,,, FROM tablename WHERE indexed_column = val - \"WHERE\" keyword MISSING\r\n"));
-    shared.select_notindxd = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: SELECT col,,,, FROM tablename WHERE indexed_column = val - Column must be indexed\r\n"));
-    shared.selectsyntax_noequals = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: SELECT col,,,, FROM tablename WHERE indexed_column = val - \"EQUALS SIGN\" MISSING\r\n"));
     shared.rangequery_index_not_found = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: WHERE indexed_column = val - indexed_column either non-existent or not indexed\r\n"));
 
@@ -1850,24 +1846,20 @@ static void createSharedObjects(void) {
         "-ERR SYNTAX: DELETE FROM tablename WHERE indexed_column = val || WHERE indexed_column BETWEEN x AND y\r\n"));
     shared.deletesyntax_nowhere = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: DELETE FROM tablename WHERE indexed_column = val - \"WHERE\" keyword MISSING\r\n"));
-    shared.delete_notindxd = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: DELETE FROM tablename WHERE indexed_column = val - Column must be indexed\r\n"));
-    shared.deletesyntax_noequals = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: DELETE FROM tablename WHERE indexed_column = val  - \"EQUALS SIGN\" MISSING\r\n"));
 
     shared.updatesyntax = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: UPDATE tablename SET col1=val1,col2=val2,,,, WHERE indexed_column = val\r\n"));
     shared.updatesyntax_nowhere = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: UPDATE tablename SET col1=val1,col2=val2,,,, WHERE indexed_column = val \"WHERE\" keyword MISSING\r\n"));
-    shared.update_notindxd = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: UPDATE tablename SET col1=val1,col2=val2,,,, WHERE indexed_column = val - Column must be indexed\r\n"));
-    shared.updatesyntax_noequals = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: UPDATE tablename SET col1=val1,col2=val2,,,, WHERE indexed_column = val - \"EQUALS SIGN\" MISSING\r\n"));
     shared.update_pk_range_query = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: UPDATE of PK not allowed with Range Query\r\n"));
     shared.update_pk_overwrite = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: UPDATE of PK would overwrite existing row - disallowed\r\n"));
 
+    shared.whereclause_col_not_found = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: WHERE indexed_column = val - Column does not exist\r\n"));
+    shared.whereclause_col_not_indxd = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: WHERE indexed_column = val - Column must be indexed\r\n"));
     shared.whereclause_no_and = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: WHERE-CLAUSE: WHERE indexed_column BETWEEN start AND finish - \"AND\" MISSING\r\n"));
     shared.selectsyntax_store_norange = createObject(REDIS_STRING,sdsnew(
@@ -1876,13 +1868,13 @@ static void createSharedObjects(void) {
         "-ERR SYNTAX: SELECT COUNT(*) FROM tbl STORE - is disallowed\r\n"));
 
     shared.scanselectsyntax = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: SCANSELECT col,,,, FROM tablename WHERE col = val\r\n"));
-    shared.scanselectsyntax_noequals = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: SELECT col,,,, FROM tablename WHERE col = val - \"EQUALS SIGN\" MISSING\r\n"));
+        "-ERR SYNTAX: SCANSELECT col,,,, FROM tablename [WHERE [indexed_column = val]|| [indexed_column BETWEEN x AND y] [ORDER BY col LIMIT num offset] ]\r\n"));
     shared.scan_join = createObject(REDIS_STRING,sdsnew(
         "-ERR: UNSUPPORTED: SCANSELECT JOINs\r\n"));
     shared.scan_on_index = createObject(REDIS_STRING,sdsnew(
         "-ERR: SCANSELECT on an indexed column -> use SELECT\r\n"));
+    shared.scan_store = createObject(REDIS_STRING,sdsnew(
+        "-ERR: SCANSELECT STORE not yet supported\r\n"));
 
     shared.istorecommit_err = createObject(REDIS_STRING,sdsnew(
         "-ERR INTERNAL: SELECT STORE failed (generic)\r\n"));

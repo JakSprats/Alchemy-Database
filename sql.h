@@ -63,8 +63,7 @@ bool parseCreateTable(redisClient *c,
 bool parseWCAddtlSQL(redisClient *c,
                      char        *token,
                      cswc_t      *w,
-                     int          tmatch,
-                     bool         reply);
+                     int          tmatch);
 
 uchar checkSQLWhereClauseReply(redisClient *c,
                                cswc_t      *w,

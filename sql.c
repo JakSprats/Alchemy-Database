@@ -53,9 +53,9 @@ extern r_tbl_t  Tbl     [MAX_NUM_DB][MAX_NUM_TABLES];
 extern r_ind_t  Index   [MAX_NUM_DB][MAX_NUM_INDICES];
 extern stor_cmd AccessCommands[];
 
-char   *Col_keywords_to_ignore[] = {"PRIMARY", "CONSTRAINT", "UNIQUE",
-                                    "KEY", "FOREIGN" };
-uint32  Num_col_keywords_to_ignore = 5;
+char   *Ignore_keywords[] = {"PRIMARY", "CONSTRAINT", "UNIQUE",
+                              "KEY",    "FOREIGN" };
+uint32  Num_ignore_keywords = 5;
 
 /* CREATE_TABLE_HELPERS CREATE_TABLE_HELPERS CREATE_TABLE_HELPERS */
 #if 0
@@ -63,10 +63,9 @@ cflags found w/
         if (!strncasecmp(x, "AUTO_INCREMENT", 14)) cflag = 1;
 #endif
 
-bool ignore_cname(char *token) {
-    for (uint32 i = 0; i < Num_col_keywords_to_ignore; i++) {
-        if (!strncasecmp(token, Col_keywords_to_ignore[i],
-                                strlen(Col_keywords_to_ignore[i]))) {
+bool ignore_cname(char *tkn) {
+    for (uint32 i = 0; i < Num_ignore_keywords; i++) {
+        if (!strncasecmp(tkn, Ignore_keywords[i], strlen(Ignore_keywords[i]))) {
             return 1;
         }
     }
@@ -77,10 +76,10 @@ bool ignore_cname(char *token) {
 bool parseCreateTable(redisClient *c,
                       char          cnames[][MAX_COLUMN_NAME_SIZE],
                       int          *ccount,
-                      sds           create_line) {
-    char *token   = create_line;
+                      sds           col_decl) {
+    char *token = col_decl;
     if (*token == '(') token++;
-    if (!*token) { /* just a '(' */
+    if (!*token) { /* empty or only '(' */
         addReply(c, shared.createsyntax);
         return 0;      
     }
@@ -90,11 +89,8 @@ bool parseCreateTable(redisClient *c,
         while (token) { /* first parse column name */
             clen      = get_token_len(token);
             token     = rem_backticks(token, &clen);
-            if (ignore_cname(token)) {
-                token = get_next_token_nonparaned_comma(token);
-            } else {
-                break;
-            }
+            if (!ignore_cname(token)) break;
+            token = get_next_token_nonparaned_comma(token);
         }
         if (!token) break;
         if (!cCpyOrReply(c, token, cnames[*ccount], clen)) return 0;
@@ -116,7 +112,7 @@ bool parseCreateTable(redisClient *c,
             Tbl[server.dbid][ntbls].col_type[*ccount] = COL_TYPE_STRING;
         }
         sdsfree(type);
-        Tbl[server.dbid][ntbls].col_flags[*ccount] = 0;
+        Tbl[server.dbid][ntbls].col_flags[*ccount] = 0; /* TODO flags */
         *ccount                                    = *ccount + 1;
     }
     return 1;
@@ -124,12 +120,6 @@ bool parseCreateTable(redisClient *c,
 
 /* WHERE_CLAUSE WHERE_CLAUSE WHERE_CLAUSE WHERE_CLAUSE WHERE_CLAUSE */
 /* WHERE_CLAUSE WHERE_CLAUSE WHERE_CLAUSE WHERE_CLAUSE WHERE_CLAUSE */
-void where_clause_error(redisClient *c, uchar sop) {
-    if      (sop == 0) addReply(c, shared.selectsyntax);
-    else if (sop == 1) addReply(c, shared.deletesyntax);
-    else if (sop == 2) addReply(c, shared.updatesyntax);
-}
-
 static uchar parseRangeReply(redisClient  *c,
                              char         *first,
                              cswc_t       *w,
@@ -167,16 +157,15 @@ static bool parseOrderBy(redisClient  *c,
                          char         *by,
                          int           tmatch,
                          cswc_t       *w,
-                         char        **finish,
-                         bool          reply) {
+                         char        **finish) {
     if (strncasecmp(by, "BY ", 3)) {
-        if (reply) addReply(c, shared.whereclause_orderby_no_by);
+        addReply(c, shared.whereclause_orderby_no_by);
         return 0;
     }
 
     char *token = next_token(by);
     if (!token) {
-        if (reply) addReply(c, shared.whereclause_orderby_no_by);
+        addReply(c, shared.whereclause_orderby_no_by);
         return 0;
     }
     char *nextp = strchr(token, ' ');
@@ -212,6 +201,9 @@ static bool parseOrderBy(redisClient  *c,
         if (!strncasecmp(nextp, "DESC", 4)) {
             w->asc = 0;
             nextp  = next_token(nextp);
+        } else if (!strncasecmp(nextp, "ASC", 3)) {
+            w->asc = 1;
+            nextp  = next_token(nextp);
         }
     }
 
@@ -238,35 +230,39 @@ static bool parseOrderBy(redisClient  *c,
         }
     }
 
-    if (nextp) *finish = nextp;
+    if (nextp) *finish = nextp; /* still something to parse - maybe STORE */
     return 1;
 }
 
 bool parseWCAddtlSQL(redisClient *c,
                      char        *token,
                      cswc_t      *w,
-                     int          tmatch,
-                     bool         reply) {
+                     int          tmatch) {
     bool check_sto = 1;
+    w->lvr         = token; /* assume parse error */
     if (!strncasecmp(token, "ORDER ", 6)) {
         char *by      = next_token(token);
         if (!by) {
-            if (reply) addReply(c, shared.whereclause_orderby_no_by);
+            addReply(c, shared.whereclause_orderby_no_by);
             return 0;
         }
 
         char *lfin    = NULL;
-        if (!parseOrderBy(c, by, tmatch, w, &lfin, reply)) return 0;
+        if (!parseOrderBy(c, by, tmatch, w, &lfin)) return 0;
         if (lfin) {
             check_sto = 1;
             token     = lfin;
         } else {
             check_sto = 0;
+            w->lvr    = NULL; /* negate parse error */
         }
     }
     if (check_sto) {
-        if (!strncasecmp(token, "STORE ", 6)) w->stor = token;
-        else                                  w->lvr  = token;
+        w->lvr = token; /* assume parse error */
+        if (!strncasecmp(token, "STORE ", 6)) {
+            w->stor = token;
+            w->lvr  = NULL; /* negate parse error */
+        }
     }
     return 1;
 }
@@ -370,20 +366,21 @@ uchar checkSQLWhereClauseReply(redisClient *c,
         char *end = eq - 1;
         while (isblank(*end)) end--; /* find end of PK */
         w->cmatch = find_column_n(tmatch, w->token, end - w->token + 1);
+        if (w->cmatch == -1) {
+            if (!just_parse) addReply(c, shared.whereclause_col_not_found);
+            return SQL_ERR_LOOKUP;
+        }
         w->imatch = (w->cmatch == -1) ? -1 : find_index(tmatch, w->cmatch); 
         wtype     = w->cmatch ? SQL_SINGLE_FK_LOOKUP : SQL_SINGLE_LOOKUP;
 
         if (!is_scan && w->imatch == -1) { /* non-indexed column */
-            if (!just_parse) {
-                if      (sop == SQL_SELECT) addReply(c, shared.select_notindxd);
-                else if (sop == SQL_DELETE) addReply(c, shared.delete_notindxd);
-                else if (sop == SQL_UPDATE) addReply(c, shared.update_notindxd);
-            }
+            if (!just_parse) addReply(c, shared.whereclause_col_not_indxd);
             return SQL_ERR_LOOKUP;
         }
 
         char *start  = eq + 1;
         while (isblank(*start)) start++; /* find start of value */
+        if (!*start) goto check_sql_wc_err;
         finish       = strchr(start, ' ');
         int   len    = finish ? finish - start : 
                                 (int)sdslen(w->token) - (start - w->token);
@@ -417,12 +414,17 @@ uchar checkSQLWhereClauseReply(redisClient *c,
     }
 
     if (finish) { /* additional SQL */
-        if (!parseWCAddtlSQL(c, finish, w, tmatch, 1)) return SQL_ERR_LOOKUP;
+        if (!parseWCAddtlSQL(c, finish, w, tmatch)) return SQL_ERR_LOOKUP;
     }
     return wtype;
 
 check_sql_wc_err:
-    if (!just_parse) where_clause_error(c, sop);
+    if (!just_parse) {
+        if      (sop == SQL_SELECT) addReply(c, shared.selectsyntax);
+        else if (sop == SQL_DELETE) addReply(c, shared.deletesyntax);
+        else if (sop == SQL_UPDATE) addReply(c, shared.updatesyntax);
+        else                        addReply(c, shared.scanselectsyntax);
+    }
     return SQL_ERR_LOOKUP;
 }
 
@@ -514,7 +516,7 @@ static bool joinParseWCReply(redisClient  *c,
                 if (!*next) goto joincmd_end;
                 fin = 0; /* i.e. loop */
             } else {
-                if (!parseWCAddtlSQL(c, *next, &jb->w, -1, 1)) goto joincmd_end;
+                if (!parseWCAddtlSQL(c, *next, &jb->w, -1)) goto joincmd_end;
                 if (jb->w.obc != -1 ) { /* ORDER BY */
                     bool hit = 0;
                     for (int i = 0; i < jb->qcols; i++) {

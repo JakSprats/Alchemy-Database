@@ -397,6 +397,7 @@ bool checkStoreTypeReply(redisClient *c, int *sto, char *stot) {
     return 1;
 }
 
+//TODO should be in sql.c
 bool prepareToStoreReply(redisClient  *c,
                          cswc_t       *w,
                          char        **nname,

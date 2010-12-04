@@ -271,50 +271,52 @@ struct sharedObjectsStruct {
     *emptymultibulk, *wrongtypeerr, *nokeyerr, *syntaxerr, *sameobjecterr,
 
 #ifdef ALSOSQL /* ALSOSQL START */
-    *toomanytables,       *undefinedcolumntype, *missingcolumntype,
-    *toomanycolumns,      *columnnametoobig,    *insertcannotoverwrite,
-    *uint_pk_too_big,     *uint_no_negative_values,
-    *col_uint_too_big,    *col_uint_no_negative_values,
-    *col_uint_string_too_long, *col_float_string_too_long,
-    *toofewcolumns,       *toomanyindices,      *nonuniquecolumns,
-    *nonuniquetablenames, *nonuniqueindexnames, *indextargetinvalid,
+    *toomanytables,       *undefinedcolumntype,  *missingcolumntype,
+    *toomanycolumns,      *columnnametoobig,     *insertcannotoverwrite,
+    *toofewcolumns,       *toomanyindices,       *nonuniquecolumns,
+    *nonuniquetablenames, *nonuniqueindexnames,  *indextargetinvalid,
     *indexedalready,      *index_wrong_num_args,
     *nonexistenttable,    *insertcolumnmismatch,
-    *columntoolarge,      *nonexistentcolumn,   *nonexistentindex,
-    *invalidrange,        *toofewindicesinjoin, *toomanyindicesinjoin,
+    *columntoolarge,      *nonexistentcolumn,    *nonexistentindex,
+    *invalidrange,        *toofewindicesinjoin,  *toomanyindicesinjoin,
     *invalidupdatestring, *badindexedcolumnsyntax,
+
+    *col_uint_too_big,         *col_uint_no_negative_values,
+    *col_uint_string_too_long, *col_float_string_too_long,
+    *uint_pk_too_big,          *uint_no_negative_values,
 
     *joinindexedcolumnlisterror, *joincolumnlisterror, *join_on_multi_col,
     *join_requires_range,
-    *join_order_by_syntax, *join_order_by_tbl, *join_order_by_col,
+    *join_order_by_syntax,       *join_order_by_tbl,   *join_order_by_col,
     *join_table_not_in_query,
 
     *storagetypeunkown, *storagenumargsmismatch, *erronstoretotable,
 
-    *createsyntax, *dropsyntax,
+    *createsyntax, *dropsyntax, *drop_virtual_index,
+
     *insertsyntax,           *insertsyntax_no_into,  *insertsyntax_col_decl,
     *insertsyntax_no_values, *index_nonrel_decl_fmt,
 
     *whereclause_in_err,
-    *whereclause_orderby_no_by, *whereclause_orderby_err,
+    *whereclause_orderby_no_by,  *whereclause_orderby_err,
     *order_by_col_not_found,
     *orderby_limit_needs_number, *orderby_offset_needs_number,
 
-    *selectsyntax,           *selectsyntax_nofrom,
-    *selectsyntax_nowhere,   *select_notindxd,       *selectsyntax_noequals,
-    *rangequery_index_not_found,
-    *deletesyntax,
-    *deletesyntax_nowhere,   *delete_notindxd,       *deletesyntax_noequals,
+    *selectsyntax,           *selectsyntax_nofrom,   *selectsyntax_nowhere,
+    *deletesyntax,           *deletesyntax_nowhere,
     *updatesyntax,           *update_pk_range_query, *update_pk_overwrite,
-    *updatesyntax_nowhere,   *update_notindxd,       *updatesyntax_noequals,
+    *updatesyntax_nowhere,
     *scanselectsyntax,       *scan_join,             *scanselectsyntax_noequals,
-    *scan_on_index,
+    *scan_on_index,          *scan_store,
     *istorecommit_err,
 
-    *whereclause_no_and,     *whereclause_between,
+    *rangequery_index_not_found,
+
+    *whereclause_col_not_indxd, *whereclause_col_not_found,
+    *whereclause_no_and,        *whereclause_between,
+
     *selectsyntax_store_norange, *select_store_count,
     *joinsyntax_no_tablename,
-    *drop_virtual_index,
 
     *createtable_as_on_wrong_type,       *createtable_as_index,
     *create_table_as_function_not_found, *create_table_as_dump_num_args,

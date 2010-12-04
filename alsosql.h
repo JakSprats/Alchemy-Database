@@ -131,6 +131,8 @@ bool parseSelectReply(redisClient *c,
 void init_check_sql_where_clause(cswc_t *w, sds token);
 void destroy_check_sql_where_clause(cswc_t *w);
 
+bool leftoverParsingReply(redisClient *c, cswc_t *w);
+
 #define ASSIGN_UPDATE_HITS_AND_MISSES               \
     unsigned char  cmiss[MAX_COLUMN_PER_TABLE];     \
     char          *vals [MAX_COLUMN_PER_TABLE];     \

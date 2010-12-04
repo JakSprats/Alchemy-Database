@@ -684,10 +684,10 @@ void selectRedisqlCommand(redisClient *c) {
         return;
     }
     int  cmatchs[MAX_COLUMN_PER_TABLE];
-    bool cstar  = 0;
-    int  qcols  = 0;
+    bool cstar  =  0;
+    int  qcols  =  0;
     int  tmatch = -1;
-    bool join   = 0;
+    bool join   =  0;
     sds  tlist  = c->argv[3]->ptr;
     if (!parseSelectReply(c, NULL, &tmatch, cmatchs, &qcols, &join,
                           &cstar, c->argv[1]->ptr, c->argv[2]->ptr,
