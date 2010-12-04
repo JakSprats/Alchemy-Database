@@ -848,12 +848,11 @@ void jstoreCommit(redisClient *c, jb_t *jb) {
     robj               *argv[STORAGE_MAX_ARGC + 1];
     struct redisClient *fc = rsql_createFakeClient();
     fc->argv               = argv;
-    if (!StorageCommands[jb->w.sto].argc) { /* INSERT -> create table first */
-        fc->argv[1] = cloneRobj(jb->nname);
-        if (!createTableFromJoin(c, fc, jb->qcols, jb->j_tbls, jb->j_cols)) {
-            rsql_freeFakeClient(fc);
-            return;
-        }
+    if (!StorageCommands[jb->w.sto].argc) { /* INSERT */
+        //TODO temp solution SELECT STORE INSERT being backed out
+        //      CREATE TABLE AS SELECT makes more sense
+        addReply(c, shared.select_store_insert);
+        return;
     }
 
     joinGeneric(c, fc, jb, sub_pk, nargc);

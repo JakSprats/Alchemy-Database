@@ -356,6 +356,7 @@ function istore_customer_hobby_order_by_denorm_to_many_lists() {
 function orderbyer() {
   echo ORDERBYER
   order_by_test
+  order_by_limit_offset_test
   order_by_test_joins
   istore_customer_hobby_order_by_denorm_to_many_lists
 }
@@ -623,6 +624,7 @@ function istore_worker_hash_name_salary() {
 }
 
 function jstore_div_subdiv() {
+  echo "USE CREATE TABLE AS SELECT"
   echo SELECT subdivision.id,subdivision.name,division.name FROM subdivision,division WHERE subdivision.division = division.id AND division.id BETWEEN 11 AND 44 STORE INSERT normal_div_subdiv
   $CLI SELECT "subdivision.id,subdivision.name,division.name" FROM "subdivision,division" WHERE "subdivision.division = division.id AND division.id BETWEEN 11 AND 44 STORE INSERT normal_div_subdiv"
   echo DUMP normal_div_subdiv
@@ -637,6 +639,7 @@ function jstore_worker_location_hash() {
 }
 
 function jstore_worker_location_table() {
+  echo "USE CREATE TABLE AS SELECT"
   echo SELECT external.name,division.location FROM external,division WHERE external.division=division.id AND division.id BETWEEN 11 AND 80 STORE INSERT w_c_tbl
   $CLI SELECT "external.name,division.location" FROM "external,division" WHERE "external.division=division.id AND division.id BETWEEN 11 AND 80 STORE INSERT w_c_tbl"
   echo dump w_c_tbl

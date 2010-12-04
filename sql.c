@@ -195,11 +195,11 @@ static bool parseOrderBy(redisClient  *c,
             return 0;
         }
     } else {  /* RANGE QUERY */
-        if (tmatch == -1) {
-            addReply(c, shared.join_order_by_tbl);
+        w->obc = find_column_n(tmatch, token, tlen);
+        if (w->obc == -1) {
+            addReply(c, shared.order_by_col_not_found);
             return 0;
         }
-        w->obc = find_column_n(tmatch, token, tlen);
     }
 
     if (nextp) while (isblank(*nextp)) nextp++;

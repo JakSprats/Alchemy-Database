@@ -100,6 +100,8 @@ static struct redisCommand cmdTable[] = {
     {"setex",4,CMDFLAG_NONE},
     {"append",3,CMDFLAG_NONE},
     {"substr",4,CMDFLAG_NONE},
+    /* ALSOSQL added strlen */
+    {"strlen",2,CMDFLAG_NONE},
     {"del",-2,CMDFLAG_NONE},
     {"exists",2,CMDFLAG_NONE},
     {"incr",2,CMDFLAG_NONE},
@@ -175,6 +177,8 @@ static struct redisCommand cmdTable[] = {
     {"info",1,CMDFLAG_RAWOUTPUT},
     {"mget",-2,CMDFLAG_NONE},
     {"expire",3,CMDFLAG_NONE},
+    /* ALSOSQL added persist */
+    {"persist",2,CMDFLAG_NONE},
     {"expireat",3,CMDFLAG_NONE},
     {"ttl",2,CMDFLAG_NONE},
     {"slaveof",3,CMDFLAG_NONE},

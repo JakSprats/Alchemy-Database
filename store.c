@@ -299,7 +299,7 @@ static bool istoreAction(redisClient *c,
         for (int i = 0; i < qcols; i++) {
             if (cols[i].sixbit) free(cols[i].s);
         }
-    } else {                         // INSERT
+    } else {                         // INSERT - about to be erased
         //TODO this can be done simpler w/ sdscatlen()
         int len = totlen + qcols -1;
         if (len > rowlen) {
@@ -325,14 +325,6 @@ static bool istoreAction(redisClient *c,
 }
 
 /* ORDER BY START */
-static void addRowToRangeQueryList(list *ll,
-                                   robj *row,
-                                   int   obc,
-                                   robj *pko,
-                                   int   tmatch,
-                                   bool  icol) {
-    addORowToRQList(ll, NULL, row, obc, pko, tmatch, icol);
-}
 
 /* a static robj to wrap the (row *) being sent to istoreAction (for ORDER BY)*/
 static robj IstoreOrderByRobj;
@@ -340,6 +332,25 @@ static void init_IstoreOrderByRobj() {
     IstoreOrderByRobj.type     = REDIS_ROW;
     IstoreOrderByRobj.encoding = REDIS_ENCODING_RAW;
     IstoreOrderByRobj.refcount = 1;
+}
+
+static robj *createObjFromCol(void *col, uchar ctype) {
+    robj *r;
+    if (ctype == COL_TYPE_INT) {
+        r = createObject(REDIS_STRING, NULL);
+        r->encoding = REDIS_ENCODING_INT;
+        r->ptr      = col;
+    } else if (ctype == COL_TYPE_FLOAT) {
+        float f;
+        memcpy(&f, col, sizeof(float));
+        char buf[32];
+        snprintf(buf, 31, "%10.10g", f);
+        buf[31] = '\0';
+        r = createStringObject(buf, strlen(buf));
+    } else {
+        r = createStringObject(col, strlen(col));
+    }
+    return r;
 }
 
 static int sortedOrderByIstore(redisClient  *c,
@@ -351,6 +362,7 @@ static int sortedOrderByIstore(redisClient  *c,
                                char         *nname,
                                bool          sub_pk,
                                int           nargc,
+                               uchar         ctype,
                                obsl_t      **vector,
                                int           vlen) {
     static bool inited_IstoreOrderByRobj = 0;
@@ -366,10 +378,12 @@ static int sortedOrderByIstore(redisClient  *c,
             w->ofst--;
         } else {
             sent++;
-            obsl_t *ob = vector[k];
+            obsl_t *ob            = vector[k];
             IstoreOrderByRobj.ptr = ob->row;
-            if (!istoreAction(c, fc, tmatch, cmatchs, qcols, w->sto, ob->val,
-                              &IstoreOrderByRobj, nname, sub_pk, nargc)) 
+            robj *key             = createObjFromCol(ob->val, ctype);
+            robj *row             = &IstoreOrderByRobj;
+            if (!istoreAction(c, fc, tmatch, cmatchs, qcols, w->sto,
+                              key, row, nname, sub_pk, nargc))
                                   return 0; /* TODO get err from fs */
         }
     }
@@ -377,15 +391,15 @@ static int sortedOrderByIstore(redisClient  *c,
 }
 /* ORDER BY END */
 
-#define ISTORE_OPERATION(Q)                                         \
-    if (Q) {                                                        \
-        addRowToRangeQueryList(ll, row, w->obc, key, tmatch, icol); \
-    } else {                                                        \
-        if (!istoreAction(c, fc, tmatch, cmatchs, qcols, w->sto,    \
-                          key, row, nname, sub_pk, nargc)) {        \
-            err = 1; /* TODO get err from fc */                     \
-            goto istore_err;                                        \
-        }                                                           \
+#define ISTORE_OPERATION(Q)                                          \
+    if (Q) {                                                         \
+        addORowToRQList(ll, NULL, row, w->obc, key, tmatch, ctype);  \
+    } else {                                                         \
+        if (!istoreAction(c, fc, tmatch, cmatchs, qcols, w->sto,     \
+                          key, row, nname, sub_pk, nargc)) {         \
+            err = 1; /* TODO get err from fc */                      \
+            goto istore_err;                                         \
+        }                                                            \
     }
 
 bool checkStoreTypeReply(redisClient *c, int *sto, char *stot) {
@@ -461,20 +475,18 @@ void istoreCommit(redisClient *c,
     robj        *argv[STORAGE_MAX_ARGC + 1];
     redisClient *fc = rsql_createFakeClient();
     fc->argv        = argv;
-    if (!StorageCommands[w->sto].argc) { // create table first if needed
-        fc->argv[1] = createStringObject(nname, nlen);
-        if (!internalCreateTable(c, fc, qcols, cmatchs, tmatch)) {
-            rsql_freeFakeClient(fc);
-            addReply(c, shared.istorecommit_err); /* TODO get err from fc */
-            return;
-        }
+    if (!StorageCommands[w->sto].argc) { // INSERT
+        //TODO temp solution SELECT STORE INSERT being backed out
+        //      CREATE TABLE AS SELECT makes more sense
+        addReply(c, shared.select_store_insert);
+        return;
     }
 
-    list *ll   = NULL;
-    bool  icol = 0;
+    list *ll    = NULL;
+    uchar ctype = COL_TYPE_NONE;
     if (w->obc != -1) {
-        ll   = listCreate();
-        icol = (Tbl[server.dbid][tmatch].col_type[w->obc] == COL_TYPE_INT);
+        ll    = listCreate();
+        ctype = Tbl[server.dbid][tmatch].col_type[w->obc];
     }
 
     bool    cstar = 0;
@@ -499,12 +511,12 @@ void istoreCommit(redisClient *c,
 
     int sent = 0;
     if (qed) {
-        obsl_t **vector = sortOrderByToVector(ll, icol, w->asc);
+        obsl_t **vector = sortOrderByToVector(ll, ctype, w->asc);
         sent            = sortedOrderByIstore(c, w, fc, tmatch, cmatchs, qcols,
-                                              nname, sub_pk, nargc,
+                                              nname, sub_pk, nargc, ctype,
                                               vector, listLength(ll));
         if (sent == 0) err = 1;
-        sortedOrderByCleanup(vector, listLength(ll), icol, 0);
+        sortedOrderByCleanup(vector, listLength(ll), ctype, 0);
         free(vector);
     }
 

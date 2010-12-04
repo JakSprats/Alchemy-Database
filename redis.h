@@ -297,6 +297,7 @@ struct sharedObjectsStruct {
 
     *whereclause_in_err,
     *whereclause_orderby_no_by, *whereclause_orderby_err,
+    *order_by_col_not_found,
     *orderby_limit_needs_number, *orderby_offset_needs_number,
 
     *selectsyntax,           *selectsyntax_nofrom,
@@ -308,7 +309,7 @@ struct sharedObjectsStruct {
     *updatesyntax_nowhere,   *update_notindxd,       *updatesyntax_noequals,
     *scanselectsyntax,       *scan_join,             *scanselectsyntax_noequals,
     *scan_on_index,
-    *istorecommit_err,
+    *istorecommit_err, *select_store_insert,
 
     *whereclause_no_and,     *whereclause_between,
     *selectsyntax_store_norange, *select_store_count,

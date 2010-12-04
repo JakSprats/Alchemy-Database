@@ -741,6 +741,12 @@ static void blpopCommand(redisClient *c);
 static void brpopCommand(redisClient *c);
 static void appendCommand(redisClient *c);
 static void substrCommand(redisClient *c);
+
+/* ALSOSQL added strlen */
+static void strlenCommand(redisClient *c);
+/* ALSOSQL added persist */
+static void persistCommand(redisClient *c);
+
 static void zrankCommand(redisClient *c);
 static void zrevrankCommand(redisClient *c);
 void hsetCommand(redisClient *c);
@@ -800,6 +806,8 @@ static struct redisCommand cmdTable[] = {
     {"setex",setexCommand,4,REDIS_CMD_BULK|REDIS_CMD_DENYOOM,NULL,0,0,0,0},
     {"append",appendCommand,3,REDIS_CMD_BULK|REDIS_CMD_DENYOOM,NULL,1,1,1,0},
     {"substr",substrCommand,4,REDIS_CMD_INLINE,NULL,1,1,1,0},
+    /* ALSOSQL added strlen */
+    {"strlen",strlenCommand,2,REDIS_CMD_INLINE,NULL,1,1,1,0},
     {"del",delCommand,-2,REDIS_CMD_INLINE,NULL,0,0,0,0},
     {"exists",existsCommand,2,REDIS_CMD_INLINE,NULL,1,1,1,0},
     {"incr",incrCommand,2,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,0},
@@ -875,6 +883,8 @@ static struct redisCommand cmdTable[] = {
     {"renamenx",renamenxCommand,3,REDIS_CMD_INLINE,NULL,1,1,1,0},
     {"expire",expireCommand,3,REDIS_CMD_INLINE,NULL,0,0,0,0},
     {"expireat",expireatCommand,3,REDIS_CMD_INLINE,NULL,0,0,0,0},
+    /* ALSOSQL added persist */
+    {"persist",persistCommand,2,REDIS_CMD_INLINE,NULL,1,1,1,0},
     {"keys",keysCommand,2,REDIS_CMD_INLINE,NULL,0,0,0,0},
     {"dbsize",dbsizeCommand,1,REDIS_CMD_INLINE,NULL,0,0,0,0},
     {"auth",authCommand,2,REDIS_CMD_INLINE,NULL,0,0,0,0},
@@ -1816,6 +1826,8 @@ static void createSharedObjects(void) {
         "-ERR SYNTAX: WHERE ... ORDER BY col - \"BY\" MISSING\r\n"));
     shared.whereclause_orderby_err = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: WHERE ... ORDER BY col [DESC] [LIMIT N]\r\n"));
+    shared.order_by_col_not_found = createObject(REDIS_STRING,sdsnew(
+        "-ERR SELECT: ORDER BY columname - column does not exist\r\n"));
     shared.orderby_limit_needs_number = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: WHERE ... ORDER BY col [DESC] LIMIT N = \"N\" MISSING\r\n"));
     shared.orderby_offset_needs_number = createObject(REDIS_STRING,sdsnew(
@@ -1874,6 +1886,8 @@ static void createSharedObjects(void) {
 
     shared.istorecommit_err = createObject(REDIS_STRING,sdsnew(
         "-ERR INTERNAL: SELECT STORE failed (generic)\r\n"));
+    shared.select_store_insert = createObject(REDIS_STRING,sdsnew(
+        "-ERR UNSUPPORTED: SELECT STORE INSERT - use CREATE TABLE AS SELECT\r\n"));
 
     shared.joinsyntax_no_tablename = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: SELECT tbl.col,,,, FROM tbl1,tbl2 WHERE tbl1.indexed_column = tbl2.indexed_column AND tbl1.indexed_column BETWEEN x AND y - MISSING table-name in WhereClause\r\n"));
@@ -5047,6 +5061,18 @@ static void substrCommand(redisClient *c) {
     decrRefCount(o);
 }
 
+/* ALSOSQL added strlen */
+void strlenCommand(redisClient *c) {
+    robj *o;
+
+    if ((o = lookupKeyReadOrReply(c,c->argv[1],shared.czero)) == NULL ||
+        checkType(c,o,REDIS_STRING)) return;
+
+    o = getDecodedObject(o);
+    addReplyLongLong(c,sdslen(o->ptr));
+    decrRefCount(o);
+}
+
 /* ========================= Type agnostic commands ========================= */
 
 static void delCommand(redisClient *c) {
@@ -8054,6 +8080,24 @@ static void ttlCommand(redisClient *c) {
     }
     addReplySds(c,sdscatprintf(sdsempty(),":%d\r\n",ttl));
 }
+
+/* ALSOSQL added persist */
+void persistCommand(redisClient *c) {
+    dictEntry *de;
+
+    de = dictFind(c->db->dict,c->argv[1]);
+    if (de == NULL) {
+        addReply(c,shared.czero);
+    } else {
+        if (removeExpire(c->db,c->argv[1])) {
+            addReply(c,shared.cone);
+            server.dirty++;
+        } else {
+            addReply(c,shared.czero);
+        }
+    }
+}
+
 
 
 /* ================================ MULTI/EXEC ============================== */
