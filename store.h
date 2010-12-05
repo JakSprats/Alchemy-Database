@@ -31,6 +31,7 @@ ALL RIGHTS RESERVED
 #include "adlist.h"
 
 #include "alsosql.h"
+#include "alsosql.h"
 #include "common.h"
 
 #define NUM_STORAGE_TYPES 10
@@ -71,9 +72,6 @@ void istoreCommit(redisClient *c,
                   int          tmatch,
                   int          cmatchs[MAX_COLUMN_PER_TABLE],
                   int          qcols);
-
-void legacyTableCommand(redisClient *c); /* LEGACY syntax for createTable() */
-void legacyInsertCommand(redisClient *c);
 
 bool createTableFromJoin(redisClient *c,
                          redisClient *fc,

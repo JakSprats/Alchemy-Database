@@ -51,9 +51,16 @@ void newIndex(redisClient *c,
               bool         virt,
               d_l_t       *nrlind);
 void createIndex(redisClient *c);
-void legacyIndexCommand(redisClient *c);
 
 int buildIndex(bt *btr, bt_n *x, bt *ibtr, int icol, int itbl, bool nrl);
+void indexCommit(redisClient *c,
+                 char        *iname,
+                 char        *trgt, 
+                 bool        nrl,   
+                 char       *nrltbl,
+                 char       *nrladd,
+                 char       *nrldel,
+                 bool        build);
 
 void iAdd(bt *btr, robj *i_key, robj *i_val, uchar pktype);
 
@@ -142,11 +149,11 @@ ull get_sum_all_index_size_for_table(redisClient *c, int tmatch);
                 if (brk_fk && (uint32)w->lim == card) break; /*ORDRBY FK LIM*/\
             }                                                                 \
             btReleaseRangeIterator(nbi);                                      \
-            nbi = NULL; /* explicit in case of goto's in inner loop */        \
+            nbi = NULL; /* explicit in case of GOTO in inner loop */          \
         }                                                                     \
     }                                                                         \
     btReleaseRangeIterator(bi);                                               \
-    bi = NULL; /* explicit in case of goto's in inner loop */
+    bi = NULL; /* explicit in case of GOTO in inner loop */
 
 
 #define IN_QUERY_LOOKUP_START                                                 \
@@ -198,7 +205,7 @@ ull get_sum_all_index_size_for_table(redisClient *c, int tmatch);
                     }                                                         \
                 }                                                             \
                 btReleaseRangeIterator(nbi);                                  \
-                nbi = NULL; /* explicit in case of goto's in inner loop */    \
+                nbi = NULL; /* explicit in case of GOTO in inner loop */      \
             }                                                                 \
             decrRefCount(ikey); /* from addRedisCmdToINList() */              \
         }                                                                     \

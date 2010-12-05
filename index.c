@@ -283,14 +283,14 @@ int buildIndex(bt *btr, bt_n *x, bt *ibtr, int icol, int itbl, bool nrl) {
     return 0;
 }
 
-static void indexCommit(redisClient *c,
-                        char        *iname,
-                        char        *trgt,
-                        bool        nrl,
-                        char       *nrltbl,
-                        char       *nrladd,
-                        char       *nrldel,
-                        bool        build) {
+void indexCommit(redisClient *c,
+                 char        *iname,
+                 char        *trgt,
+                 bool        nrl,
+                 char       *nrltbl,
+                 char       *nrladd,
+                 char       *nrldel,
+                 bool        build) {
     if (Num_indx[server.dbid] >= MAX_NUM_INDICES) {
         addReply(c, shared.toomanyindices);
         return;
@@ -397,24 +397,6 @@ void createIndex(redisClient *c) {
         sdsfree(leg_ind_sntx);
         sdsfree(leg_col);
     }
-}
-
-void legacyIndexCommand(redisClient *c) {
-    bool nrl     = 0;
-    char *trgt   = NULL;
-    char *nrltbl = NULL;
-    char *nrladd = NULL;
-    char *nrldel = NULL;
-    if (c->argc > 3) {
-        nrl = 1;
-        nrltbl = c->argv[2]->ptr;
-        nrladd = (c->argc > 3) ? c->argv[3]->ptr : NULL;
-        nrldel = (c->argc > 4) ? c->argv[4]->ptr : NULL;
-    } else {
-        trgt = c->argv[2]->ptr;
-    }
-    /* the final argument means -> if(nrl) dont build index */
-    indexCommit(c, c->argv[1]->ptr, trgt, nrl, nrltbl, nrladd, nrldel, !nrl);
 }
 
 

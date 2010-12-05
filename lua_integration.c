@@ -172,7 +172,7 @@ int redisLua(lua_State *L) {
         server.vm_max_threads > 0 &&
         blockClientOnSwappedKeys(LuaClient, cmd)) return 1;
 
-    long ok = 0; /* must come before first goto */
+    long ok = 0; /* must come before first GOTO */
     redisClient *rfc = rsql_createFakeClient();
     robj **rargv     = zmalloc(sizeof(robj *) * argc);
     rfc->argv        = rargv;

@@ -40,6 +40,7 @@ ALL RIGHTS RESERVED
 #include "index.h"
 #include "orderby.h"
 #include "parser.h"
+#include "legacy.h"
 #include "common.h"
 #include "store.h"
 
@@ -49,91 +50,76 @@ extern struct sharedObjectsStruct shared;
 extern struct redisServer server;
 
 // GLOBALS
-extern int Num_tbls[MAX_NUM_DB];
-
 extern char *EQUALS;
 extern char *COLON;
 extern char *PERIOD;
 
 extern char *Col_type_defs[];
 
-extern r_tbl_t  Tbl   [MAX_NUM_DB][MAX_NUM_TABLES];
-extern r_ind_t  Index [MAX_NUM_DB][MAX_NUM_INDICES];
+extern int      Num_tbls[MAX_NUM_DB];
+extern r_tbl_t  Tbl     [MAX_NUM_DB][MAX_NUM_TABLES];
+extern r_ind_t  Index   [MAX_NUM_DB][MAX_NUM_INDICES];
 
 #define MAX_TBL_DEF_SIZE     1024
 
 stor_cmd StorageCommands[NUM_STORAGE_TYPES];
 
-// STORE_COMMANDS STORE_COMMANDS STORE_COMMANDS STORE_COMMANDS STORE_COMMANDS
-// STORE_COMMANDS STORE_COMMANDS STORE_COMMANDS STORE_COMMANDS STORE_COMMANDS
 
-/* LEGACY functions used on AOF readin */
-void legacyInsertCommand(redisClient *c) {
-    TABLE_CHECK_OR_REPLY(c->argv[1]->ptr,)
-    int ncols = Tbl[server.dbid][tmatch].col_count;
-    MATCH_INDICES(tmatch)
-
-    char *vals   = c->argv[2]->ptr;
-    insertCommitReply(c, vals, ncols, tmatch, matches, indices);
+/* PARSE_STORE PARSE_STORE PARSE_STORE PARSE_STORE PARSE_STORE PARSE_STORE */
+/* PARSE_STORE PARSE_STORE PARSE_STORE PARSE_STORE PARSE_STORE PARSE_STORE */
+static bool checkStoreTypeReply(redisClient *c, int *sto, char *stot) {
+    char *x   = strchr(stot, ' ');
+    int   len = x ? x - stot : (int)strlen(stot);
+    *sto      = -1;
+    for (int i = 0; i < NUM_STORAGE_TYPES; i++) {
+        if (!strncasecmp(stot, StorageCommands[i].name, len)) {
+            *sto = i;
+            break;
+        }
+    }
+    if (*sto == -1) {
+        addReply(c, shared.storagetypeunkown);
+        return 0;
+    }
+    return 1;
 }
 
-/* LEGACY functions used on AOF readin */
-void legacyTableCommand(redisClient *c) {
-    if (Num_tbls[server.dbid] >= MAX_NUM_TABLES) {
-        addReply(c,shared.toomanytables);
-        return;
+bool prepareToStoreReply(redisClient  *c,
+                         cswc_t       *w,
+                         char        **nname,
+                         int          *nlen,
+                         bool         *sub_pk,
+                         int          *nargc,
+                         char        **last,
+                         int           qcols) {
+    char *stot = next_token(w->stor);
+    if (!stot) {
+        addReply(c, shared.selectsyntax);
+        return 0;
+    }
+    if (!checkStoreTypeReply(c, &w->sto, stot)) return 0;
+    *nname = next_token(stot);
+    if (!*nname) {
+        addReply(c, shared.selectsyntax);
+        return 0;
     }
 
-    sds tname = c->argv[1]->ptr;
-    if (find_table(tname) != -1) {
-        addReply(c,shared.nonuniquetablenames);
-        return;
+    *nlen   = get_token_len(*nname);
+    *sub_pk = (StorageCommands[w->sto].argc < 0);
+    *nargc  = abs(StorageCommands[w->sto].argc);
+    *last   = *nname + *nlen - 1;
+    if (*(*last) == '$') { /* means final arg munging */
+        *sub_pk  = 1;
+        *nargc   = *nargc + 1;
+        *(*last) = '\0';
+        *nlen    = *nlen - 1;
     }
-
-    // parse column definitions
-    char  col_names[MAX_COLUMN_PER_TABLE][MAX_COLUMN_NAME_SIZE];
-    char *cname     = c->argv[2]->ptr;
-    int   col_count = 0;
-    while (1) {
-        char *type  = strchr(cname, '=');
-        char *nextc = strchr(cname, ',');
-        if (!type) {
-            addReply(c,shared.missingcolumntype);
-            return;
-        } else {
-            *type = '\0';
-            type++;
-        }
-        if (nextc) {
-            *nextc = '\0';
-            nextc++;
-        }
-        unsigned char miss = 1;
-        for (unsigned char j = 0; j < NUM_COL_TYPES; j++) {
-            if (!strcmp(type, Col_type_defs[j])) {
-                Tbl[server.dbid][Num_tbls[server.dbid]].col_type[col_count] = j;
-                miss = 0;
-                break;
-            }
-        }
-        if (miss) {
-            addReply(c,shared.undefinedcolumntype);
-            return;
-        }
-        if (strlen(cname) >= MAX_COLUMN_NAME_SIZE) {
-            addReply(c,shared.columnnametoobig);
-            return;
-        }
-        strcpy(col_names[col_count], cname);
-        col_count++;
-        if (!nextc) break;
-        if (col_count == MAX_COLUMN_PER_TABLE) {
-            addReply(c,shared.toomanycolumns);
-            return;
-        }
-        cname = nextc;
+    if (*nargc != qcols) {
+        addReply(c, shared.storagenumargsmismatch);
+        return 0;
     }
-    createTableCommitReply(c, col_names, col_count, tname, sdslen(tname));
+    if (*sub_pk) *nargc = *nargc - 1;
+    return 1;
 }
 
 // TODO move to rpipe.c
@@ -316,62 +302,6 @@ bool istoreAction(redisClient *c,
         }                                                            \
     }
 
-static bool checkStoreTypeReply(redisClient *c, int *sto, char *stot) {
-    char *x   = strchr(stot, ' ');
-    int   len = x ? x - stot : (int)strlen(stot);
-    *sto      = -1;
-    for (int i = 0; i < NUM_STORAGE_TYPES; i++) {
-        if (!strncasecmp(stot, StorageCommands[i].name, len)) {
-            *sto = i;
-            break;
-        }
-    }
-    if (*sto == -1) {
-        addReply(c, shared.storagetypeunkown);
-        return 0;
-    }
-    return 1;
-}
-
-//TODO should be in sql.c (used by istore and jstore)
-bool prepareToStoreReply(redisClient  *c,
-                         cswc_t       *w,
-                         char        **nname,
-                         int          *nlen,
-                         bool         *sub_pk,
-                         int          *nargc,
-                         char        **last,
-                         int           qcols) {
-    char *stot = next_token(w->stor);
-    if (!stot) {
-        addReply(c, shared.selectsyntax);
-        return 0;
-    }
-    if (!checkStoreTypeReply(c, &w->sto, stot)) return 0;
-    *nname = next_token(stot);
-    if (!*nname) {
-        addReply(c, shared.selectsyntax);
-        return 0;
-    }
-
-    *nlen   = get_token_len(*nname);
-    *sub_pk = (StorageCommands[w->sto].argc < 0);
-    *nargc  = abs(StorageCommands[w->sto].argc);
-    *last   = *nname + *nlen - 1;
-    if (*(*last) == '$') { /* means final arg munging */
-        *sub_pk  = 1;
-        *nargc   = *nargc + 1;
-        *(*last) = '\0';
-        *nlen    = *nlen - 1;
-    }
-    if (*nargc != qcols) {
-        addReply(c, shared.storagenumargsmismatch);
-        return 0;
-    }
-    if (*sub_pk) *nargc = *nargc - 1;
-    return 1;
-}
-
 void istoreCommit(redisClient *c,
                   cswc_t      *w,
                   int          tmatch,
@@ -396,7 +326,7 @@ void istoreCommit(redisClient *c,
     redisClient *fc = rsql_createFakeClient();
     fc->argv        = argv;
 
-    int     sent  = 0; /* come before first goto */
+    int     sent  = 0; /* come before first GOTO */
     bool    cstar = 0;
     bool    err   = 0;
     bool    qed   = 0;

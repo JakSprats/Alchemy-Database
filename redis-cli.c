@@ -221,7 +221,6 @@ static struct redisCommand cmdTable[] = {
     {"norm",         -2,CMDFLAG_NONE},
     {"denorm",        3,CMDFLAG_NONE},
 
-    {"legacyjoin",    4,CMDFLAG_NONE},
     {"legacytable",   3,CMDFLAG_NONE},
     {"legacyinsert",  3,CMDFLAG_NONE},
     {"legacyindex",   3,CMDFLAG_NONE},

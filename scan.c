@@ -151,9 +151,10 @@ void tscanCommand(redisClient *c) {
         return;
     }
 
+    bool rq    = 0; /* come before first GOTO */
     uchar  sop = SQL_SCANSELECT;
     cswc_t w;
-    init_check_sql_where_clause(&w, wc); /* all errors now goto tscan_cmd_err */
+    init_check_sql_where_clause(&w, wc); /* all errors now GOTO tscan_cmd_err */
 
     if (no_wc && c->argc > 4) { /* ORDER BY or STORE w/o WHERE CLAUSE */
         if (!strncasecmp(where, "ORDER ", 6) ||
@@ -174,7 +175,6 @@ void tscanCommand(redisClient *c) {
         goto tscan_cmd_err;
     }
 
-    bool rq    = 0;
     if (!no_wc && w.obc == -1) {
         uchar wtype  = checkSQLWhereClauseReply(c, &w, tmatch, sop, 0, 1);
         if (wtype == SQL_ERR_LOOKUP)      goto tscan_cmd_err;

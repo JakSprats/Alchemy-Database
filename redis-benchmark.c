@@ -1199,7 +1199,7 @@ void perform_bigrow_sel_test() {
 
 
 int main(int argc, char **argv) {
-    client c;
+    client c = NULL;
 
     signal(SIGHUP, SIG_IGN);
     signal(SIGPIPE, SIG_IGN);

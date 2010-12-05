@@ -33,14 +33,14 @@ ALL RIGHTS RESERVED
 #include "zmalloc.h"
 
 #include "sql.h"
-#include "index.h"
 #include "store.h"
-#include "alsosql.h"
 #include "join.h"
 #include "bt_iterator.h"
 #include "row.h"
 #include "bt.h"
 #include "parser.h"
+#include "legacy.h"
+#include "alsosql.h"
 #include "denorm.h"
 
 // FROM redis.c

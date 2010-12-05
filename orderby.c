@@ -33,9 +33,10 @@ ALL RIGHTS RESERVED
 #include "adlist.h"
 
 #include "row.h"
-#include "common.h"
 #include "alsosql.h"
+#include "store.h"
 #include "parser.h"
+#include "common.h"
 #include "orderby.h"
 
 // FROM redis.c

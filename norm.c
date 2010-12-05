@@ -30,13 +30,15 @@ ALL RIGHTS RESERVED
 #include <unistd.h>
 #include <assert.h>
 
-#include "common.h"
+#include "redis.h"
+
 #include "bt_iterator.h"
 #include "row.h"
 #include "sql.h"
 #include "index.h"
 #include "store.h"
-#include "redis.h"
+#include "legacy.h"
+#include "common.h"
 
 // FROM redis.c
 #define RL4 redisLog(4,
@@ -184,6 +186,8 @@ void normCommand(redisClient *c) {
         pk_type[i] = COL_TYPE_INT;
     }
 
+    struct redisClient *fc = NULL; /* must come before first GOTO */
+
     /* Second: search ALL keys and create column_definitions for wildcards */
     dictEntry    *de;
     int           nrows = 0;
@@ -244,9 +248,9 @@ void normCommand(redisClient *c) {
         goto norm_end;
     }
 
-    robj               *argv[STORAGE_MAX_ARGC + 1];
-    struct redisClient *fc = rsql_createFakeClient();
-    fc->argv               = argv;
+    robj *argv[STORAGE_MAX_ARGC + 1];
+    fc       = rsql_createFakeClient();
+    fc->argv = argv;
 
     LEN_OBJ
     for (int i = 0; i < n_ep; i++) {
@@ -331,5 +335,5 @@ norm_end:
         decrRefCount(cdefs   [i]);
         decrRefCount(rowvals [i]);
     }
-    rsql_freeFakeClient(fc);
+    if (fc) rsql_freeFakeClient(fc);
 }
