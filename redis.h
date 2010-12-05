@@ -321,7 +321,8 @@ struct sharedObjectsStruct {
 
     *createtable_as_on_wrong_type,       *createtable_as_index,
     *create_table_as_function_not_found, *create_table_as_dump_num_args,
-    *create_table_as_access_num_args,    *create_table_as_select,
+    *create_table_as_num_args,           *create_table_as_count,
+    *create_table_as_cmd_num_args,
 
     *denorm_wildcard_no_star,
 #endif /* ALSOSQL END */

@@ -37,8 +37,8 @@ bool emptyNoop(redisClient *c);
 #define PIPE_ONE_LINER_FLAG 2
 #define PIPE_EMPTY_SET_FLAG 3
 
-unsigned char respOk(redisClient *c);
-unsigned char respNotErr(redisClient *c);
+bool respOk(redisClient *rfc);
+bool replyIfNestedErr(redisClient *c, redisClient *rfc, char *msg);
 
 long fakeClientPipe(redisClient *c,
                     redisClient *rfc,

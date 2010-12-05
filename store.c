@@ -124,23 +124,15 @@ bool prepareToStoreReply(redisClient  *c,
 #define JOIN_STORE_ERR_MSG \
   "-ERR IN(SELECT Join STORE) - inner command had error: "
 bool performStoreCmdOrReply(redisClient *c,
-                            redisClient *fc,
+                            redisClient *rfc,
                             int          sto,
                             bool         join) {
-    /* TODO for aof-logging, "call(fc, cmd);" would aof-write each op */
-    rsql_resetFakeClient(fc);
-    (*StorageCommands[sto].func)(fc);
-    if (!respNotErr(fc)) {
-        listNode *ln   = listFirst(fc->reply);
-        robj     *emsg = ln->value;
-        robj     *repl = join ? _createStringObject(JOIN_STORE_ERR_MSG) :
-                                _createStringObject(ISTORE_ERR_MSG);
-        repl->ptr      = sdscatlen(repl->ptr, emsg->ptr, sdslen(emsg->ptr));
-        addReply(c, repl);
-        decrRefCount(repl);
-        return 0;
-    }
-    return 1;
+    /* TODO for aof-logging, "call(rfc, cmd);" would aof-write each op */
+    rsql_resetFakeClient(rfc);
+    (*StorageCommands[sto].func)(rfc);
+    char *msg = join ? JOIN_STORE_ERR_MSG : ISTORE_ERR_MSG;
+    if (!replyIfNestedErr(c, rfc, msg)) return 0;
+    else                                return 1;
 }
 
 bool istoreAction(redisClient *c,

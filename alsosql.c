@@ -701,7 +701,7 @@ void selectRedisqlCommand(redisClient *c) {
     uchar  sop = SQL_SELECT;
     cswc_t w;
     init_check_sql_where_clause(&w, c->argv[5]->ptr);
-    uchar wtype  = checkSQLWhereClauseReply(c, &w, tmatch, sop, 0, 0);
+    uchar wtype  = checkSQLWhereClauseReply(c, &w, tmatch, sop, 0);
     if (wtype == SQL_ERR_LOOKUP)      goto select_cmd_err;
     if (!leftoverParsingReply(c, &w)) goto select_cmd_err;
 
@@ -754,7 +754,7 @@ void deleteCommand(redisClient *c) {
     uchar  sop = SQL_DELETE;
     cswc_t w;
     init_check_sql_where_clause(&w, c->argv[4]->ptr);
-    uchar wtype  = checkSQLWhereClauseReply(c, &w, tmatch, sop, 0, 0);
+    uchar wtype  = checkSQLWhereClauseReply(c, &w, tmatch, sop, 0);
     if (wtype == SQL_ERR_LOOKUP)      goto delete_cmd_err;
     if (!leftoverParsingReply(c, &w)) goto delete_cmd_err;
 
@@ -813,7 +813,7 @@ void updateCommand(redisClient *c) {
     uchar  sop = SQL_UPDATE;
     cswc_t w;
     init_check_sql_where_clause(&w, c->argv[5]->ptr);
-    uchar wtype  = checkSQLWhereClauseReply(c, &w, tmatch, sop, 0, 0);
+    uchar wtype  = checkSQLWhereClauseReply(c, &w, tmatch, sop, 0);
     if (wtype == SQL_ERR_LOOKUP)      goto update_cmd_err;
     if (!leftoverParsingReply(c, &w)) goto update_cmd_err;
 

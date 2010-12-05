@@ -1717,8 +1717,10 @@ static void createSharedObjects(void) {
 #ifdef ALSOSQL
     shared.toomanytables = createObject(REDIS_STRING,sdsnew(
         "-ERR MAX tables reached (256)\r\n"));
+    shared.missingcolumntype = createObject(REDIS_STRING,sdsnew(
+        "-ERR LegacyTable: Column Type Missing\r\n"));
     shared.undefinedcolumntype = createObject(REDIS_STRING,sdsnew(
-        "-ERR Column Type Unknown [INT,TEXT]\r\n"));
+        "-ERR Column Type Unknown AlchemyDatabase uses[INT,FLOAT,TEXT] and recognizes INT=[*INT],FLOAT=[FLOAT,REAL,DOUBLE],TEXT=[*CHAR,TEXT,BLOB,BINARY]\r\n"));
     shared.columnnametoobig = createObject(REDIS_STRING,sdsnew(
         "-ERR ColumnName too long MAX(64)\r\n"));
     shared.toomanycolumns = createObject(REDIS_STRING,sdsnew(
@@ -1901,10 +1903,12 @@ static void createSharedObjects(void) {
         "-ERR SYNTAX: CREATE TABLE tablename AS [DUMP,SELECT,LRANGE,ZRANGE,ZRANGEBYSCORE,ZREVRANGE,HMGET,HKEYS,HVALS,HGETALL,SUNION,SDIFF,SINTER,SMEMBERS,SORT] redis_object - redis function name not recognized\r\n"));
     shared.create_table_as_dump_num_args = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: CREATE TABLE tablename AS DUMP redis_object - too few arguments\r\n"));
-    shared.create_table_as_access_num_args = createObject(REDIS_STRING,sdsnew(
+    shared.create_table_as_num_args = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: CREATE TABLE tablename AS [SELECT,LRANGE,ZRANGE,ZRANGEBYSCORE,ZREVRANGE,HMGET,HKEYS,HVALS,HGETALL,SUNION,SDIFF,SINTER,SMEMBERS,SORT] redis_object MIN MAX - too few arguments\r\n"));
-    shared.create_table_as_select = createObject(REDIS_STRING,sdsnew(
-        "-ERR TYPE: CREATE TABLE tbl AS SELECT - SELECT failed executing\r\n"));
+    shared.create_table_as_count = createObject(REDIS_STRING,sdsnew(
+        "-ERR TYPE: CREATE TABLE tbl AS SELECT COUNT(*) - is disallowed\r\n"));
+    shared.create_table_as_cmd_num_args = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: CREATE TABLE tablename AS [LRANGE,ZRANGE,ZRANGEBYSCORE,ZREVRANGE,HMGET,HKEYS,HVALS,HGETALL,SUNION,SDIFF,SINTER,SMEMBERS,SORT] - too few arguments to inner function\r\n"));
 
     shared.denorm_wildcard_no_star = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: NORM tablename wildcard - wildcard must have '*'\r\n"));
@@ -9228,6 +9232,7 @@ static bool appendOnlyDumpTable(FILE *fp, robj *o, bt *btr, int tmatch) {
         bool bdum;
         int  cmatchs[MAX_COLUMN_PER_TABLE];
         int  qcols  = 0;
+        // TODO function to fill up cmatchs[] w/ all of tmatch's cols
         parseCommaSpaceListReply(NULL, "*", 1, 0, 0, tmatch, cmatchs,
                                  0, NULL, NULL, NULL, &qcols, &bdum);
 

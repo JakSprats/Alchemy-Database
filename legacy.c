@@ -97,7 +97,7 @@ void legacyTableCommand(redisClient *c) {
         char *type  = strchr(cname, '=');
         char *nextc = strchr(cname, ',');
         if (!type) {
-            addReply(c,shared.missingcolumntype);
+            addReply(c, shared.missingcolumntype);
             return;
         } else {
             *type = '\0';
@@ -116,18 +116,18 @@ void legacyTableCommand(redisClient *c) {
             }
         }
         if (miss) {
-            addReply(c,shared.undefinedcolumntype);
+            addReply(c, shared.undefinedcolumntype);
             return;
         }
         if (strlen(cname) >= MAX_COLUMN_NAME_SIZE) {
-            addReply(c,shared.columnnametoobig);
+            addReply(c, shared.columnnametoobig);
             return;
         }
         strcpy(col_names[col_count], cname);
         col_count++;
         if (!nextc) break;
         if (col_count == MAX_COLUMN_PER_TABLE) {
-            addReply(c,shared.toomanycolumns);
+            addReply(c, shared.toomanycolumns);
             return;
         }
         cname = nextc;

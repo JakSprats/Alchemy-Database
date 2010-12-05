@@ -30,6 +30,7 @@ ALL RIGHTS RESERVED
 #include <unistd.h>
 
 #include "redis.h"
+#include "adlist.h"
 
 #include "rpipe.h"
 
@@ -41,21 +42,36 @@ bool emptyNoop(redisClient *c) {
     return 1;
 }
 
-unsigned char respOk(redisClient *c) {
-    listNode *ln = listFirst(c->reply);
+bool respOk(redisClient *rfc) {
+    listNode *ln = listFirst(rfc->reply);
+    if (!ln) return 0;
     robj     *o  = ln->value;
     char     *s  = o->ptr;
     if (!strcmp(s, shared.ok->ptr)) return 1;
     else                            return 0;
 }
 
-unsigned char respNotErr(redisClient *c) {
-    listNode *ln = listFirst(c->reply);
+static bool respNotErr(redisClient *rfc) {
+    listNode *ln = listFirst(rfc->reply);
+    if (!ln) return 1;
     robj     *o  = ln->value;
     char     *s  = o->ptr;
     //RL4 "respNotErr: %s", s);
     if (!strncmp(s, "-ERR", 4)) return 0;
     else                        return 1;
+}
+
+bool replyIfNestedErr(redisClient *c, redisClient *rfc, char *msg) {
+    if (!respNotErr(rfc)) {
+        listNode *ln   = listFirst(rfc->reply);
+        robj     *emsg = ln->value;
+        robj     *repl = _createStringObject(msg);
+        repl->ptr      = sdscatlen(repl->ptr, emsg->ptr, sdslen(emsg->ptr));
+        addReply(c, repl);
+        decrRefCount(repl);
+        return 0;
+    }
+    return 1;
 }
 
 /* NOTE: this function implements a fakeClient pipe */
@@ -67,7 +83,7 @@ long fakeClientPipe(redisClient *c,
                     bool (* adder)
                     (redisClient *c, void *x, robj *key, long *l, int b, int n),
                     bool (* emptyer) (redisClient *c)) {
-    struct redisCommand *cmd = lookupCommand(rfc->argv[0]->ptr);
+    redisCommand *cmd = lookupCommand(rfc->argv[0]->ptr);
     cmd->proc(rfc);
 
     listNode *ln;

@@ -86,6 +86,10 @@ bool parseCreateTable(redisClient *c,
     }
     while (isblank(*token)) token++;
     while (token) {
+        if (*ccount == MAX_COLUMN_PER_TABLE) {
+            addReply(c, shared.toomanycolumns);
+            return 0;
+        }
         int clen;
         while (token) { /* first parse column name */
             clen      = get_token_len(token);
@@ -109,8 +113,14 @@ bool parseCreateTable(redisClient *c,
                    strcasestr(type, "REAL")  ||
                    strcasestr(type, "DOUBLE")) {
             Tbl[server.dbid][ntbls].col_type[*ccount] = COL_TYPE_FLOAT;
-        } else {
+        } else if (strcasestr(type, "CHAR") ||
+                   strcasestr(type, "TEXT")  ||
+                   strcasestr(type, "BLOB")  ||
+                   strcasestr(type, "BINARY")) {
             Tbl[server.dbid][ntbls].col_type[*ccount] = COL_TYPE_STRING;
+        } else {
+            addReply(c, shared.undefinedcolumntype);
+            return 0;
         }
         sdsfree(type);
         Tbl[server.dbid][ntbls].col_flags[*ccount] = 0; /* TODO flags */
@@ -278,16 +288,16 @@ static bool addRCmdToINList(redisClient *c,
     return 1;
 }
 
-#define IN_RCMD_ERR_MSG "-ERR IN(Redis_cmd) - inner command had error: "
+#define IN_RCMD_ERR_MSG \
+  "-ERR SELECT FROM WHERE col IN(Redis_cmd) - inner command had error: "
 
 static uchar parseWC_IN(redisClient  *c,
                         char         *token,
                         list        **inl,
-                        bool          just_parse,
                         char        **finish) {
     char *end = str_next_unescaped_chr(token, token, ')');
     if (!end || (*token != '(')) {
-        if (!just_parse) addReply(c, shared.whereclause_in_err);
+        addReply(c, shared.whereclause_in_err);
         return SQL_ERR_LOOKUP;
     }
 
@@ -302,7 +312,7 @@ static uchar parseWC_IN(redisClient  *c,
         int   slen = end - s;
         int   axs  = getAccessCommNum(s);
         if (axs == -1 ) {
-            if (!just_parse) addReply(c, shared.accesstypeunknown);
+            addReply(c, shared.accesstypeunknown);
             return SQL_ERR_LOOKUP;
         }
 
@@ -314,12 +324,8 @@ static uchar parseWC_IN(redisClient  *c,
             rargv = parseSelectCmdToArgv(x);
             sdsfree(x);
             if (!rargv) {
-                if (!just_parse) addReply(c, shared.where_in_select);
+                addReply(c, shared.where_in_select);
                 return SQL_ERR_LOOKUP;
-            }
-            if (just_parse) { /* do not go any further if just parsing */
-                zfree(rargv);
-                return SQL_IN_LOOKUP;
             }
         } else {
             sds *argv  = sdssplitlen(s, slen, " ", 1, &argc);
@@ -328,10 +334,6 @@ static uchar parseWC_IN(redisClient  *c,
                 zfree(argv);
                 addReply(c, shared.accessnumargsmismatch);
                 return SQL_ERR_LOOKUP;
-            }
-            if (just_parse) { /* do not go any further if just parsing */
-                zfree(argv);
-                return SQL_IN_LOOKUP;
             }
             rargv = zmalloc(sizeof(robj *) * argc);
             for (int j = 0; j < argc; j++) {
@@ -346,15 +348,7 @@ static uchar parseWC_IN(redisClient  *c,
         uchar f = 0;
         fakeClientPipe(c, rfc, inl, 0, &f, addRCmdToINList, emptyNoop);
         bool err = 0;
-        if (!respNotErr(rfc)) {
-            listNode *ln   = listFirst(rfc->reply);
-            robj     *emsg = ln->value;
-            err            = 1;
-            robj     *repl = _createStringObject(IN_RCMD_ERR_MSG);
-            repl->ptr      = sdscatlen(repl->ptr, emsg->ptr, sdslen(emsg->ptr));
-            addReply(c, repl);
-            decrRefCount(repl);
-        }
+        if (!replyIfNestedErr(c, rfc, IN_RCMD_ERR_MSG)) err = 1;
 
         rsql_freeFakeClient(rfc);
         zfree(rargv);
@@ -388,7 +382,6 @@ uchar checkSQLWhereClauseReply(redisClient *c,
                                cswc_t      *w,
                                int          tmatch,
                                uchar        sop,
-                               bool         just_parse,
                                bool         is_scan) {
     uchar  wtype;
     char  *finish = NULL;
@@ -398,14 +391,14 @@ uchar checkSQLWhereClauseReply(redisClient *c,
         while (isblank(*end)) end--; /* find end of PK */
         w->cmatch = find_column_n(tmatch, w->token, end - w->token + 1);
         if (w->cmatch == -1) {
-            if (!just_parse) addReply(c, shared.whereclause_col_not_found);
+            addReply(c, shared.whereclause_col_not_found);
             return SQL_ERR_LOOKUP;
         }
         w->imatch = (w->cmatch == -1) ? -1 : find_index(tmatch, w->cmatch); 
         wtype     = w->cmatch ? SQL_SINGLE_FK_LOOKUP : SQL_SINGLE_LOOKUP;
 
         if (!is_scan && w->imatch == -1) { /* non-indexed column */
-            if (!just_parse) addReply(c, shared.whereclause_col_not_indxd);
+            addReply(c, shared.whereclause_col_not_indxd);
             return SQL_ERR_LOOKUP;
         }
 
@@ -433,7 +426,7 @@ uchar checkSQLWhereClauseReply(redisClient *c,
         if (!strncasecmp(tkn, "IN ", 3)) {
             tkn   = next_token(tkn);
             if (!tkn) goto check_sql_wc_err;
-            wtype = parseWC_IN(c, tkn, &w->inl, just_parse, &finish);
+            wtype = parseWC_IN(c, tkn, &w->inl, &finish);
         } else if (!strncasecmp(tkn, "BETWEEN ", 8)) { /* RANGE QUERY */
             tkn = next_token(tkn);
             if (!tkn) goto check_sql_wc_err;
@@ -450,12 +443,10 @@ uchar checkSQLWhereClauseReply(redisClient *c,
     return wtype;
 
 check_sql_wc_err:
-    if (!just_parse) {
-        if      (sop == SQL_SELECT) addReply(c, shared.selectsyntax);
-        else if (sop == SQL_DELETE) addReply(c, shared.deletesyntax);
-        else if (sop == SQL_UPDATE) addReply(c, shared.updatesyntax);
-        else                        addReply(c, shared.scanselectsyntax);
-    }
+    if      (sop == SQL_SELECT) addReply(c, shared.selectsyntax);
+    else if (sop == SQL_DELETE) addReply(c, shared.deletesyntax);
+    else if (sop == SQL_UPDATE) addReply(c, shared.updatesyntax);
+    else                        addReply(c, shared.scanselectsyntax);
     return SQL_ERR_LOOKUP;
 }
 
@@ -519,9 +510,7 @@ static int parseIndexedColumnListOrReply(redisClient *c,
     return n_ind;
 }
 
-static bool joinParseWCReply(redisClient  *c,
-                             bool          just_parse,
-                             jb_t         *jb) {
+static bool joinParseWCReply(redisClient  *c, jb_t *jb) {
     bool    ret   = 0;
     sds     icl   = sdsempty(); /* TODO: j_tbls[] j_indxs[] directly */
     robj   *jind1 = NULL;
@@ -568,7 +557,7 @@ static bool joinParseWCReply(redisClient  *c,
             if (!strncasecmp(tok2, "IN ", 3)) {
                 char *tkn = next_token(tok2);
                 if (!tkn) goto joincmd_end;
-                wtype     = parseWC_IN(c, tkn, &jb->w.inl, just_parse, &end);
+                wtype     = parseWC_IN(c, tkn, &jb->w.inl, &end);
             } else if (!strncasecmp(tok2, "BETWEEN ", 8)) { /* RANGE QUERY */
                 char *tkn = next_token(tok2);
                 if (!tkn) goto joincmd_end;
@@ -663,7 +652,6 @@ void destroy_join_block(jb_t *jb) {
 }
 
 bool parseJoinReply(redisClient *c,
-                    bool         just_parse,
                     jb_t        *jb,
                     char        *clist,
                     char        *tlist) {
@@ -681,13 +669,13 @@ bool parseJoinReply(redisClient *c,
                                   &numt, tmatchs, jb->j_tbls, jb->j_cols,
                                   &jb->qcols, &jb->cstar)) return 0;
 
-    return joinParseWCReply(c, just_parse, jb);
+    return joinParseWCReply(c, jb);
 }
 
 void joinReply(redisClient *c) {
     jb_t jb;
     init_join_block(&jb, c->argv[5]->ptr);
-    if (!parseJoinReply(c, 0, &jb, c->argv[1]->ptr, c->argv[3]->ptr)) return;
+    if (!parseJoinReply(c, &jb, c->argv[1]->ptr, c->argv[3]->ptr)) return;
 
     if (jb.w.stor) {
         if (!jb.w.low && !jb.w.inl) {

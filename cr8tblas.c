@@ -60,6 +60,14 @@ extern char *Col_type_defs[];
 
 stor_cmd AccessCommands[NUM_ACCESS_TYPES];
 
+/* NOTE: INTERNAL_CREATE_TABLE_ERRORs shouldnt happen -> means theres a bug */
+//#define FORCE_BUG_1
+//#define FORCE_BUG_2
+//#define FORCE_BUG_3
+//#define FORCE_BUG_4
+
+#define INTERNAL_INSERT_ERR_MSG \
+ "-ERR CREATE TABLE AS DUMP Redis_Object - Automatic INSERT failed with error: "
 static bool addSingle(redisClient *c,
                       void        *x,
                       robj        *key,
@@ -67,30 +75,29 @@ static bool addSingle(redisClient *c,
                       int          is_ins,
                       int          nlines) {
     nlines = 0; /* compiler warning */
-    redisClient *fc    = (redisClient *)x;
-    robj        *vals  = createObject(REDIS_STRING, NULL);
+    redisClient *rfc  = (redisClient *)x;
+    robj        *vals = createObject(REDIS_STRING, NULL);
     if (is_ins) {
-        vals->ptr      = sdsnewlen(key->ptr, sdslen(key->ptr));
+        vals->ptr     = sdsnewlen(key->ptr, sdslen(key->ptr));
     } else {
-        vals->ptr      = (key->encoding == REDIS_ENCODING_RAW) ?
+        vals->ptr     = (key->encoding == REDIS_ENCODING_RAW) ?
                  sdscatprintf(sdsempty(), "%ld,%s",  *card, (char *)key->ptr) :
                  sdscatprintf(sdsempty(), "%ld,%ld", *card, (long)  key->ptr);
     }
-    fc->argv[2]        = vals;
-    //RL4 "SGL: INSERTING [1]: %s [2]: %s", fc->argv[1]->ptr, fc->argv[2]->ptr);
-    legacyInsertCommand(fc);
+    rfc->argv[2]      = vals;
+#ifdef FORCE_BUG_1
+    rfc->argv[2] = createStringObject("", 0);
+#endif
+    //RL4 "SGL: INSERT [1]: %s [2]: %s", rfc->argv[1]->ptr, rfc->argv[2]->ptr);
+    legacyInsertCommand(rfc);
     decrRefCount(vals);
-    if (!respOk(fc)) { /* insert error */
-        listNode *ln = listFirst(fc->reply);
-        addReply(c, ln->value);
-        return 0;
-    }
+    if (!replyIfNestedErr(c, rfc, INTERNAL_INSERT_ERR_MSG)) return 0;
     *card = *card + 1;
     return 1;
 }
 
 static bool addDouble(redisClient *c,
-                      redisClient *fc,
+                      redisClient *rfc,
                       robj        *key,
                       robj        *val,
                       long        *card,
@@ -116,15 +123,14 @@ static bool addDouble(redisClient *c,
             sdscatprintf(sdsempty(), "%ld,%ld,%ld",
                           *card, (long)  key->ptr, (long)val->ptr);
     }
-    fc->argv[2] = vals;
-    //RL4 "DBL: INSERTING [1]: %s [2]: %s", fc->argv[1]->ptr, fc->argv[2]->ptr);
-    legacyInsertCommand(fc);
+    rfc->argv[2] = vals;
+#ifdef FORCE_BUG_2
+    rfc->argv[2] = createStringObject("BUG", 3);
+#endif
+    //RL4 "DBL: INSERT [1]: %s [2]: %s", rfc->argv[1]->ptr, rfc->argv[2]->ptr);
+    legacyInsertCommand(rfc);
     decrRefCount(vals);
-    if (!respOk(fc)) { /* insert error */
-        listNode *ln = listFirst(fc->reply);
-        addReply(c, ln->value);
-        return 0;
-    }
+    if (!replyIfNestedErr(c, rfc, INTERNAL_INSERT_ERR_MSG)) return 0;
     *card = *card + 1;
     return 1;
 }
@@ -161,8 +167,10 @@ static void cpyColDef(char *cdefs,
     }
 }
 
+#define INTERNAL_CREATE_TABLE_ERR_MSG \
+  "-ERR CREATE TABLE AS SELECT - Automatic Table Creation failed with error: "
 static bool _internalCreateTable(redisClient *c,
-                                 redisClient *fc,
+                                 redisClient *rfc,
                                  int          qcols,
                                  int          cmatchs[],
                                  int          tmatch,
@@ -182,15 +190,14 @@ static bool _internalCreateTable(redisClient *c,
                       1, cname_cflix);
         }
     }
-    fc->argc    = 3;
-    fc->argv[2] = createStringObject(cdefs, slot);
-    legacyTableCommand(fc);
-    if (!respOk(fc)) {
-        listNode *ln = listFirst(fc->reply);
-        addReply(c, ln->value);
-        return 0;
-    }
-    return 1;
+    rfc->argc    = 3;
+    rfc->argv[2] = createStringObject(cdefs, slot);
+#ifdef FORCE_BUG_3
+    rfc->argv[2] = createStringObject("BUG", 3);
+#endif
+    legacyTableCommand(rfc);
+    if (!replyIfNestedErr(c, rfc, INTERNAL_CREATE_TABLE_ERR_MSG)) return 0;
+    else                                                          return 1;
 }
 
 bool internalCreateTable(redisClient *c,
@@ -230,86 +237,85 @@ bool createTableFromJoin(redisClient *c,
 
 /* CREATE_TABLE_AS CREATE_TABLE_AS CREATE_TABLE_AS CREATE_TABLE_AS */
 /* CREATE_TABLE_AS CREATE_TABLE_AS CREATE_TABLE_AS CREATE_TABLE_AS */
+#define CR8TBL_SELECT_ERR_MSG \
+  "-ERR CREATE TABLE AS SELECT - SELECT command had error: "
+#define CR8TBL_DUMP_ERR_MSG \
+  "-ERR CREATE TABLE AS DUMP - DUMP redis_object had error: "
 static void createTableAsObjectOperation(redisClient  *c,
                                          int           is_ins,
                                          robj        **rargv,
-                                         int           rargc) {
+                                         int           rargc,
+                                         bool          dmp) {
+    char               *msg = dmp ? CR8TBL_DUMP_ERR_MSG : CR8TBL_SELECT_ERR_MSG;
     robj               *wargv[3];
-    struct redisClient *wfc    = rsql_createFakeClient(); /* client to write */
-    wfc->argc                  = 3;
-    wfc->argv                  = wargv;
-    wfc->argv[1]               = c->argv[2]; /* table name */
+    redisClient *wfc = rsql_createFakeClient(); /* client to write */
+    wfc->argc        = 3;
+    wfc->argv        = wargv;
+    wfc->argv[1]     = c->argv[2]; /* table name */
 
-    /* TODO parse as_cmd */
-    struct redisClient *rfc    = rsql_createFakeClient(); /* client to read */
-    rfc->argv                  = rargv;
-    rfc->argc                  = rargc;
-    rfc->db                    = c->db;
+    redisClient *rfc = rsql_createFakeClient(); /* client to read */
+    rfc->argv        = rargv;
+    rfc->argc        = rargc;
+    rfc->db          = c->db;
 
-    flag flg = 0;
-    fakeClientPipe(c, rfc, wfc, is_ins, &flg, addSingle, emptyNoop);
+    flag flg  = 0;
+    long card = fakeClientPipe(c, rfc, wfc, is_ins, &flg, addSingle, emptyNoop);
+    bool err  = 0;
+    if (!replyIfNestedErr(c, rfc, msg)) err = 1; /* should not happen */
 
     rsql_freeFakeClient(rfc);
     rsql_freeFakeClient(wfc);
     zfree(rargv);
-    addReply(c, shared.ok); /* TODO return rows created */
-    return;
+    if (!err) addReplyLongLong(c, card);
 }
 
 static void createTableAsSelect(redisClient *c, char *as_cmd) {
     int  cmatchs[MAX_COLUMN_PER_TABLE];
-    bool cstar  = 0;
-    int  qcols  = 0;
+    bool cstar  =  0;
+    int  qcols  =  0;
     int  tmatch = -1;
-    bool join   = 0;
+    bool join   =  0;
 
-    int rargc = 6;
+    int    rargc = 6;
     robj **rargv = parseSelectCmdToArgv(as_cmd);
 
     if (!parseSelectReply(c, 0, &tmatch, cmatchs, &qcols, &join,
                           &cstar,  rargv[1]->ptr, rargv[2]->ptr,
                           rargv[3]->ptr, rargv[4]->ptr)) return;
     if (cstar) {
-        addReply(c, shared.select_store_count);
+        addReply(c, shared.create_table_as_count);
         return;
     }
 
     robj        *argv[3];
-    bool         ret     = 0;
-    bool         ok      = 0;
-    redisClient *rfc     = rsql_createFakeClient();
-    rfc->argv            = argv;
-    rfc->argv[1]         = c->argv[2];
+    bool         ok  = 0;
+    char        *msg = CR8TBL_SELECT_ERR_MSG;
+    redisClient *rfc = rsql_createFakeClient();
+    rfc->argv        = argv;
+    rfc->argv[1]     = c->argv[2];
     if (join) { /* CREATE TABLE AS SELECT JOIN */
         jb_t jb;
         init_join_block(&jb, rargv[5]->ptr);
-        ok    = parseJoinReply(c, 1, &jb, rargv[1]->ptr, rargv[3]->ptr);
+        parseJoinReply(rfc, &jb, rargv[1]->ptr, rargv[3]->ptr);
         qcols = jb.qcols;
-        if (ok && qcols) {
-            ret = createTableFromJoin(c, rfc, qcols, jb.j_tbls, jb.j_cols);
+        if (replyIfNestedErr(c, rfc, msg)) {
+            ok = createTableFromJoin(c, rfc, qcols, jb.j_tbls, jb.j_cols);
         }
         destroy_join_block(&jb);
-    } else  if (qcols) { /* check WHERE clause for syntax */
+    } else  {   /* CREATE TABLE AS SELECT RANGE QUERY */
         uchar  sop = SQL_SELECT;
         cswc_t w;
         init_check_sql_where_clause(&w, rargv[5]->ptr);
-        uchar wtype  = checkSQLWhereClauseReply(c, &w, tmatch, sop, 1, 0);
-        if (wtype != SQL_ERR_LOOKUP) {
-            ret = internalCreateTable(c, rfc, qcols, cmatchs, tmatch);
-            ok  = 1;
+        checkSQLWhereClauseReply(rfc, &w, tmatch, sop, 0);
+        if (replyIfNestedErr(c, rfc, msg)) {
+            ok = internalCreateTable(c, rfc, qcols, cmatchs, tmatch);
         }
         destroy_check_sql_where_clause(&w);
     }
     rsql_freeFakeClient(rfc);
-    if (!ret || !ok || !qcols) {
-        addReply(c, shared.create_table_as_select);
-        return;
-    }
 
-    createTableAsObjectOperation(c, 1, rargv, rargc);
-
-    addReply(c, shared.ok);
-    return;
+    if (!ok) return;
+    else     createTableAsObjectOperation(c, 1, rargv, rargc, 0);
 }
 
 int getAccessCommNum(char *as_cmd) {
@@ -327,16 +333,33 @@ int getAccessCommNum(char *as_cmd) {
     return axs;
 }
 
+static bool createInternalTableForCmdAndDump(redisClient *c,
+                                             robj        *name,
+                                             robj        *cdef) {
+    robj               *argv[3];
+    redisClient *rfc = rsql_createFakeClient();
+    rfc->argv        = argv;
+    rfc->argv[1]     = name;
+    rfc->argv[2]     = cdef;
+    rfc->argc        = 3;
+#ifdef FORCE_BUG_4
+    rfc->argv[2]     = createStringObject("BUG", 3);
+#endif
+
+    legacyTableCommand(rfc);
+    if (!replyIfNestedErr(c, rfc, INTERNAL_CREATE_TABLE_ERR_MSG)) return 0;
+    rsql_freeFakeClient(rfc);
+    return 1;
+}
+
 void createTableAsObject(redisClient *c) {
     char *as     = c->argv[3]->ptr;
     char *as_cmd = next_token(as);
     if (!as_cmd) {
-        addReply(c, shared.create_table_as_access_num_args);
+        addReply(c, shared.create_table_as_num_args);
         return;
     }
     int   axs    = getAccessCommNum(as_cmd);
-  
-    char *dumpee = NULL;
     if (axs == -1) { /* quick argc parsing validation */
         if (strncasecmp(as_cmd, "DUMP ", 5)) {
             addReply(c, shared.create_table_as_function_not_found);
@@ -344,12 +367,12 @@ void createTableAsObject(redisClient *c) {
         }
     }
 
-    if (axs == ACCESS_SELECT_COMMAND_NUM) {
+    if (axs == ACCESS_SELECT_COMMAND_NUM) { /* CREATE TABLE AS SELECT */
         createTableAsSelect(c, as_cmd);
         return;
     }
 
-    dumpee = next_token(as_cmd);
+    char *dumpee = next_token(as_cmd);
     if (!dumpee) {
         addReply(c, shared.create_table_as_dump_num_args);
         return;
@@ -357,13 +380,17 @@ void createTableAsObject(redisClient *c) {
     robj *cdef;
     bool  single;
     robj *o  = NULL;
-    if (dumpee) {
+    if (dumpee) { /* check that object exists */
         robj *key = createStringObject(dumpee, get_token_len(dumpee));
         o         = lookupKeyReadOrReply(c, key, shared.nullbulk);
         decrRefCount(key);
         if (!o) return;
     }
 
+    /* Destination table's columns will be defined by either
+        1.) REDIS_CMD    -> always outputs a single value
+        2.) DUMP table   -> copy SRC table's columns
+        3.) REDIS_OBJECT -> [LIST & SET -> one val],[ZSET & HASH -> 2 vals] */
     bool table_created = 0;
     if (axs != -1) { /* all Redis COMMANDS produce single results */
         cdef = _createStringObject("pk=INT,value=TEXT");
@@ -379,17 +406,19 @@ void createTableAsObject(redisClient *c) {
         bool bdum;
         int  cmatchs[MAX_COLUMN_PER_TABLE];
         int  qcols  = 0;
+        // TODO function to fill up cmatchs[] w/ all of tmatch's cols
         parseCommaSpaceListReply(NULL, "*", 1, 0, 0, tmatch, cmatchs,
                                  0, NULL, NULL, NULL, &qcols, &bdum);
 
         robj               *argv[3];
-        struct redisClient *cfc = rsql_createFakeClient();
-        cfc->argv               = argv;
-        cfc->argv[1]            = c->argv[2]; /* new tablename */
+        redisClient *cfc = rsql_createFakeClient();
+        cfc->argv        = argv;
+        cfc->argv[1]     = c->argv[2]; /* new tablename */
 
-        bool ret = internalCreateTable(c, cfc, qcols, cmatchs, tmatch);
+        bool ok = internalCreateTable(c, cfc, qcols, cmatchs, tmatch);
+        if (!replyIfNestedErr(c, cfc, INTERNAL_CREATE_TABLE_ERR_MSG)) ok = 0;
         rsql_freeFakeClient(cfc);
-        if (!ret) return;
+        if (!ok) return;
         table_created = 1;
     } else if (o->type == REDIS_LIST) {
         cdef = _createStringObject("pk=INT,lvalue=TEXT");
@@ -398,7 +427,7 @@ void createTableAsObject(redisClient *c) {
         cdef = _createStringObject("pk=INT,svalue=TEXT");
         single = 1;
     } else if (o->type == REDIS_ZSET) {
-        cdef = _createStringObject("pk=INT,zkey=TEXT,zvalue=TEXT");
+        cdef = _createStringObject("pk=INT,zkey=TEXT,zvalue=FLOAT");
         single = 0;
     } else if (o->type == REDIS_HASH) {
         cdef = _createStringObject("pk=INT,hkey=TEXT,hvalue=TEXT");
@@ -408,84 +437,76 @@ void createTableAsObject(redisClient *c) {
         return;
     }
 
-    if (!table_created) { /* CREATE TABLE */
-        robj               *argv[3];
-        struct redisClient *fc = rsql_createFakeClient();
-        fc->argv               = argv;
-        fc->argv[1]            = c->argv[2];
-        fc->argv[2]            = cdef;
-        fc->argc               = 3;
-
-        legacyTableCommand(fc);
-        if (!respOk(fc)) { /* most likely table already exists */
-            listNode *ln = listFirst(fc->reply);
-            addReply(c, ln->value);
-            rsql_freeFakeClient(fc);
-            return;
-        }
-        rsql_freeFakeClient(fc);
-    }
-
-    if (axs != -1) { /* EXEC "redis_command redis_args" to table */
+    if (axs != -1) { /* CREATE TABLE AS CMD: "redis_command redis_args" */
         int    rargc;
-        robj **rargv = parseCmdToArgv(as_cmd, &rargc);
-        createTableAsObjectOperation(c, 0, rargv, rargc);
-    } else {         /* DUMP "Redis_object"             to table */
-        robj               *argv[3];
-        struct redisClient *dfc  = rsql_createFakeClient();
-        dfc->argv                = argv;
-        dfc->argv[1]             = c->argv[2]; /* table name */
-        long                card = 1;          /* ZER0 as PK can be bad */
-        if (o->type == REDIS_LIST) {
-            list     *list = o->ptr;
-            listNode *ln   = list->head;
-            while (ln) {
-                robj *key = listNodeValue(ln);
-                if (!addSingle(c, dfc, key, &card, 0, 0)) goto cr8tbldmp_err;
-                ln = ln->next;
-            }
-        } else if (o->type == REDIS_SET) {
-            dictEntry    *de;
-            dict         *set = o->ptr;
-            dictIterator *di  = dictGetIterator(set);
-            while ((de = dictNext(di)) != NULL) {   
-                robj *key  = dictGetEntryKey(de);
-                if (!addSingle(c, dfc, key, &card, 0, 0)) goto cr8tbldmp_err;
-            }
-            dictReleaseIterator(di);
-        } else if (o->type == REDIS_ZSET) {
-            dictEntry    *de;
-            zset         *zs  = o->ptr;
-            dictIterator *di  = dictGetIterator(zs->dict);
-            while ((de = dictNext(di)) != NULL) {   
-                robj *key = dictGetEntryKey(de);
-                robj *val = dictGetEntryVal(de);
-                if (!addDouble(c, dfc, key, val, &card, 1)) goto cr8tbldmp_err;
-            }
-            dictReleaseIterator(di);
-        } else if (o->type == REDIS_HASH) {
-            hashIterator *hi = hashInitIterator(o);
-            while (hashNext(hi) != REDIS_ERR) {
-                robj *key = hashCurrent(hi, REDIS_HASH_KEY);
-                robj *val = hashCurrent(hi, REDIS_HASH_VALUE);
-                if (!addDouble(c, dfc, key, val, &card, 0)) goto cr8tbldmp_err;
-            }
-            hashReleaseIterator(hi);
-        } else if (o->type == REDIS_BTREE) {
-            btEntry          *be;
-            /* table just created */
-            int      tmatch = Num_tbls[server.dbid] - 1;
-            int      pktype = Tbl[server.dbid][tmatch].col_type[0];
-            robj    *tname  = Tbl[server.dbid][tmatch].name;
-            robj    *new_o  = lookupKeyWrite(c->db, tname);
-            btSIter *bi     = btGetFullRangeIterator(o, 0, 1);
-            while ((be = btRangeNext(bi, 0)) != NULL) {      // iterate btree
-                btAdd(new_o, be->key, be->val, pktype); /* row-to-row copy */
-            }
-        }
-        addReply(c, shared.ok);
-
-cr8tbldmp_err:
-        rsql_freeFakeClient(dfc);
+        robj **rargv = parseCmdToArgvReply(c, as_cmd, &rargc);
+        if (!rargv) return;
+        if (!createInternalTableForCmdAndDump(c, c->argv[2], cdef)) return;
+        createTableAsObjectOperation(c, 0, rargv, rargc, 1);
+        return;
     }
+
+    /* CREATE TABLE AS DUMP: "Redis_object"*/
+    if (!table_created) { /* CREATE the TABLE */
+        if (!createInternalTableForCmdAndDump(c, c->argv[2], cdef)) return;
+    }
+    robj               *argv[3];
+    dictIterator *di   = NULL; /* B4 GOTO */
+    hashIterator *hi   = NULL; /* B4 GOTO */
+    btSIter      *bi   = NULL; /* B4 GOTO */
+    redisClient  *dfc  = rsql_createFakeClient();
+    dfc->argv          = argv;
+    dfc->argv[1]       = c->argv[2]; /* table name */
+    long          card = 1;          /* ZER0 as PK can be bad */
+    if (o->type == REDIS_LIST) {
+        list     *list = o->ptr;
+        listNode *ln   = list->head;
+        while (ln) {
+            robj *key = listNodeValue(ln);
+            if (!addSingle(c, dfc, key, &card, 0, 0)) goto cr8tbldmp_end;
+            ln = ln->next;
+        }
+    } else if (o->type == REDIS_SET) {
+        dictEntry *de;
+        dict      *set = o->ptr;
+        di             = dictGetIterator(set);
+        while ((de = dictNext(di)) != NULL) {   
+            robj *key  = dictGetEntryKey(de);
+            if (!addSingle(c, dfc, key, &card, 0, 0)) goto cr8tbldmp_end;
+        }
+    } else if (o->type == REDIS_ZSET) {
+        dictEntry *de;
+        zset      *zs = o->ptr;
+        di            = dictGetIterator(zs->dict);
+        while ((de = dictNext(di)) != NULL) {   
+            robj *key = dictGetEntryKey(de);
+            robj *val = dictGetEntryVal(de);
+            if (!addDouble(c, dfc, key, val, &card, 1)) goto cr8tbldmp_end;
+        }
+    } else if (o->type == REDIS_HASH) {
+        hi = hashInitIterator(o);
+        while (hashNext(hi) != REDIS_ERR) {
+            robj *key = hashCurrent(hi, REDIS_HASH_KEY);
+            robj *val = hashCurrent(hi, REDIS_HASH_VALUE);
+            if (!addDouble(c, dfc, key, val, &card, 0)) goto cr8tbldmp_end;
+        }
+    } else if (o->type == REDIS_BTREE) {
+        btEntry *be;
+        /* table created above */
+        int      tmatch = Num_tbls[server.dbid] - 1;
+        int      pktype = Tbl[server.dbid][tmatch].col_type[0];
+        robj    *tname  = Tbl[server.dbid][tmatch].name;
+        robj    *new_o  = lookupKeyWrite(c->db, tname);
+        bi              = btGetFullRangeIterator(o, 0, 1);
+        while ((be = btRangeNext(bi, 0)) != NULL) {      // iterate btree
+            btAdd(new_o, be->key, be->val, pktype); /* row-to-row copy */
+        }
+    }
+    addReplyLongLong(c, (card -1));
+
+cr8tbldmp_end:
+    if (di) dictReleaseIterator(di);
+    if (hi) hashReleaseIterator(hi);
+    if (bi) btReleaseRangeIterator(bi);
+    rsql_freeFakeClient(dfc);
 }

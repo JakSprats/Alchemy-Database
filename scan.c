@@ -176,7 +176,7 @@ void tscanCommand(redisClient *c) {
     }
 
     if (!no_wc && w.obc == -1) {
-        uchar wtype  = checkSQLWhereClauseReply(c, &w, tmatch, sop, 0, 1);
+        uchar wtype  = checkSQLWhereClauseReply(c, &w, tmatch, sop, 1);
         if (wtype == SQL_ERR_LOOKUP)      goto tscan_cmd_err;
         if (!leftoverParsingReply(c, &w)) goto tscan_cmd_err;
         if (w.imatch != -1) {/* disallow SCANSELECT on indexed columns */

@@ -69,13 +69,11 @@ uchar checkSQLWhereClauseReply(redisClient *c,
                                cswc_t      *w,
                                int          tmatch,
                                uchar        sop,
-                               bool         just_parse,
                                bool         is_scan);
 
 void init_join_block(jb_t *jb, char *wc);
 void destroy_join_block(jb_t *jb);
 bool parseJoinReply(redisClient *c, 
-                    bool         just_parse,
                     jb_t        *jb,
                     char        *clist,
                     char        *tlist);

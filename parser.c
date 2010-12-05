@@ -211,11 +211,17 @@ char *get_next_token_nonparaned_comma(char *token) {
 }
 
 
-robj **parseCmdToArgv(char *as_cmd, int *rargc) {
-    sds   *argv  = sdssplitlen(as_cmd, strlen(as_cmd), " ", 1, rargc);
-    robj **rargv = zmalloc(sizeof(robj *) * *rargc);
-    for (int j = 0; j < *rargc; j++) {
-        rargv[j] = createObject(REDIS_STRING, argv[j]);
+robj **parseCmdToArgvReply(redisClient *c, char *as_cmd, int *rargc) {
+    sds           *argv  = sdssplitlen(as_cmd, strlen(as_cmd), " ", 1, rargc);
+    redisCommand  *cmd   = lookupCommand(argv[0]);
+    robj         **rargv = NULL;
+    if ((cmd->arity > 0 && cmd->arity != *rargc) || (*rargc < -cmd->arity)) {
+        addReply(c, shared.create_table_as_cmd_num_args);
+    } else {
+        rargv = zmalloc(sizeof(robj *) * *rargc);
+        for (int j = 0; j < *rargc; j++) {
+            rargv[j] = createObject(REDIS_STRING, argv[j]);
+        }
     }
     zfree(argv);
     return rargv;
