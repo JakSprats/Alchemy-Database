@@ -262,17 +262,17 @@ bool performStoreCmdOrReply(redisClient *c, redisClient *fc, int sto) {
     return 1;
 }
 
-static bool istoreAction(redisClient *c,
-                         redisClient *fc,
-                         int          tmatch,
-                         int          cmatchs[],
-                         int          qcols,
-                         int          sto,
-                         robj        *pko,
-                         robj        *row,
-                         char        *nname,
-                         bool         sub_pk,
-                         uint32       nargc) {
+bool istoreAction(redisClient *c,
+                  redisClient *fc,
+                  int          tmatch,
+                  int          cmatchs[],
+                  int          qcols,
+                  int          sto,
+                  robj        *pko,
+                  robj        *row,
+                  char        *nname,
+                  bool         sub_pk,
+                  uint32       nargc) {
     aobj  cols[MAX_COLUMN_PER_TABLE];
     int   totlen = 0;
     for (int i = 0; i < qcols; i++) {
@@ -304,73 +304,6 @@ static bool istoreAction(redisClient *c,
     return performStoreCmdOrReply(c, fc, sto);
 }
 
-// TODO move to orderby.c
-/* "SELECT .. ORDER BY STORE" START */
-
-/* a static robj to wrap the (row *) being sent to istoreAction (for ORDER BY)*/
-static robj IstoreOrderByRobj;
-static void init_IstoreOrderByRobj() {
-    IstoreOrderByRobj.type     = REDIS_ROW;
-    IstoreOrderByRobj.encoding = REDIS_ENCODING_RAW;
-    IstoreOrderByRobj.refcount = 1;
-}
-
-static robj *createObjFromCol(void *col, uchar ctype) {
-    robj *r;
-    if (ctype == COL_TYPE_INT) {
-        r = createObject(REDIS_STRING, NULL);
-        r->encoding = REDIS_ENCODING_INT;
-        r->ptr      = col;
-    } else if (ctype == COL_TYPE_FLOAT) {
-        float f;
-        memcpy(&f, col, sizeof(float));
-        char buf[32];
-        snprintf(buf, 31, "%10.10g", f);
-        buf[31] = '\0';
-        r = createStringObject(buf, strlen(buf));
-    } else {
-        r = createStringObject(col, strlen(col));
-    }
-    return r;
-}
-
-static int sortedOrderByIstore(redisClient  *c,
-                               cswc_t       *w,
-                               redisClient  *fc,
-                               int           tmatch,
-                               int           cmatchs[],
-                               int           qcols,
-                               char         *nname,
-                               bool          sub_pk,
-                               int           nargc,
-                               uchar         ctype,
-                               obsl_t      **vector,
-                               int           vlen) {
-    static bool inited_IstoreOrderByRobj = 0;
-    if (!inited_IstoreOrderByRobj) {
-        init_IstoreOrderByRobj();
-        inited_IstoreOrderByRobj = 1;
-    }
-
-    int sent = 0;
-    for (int k = 0; k < vlen; k++) {
-        if (w->lim != -1 && sent == w->lim) break;
-        if (w->ofst > 0) {
-            w->ofst--;
-        } else {
-            sent++;
-            obsl_t *ob            = vector[k];
-            IstoreOrderByRobj.ptr = ob->row;
-            robj *key             = createObjFromCol(ob->val, ctype);
-            robj *row             = &IstoreOrderByRobj;
-            if (!istoreAction(c, fc, tmatch, cmatchs, qcols, w->sto,
-                              key, row, nname, sub_pk, nargc))
-                                  return 0; /* TODO get err from fs */
-        }
-    }
-    return sent;
-}
-/* "SELECT .. ORDER BY STORE" END */
 
 #define ISTORE_OPERATION(Q)                                          \
     if (Q) {                                                         \
@@ -383,7 +316,7 @@ static int sortedOrderByIstore(redisClient  *c,
         }                                                            \
     }
 
-bool checkStoreTypeReply(redisClient *c, int *sto, char *stot) {
+static bool checkStoreTypeReply(redisClient *c, int *sto, char *stot) {
     char *x   = strchr(stot, ' ');
     int   len = x ? x - stot : (int)strlen(stot);
     *sto      = -1;

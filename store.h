@@ -46,6 +46,18 @@ bool internalCreateTable(redisClient *c,
 
 bool performStoreCmdOrReply(redisClient *c, redisClient *fc, int sto);
 
+bool istoreAction(redisClient *c,
+                  redisClient *fc,
+                  int          tmatch,
+                  int          cmatchs[],
+                  int          qcols, 
+                  int          sto,   
+                  robj        *pko,  
+                  robj        *row,
+                  char        *nname,
+                  bool         sub_pk,
+                  uint32       nargc);
+
 bool prepareToStoreReply(redisClient  *c,
                          cswc_t       *w,
                          char        **nname,

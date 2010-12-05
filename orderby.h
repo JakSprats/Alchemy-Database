@@ -53,4 +53,17 @@ void sortedOrderByCleanup(obsl_t **vector,
                           uchar    ctype,
                           bool     decr_row);
 
+/* for ISTORE */
+int sortedOrderByIstore(redisClient  *c,
+                        cswc_t       *w,    
+                        redisClient  *fc,
+                        int           tmatch,
+                        int           cmatchs[],
+                        int           qcols, 
+                        char         *nname,
+                        bool          sub_pk,
+                        int           nargc, 
+                        uchar         ctype, 
+                        obsl_t      **vector,
+                        int           vlen);
 #endif /* __ORDER_BY__H */ 
