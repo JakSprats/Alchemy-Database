@@ -703,7 +703,7 @@ void joinReply(redisClient *c) {
                 "-ERR command not allowed when used memory > 'maxmemory'\r\n"));
             goto join_end;
         }
-        jstoreCommit(c, &jb);
+        joinStoreCommit(c, &jb);
     } else {
         if (jb.cstar) { /* get PK per column for "COUNT(*)" */
            jb.qcols = 0;

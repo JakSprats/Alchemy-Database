@@ -1,5 +1,5 @@
 /*
- * Implements jstore and join
+ * Implements join-store and join
  *
 
 GPL License
@@ -585,7 +585,7 @@ void joinGeneric(redisClient *c,
     }
 }
 
-void jstoreCommit(redisClient *c, jb_t *jb) {
+void joinStoreCommit(redisClient *c, jb_t *jb) {
     char *nname;
     int   nlen;  
     bool  sub_pk;

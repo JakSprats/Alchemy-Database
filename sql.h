@@ -40,7 +40,7 @@ typedef struct join_block {
     int     j_cols [MAX_JOIN_INDXS];
     int     n_ind;
     int     qcols;
-    robj   *nname; /* NewName - jstore */
+    robj   *nname; /* NewName - joinStore */
     bool    cstar;
 } jb_t;
 

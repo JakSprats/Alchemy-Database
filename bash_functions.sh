@@ -686,7 +686,7 @@ function istore_worker_hash_name_salary() {
 }
 
 
-function jstore_worker_location_hash() {
+function join_store_worker_location_hash() {
   echo SELECT worker.name,division.location FROM worker,division WHERE worker.division=division.id AND division.id BETWEEN 11 AND 80 STORE HSET worker_city_hash
   $CLI SELECT "worker.name,division.location" FROM "worker,division" WHERE "worker.division=division.id AND division.id BETWEEN 11 AND 80 STORE HSET worker_city_hash"
   echo HGETALL worker_city_hash
@@ -694,7 +694,7 @@ function jstore_worker_location_hash() {
 }
 
 
-function jstore_city_wrkr_denorm_to_many_hash() {
+function join_store_city_wrkr_denorm_to_many_hash() {
   echo SELECT division.location, worker.name, worker.salary FROM worker,division WHERE division.id=worker.division AND worker.division BETWEEN 11 AND 66 STORE HSET city_wrkr$
   $CLI SELECT "division.location, worker.name, worker.salary" FROM "worker,division" WHERE "division.id=worker.division AND worker.division BETWEEN 11 AND 66 STORE HSET city_wrkr$"
   echo HGETALL city_wrkr:N.Y.C
@@ -907,10 +907,10 @@ function istorer() {
   istore_customer_hobby_order_by_denorm_to_many_lists
 }
 
-function jstorer() {
+function join_storer() {
   echo JSTORER
-  jstore_worker_location_hash
-  jstore_city_wrkr_denorm_to_many_hash
+  join_store_worker_location_hash
+  join_store_city_wrkr_denorm_to_many_hash
 }
 
 function scanner() {
@@ -932,7 +932,7 @@ function basic_tests() {
   scanner
 
   istorer
-  jstorer
+  join_storer
 
   create_table_as_tester
 }
@@ -949,7 +949,7 @@ function all_tests() {
   orderbyer
 
   istorer
-  jstorer
+  join_storer
   create_table_as_tester
 
   non_rel_index_test
