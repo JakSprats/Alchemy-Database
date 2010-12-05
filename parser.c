@@ -42,6 +42,10 @@ char *_strnchr(char *s, int c, int len) {
     return NULL;
 }
 
+robj *_createStringObject(char *s) {
+    return createStringObject(s, strlen(s));
+}
+
 robj *cloneRobj(robj *r) { // must be decrRefCount()ed
     if (r->encoding == REDIS_ENCODING_RAW) {
         return createStringObject(r->ptr, sdslen(r->ptr));

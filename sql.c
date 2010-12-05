@@ -40,7 +40,7 @@ char *strcasestr(const char *haystack, const char *needle); /*compiler warning*/
 #include "alsosql.h"
 #include "index.h"
 #include "cr8tblas.h"
-#include "denorm.h" /* for fakeClientPipe */
+#include "rpipe.h"
 #include "parser.h"
 #include "sql.h"
 

@@ -33,12 +33,11 @@ ALL RIGHTS RESERVED
 #include "zmalloc.h"
 
 #include "sql.h"
-#include "store.h"
 #include "join.h"
 #include "bt_iterator.h"
 #include "row.h"
 #include "bt.h"
-#include "denorm.h" /* for fakeClientPipe */
+#include "rpipe.h"
 #include "parser.h"
 #include "legacy.h"
 #include "alsosql.h"
@@ -49,14 +48,17 @@ ALL RIGHTS RESERVED
 extern struct sharedObjectsStruct shared;
 extern struct redisServer server;
 
-extern int      Num_tbls     [MAX_NUM_TABLES];
+extern int      Num_tbls       [MAX_NUM_TABLES];
 extern r_tbl_t  Tbl[MAX_NUM_DB][MAX_NUM_TABLES];
 
-stor_cmd AccessCommands[NUM_ACCESS_TYPES];
+extern char *EQUALS;
+extern char *PERIOD;
 
-static robj *_createStringObject(char *s) {
-    return createStringObject(s, strlen(s));
-}
+extern char *Col_type_defs[];
+
+#define MAX_TBL_DEF_SIZE     1024
+
+stor_cmd AccessCommands[NUM_ACCESS_TYPES];
 
 static bool addSingle(redisClient *c,
                       void        *x,
@@ -127,10 +129,111 @@ static bool addDouble(redisClient *c,
     return 1;
 }
 
-void createTableAsObjectOperation(redisClient  *c,
-                                  int           is_ins,
-                                  robj        **rargv,
-                                  int           rargc) {
+/* INTERNAL_CREATE_TABLE INTERNAL_CREATE_TABLE INTERNAL_CREATE_TABLE */
+/* INTERNAL_CREATE_TABLE INTERNAL_CREATE_TABLE INTERNAL_CREATE_TABLE */
+static void cpyColDef(char *cdefs,
+                      int  *slot,
+                      int   tmatch,
+                      int   cmatch,
+                      int   qcols,
+                      int   loop,
+                      bool  has_conflicts,
+                      bool  cname_cflix[]) {
+    robj *col = Tbl[server.dbid][tmatch].col_name[cmatch];
+    if (has_conflicts && cname_cflix[loop]) { // prepend tbl_name
+        robj *tbl = Tbl[server.dbid][tmatch].name;
+        memcpy(cdefs + *slot, tbl->ptr, sdslen(tbl->ptr));
+        *slot        += sdslen(tbl->ptr);        // tblname
+        memcpy(cdefs + *slot, PERIOD, 1);
+        *slot = *slot + 1;
+    }
+    memcpy(cdefs + *slot, col->ptr, sdslen(col->ptr));
+    *slot        += sdslen(col->ptr);            // colname
+    memcpy(cdefs + *slot, EQUALS, 1);
+    *slot = *slot + 1;
+    char *ctype   = Col_type_defs[Tbl[server.dbid][tmatch].col_type[cmatch]];
+    int   ctlen   = strlen(ctype);               // [INT,STRING]
+    memcpy(cdefs + *slot, ctype, ctlen);
+    *slot        += ctlen;
+    if (loop != (qcols - 1)) {
+        memcpy(cdefs + *slot, ",", 1);
+        *slot = *slot + 1;                       // ,
+    }
+}
+
+static bool _internalCreateTable(redisClient *c,
+                                 redisClient *fc,
+                                 int          qcols,
+                                 int          cmatchs[],
+                                 int          tmatch,
+                                 int          j_tbls[],
+                                 int          j_cols[],
+                                 bool         cname_cflix[]) {
+    if (find_table(c->argv[2]->ptr) > 0) return 1;
+
+    char cdefs[MAX_TBL_DEF_SIZE];
+    int  slot  = 0;
+    for (int i = 0; i < qcols; i++) {
+        if (tmatch != -1) {
+            cpyColDef(cdefs, &slot, tmatch, cmatchs[i], qcols, i,
+                      0, cname_cflix);
+        } else {
+            cpyColDef(cdefs, &slot, j_tbls[i], j_cols[i], qcols, i,
+                      1, cname_cflix);
+        }
+    }
+    fc->argc    = 3;
+    fc->argv[2] = createStringObject(cdefs, slot);
+    legacyTableCommand(fc);
+    if (!respOk(fc)) {
+        listNode *ln = listFirst(fc->reply);
+        addReply(c, ln->value);
+        return 0;
+    }
+    return 1;
+}
+
+bool internalCreateTable(redisClient *c,
+                         redisClient *fc,
+                         int          qcols,
+                         int          cmatchs[],
+                         int          tmatch) {
+    int  idum[1];
+    bool bdum[1];
+    return _internalCreateTable(c, fc, qcols, cmatchs, tmatch,
+                                idum, idum, bdum);
+}
+
+bool createTableFromJoin(redisClient *c,
+                         redisClient *fc,
+                         int          qcols,
+                         int          j_tbls [],
+                         int          j_cols[]) {
+    bool cname_cflix[MAX_JOIN_INDXS];
+    for (int i = 0; i < qcols; i++) {
+        for (int j = 0; j < qcols; j++) {
+            if (i == j) continue;
+            if (!strcmp(Tbl[server.dbid][j_tbls[i]].col_name[j_cols[i]]->ptr,
+                        Tbl[server.dbid][j_tbls[j]].col_name[j_cols[j]]->ptr)) {
+                cname_cflix[i] = 1;
+                break;
+            } else {
+                cname_cflix[i] = 0;
+            }
+        }
+    }
+
+    int idum[1];
+    return _internalCreateTable(c, fc, qcols, idum, -1,
+                                j_tbls, j_cols, cname_cflix);
+}
+
+/* CREATE_TABLE_AS CREATE_TABLE_AS CREATE_TABLE_AS CREATE_TABLE_AS */
+/* CREATE_TABLE_AS CREATE_TABLE_AS CREATE_TABLE_AS CREATE_TABLE_AS */
+static void createTableAsObjectOperation(redisClient  *c,
+                                         int           is_ins,
+                                         robj        **rargv,
+                                         int           rargc) {
     robj               *wargv[3];
     struct redisClient *wfc    = rsql_createFakeClient(); /* client to write */
     wfc->argc                  = 3;
@@ -153,7 +256,7 @@ void createTableAsObjectOperation(redisClient  *c,
     return;
 }
 
-void createTableAsSelect(redisClient *c, char *as_cmd) {
+static void createTableAsSelect(redisClient *c, char *as_cmd) {
     int  cmatchs[MAX_COLUMN_PER_TABLE];
     bool cstar  = 0;
     int  qcols  = 0;

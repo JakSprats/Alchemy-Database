@@ -91,7 +91,7 @@
 #include "join.h"            /* relational join in ALSOSQL */
 #include "row.h"             /* ALSOSQL's bit-packed rows */
 #include "index.h"           /* ALSOSQL's indices */
-#include "denorm.h"          /* PIPE flags */
+#include "rpipe.h"           /* PIPE flags */
 #include "common.h"          /* ALSOSQL's common definitions */
 #include "nri.h"             /* ALSOSQL's NonRelationIndexes */
 #include "lua_integration.h" /* Lua c bindings for lua function "client */

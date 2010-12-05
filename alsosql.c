@@ -33,6 +33,7 @@ ALL RIGHTS RESERVED
 #include <assert.h>
 
 #include "redis.h"
+
 #include "bt.h"
 #include "row.h"
 #include "index.h"

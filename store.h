@@ -1,5 +1,5 @@
 /*
- * Implements istore and iselect
+ * Implements istore
  *
 
 GPL License
@@ -36,21 +36,6 @@ ALL RIGHTS RESERVED
 
 #define NUM_STORAGE_TYPES 10
 
-unsigned char respOk(redisClient *c);
-unsigned char respNotErr(redisClient *c);
-
-bool internalCreateTable(redisClient *c,
-                         redisClient *fc,
-                         int          qcols, 
-                         int          cmatchs[],
-                         int          tmatch);
-
-bool createTableFromJoin(redisClient *c,
-                         redisClient *fc,
-                         int          qcols, 
-                         int          j_tbls [],
-                         int          j_cols[]);
-
 bool performStoreCmdOrReply(redisClient *c, redisClient *fc, int sto);
 
 bool istoreAction(redisClient *c,
@@ -79,7 +64,9 @@ void istoreCommit(redisClient *c,
                   int          cmatchs[MAX_COLUMN_PER_TABLE],
                   int          qcols);
 
+/* JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN */
 void prepare_jRowStore(jrow_reply_t *r);
+
 bool jRowStore(jrow_reply_t *r);
 
 #endif /* __STORE__H */ 

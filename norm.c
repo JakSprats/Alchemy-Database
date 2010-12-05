@@ -36,7 +36,7 @@ ALL RIGHTS RESERVED
 #include "row.h"
 #include "sql.h"
 #include "index.h"
-#include "store.h"
+#include "rpipe.h"
 #include "legacy.h"
 #include "common.h"
 

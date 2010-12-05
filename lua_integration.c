@@ -36,7 +36,7 @@ ALL RIGHTS RESERVED
 #include "redis.h"
 #include "zmalloc.h"
 
-#include "denorm.h"
+#include "rpipe.h"
 #include "lua_integration.h"
 
 extern struct sharedObjectsStruct shared;
