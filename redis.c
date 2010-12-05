@@ -577,7 +577,6 @@ static void freeStringObject(robj *o);
 static void freeListObject(robj *o);
 void decrRefCount(void *o);
 static void freeClient(redisClient *c);
-static void rsql_resetFakeClient(struct redisClient *c);
 static int rdbLoad(char *filename);
 void addReplySds(redisClient *c, sds s);
 static int rdbSaveBackground(char *filename);
@@ -8996,7 +8995,7 @@ void freeFakeClient(struct redisClient *c) {
 }
 
 #ifdef ALSOSQL
-static void rsql_resetFakeClient(struct redisClient *c) {
+void rsql_resetFakeClient(struct redisClient *c) {
     /* Discard the reply objects list from the fake client */
     while(listLength(c->reply))
         listDelNode(c->reply, listFirst(c->reply));

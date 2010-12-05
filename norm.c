@@ -59,13 +59,26 @@ static bool is_int(robj *pko) {
     else                   return 1;
 }
 
-static void handleTableCreationError(redisClient *fc, robj *lenobj) {
-    listNode *ln = listFirst(fc->reply);
-    robj     *o  = (robj *)ln->value;
-    /* UGLY: lenobj has already been addReply()d */
-    sds       s  = sdsnewlen(o->ptr, sdslen(o->ptr));
-    lenobj->ptr  = s;
-    incrRefCount(lenobj);
+/* this is a complicated failure scenario as NORM can fail
+   AFTER creating several tables ... so it has succeeded and then FAILED */
+#define NORM_MIDWAY_ERR_MSG "-ERR NORM command failed in the middle, error: "
+static void handleTableCreationError(redisClient *c,
+                                     redisClient *fc,
+                                     robj        *lenobj,
+                                     ulong        card) {
+    listNode *ln     = listFirst(fc->reply);
+    robj     *errmsg = ln->value;
+    robj     *repl = createStringObject(NORM_MIDWAY_ERR_MSG,
+                                        strlen(NORM_MIDWAY_ERR_MSG));
+    repl->ptr      = sdscatlen(repl->ptr, errmsg->ptr, sdslen(errmsg->ptr));
+    if (!lenobj) { /* no successful NORMed tables yet */
+        INIT_LEN_OBJ
+        lenobj->ptr = sdsnewlen(repl->ptr, sdslen(repl->ptr));
+    } else {
+        addReply(c, repl);
+        lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card + 1);
+    }
+    decrRefCount(repl);
 }
 
 /* build response string (which are the table definitions) */
@@ -252,7 +265,7 @@ void normCommand(redisClient *c) {
     fc       = rsql_createFakeClient();
     fc->argv = argv;
 
-    LEN_OBJ
+    EMPTY_LEN_OBJ
     for (int i = 0; i < n_ep; i++) {
         dictEntry    *de, *ide;
         dictIterator *di, *idi;
@@ -276,9 +289,10 @@ void normCommand(redisClient *c) {
         fc->argv[2] = cdef;
         fc->argc    = 3;
 
+        rsql_resetFakeClient(fc);
         legacyTableCommand(fc);
         if (!respOk(fc)) { /* most likely table already exists */
-            handleTableCreationError(fc, lenobj);
+            handleTableCreationError(c, fc, lenobj, card);
             goto norm_end;
         }
         decrRefCount(cdef);
@@ -309,10 +323,10 @@ void normCommand(redisClient *c) {
             fc->argv[1] = createStringObject(nt, sdslen(nt));
             fc->argv[2] = ir;
             fc->argc    = 3;
+            rsql_resetFakeClient(fc);
             legacyInsertCommand(fc);
-            if (!respNotErr(fc)) {
-                listNode *ln = listFirst(fc->reply);
-                addReply(c, ln->value);
+            if (!respOk(fc)) { /* INSERT fail [unsecaped , or )] */
+                handleTableCreationError(c, fc, lenobj, card);
                 dictReleaseIterator(di);
                 decrRefCount(resp);
                 decrRefCount(ir);
@@ -322,6 +336,9 @@ void normCommand(redisClient *c) {
         }
         dictReleaseIterator(di);
 
+        if (!lenobj) {
+            INIT_LEN_OBJ
+        }
         addReplyBulk(c, resp);
         decrRefCount(resp);
         card++;

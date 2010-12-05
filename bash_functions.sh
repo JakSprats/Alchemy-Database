@@ -966,6 +966,7 @@ function all_tests() {
   ./test/pop_denorm.sh 1
   ./test/pop_H_denorm.sh
   ./test/pop_H_denorm.sh 1
+  ./test/pop_BAD_NORM.sh
 }
 
 function all_tests_and_benchmarks() {

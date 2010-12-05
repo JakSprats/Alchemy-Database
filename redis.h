@@ -543,6 +543,7 @@ typedef struct storage_command {
 
 #ifdef ALSOSQL
 struct redisClient *rsql_createFakeClient(void);
+void rsql_resetFakeClient(struct redisClient *c);
 void rsql_freeFakeClient(struct redisClient *c);
 #endif
 
