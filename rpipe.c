@@ -53,6 +53,7 @@ unsigned char respNotErr(redisClient *c) {
     listNode *ln = listFirst(c->reply);
     robj     *o  = ln->value;
     char     *s  = o->ptr;
+    //RL4 "respNotErr: %s", s);
     if (!strncmp(s, "-ERR", 4)) return 0;
     else                        return 1;
 }

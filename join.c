@@ -484,13 +484,16 @@ void joinGeneric(redisClient *c,
         }
     }
 
-    int sent = 0;
+    bool        err   = 0;
+    int         sent  = 0;
+    btIterator *bi    = NULL; /* declared here due to GOTO */
+    char       *reply = NULL; /* declared here due to GOTO */
     if (!one_empty) {
         int   reply_size = 0;
         for (int i = 0; i < jb->n_ind; i++) { // get maxlen possbl 4 joined row
             reply_size += j_ind_len[i] + 1;
         }
-        char *reply = malloc(reply_size); /* freed after while() loop */
+        reply = malloc(reply_size); /* freed after while() loop */
     
         build_jrow_reply_t bjr; /* none of these change during a join */
         bzero(&bjr, sizeof(build_jrow_reply_t));
@@ -515,12 +518,12 @@ void joinGeneric(redisClient *c,
         bjr.j.cstar       = jb->cstar;
 
         joinRowEntry *be;
-        btIterator   *bi = btGetJoinFullRangeIterator(jbtr, pk1type);
+        bi = btGetJoinFullRangeIterator(jbtr, pk1type);
         while ((be = btJoinRangeNext(bi, pk1type)) != NULL) { /* iter BT */
             listNode *ln;
-            bjr.jk       = be->key;
-            list     *ll = (list *)be->val;
-            listIter *li = listGetIterator(ll, AL_START_HEAD);
+            bjr.jk        = be->key;
+            list     *jll = (list *)be->val;
+            listIter *li  = listGetIterator(jll, AL_START_HEAD);
             while((ln = listNext(li)) != NULL) {        /* iter LIST */
                 char *first_entry;
                 char *item = ln->value;
@@ -538,19 +541,24 @@ void joinGeneric(redisClient *c,
                     first_entry += UINT_SIZE;
                 }
     
-                if (!buildJRowReply(&bjr, 1, rset)) break;
+                if (!buildJRowReply(&bjr, 1, rset)) {
+                    err = 1;
+                    goto join_end;
+                }
             }
             listReleaseIterator(li);
         }
-        btReleaseJoinRangeIterator(bi);
-
-        free(reply);
 
         if (Order_by) {
             sent = sortJoinOrderByAndReply(c, &bjr, &jb->w);
+            if (sent == -1) err = 1;
             listRelease(ll);
         }
     }
+
+join_end:
+    if (bi)    btReleaseJoinRangeIterator(bi);
+    if (reply) free(reply);
 
     /* free joinRowEntry malloc from joinAddColsFromInd() */
     bool  is_ob = (jb->w.obt == Index[server.dbid][jb->j_indxs[0]].table);
@@ -575,6 +583,7 @@ void joinGeneric(redisClient *c,
         decrRefCount(rset[i]);
     }
 
+    if (err) return;
     if (jb->w.lim != -1 && (uint32)sent < card) card = sent;
     if (jb->w.sto != -1) {
         addReplyLongLong(c, card);

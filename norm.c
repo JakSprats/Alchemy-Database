@@ -37,6 +37,7 @@ ALL RIGHTS RESERVED
 #include "sql.h"
 #include "index.h"
 #include "rpipe.h"
+#include "parser.h"
 #include "legacy.h"
 #include "common.h"
 
@@ -66,11 +67,10 @@ static void handleTableCreationError(redisClient *c,
                                      redisClient *fc,
                                      robj        *lenobj,
                                      ulong        card) {
-    listNode *ln     = listFirst(fc->reply);
-    robj     *errmsg = ln->value;
-    robj     *repl = createStringObject(NORM_MIDWAY_ERR_MSG,
-                                        strlen(NORM_MIDWAY_ERR_MSG));
-    repl->ptr      = sdscatlen(repl->ptr, errmsg->ptr, sdslen(errmsg->ptr));
+    listNode *ln   = listFirst(fc->reply);
+    robj     *emsg = ln->value;
+    robj     *repl = _createStringObject(NORM_MIDWAY_ERR_MSG);
+    repl->ptr      = sdscatlen(repl->ptr, emsg->ptr, sdslen(emsg->ptr));
     if (!lenobj) { /* no successful NORMed tables yet */
         INIT_LEN_OBJ
         lenobj->ptr = sdsnewlen(repl->ptr, sdslen(repl->ptr));

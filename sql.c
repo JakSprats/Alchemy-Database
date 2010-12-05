@@ -347,13 +347,11 @@ static uchar parseWC_IN(redisClient  *c,
         fakeClientPipe(c, rfc, inl, 0, &f, addRCmdToINList, emptyNoop);
         bool err = 0;
         if (!respNotErr(rfc)) {
-            listNode *ln     = listFirst(rfc->reply);
-            robj     *errmsg = ln->value;
-            err              = 1;
-            robj     *repl   = createStringObject(IN_RCMD_ERR_MSG,
-                                                  strlen(IN_RCMD_ERR_MSG));
-            repl->ptr        = sdscatlen(repl->ptr, errmsg->ptr,
-                                                    sdslen(errmsg->ptr));
+            listNode *ln   = listFirst(rfc->reply);
+            robj     *emsg = ln->value;
+            err            = 1;
+            robj     *repl = _createStringObject(IN_RCMD_ERR_MSG);
+            repl->ptr      = sdscatlen(repl->ptr, emsg->ptr, sdslen(emsg->ptr));
             addReply(c, repl);
             decrRefCount(repl);
         }

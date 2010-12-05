@@ -224,7 +224,7 @@ int sortedOrderByIstore(redisClient  *c,
             robj *row             = &IstoreOrderByRobj;
             if (!istoreAction(c, fc, tmatch, cmatchs, qcols, w->sto,
                               key, row, nname, sub_pk, nargc))
-                                  return 0; /* TODO get err from fs */
+                                  return -1;
         }
     }
     return sent;
@@ -282,8 +282,8 @@ int sortJoinOrderByAndReply(redisClient        *c,
             obsl_t *ob = vector[k];
             if (b->j.sto != -1) { /* JSTORE */
                 b->j.fc->argv = ob->row; /* argv's in list */
-                if (!performStoreCmdOrReply(b->j.c, b->j.fc, b->j.sto))
-                    return 0;
+                if (!performStoreCmdOrReply(b->j.c, b->j.fc, b->j.sto, 1))
+                    return -1;
             } else if (!b->j.cstar) {
                 addReplyBulk(c, ob->row);
                 decrRefCount(ob->row);

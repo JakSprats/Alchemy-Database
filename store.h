@@ -36,7 +36,10 @@ ALL RIGHTS RESERVED
 
 #define NUM_STORAGE_TYPES 10
 
-bool performStoreCmdOrReply(redisClient *c, redisClient *fc, int sto);
+bool performStoreCmdOrReply(redisClient *c,
+                            redisClient *fc,
+                            int          sto,
+                            bool         join);
 
 bool istoreAction(redisClient *c,
                   redisClient *fc,

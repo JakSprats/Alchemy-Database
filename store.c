@@ -119,12 +119,25 @@ bool prepareToStoreReply(redisClient  *c,
     return 1;
 }
 
-bool performStoreCmdOrReply(redisClient *c, redisClient *fc, int sto) {
-    /* TODO in terms of aof-logging, smarter to do a "call(fc, cmd);"  */
+#define ISTORE_ERR_MSG \
+  "-ERR IN(SELECT Range Query STORE) - inner command had error: "
+#define JOIN_STORE_ERR_MSG \
+  "-ERR IN(SELECT Join STORE) - inner command had error: "
+bool performStoreCmdOrReply(redisClient *c,
+                            redisClient *fc,
+                            int          sto,
+                            bool         join) {
+    /* TODO for aof-logging, "call(fc, cmd);" would aof-write each op */
+    rsql_resetFakeClient(fc);
     (*StorageCommands[sto].func)(fc);
     if (!respNotErr(fc)) {
-        listNode *ln = listFirst(fc->reply);
-        addReply(c, ln->value);
+        listNode *ln   = listFirst(fc->reply);
+        robj     *emsg = ln->value;
+        robj     *repl = join ? _createStringObject(JOIN_STORE_ERR_MSG) :
+                                _createStringObject(ISTORE_ERR_MSG);
+        repl->ptr      = sdscatlen(repl->ptr, emsg->ptr, sdslen(emsg->ptr));
+        addReply(c, repl);
+        decrRefCount(repl);
         return 0;
     }
     return 1;
@@ -148,7 +161,6 @@ bool istoreAction(redisClient *c,
         totlen  += cols[i].len;
     }
 
-    char *newrow = NULL;
     fc->argc     = qcols + 1;
     fc->argv[1]  = createStringObject(nname, strlen(nname));/*NEW Objects NAME*/
     //argv[0] NOT NEEDED
@@ -168,8 +180,7 @@ bool istoreAction(redisClient *c,
         if (cols[i].sixbit) free(cols[i].s);
     }
 
-    if (newrow) zfree(newrow);
-    return performStoreCmdOrReply(c, fc, sto);
+    return performStoreCmdOrReply(c, fc, sto, 0);
 }
 
 
@@ -179,8 +190,8 @@ bool istoreAction(redisClient *c,
     } else {                                                         \
         if (!istoreAction(c, fc, tmatch, cmatchs, qcols, w->sto,     \
                           key, row, nname, sub_pk, nargc)) {         \
-            err = 1; /* TODO get err from fc */                      \
-            goto istore_err;                                         \
+            err = 1;                                                 \
+            goto istore_end;                                         \
         }                                                            \
     }
 
@@ -234,28 +245,28 @@ void istoreCommit(redisClient *c,
         sent            = sortedOrderByIstore(c, w, fc, tmatch, cmatchs, qcols,
                                               nname, sub_pk, nargc, ctype,
                                               vector, listLength(ll));
-        if (sent == 0) err = 1;
+        if (sent == -1) err = 1;
         sortedOrderByCleanup(vector, listLength(ll), ctype, 0);
         free(vector);
     }
 
     if (sub_pk) *last = '$';/* write back in "$" for AOF and Slaves */
 
-istore_err:
+istore_end:
     if (nbi)  btReleaseRangeIterator(nbi);
     if (bi)   btReleaseRangeIterator(bi);
     if (ll)   listRelease(ll);
     rsql_freeFakeClient(fc);
 
-    if (err) addReply(c, shared.istorecommit_err);
-    else {
-        if (w->lim != -1 && (uint32)sent < card) card = sent;
-        addReplyLongLong(c, card);
-    }
+    if (err) return;
+    if (w->lim != -1 && (uint32)sent < card) card = sent;
+    addReplyLongLong(c, card);
 }
 
 /* JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN */
 /* JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN */
+
+//TODO refactor against istoreAction()
 void prepare_jRowStore(jrow_reply_t *r) {
     robj **argv = r->fc->argv;
     argv[1]     = cloneRobj(r->nname);
@@ -277,5 +288,5 @@ void prepare_jRowStore(jrow_reply_t *r) {
 
 bool jRowStore(jrow_reply_t *r) {
     prepare_jRowStore(r);
-    return performStoreCmdOrReply(r->c, r->fc, r->sto);
+    return performStoreCmdOrReply(r->c, r->fc, r->sto, 1);
 }

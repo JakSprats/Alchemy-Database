@@ -966,7 +966,6 @@ function all_tests() {
   ./test/pop_denorm.sh 1
   ./test/pop_H_denorm.sh
   ./test/pop_H_denorm.sh 1
-  ./test/pop_BAD_NORM.sh
 }
 
 function all_tests_and_benchmarks() {
@@ -1322,4 +1321,47 @@ function pk_float_join_tests() {
 
   echo $CLI SELECT f_one.val,f_three.val FROM f_one,f_three WHERE f_one.id = f_three.id AND f_one.id  IN "(1.1,2.2,3.3,4.4,5.5,6.6,7.7,8.8,9.9)"
   $CLI SELECT f_one.val,f_three.val FROM "f_one,f_three" WHERE "f_one.id = f_three.id AND f_one.id  IN (1.1,2.2,3.3,4.4,5.5,6.6,7.7,8.8,9.9)"
+}
+
+# ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR
+# ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR ERROR
+
+function bad_storer() {
+  $CLI DROP TABLE bad_store
+  $CLI CREATE TABLE bad_store "(id INT, val TEXT)"
+  $CLI INSERT INTO bad_store VALUES "(1, 1.11111)"
+  $CLI INSERT INTO bad_store VALUES "(2, TEXT)"
+  echo OK ISTORE
+  $CLI SELECT id,val FROM bad_store WHERE id BETWEEN 1 AND 2 STORE ZADD Z_bad_store
+  echo BAD ISTORE
+  $CLI SELECT val,id FROM bad_store WHERE id BETWEEN 1 AND 2 STORE ZADD Z_bad_store
+
+  echo
+  $CLI DROP TABLE bad_store_sub_pk
+  $CLI CREATE TABLE bad_store_sub_pk "(id INT, user_id INT, ts INT, val TEXT)"
+  $CLI INSERT INTO bad_store_sub_pk VALUES "(1, 1, 888, 1.11111)"
+  $CLI INSERT INTO bad_store_sub_pk VALUES "(2, 1, 999, TEXT)"
+  echo OK ISTORE w/ SUB_PK
+  $CLI SELECT user_id,ts,val FROM bad_store_sub_pk WHERE id BETWEEN 1 AND 2 STORE ZADD Z_bad_store_sub_pk$
+  echo BAD ISTORE w/ SUB_PK
+  $CLI SELECT user_id,val,ts FROM bad_store_sub_pk WHERE id BETWEEN 1 AND 2 STORE ZADD Z_bad_store_sub_pk$
+
+  echo
+  echo OK JOIN
+  $CLI SELECT bad_store.id,bad_store_sub_pk.val FROM bad_store,bad_store_sub_pk WHERE bad_store.id = bad_store_sub_pk.id AND bad_store_sub_pk.id BETWEEN 1 AND 2 STORE ZADD Z_bad_store_join
+  echo BAD JOIN
+  $CLI SELECT bad_store.val,bad_store_sub_pk.id FROM bad_store,bad_store_sub_pk WHERE bad_store.id = bad_store_sub_pk.id AND bad_store_sub_pk.id BETWEEN 1 AND 2 STORE ZADD Z_bad_store_join
+
+  echo
+  echo OK JOIN w/ ORDER BY
+  $CLI SELECT bad_store.id,bad_store_sub_pk.val FROM bad_store,bad_store_sub_pk WHERE bad_store.id = bad_store_sub_pk.id AND bad_store_sub_pk.id BETWEEN 1 AND 2 ORDER BY bad_store_sub_pk.ts STORE ZADD Z_bad_store_join
+  echo BAD JOIN w/ ORDER BY
+  $CLI SELECT bad_store.val,bad_store_sub_pk.id FROM bad_store,bad_store_sub_pk WHERE bad_store.id = bad_store_sub_pk.id AND bad_store_sub_pk.id BETWEEN 1 AND 2 ORDER BY bad_store_sub_pk.ts DESC STORE ZADD Z_bad_store_join
+}
+
+function bad_tests() {
+  bad_storer
+  echo
+  echo ./test/pop_BAD_NORM.sh
+  ./test/pop_BAD_NORM.sh
 }
