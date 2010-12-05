@@ -47,7 +47,7 @@ else
   MTYPE=$@
 endif
 
-OBJ = adlist.o ae.o anet.o dict.o redis.o sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o zipmap.o sha1.o bt.o bt_code.o bt_output.o alsosql.o sixbit.o row.o index.o rdb_alsosql.o join.o norm.o bt_iterator.o sql.o denorm.o store.o scan.o orderby.o lua_integration.o parser.o nri.o legacy.o
+OBJ = adlist.o ae.o anet.o dict.o redis.o sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o zipmap.o sha1.o bt.o bt_code.o bt_output.o alsosql.o sixbit.o row.o index.o rdb_alsosql.o join.o norm.o bt_iterator.o sql.o denorm.o store.o scan.o orderby.o lua_integration.o parser.o nri.o legacy.o cr8tblas.o
 BENCHOBJ = ae.o anet.o redis-benchmark.o sds.o adlist.o zmalloc.o
 GENBENCHOBJ = ae.o anet.o gen-benchmark.o sds.o adlist.o zmalloc.o
 CLIOBJ = anet.o sds.o adlist.o redis-cli.o zmalloc.o linenoise.o
@@ -150,7 +150,7 @@ zmalloc.o: zmalloc.c config.h
 bt.o: bt.c btree.h btreepriv.h redis.h row.h bt.h common.h
 bt_code.o: bt_code.c btree.h btreepriv.h redis.h common.h
 bt_output.o: bt_output.c btree.h btreepriv.h redis.h
-alsosql.o: redis.h alsosql.h bt_iterator.h index.h bt.h sixbit.h row.h denorm.h common.h
+alsosql.o: redis.h alsosql.h bt_iterator.h index.h bt.h sixbit.h row.h denorm.h cr8tblas.h common.h
 index.o: redis.h index.h bt_iterator.h alsosql.h orderby.h nri.h legacy.h common.h
 bt_iterator.o: redis.h bt_iterator.h btree.h btreepriv.h common.h
 norm.o: redis.h sql.h bt_iterator.h legacy.h common.h
@@ -159,7 +159,7 @@ store.o: redis.h store.h bt_iterator.h alsosql.h orderby.h legacy.h common.h
 rdb_alsosql.o: redis.h rdb_alsosql.h bt_iterator.h alsosql.h nri.h index.h common.h
 sixbit.o: sixbit.h
 row.o: row.h alsosql.h common.h
-sql.o: redis.h sql.h bt_iterator.h common.h
+sql.o: redis.h sql.h bt_iterator.h cr8tblas.h common.h
 denorm.o: redis.h denorm.h bt_iterator.h alsosql.h parser.h legacy.h common.h
 scan.o: alsosql.h bt_iterator.h sql.h
 orderby.o: orderby.h store.h join.h common.h
@@ -167,6 +167,7 @@ lua_integration.o: lua_integration.h redis.h zmalloc.h denorm.h
 parser.o: parser.h redis.h zmalloc.h common.h
 nri.o: nri.h redis.h alsosql.h common.h
 legacy.o: legacy.h index.h redis.h alsosql.h common.h
+cr8tblas.o: cr8tblas.h redis.h common.h
 
 redisql-server: $(OBJ)
 	$(CC) -o $(PRGNAME) $(CCOPT) $(DEBUG) $(OBJ) $(EXTRA_LD)

@@ -39,7 +39,8 @@ char *strcasestr(const char *haystack, const char *needle); /*compiler warning*/
 #include "store.h"
 #include "alsosql.h"
 #include "index.h"
-#include "denorm.h"
+#include "cr8tblas.h"
+#include "denorm.h" /* for fakeClientPipe */
 #include "parser.h"
 #include "sql.h"
 

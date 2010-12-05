@@ -1,6 +1,6 @@
 /*
  *
- * This file implements Alchemy's DENORM command
+ * This file implements "CREATE TABLE x AS redis_datastructure"
  *
 
 GPL License
@@ -24,23 +24,17 @@ ALL RIGHTS RESERVED
     along with AlchemyDatabase.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef __DENORM__H
-#define __DENORM__H
+#ifndef __CR8TBLAS__H
+#define __CR8TBLAS__H
 
 #include "common.h"
 #include "redis.h"
 
-bool emptyNoop(redisClient *c);
-#define PIPE_NONE_FLAG      0
-#define PIPE_ERR_FLAG       1
-#define PIPE_ONE_LINER_FLAG 2
-#define PIPE_EMPTY_SET_FLAG 3
-long fakeClientPipe(redisClient *c,
-                    redisClient *rfc,
-                    void        *wfc,
-                    int          is_ins,
-                    flag        *flg,
-                    bool (* adder)
-                    (redisClient *c, void *x, robj *key, long *l, int b, int n),
-                    bool (* emptyer)(redisClient *c));
-#endif /* __DENORM__H */
+#define NUM_ACCESS_TYPES              14
+#define ACCESS_SELECT_COMMAND_NUM      0
+//#define ACCESS_SCANSELECT_COMMAND_NUM  1
+int getAccessCommNum(char *as_cmd);
+
+void createTableAsObject(redisClient *c);
+
+#endif /* __CR8TBLAS__H */

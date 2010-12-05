@@ -39,7 +39,7 @@ ALL RIGHTS RESERVED
 #include "join.h"
 #include "store.h"
 #include "zmalloc.h"
-#include "denorm.h"
+#include "cr8tblas.h"
 #include "sql.h"
 #include "parser.h"
 #include "common.h"
