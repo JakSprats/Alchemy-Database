@@ -460,6 +460,66 @@ check_sql_wc_err:
     return SQL_ERR_LOOKUP;
 }
 
+/* JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN */
+/* JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN */
+
+static int parseIndexedColumnListOrReply(redisClient *c,
+                                         char        *ilist,
+                                         int          j_indxs[]) {
+    int   n_ind       = 0;
+    char *curr_tname  = ilist;
+    char *nextc       = ilist;
+    while ((nextc = strchr(nextc, ','))) {
+        if (n_ind == MAX_JOIN_INDXS) {
+            addReply(c, shared.toomanyindicesinjoin);
+            return 0;
+        }
+        *nextc = '\0';
+        char *nextp = strchr(curr_tname, '.');
+        if (!nextp) {
+            addReply(c, shared.badindexedcolumnsyntax);
+            return 0;
+        }
+        *nextp = '\0';
+        TABLE_CHECK_OR_REPLY(curr_tname, 0)
+        nextp++;
+        COLUMN_CHECK_OR_REPLY(nextp, 0)
+        int imatch = find_index(tmatch, cmatch);
+        if (imatch == -1) {
+            addReply(c, shared.nonexistentindex);
+            return 0;
+        }
+        j_indxs[n_ind] = imatch;
+        n_ind++;
+        nextc++;
+        curr_tname     = nextc;
+    }
+    {
+        char *nextp = strchr(curr_tname, '.');
+        if (!nextp) {
+            addReply(c, shared.badindexedcolumnsyntax);
+            return 0;
+        }
+        *nextp = '\0';
+        TABLE_CHECK_OR_REPLY(curr_tname, 0)
+        nextp++;
+        COLUMN_CHECK_OR_REPLY(nextp, 0)
+        int imatch = find_index(tmatch, cmatch);
+        if (imatch == -1) {
+            addReply(c, shared.nonexistentindex);
+            return 0;
+        }
+        j_indxs[n_ind] = imatch;
+        n_ind++;
+    }
+
+    if (n_ind < 2) {
+        addReply(c, shared.toofewindicesinjoin);
+        return 0;
+    }
+    return n_ind;
+}
+
 static bool joinParseWCReply(redisClient  *c,
                              bool          just_parse,
                              jb_t         *jb) {

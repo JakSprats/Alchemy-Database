@@ -32,11 +32,43 @@ ALL RIGHTS RESERVED
 #include "sql.h"
 #include "common.h"
 
+typedef struct jqo {
+    int t;
+    int i;
+    int c;
+    int n;
+} jqo_t;
+
+typedef struct jrow_reply {
+    redisClient  *c;
+    redisClient  *fc;
+    int          *jind_ncols;
+    int           qcols;
+    int           sto;
+    bool          sub_pk;
+    int           nargc;
+    robj         *nname;
+    jqo_t        *csort_order;
+    bool          reordered;
+    char         *reply;
+    int           obt;
+    int           obc;
+    list         *ll;
+    bool          ctype;
+    bool          cstar;
+} jrow_reply_t;
+
+typedef struct build_jrow_reply {
+    jrow_reply_t  j;
+    int           n_ind;
+    robj         *jk;
+    ulong        *card;
+    int          *j_indxs;
+} build_jrow_reply_t;
+
 void freeJoinRowObject(robj *o);
 void freeAppendSetObject(robj *o);
 void freeValSetObject(robj *o);
-
-int parseIndexedColumnListOrReply(redisClient *c, char *ilist, int j_indxs[]);
 
 void joinGeneric(redisClient *c,
                  redisClient *fc,

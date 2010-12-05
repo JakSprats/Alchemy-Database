@@ -31,6 +31,7 @@ ALL RIGHTS RESERVED
 
 char *_strnchr(char *s, int c, int len); /* HELPER */
 robj *cloneRobj(robj *r);                /* HELPER */
+robj **cloneArgv(robj **argv, int argc);
 robj *convertRobj(robj *r, int type);    /* HELPER */
 
 char *rem_backticks(char *token, int *len);

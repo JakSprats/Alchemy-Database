@@ -26,6 +26,8 @@ ALL RIGHTS RESERVED
 #ifndef __ORDER_BY__H
 #define __ORDER_BY__H
 
+#include "join.h"
+
 typedef struct order_by_sort_element {
     void *val;
     void *row;
@@ -66,4 +68,10 @@ int sortedOrderByIstore(redisClient  *c,
                         uchar         ctype, 
                         obsl_t      **vector,
                         int           vlen);
+
+/* for JoinStore */
+void addJoinOutputRowToList(jrow_reply_t *r, void *resp);
+
+int sortJoinOrderByAndReply(redisClient *c, build_jrow_reply_t *b, cswc_t *w);
+
 #endif /* __ORDER_BY__H */ 

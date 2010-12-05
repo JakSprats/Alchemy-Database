@@ -30,7 +30,7 @@ ALL RIGHTS RESERVED
 #include "redis.h"
 #include "adlist.h"
 
-#include "alsosql.h"
+#include "join.h"
 #include "alsosql.h"
 #include "common.h"
 
@@ -44,6 +44,12 @@ bool internalCreateTable(redisClient *c,
                          int          qcols, 
                          int          cmatchs[],
                          int          tmatch);
+
+bool createTableFromJoin(redisClient *c,
+                         redisClient *fc,
+                         int          qcols, 
+                         int          j_tbls [],
+                         int          j_cols[]);
 
 bool performStoreCmdOrReply(redisClient *c, redisClient *fc, int sto);
 
@@ -73,9 +79,7 @@ void istoreCommit(redisClient *c,
                   int          cmatchs[MAX_COLUMN_PER_TABLE],
                   int          qcols);
 
-bool createTableFromJoin(redisClient *c,
-                         redisClient *fc,
-                         int          qcols, 
-                         int          j_tbls [],
-                         int          j_cols[]);
+void prepare_jRowStore(jrow_reply_t *r);
+bool jRowStore(jrow_reply_t *r);
+
 #endif /* __STORE__H */ 

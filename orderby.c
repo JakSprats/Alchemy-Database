@@ -28,6 +28,7 @@ ALL RIGHTS RESERVED
 #include <string.h>
 #include <strings.h>
 #include <unistd.h>
+#include <float.h>
 
 #include "redis.h"
 #include "adlist.h"
@@ -41,6 +42,10 @@ ALL RIGHTS RESERVED
 
 // FROM redis.c
 #define RL4 redisLog(4,
+
+/* GLOBALS */
+extern char  *Order_by_col_val;
+
 
 /* ORDER BY START */
 int intOrderBySort(const void *s1, const void *s2) {
@@ -225,3 +230,70 @@ int sortedOrderByIstore(redisClient  *c,
     return sent;
 }
 
+
+/* JOIN_STORE JOIN_STORE JOIN_STORE JOIN_STORE JOIN_STORE JOIN_STORE */
+/* JOIN_STORE JOIN_STORE JOIN_STORE JOIN_STORE JOIN_STORE JOIN_STORE */
+
+void addJoinOutputRowToList(jrow_reply_t *r, void *resp) {
+    obsl_t *ob = (obsl_t *)malloc(sizeof(obsl_t));
+    ob->row    = resp;
+    if (r->ctype == COL_TYPE_INT) {
+        ob->val = Order_by_col_val ? (void *)(long)atoi(Order_by_col_val) :
+                                     (void *)-1; /* -1 for UINT */
+    } else if (r->ctype == COL_TYPE_FLOAT) {
+        float f = Order_by_col_val ? atof(Order_by_col_val) : FLT_MIN;
+        memcpy(&(ob->val), &f, sizeof(float));
+    } else if (r->ctype == COL_TYPE_STRING) {
+        ob->val = Order_by_col_val;
+    }
+    listAddNodeTail(r->ll, ob);
+}
+
+int sortJoinOrderByAndReply(redisClient        *c,
+                                    build_jrow_reply_t *b,
+                                    cswc_t             *w) {
+    listNode  *ln;
+    int        vlen   = listLength(b->j.ll);
+    obsl_t   **vector = malloc(sizeof(obsl_t *) * vlen); /* freed in function */
+    int        j      = 0;
+    listIter  *li     = listGetIterator(b->j.ll, AL_START_HEAD);
+    while((ln = listNext(li)) != NULL) {
+        vector[j] = (obsl_t *)ln->value;
+        j++;
+    }
+    listReleaseIterator(li);
+    if (       b->j.ctype == COL_TYPE_INT) {
+        w->asc ? qsort(vector, vlen, sizeof(obsl_t *), intOrderBySort) :
+                 qsort(vector, vlen, sizeof(obsl_t *), intOrderByRevSort);
+    } else if (b->j.ctype == COL_TYPE_STRING) {
+        w->asc ? qsort(vector, vlen, sizeof(obsl_t *), stringOrderBySort) :
+                 qsort(vector, vlen, sizeof(obsl_t *), stringOrderByRevSort);
+    } else if (b->j.ctype == COL_TYPE_FLOAT) {
+        w->asc ? qsort(vector, vlen, sizeof(obsl_t *), floatOrderBySort) :
+                 qsort(vector, vlen, sizeof(obsl_t *), floatOrderByRevSort);
+    }
+    int sent = 0;
+    for (int k = 0; k < vlen; k++) {
+        if (w->lim != -1 && sent == w->lim) break;
+        if (w->ofst > 0) {
+            w->ofst--;
+        } else {
+            sent++;
+            obsl_t *ob = vector[k];
+            if (b->j.sto != -1) { /* JSTORE */
+                b->j.fc->argv = ob->row; /* argv's in list */
+                if (!performStoreCmdOrReply(b->j.c, b->j.fc, b->j.sto))
+                    return 0;
+            } else if (!b->j.cstar) {
+                addReplyBulk(c, ob->row);
+                decrRefCount(ob->row);
+            }
+        }
+    }
+    for (int k = 0; k < vlen; k++) {
+        obsl_t *ob = vector[k];
+        free(ob);               /* free malloc in addJoinOutputRowToList */
+    }
+    free(vector);
+    return sent;
+}

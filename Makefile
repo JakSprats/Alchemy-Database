@@ -162,7 +162,7 @@ row.o: row.h alsosql.h common.h
 sql.o: redis.h sql.h bt_iterator.h common.h
 denorm.o: redis.h denorm.h bt_iterator.h alsosql.h parser.h legacy.h common.h
 scan.o: alsosql.h bt_iterator.h sql.h
-orderby.o: orderby.h store.h common.h
+orderby.o: orderby.h store.h join.h common.h
 lua_integration.o: lua_integration.h redis.h zmalloc.h denorm.h
 parser.o: parser.h redis.h zmalloc.h common.h
 nri.o: nri.h redis.h alsosql.h common.h

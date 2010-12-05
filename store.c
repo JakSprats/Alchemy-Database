@@ -40,6 +40,7 @@ ALL RIGHTS RESERVED
 #include "index.h"
 #include "orderby.h"
 #include "parser.h"
+#include "join.h"
 #include "legacy.h"
 #include "common.h"
 #include "store.h"
@@ -59,6 +60,9 @@ extern char *Col_type_defs[];
 extern int      Num_tbls[MAX_NUM_DB];
 extern r_tbl_t  Tbl     [MAX_NUM_DB][MAX_NUM_TABLES];
 extern r_ind_t  Index   [MAX_NUM_DB][MAX_NUM_INDICES];
+
+extern char **Jrcols  [MAX_JOIN_INDXS * MAX_JOIN_COLS];
+extern int    Jrc_lens[MAX_JOIN_INDXS * MAX_JOIN_COLS];
 
 #define MAX_TBL_DEF_SIZE     1024
 
@@ -140,6 +144,7 @@ unsigned char respNotErr(redisClient *c) {
     else                        return 1;
 }
 
+//TODO move to cr8tblas.c
 static void cpyColDef(char *cdefs,
                       int  *slot,
                       int   tmatch,
@@ -170,6 +175,7 @@ static void cpyColDef(char *cdefs,
     }
 }
 
+//TODO move to cr8tblas.c
 static bool _internalCreateTable(redisClient *c,
                                  redisClient *fc,
                                  int          qcols,
@@ -202,6 +208,7 @@ static bool _internalCreateTable(redisClient *c,
     return 1;
 }
 
+//TODO move to cr8tblas.c
 bool internalCreateTable(redisClient *c,
                          redisClient *fc,
                          int          qcols,
@@ -213,6 +220,7 @@ bool internalCreateTable(redisClient *c,
                                 idum, idum, bdum);
 }
 
+//TODO move to cr8tblas.c
 bool createTableFromJoin(redisClient *c,
                          redisClient *fc,
                          int          qcols,
@@ -370,4 +378,30 @@ istore_err:
         if (w->lim != -1 && (uint32)sent < card) card = sent;
         addReplyLongLong(c, card);
     }
+}
+
+/* JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN */
+/* JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN */
+void prepare_jRowStore(jrow_reply_t *r) {
+    robj **argv = r->fc->argv;
+    argv[1]     = cloneRobj(r->nname);
+    int    n    = 1;
+    r->fc->argc = 3;
+    if (r->sub_pk) { // pk =argv[1]:Rcols[0][0]
+        argv[1]->ptr = sdscatlen(argv[1]->ptr, COLON,   1);
+        argv[1]->ptr = sdscatlen(argv[1]->ptr, *Jrcols[0], Jrc_lens[0]);
+        argv[2]      = createStringObject(*Jrcols[1], Jrc_lens[1]);
+        n++;
+    } else {
+        argv[2]      = createStringObject(*Jrcols[0], Jrc_lens[0]);
+    }
+    if (r->nargc > 1) {
+        argv[3]      = createStringObject(*Jrcols[n], Jrc_lens[n]);
+        r->fc->argc  = 4;
+    }
+}
+
+bool jRowStore(jrow_reply_t *r) {
+    prepare_jRowStore(r);
+    return performStoreCmdOrReply(r->c, r->fc, r->sto);
 }

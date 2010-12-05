@@ -52,6 +52,14 @@ robj *cloneRobj(robj *r) { // must be decrRefCount()ed
     }
 }
 
+robj **cloneArgv(robj **argv, int argc) {
+    robj **cargv = zmalloc(sizeof(robj*)*argc);
+    for (int j = 0; j < argc; j++) {
+        cargv[j] = createObject(REDIS_STRING, argv[j]->ptr);
+    }
+    return cargv;
+}
+
 robj *convertRobj(robj *r, int type) {
     if ((r->encoding == REDIS_ENCODING_RAW && type == COL_TYPE_STRING) ||
         (r->encoding == REDIS_ENCODING_INT && type == COL_TYPE_INT)) {

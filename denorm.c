@@ -41,6 +41,7 @@ ALL RIGHTS RESERVED
 #include "parser.h"
 #include "legacy.h"
 #include "alsosql.h"
+
 #include "denorm.h"
 
 // FROM redis.c
@@ -131,6 +132,7 @@ static bool addDouble(redisClient *c,
     return 1;
 }
 
+//TODO push into rpipe.c
 /* NOTE: this function implements a fakeClient pipe */
 long fakeClientPipe(redisClient *c,
                     redisClient *rfc,
@@ -413,7 +415,7 @@ void createTableAsObject(redisClient *c) {
         rsql_freeFakeClient(fc);
     }
 
-    if (axs != -1) { /* DUMP "redis_command redis_args" to table */
+    if (axs != -1) { /* EXEC "redis_command redis_args" to table */
         int    rargc;
         robj **rargv = parseCmdToArgv(as_cmd, &rargc);
         createTableAsObjectOperation(c, 0, rargv, rargc);
@@ -500,7 +502,7 @@ void denormCommand(redisClient *c) {
     sds     d_wldcrd = sdsdup(s_wldcrd);
     char   *fmt      = strstr(d_wldcrd, "%s"); /* written 2 lines up cant fail*/
     fmt++;
-    *fmt             = 'd';
+    *fmt             = 'd'; /* changes "%s" into "%d" - FIX: too complicated */
 
     robj               *argv[4];
     struct redisClient *fc = rsql_createFakeClient();
