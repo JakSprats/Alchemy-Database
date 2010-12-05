@@ -63,20 +63,6 @@ void istoreCommit(redisClient *c,
 void legacyTableCommand(redisClient *c); /* LEGACY syntax for createTable() */
 void legacyInsertCommand(redisClient *c);
 
-#define CHECK_STORE_TYPE_OR_REPLY(cargv1ptr,sto,ret)              \
-    char *store_type = cargv1ptr;                                 \
-    sto              = -1;                                        \
-    for (int i = 0; i < NUM_STORAGE_TYPES; i++) {                 \
-        if (!strcasecmp(store_type, StorageCommands[i].name)) {   \
-            sto = i;                                              \
-            break;                                                \
-        }                                                         \
-    }                                                             \
-    if (sto == -1) {                                              \
-        addReply(c, shared.storagetypeunkown);                    \
-        return ret;                                               \
-    }
-
 bool createTableFromJoin(redisClient *c,
                          redisClient *fc,
                          int          qcols, 

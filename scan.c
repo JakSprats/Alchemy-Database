@@ -131,10 +131,6 @@ static void condSelectReply(redisClient   *c,
    3.) SCANSELECT * FROM tbl WHERE clause [ORDER_BY_CLAUSE]
 */
 void tscanCommand(redisClient *c) {
-    if (c->argc < 4) {
-        addReplySds(c, sdsnew("-ERR SYNTAX: Wrong number of arguments for 'SCANSELECT'\r\n"));
-        return;
-    }
     int  cmatchs[MAX_COLUMN_PER_TABLE];
     bool no_wc;       /* NO WHERE CLAUSE */
     bool cstar  =  0;

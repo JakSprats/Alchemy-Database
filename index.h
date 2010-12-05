@@ -53,6 +53,8 @@ void newIndex(redisClient *c,
 void createIndex(redisClient *c);
 void legacyIndexCommand(redisClient *c);
 
+int buildIndex(bt *btr, bt_n *x, bt *ibtr, int icol, int itbl, bool nrl);
+
 void iAdd(bt *btr, robj *i_key, robj *i_val, uchar pktype);
 
 void addToIndex(redisDb *db, robj *pko, char *vals, uint32 cofsts[], int inum);
@@ -65,18 +67,6 @@ void updateIndex( redisDb *db,
                   int      inum,
                   uchar    pk_update,
                   int      tmatch);
-
-void freeNrlIndexObject(robj *o);
-sds genNRL_Cmd(d_l_t  *nrlind,
-               robj   *pko,
-               char   *vals,
-               uint32  cofsts[],
-               bool    from_insert,
-               robj   *row,
-               int     tmatch);
-void runCmdInFakeClient(sds s);
-sds rebuildOrigNRLcmd(robj *o);
-
 
 void dropIndex(redisClient *c);
 

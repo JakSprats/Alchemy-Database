@@ -91,8 +91,9 @@
 #include "join.h"            /* relational join in ALSOSQL */
 #include "row.h"             /* ALSOSQL's bit-packed rows */
 #include "index.h"           /* ALSOSQL's indices */
-#include "denorm.h"          /* PIPE_ flags */
+#include "denorm.h"          /* PIPE flags */
 #include "common.h"          /* ALSOSQL's common definitions */
+#include "nri.h"             /* ALSOSQL's NonRelationIndexes */
 #include "lua_integration.h" /* Lua c bindings for lua function "client */
 
 lua_State   *Lua       = NULL;
@@ -2187,13 +2188,13 @@ static void initServer() {
 
     AccessCommands[3].func   = zrangeCommand;
     AccessCommands[3].name   = "ZRANGE";
-    AccessCommands[3].argc   = 4;
+    AccessCommands[3].argc   = -4; /* negative arity for WITHSCORES option */
     AccessCommands[4].func   = zrangebyscoreCommand;
     AccessCommands[4].name   = "ZRANGEBYSCORE";
-    AccessCommands[4].argc   = 4;
+    AccessCommands[4].argc   = -4; /* negative arity for WITHSCORES option */
     AccessCommands[5].func   = zrevrangeCommand;
     AccessCommands[5].name   = "ZREVRANGE";
-    AccessCommands[5].argc   = 3;
+    AccessCommands[5].argc   = -4; /* negative arity for WITHSCORES option */
 
     AccessCommands[6].func   = hmgetCommand;
     AccessCommands[6].name   = "HMGET";

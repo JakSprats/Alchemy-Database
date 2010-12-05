@@ -136,6 +136,7 @@ void legacyTableCommand(redisClient *c) {
     createTableCommitReply(c, col_names, col_count, tname, sdslen(tname));
 }
 
+// TODO move to rpipe.c
 unsigned char respOk(redisClient *c) {
     listNode *ln = listFirst(c->reply);
     robj     *o  = ln->value;
@@ -144,13 +145,13 @@ unsigned char respOk(redisClient *c) {
     else                            return 0;
 }
 
+// TODO move to rpipe.c
 unsigned char respNotErr(redisClient *c) {
     listNode *ln = listFirst(c->reply);
     robj     *o  = ln->value;
     char     *s  = o->ptr;
-    //TODO DOCUMENT: this imposes an error message format
-    if (!strncmp(s, "-ERR ", 5)) return 0;
-    else                         return 1;
+    if (!strncmp(s, "-ERR", 4)) return 0;
+    else                        return 1;
 }
 
 static void cpyColDef(char *cdefs,
@@ -303,7 +304,8 @@ static bool istoreAction(redisClient *c,
     return performStoreCmdOrReply(c, fc, sto);
 }
 
-/* ORDER BY START */
+// TODO move to orderby.c
+/* "SELECT .. ORDER BY STORE" START */
 
 /* a static robj to wrap the (row *) being sent to istoreAction (for ORDER BY)*/
 static robj IstoreOrderByRobj;
@@ -368,7 +370,7 @@ static int sortedOrderByIstore(redisClient  *c,
     }
     return sent;
 }
-/* ORDER BY END */
+/* "SELECT .. ORDER BY STORE" END */
 
 #define ISTORE_OPERATION(Q)                                          \
     if (Q) {                                                         \
@@ -398,7 +400,7 @@ bool checkStoreTypeReply(redisClient *c, int *sto, char *stot) {
     return 1;
 }
 
-//TODO should be in sql.c
+//TODO should be in sql.c (used by istore and jstore)
 bool prepareToStoreReply(redisClient  *c,
                          cswc_t       *w,
                          char        **nname,

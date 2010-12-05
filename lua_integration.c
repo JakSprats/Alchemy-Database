@@ -93,7 +93,7 @@ void luaCommand(redisClient *c) {
         lua_pop(Lua, 1);
     } else if (!lret) {
         addReply(c, shared.nullbulk);
-    } else {
+    } else { //TODO this can be factored out, it is a ONE_LINER
         char *x = (char *)lua_tostring(Lua, -1);
         lua_pop(Lua, 1);
         robj *r = createStringObject(x, strlen(x));
@@ -102,7 +102,12 @@ void luaCommand(redisClient *c) {
     }
 }
 
-// TODO use Lua tables
+/* This function stores the results from the
+    LUA call "client()" (which is actually the C func redisLua()
+    into a lua table, which mimics client-server I/O but is 100% in-server
+   
+   Function luaLine() called for each result row
+    from the fakeClientPipe() call in redisLua() */
 static bool luaLine(redisClient *c,
                     void        *x,
                     robj        *key,

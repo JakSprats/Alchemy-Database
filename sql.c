@@ -297,25 +297,14 @@ static uchar parseWC_IN(redisClient  *c,
     if (*token == '$') piped = 1;
 
     if (piped) {
-        int   axs  = -1;
         char *s    = token + 1;
         int   slen = end - s;
-        char *u    =_strnchr(s, ' ', slen);
-        if (!u) {
-            if (!just_parse) addReply(c, shared.whereclause_in_err);
-            return SQL_ERR_LOOKUP;
-        }
-        int   len  = u - s;
-        for (int i = 0; i < NUM_ACCESS_TYPES; i++) {
-            if (!strncasecmp(s, AccessCommands[i].name, len)) {
-                axs = i;
-                break;
-            }
-        }
+        int   axs  = getAccessCommNum(s);
         if (axs == -1 ) {
             if (!just_parse) addReply(c, shared.accesstypeunknown);
             return SQL_ERR_LOOKUP;
         }
+
         int     argc;
         robj **rargv;
         if (axs == ACCESS_SELECT_COMMAND_NUM) { /* SELECT has 6 args */
@@ -333,9 +322,8 @@ static uchar parseWC_IN(redisClient  *c,
             }
         } else {
             sds *argv  = sdssplitlen(s, slen, " ", 1, &argc);
-            int  xargc = AccessCommands[axs].argc;
-            if ((xargc > 0 && argc != xargc) ||
-                (xargc < 0 && argc <= abs(xargc))) { /* arg mismatch */
+            int  arity = AccessCommands[axs].argc;
+            if ((arity > 0 && arity != argc) || (argc < -arity)) { 
                 zfree(argv);
                 addReply(c, shared.accessnumargsmismatch);
                 return SQL_ERR_LOOKUP;

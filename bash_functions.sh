@@ -895,7 +895,7 @@ function non_rel_index_test() {
   $CLI INSERT INTO nrl VALUES "(2,1,state 1 is great)"
   $CLI INSERT INTO nrl VALUES "(3,2,lets not forget state 2)"
   $CLI INSERT INTO nrl VALUES "(4,2,state 2 rocks)"
-  $CLI SELECT \* FROM nrl WHERE "id in (ZREVRANGE Z_NRL 0 -1)"
+  $CLI SELECT \* FROM nrl WHERE "id IN (\$ZREVRANGE Z_NRL 0 -1)"
 }
 
 function istorer() {

@@ -299,6 +299,21 @@ void createTableAsSelect(redisClient *c, char *as_cmd) {
     return;
 }
 
+int getAccessCommNum(char *as_cmd) {
+    int   axs    = -1;
+    for (int i = 0; i < NUM_ACCESS_TYPES; i++) {
+        if (!strncasecmp(as_cmd, AccessCommands[i].name,
+                                 strlen(AccessCommands[i].name))) {
+            char *x = as_cmd + strlen(AccessCommands[i].name);
+            if (*x == ' ') {
+                axs = i;
+                break;
+            }
+        }
+    }
+    return axs;
+}
+
 void createTableAsObject(redisClient *c) {
     char *as     = c->argv[3]->ptr;
     char *as_cmd = next_token(as);
@@ -306,14 +321,7 @@ void createTableAsObject(redisClient *c) {
         addReply(c, shared.create_table_as_access_num_args);
         return;
     }
-    int   axs    = -1;
-    for (int i = 0; i < NUM_ACCESS_TYPES; i++) {
-        if (!strncasecmp(as_cmd, AccessCommands[i].name,
-                         strlen(AccessCommands[i].name))) {
-            axs = i;
-            break;
-        }
-    }
+    int   axs    = getAccessCommNum(as_cmd);
   
     char *dumpee = NULL;
     if (axs == -1) { /* quick argc parsing validation */
@@ -405,11 +413,11 @@ void createTableAsObject(redisClient *c) {
         rsql_freeFakeClient(fc);
     }
 
-    if (axs != -1) { /* DUMP AS redis_command redis_args */
+    if (axs != -1) { /* DUMP "redis_command redis_args" to table */
         int    rargc;
         robj **rargv = parseCmdToArgv(as_cmd, &rargc);
         createTableAsObjectOperation(c, 0, rargv, rargc);
-    } else { /* DUMP object to table */
+    } else {         /* DUMP "Redis_object"             to table */
         robj               *argv[3];
         struct redisClient *dfc  = rsql_createFakeClient();
         dfc->argv                = argv;

@@ -28,10 +28,12 @@ ALL RIGHTS RESERVED
 
 #include "redis.h"
 #include "dict.h"
-#include "index.h"
+
 #include "bt.h"
 #include "common.h"
 #include "alsosql.h"
+#include "index.h"
+#include "nri.h"
 #include "rdb_alsosql.h"
 
 // FROM redis.c
@@ -270,50 +272,6 @@ robj *rdbLoadBT(FILE *fp, redisDb *db) {
     return o;
 }
 
-static void runNrlIndexFromStream(uchar *stream,
-                                  d_l_t *nrlind,
-                                  int    itbl) {
-    robj  key, val;
-    assignKeyRobj(stream,            &key);
-    assignValRobj(stream, REDIS_ROW, &val, BTREE_TABLE);
-    /* create command and run it */
-    sds cmd = genNRL_Cmd(nrlind, &key, NULL, NULL, 0, &val, itbl);
-    runCmdInFakeClient(cmd);
-    sdsfree(cmd);
-    if (key.encoding == REDIS_ENCODING_RAW) {
-        sdsfree(key.ptr); /* free from assignKeyRobj sflag[1,4] */
-    }
-}
-static void makeIndexFromStream(uchar *stream,
-                                bt    *ibtr,
-                                int    icol,
-                                int    itbl) {
-    robj  key, val;
-    assignKeyRobj(stream,            &key);
-    assignValRobj(stream, REDIS_ROW, &val, ibtr->is_index);
-    /* get the pk and the fk and then call iAdd() */
-    robj *fk = createColObjFromRow(&val, icol, &key, itbl); /* freeME */
-    iAdd(ibtr, fk, &key, Tbl[server.dbid][itbl].col_type[0]);
-    decrRefCount(fk);
-    if (key.encoding == REDIS_ENCODING_RAW) {
-        sdsfree(key.ptr); /* free from assignKeyRobj sflag[1,4] */
-    }
-}
-
-int buildIndex(bt *btr, bt_n *x, bt *ibtr, int icol, int itbl, bool nrl) {
-    for (int i = 0; i < x->n; i++) {
-        uchar *stream = KEYS(btr, x)[i];
-        if (nrl) runNrlIndexFromStream(stream, (d_l_t *)ibtr, itbl);
-        else     makeIndexFromStream(stream, ibtr, icol, itbl);
-    }
-
-    if (!x->leaf) {
-        for (int i = 0; i <= x->n; i++) {
-            buildIndex(btr, NODES(btr, x)[i], ibtr, icol, itbl, nrl);
-        }
-    }
-    return 0;
-}
 
 void rdbLoadFinished(redisDb *db) {
     for (int i = 0; i < Num_indx[server.dbid]; i++) {

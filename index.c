@@ -42,8 +42,8 @@ ALL RIGHTS RESERVED
 #include "row.h"
 #include "common.h"
 #include "alsosql.h"
-#include "rdb_alsosql.h"
 #include "orderby.h"
+#include "nri.h"
 #include "index.h"
 
 // FROM redis.c
@@ -114,130 +114,6 @@ int checkIndexedColumnOrReply(redisClient *c, char *curr_tname) {
     return imatch;
 }
 
-/* NON_RELATIONAL_INDEX NON_RELATIONAL_INDEX NON_RELATIONAL_INDEX */
-/* NON_RELATIONAL_INDEX NON_RELATIONAL_INDEX NON_RELATIONAL_INDEX */
-sds genNRL_Cmd(d_l_t  *nrlind,
-               robj   *pko,
-               char   *vals,
-               uint32  cofsts[],
-               bool    from_insert,
-               robj   *row,
-               int     tmatch) {
-        sds       cmd     = sdsempty();
-        list     *nrltoks = nrlind->l1;
-        list     *nrlcols = nrlind->l2;
-        listIter *li1     = listGetIterator(nrltoks, AL_START_HEAD);
-        listIter *li2     = listGetIterator(nrlcols, AL_START_HEAD);
-        listNode *ln1     = listNext(li1);
-        listNode *ln2     = listNext(li2);
-        while (ln1 || ln2) {
-            if (ln1) {
-                sds token = ln1->value;
-                cmd       = sdscatlen(cmd, token, sdslen(token));
-            }
-            int cmatch = -1;
-            if (ln2) {
-                cmatch = (int)(long)ln2->value;
-                cmatch--; /* because (0 != NULL) */
-            }
-            if (cmatch != -1) {
-                char *x;
-                int   xlen;
-                robj *col = NULL;
-                if (from_insert) {
-                    if (!cmatch) {
-                        x    = pko->ptr;
-                        xlen = sdslen(x);
-                    } else {
-                        x    = vals + cofsts[cmatch - 1];
-                        xlen = cofsts[cmatch] - cofsts[cmatch - 1] - 1;
-                    }
-                } else {
-                    col = createColObjFromRow(row, cmatch, pko, tmatch);
-                    x    = col->ptr;
-                    xlen = sdslen(col->ptr);
-                }
-                cmd = sdscatlen(cmd, x, xlen);
-                if (col) decrRefCount(col);
-            }
-            ln1 = listNext(li1);
-            ln2 = listNext(li2);
-        }
-    /*TODO destroy both listIter's */
-    return cmd;
-}
-
-void runCmdInFakeClient(sds s) {
-    //RL4 "runCmdInFakeClient: %s", s);
-    char *end = strchr(s, ' ');
-    if (!end) return;
-
-    sds   *argv    = NULL; /* must come before first GOTO */
-    int    a_arity = 0;
-    sds cmd_name   = sdsnewlen(s, end - s);
-    end++;
-    struct redisCommand *cmd = lookupCommand(cmd_name);
-    if (!cmd) goto run_cmd_err;
-    int arity = abs(cmd->arity);
-
-    char *args = NULL;
-    if (arity > 2) {
-        args = strchr(end, ' ');
-        if (!args) goto run_cmd_err;
-        args++;
-    }
-
-    argv                = malloc(sizeof(sds) * arity);
-    argv[0]             = cmd_name;
-    a_arity++;
-    argv[1]             = args ? sdsnewlen(end, args - end - 1) :
-                                 sdsnewlen(end, strlen(end)) ;
-    a_arity++;
-    if (arity == 3) {
-        argv[2]         = sdsnewlen(args, strlen(args));
-        a_arity++;
-    } else if (arity > 3) {
-        char *dlm       = strchr(args, ' ' );;
-        if (!dlm) goto run_cmd_err;
-        dlm++;
-        argv[2]         = sdsnewlen(args, dlm - args - 1);
-        a_arity++;
-        if (arity == 4) {
-            argv[3]     = sdsnewlen(dlm, strlen(dlm));
-            a_arity++;
-        } else { /* INSERT */
-            char *vlist = strchr(dlm, ' ' );;
-            if (!vlist) goto run_cmd_err;
-            vlist++;
-            argv[3]     = sdsnewlen(dlm, vlist - dlm - 1);
-            a_arity++;
-            argv[4]     = sdsnewlen(vlist, strlen(vlist));
-            a_arity++;
-        }
-    }
-
-    robj **rargv = malloc(sizeof(robj *) * arity);
-    for (int j = 0; j < arity; j++) {
-        rargv[j] = createObject(REDIS_STRING, argv[j]);
-    }
-    redisClient *fc = rsql_createFakeClient();
-    fc->argv        = rargv;
-    fc->argc        = arity;
-    call(fc, cmd);
-    rsql_freeFakeClient(fc);
-    free(rargv);
-
-run_cmd_err:
-    if (!a_arity) sdsfree(cmd_name);
-    if (argv)     free(argv);
-}
-
-static void nrlIndexAdd(robj *o, robj *pko, char *vals, uint32 cofsts[]) {
-    sds cmd = genNRL_Cmd(o->ptr, pko, vals, cofsts, 1, NULL, -1);
-    runCmdInFakeClient(cmd);
-    sdsfree(cmd);
-    return;
-}
 /* INDEX_MAINTENANCE INDEX_MAINTENANCE INDEX_MAINTENANCE INDEX_MAINTENANCE */
 /* INDEX_MAINTENANCE INDEX_MAINTENANCE INDEX_MAINTENANCE INDEX_MAINTENANCE */
 void iAdd(bt *ibtr, robj *i_key, robj *i_val, uchar pktype) {
@@ -376,67 +252,35 @@ void newIndex(redisClient *c,
     Num_indx[server.dbid]++;
 }
 
-static bool parseNRLcmd(char *o_s,
-                        list *nrltoks,
-                        list *nrlcols,
-                        int   tmatch) {
-    char *s   = strchr(o_s, '$');
-    if (!s) {
-       listAddNodeTail(nrltoks, sdsdup(o_s)); /* freed in freeNrlIndexObject */
-    } else {
-        while (1) {
-            s++; /* advance past "$" */
-            char *nxo = s;
-            while (isalnum(*nxo) || *nxo == '_') nxo++; /* col must be alpnum */
-            char *nexts = strchr(s, '$');               /* var is '$' delimed */
-
-            int cmatch = -1;
-            if (nxo) cmatch = find_column_n(tmatch, s, nxo - s);
-            else     cmatch = find_column(tmatch, s);
-            if (cmatch == -1) return 0;
-            listAddNodeTail(nrlcols, (void *)(long)(cmatch + 1)); /* 0!=NULL */
-
-            listAddNodeTail(nrltoks, sdsnewlen(o_s, (s - 1) - o_s)); /*no "$"*/
-            if (!nexts) { /* no more vars */
-                if (*nxo) listAddNodeTail(nrltoks, sdsnewlen(nxo, strlen(nxo)));
-                break;
-            }
-            o_s = nxo;
-            s   = nexts;
-        }
+static void makeIndexFromStream(uchar *stream,
+                                bt    *ibtr,
+                                int    icol,
+                                int    itbl) {
+    robj  key, val;
+    assignKeyRobj(stream,            &key);
+    assignValRobj(stream, REDIS_ROW, &val, ibtr->is_index);
+    /* get the pk and the fk and then call iAdd() */
+    robj *fk = createColObjFromRow(&val, icol, &key, itbl); /* freeME */
+    iAdd(ibtr, fk, &key, Tbl[server.dbid][itbl].col_type[0]);
+    decrRefCount(fk);
+    if (key.encoding == REDIS_ENCODING_RAW) {
+        sdsfree(key.ptr); /* free from assignKeyRobj sflag[1,4] */
     }
-    return 1;
 }
 
-sds rebuildOrigNRLcmd(robj *o) {
-    d_l_t    *nrlind  = o->ptr;
-    int       tmatch  = Index[server.dbid][nrlind->num].table;
+int buildIndex(bt *btr, bt_n *x, bt *ibtr, int icol, int itbl, bool nrl) {
+    for (int i = 0; i < x->n; i++) {
+        uchar *stream = KEYS(btr, x)[i];
+        if (nrl) runNrlIndexFromStream(stream, (d_l_t *)ibtr, itbl);
+        else     makeIndexFromStream(stream, ibtr, icol, itbl);
+    }
 
-    list     *nrltoks = nrlind->l1;
-    list     *nrlcols = nrlind->l2;
-    listIter *li1     = listGetIterator(nrltoks, AL_START_HEAD);
-    listNode *ln1     = listNext(li1);
-    listIter *li2     = listGetIterator(nrlcols, AL_START_HEAD);
-    listNode *ln2     = listNext(li2);
-    sds       cmd     = sdsnewlen("\"", 1); /* has to be one arg */
-    while (ln1 || ln2) {
-        if (ln1) { 
-            sds token  = ln1->value;
-            cmd        = sdscatlen(cmd, token, sdslen(token));
-            ln1 = listNext(li1);
-        }
-        if (ln2) {
-            int cmatch = (int)(long)ln2->value;
-            cmatch--; /* because (0 != NULL) */
-            sds cname  = Tbl[server.dbid][tmatch].col_name[cmatch]->ptr;
-            cmd        = sdscatlen(cmd, "$", 1); /* "$" variable delim */
-            cmd        = sdscatlen(cmd, cname, sdslen(cname));
-            ln2 = listNext(li2);
+    if (!x->leaf) {
+        for (int i = 0; i <= x->n; i++) {
+            buildIndex(btr, NODES(btr, x)[i], ibtr, icol, itbl, nrl);
         }
     }
-    /*TODO destroy both listIter's */
-    cmd = sdscatlen(cmd, "\"", 1); /* has to be one arg */
-    return cmd;
+    return 0;
 }
 
 static void indexCommit(redisClient *c,

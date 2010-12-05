@@ -1,6 +1,5 @@
 /*
- *
- * This file implements saving alsosql datastructures to rdb files
+ * This file implements the NonReleationIndex logic in AlchemyDB
  *
 
 GPL License
@@ -24,16 +23,34 @@ ALL RIGHTS RESERVED
     along with AlchemyDatabase.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef __ALSQSQL_RDB_H
-#define __ALSQSQL_RDB_H
+#ifndef __NRI__H
+#define __NRI__H
 
 #include "redis.h"
 
-int   rdbSaveBT(FILE *fp,  robj *o);
-robj *rdbLoadBT(FILE *fp,  redisDb *db);
-void  rdbLoadFinished(     redisDb *db);
+#include "alsosql.h"
+#include "btreepriv.h"
+#include "parser.h"
+#include "common.h"
 
-int   rdbSaveNRL(FILE *fp, robj *o);
-robj *rdbLoadNRL(FILE *fp);
+void freeNrlIndexObject(robj *o);
 
-#endif /* __ALSQSQL_RDB_H */
+void runCmdInFakeClient(sds s);
+
+sds genNRL_Cmd(d_l_t  *nrlind,
+               robj   *pko,
+               char   *vals,
+               uint32  cofsts[],
+               bool    from_insert,
+               robj   *row,
+               int     tmatch);
+
+
+void nrlIndexAdd(robj *o, robj *pko, char *vals, uint32 cofsts[]);
+
+bool parseNRLcmd(char *o_s, list *nrltoks, list *nrlcols, int tmatch);
+sds rebuildOrigNRLcmd(robj *o);
+
+void runNrlIndexFromStream(uchar *stream, d_l_t *nrlind, int itbl);
+
+#endif /* __NRI__H */ 

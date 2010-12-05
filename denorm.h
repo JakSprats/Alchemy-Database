@@ -33,6 +33,8 @@ ALL RIGHTS RESERVED
 #define NUM_ACCESS_TYPES              14
 #define ACCESS_SELECT_COMMAND_NUM      0
 //#define ACCESS_SCANSELECT_COMMAND_NUM  1
+int getAccessCommNum(char *as_cmd);
+
 void createTableAsObject(redisClient *c);
 
 bool emptyNoop(redisClient *c);
