@@ -37,7 +37,7 @@ ALL RIGHTS RESERVED
 #include "bt.h"
 #include "bt_iterator.h"
 #include "row.h"
-#include "index.h"
+#include "range.h"
 #include "orderby.h"
 #include "join.h"
 #include "rpipe.h"

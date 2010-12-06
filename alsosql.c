@@ -37,6 +37,7 @@ ALL RIGHTS RESERVED
 #include "bt.h"
 #include "row.h"
 #include "index.h"
+#include "range.h"
 #include "join.h"
 #include "store.h"
 #include "zmalloc.h"

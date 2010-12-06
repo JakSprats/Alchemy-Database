@@ -32,6 +32,7 @@ ALL RIGHTS RESERVED
 #include "redis.h"
 #include "adlist.h"
 
+#include "parser.h"
 #include "rpipe.h"
 
 // FROM redis.c
