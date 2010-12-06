@@ -105,7 +105,7 @@ char *_strn_next_unescaped_chr(char *beg, char *s, int x, int len) {
     while (1) {
         nextc = isn ? _strnchr(nextc, x, len) : strchr(nextc, x);
         if (!nextc) break;
-        if (nextc - beg > 1) {  /* skip first character */
+        if (nextc != beg) {  /* skip first character */
             if  (*(nextc - 1) == '\\') { /* handle backslash-escaped commas */
                 char *backslash = nextc - 1;
                 while (backslash >= beg) {

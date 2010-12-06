@@ -157,12 +157,12 @@ static char *parseRowVals(char    *vals,
     return vals;
 }
 
-bool parseCol(int   tmatch,
-              char *cname,
-              int   clen,
-              int   cmatchs[],
-              int  *qcols,
-              bool *cstar) {
+static bool parseSelectCol(int   tmatch,
+                           char *cname,
+                           int   clen,
+                           int   cmatchs[],
+                           int  *qcols,
+                           bool *cstar) {
     if (*cname == '*') {
         for (int i = 0; i < Tbl[server.dbid][tmatch].col_count; i++) {
             cmatchs[i] = i;
@@ -271,7 +271,7 @@ bool parseCommaSpaceListReply(redisClient *c,
 
         if (len) {
             if (col_check) {
-                if (!parseCol(tmatch, y, len, cmatchs, qcols, cstar)) {
+                if (!parseSelectCol(tmatch, y, len, cmatchs, qcols, cstar)) {
                     addReply(c, shared.nonexistentcolumn);
                     return 0;
                 }
@@ -297,17 +297,57 @@ bool parseCommaSpaceListReply(redisClient *c,
     return 1;
 }
 
+bool parseSelectReply(redisClient *c,
+                      bool         is_scan,
+                      bool        *no_wc,
+                      int         *tmatch,
+                      int          cmatchs[MAX_COLUMN_PER_TABLE],
+                      int         *qcols,
+                      bool        *join,
+                      bool        *cstar,
+                      char        *clist,
+                      char        *from,
+                      char        *tlist,
+                      char        *where) {
+    if (strcasecmp(from, "FROM")) {
+        addReply(c, shared.selectsyntax_nofrom);
+        return 0;
+    }
+
+    if (!where || strcasecmp(where, "WHERE")) {
+        if (is_scan) {
+            *no_wc = 1;
+        } else {
+            addReply(c, shared.selectsyntax_nowhere);
+            return 0;
+        }
+    }
+
+    if (strchr(tlist, ',')) {
+        *join = 1;
+        return 1;
+    }
+    *join = 0;
+
+    *tmatch = find_table_n(tlist, get_token_len(tlist));
+    if (*tmatch == -1) {
+        addReply(c, shared.nonexistenttable);
+        return 0;
+    }
+
+    return parseCommaSpaceListReply(c, clist, 1, 0, 0, *tmatch, cmatchs,
+                                    0, NULL, NULL, NULL, qcols, cstar);
+}
+
 int parseUpdateColListReply(redisClient  *c,
                             int           tmatch,
                             char         *cname,
                             int           cmatchs[],
                             char         *vals   [],
                             uint32        vlens  []) {
-    char *o_cname = cname;
-    int   qcols   = 0;
+    int qcols = 0;
     while (1) {
-        char *val   = str_next_unescaped_chr(o_cname, cname, '=');
-        char *nextc = str_next_unescaped_chr(o_cname, cname, ',');
+        char *val = strchr(cname, '='); /* cnames can not have '=' in them */
         if (!val) {
             addReply(c, shared.invalidupdatestring);
             return 0;
@@ -323,25 +363,11 @@ int parseUpdateColListReply(redisClient  *c,
             return 0;
         }
 
-        uint32  val_len;
-        char   *vc = strchr(val, ',');
-        char   *vp = strchr(val, ' ');
-        if (vc && vp) {
-            if (vc > vp) {
-                val_len = vp - val;
-            } else {
-                val_len = vc - val;
-            }
-        } else if (vc) {
-            val_len = vc - val;
-        } else if (vp) {
-            val_len = vp - val;
-        } else {
-            val_len = strlen(val);
-        }
-        cmatchs[qcols] = cmatch;
-        vals   [qcols] = val;
-        vlens  [qcols] = val_len;
+        char   *nextc   = str_next_unescaped_chr(val, val, ',');
+        uint32  val_len = nextc ? nextc - val : (uint32)strlen(val);
+        cmatchs[qcols]  = cmatch;
+        vals   [qcols]  = val;
+        vlens  [qcols]  = val_len;
         qcols++;
 
         if (!nextc) break;
@@ -577,48 +603,6 @@ static void selectSinglePKReply(redisClient  *c,
     robj *r = outputRow(row, qcols, cmatchs, key, tmatch, 0);
     addReplyBulk(c, r);
     decrRefCount(r);
-}
-
-bool parseSelectReply(redisClient *c,
-                      bool         is_scan,
-                      bool        *no_wc,
-                      int         *tmatch,
-                      int          cmatchs[MAX_COLUMN_PER_TABLE],
-                      int         *qcols,
-                      bool        *join,
-                      bool        *cstar,
-                      char        *clist,
-                      char        *from,
-                      char        *tlist,
-                      char        *where) {
-    if (strcasecmp(from, "FROM")) {
-        addReply(c, shared.selectsyntax_nofrom);
-        return 0;
-    }
-
-    if (!where || strcasecmp(where, "WHERE")) {
-        if (is_scan) {
-            *no_wc = 1;
-        } else {
-            addReply(c, shared.selectsyntax_nowhere);
-            return 0;
-        }
-    }
-
-    if (strchr(tlist, ',')) {
-        *join = 1;
-        return 1;
-    }
-    *join = 0;
-
-    *tmatch = find_table_n(tlist, get_token_len(tlist));
-    if (*tmatch == -1) {
-        addReply(c, shared.nonexistenttable);
-        return 0;
-    }
-
-    return parseCommaSpaceListReply(c, clist, 1, 0, 0, *tmatch, cmatchs,
-                                    0, NULL, NULL, NULL, qcols, cstar);
 }
 
 void init_check_sql_where_clause(cswc_t *w, sds token) {

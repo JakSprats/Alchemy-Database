@@ -68,7 +68,7 @@ bool ignore_cname(char *tkn) {
     return 0;
 }
 
-/* (id int,division int,health int,salary TEXT, name TEXT)*/
+/* SYNTAX: CREATE TABLE t (id int , division INT,salary FLOAT, name TEXT)*/
 bool parseCreateTable(redisClient *c,
                       char          cnames[][MAX_COLUMN_NAME_SIZE],
                       int          *ccount,
@@ -126,6 +126,8 @@ bool parseCreateTable(redisClient *c,
 
 /* WHERE_CLAUSE WHERE_CLAUSE WHERE_CLAUSE WHERE_CLAUSE WHERE_CLAUSE */
 /* WHERE_CLAUSE WHERE_CLAUSE WHERE_CLAUSE WHERE_CLAUSE WHERE_CLAUSE */
+
+/* SYNTAX: BETWEEN x AND y */
 static uchar parseRangeReply(redisClient  *c,
                              char         *first,
                              cswc_t       *w,
@@ -159,6 +161,7 @@ parse_range_err:
     return SQL_ERR_LOOKUP;
 }
 
+/* SYNTAX: ORDER BY col [DESC] [LIMIT n [OFFSET m]] */
 static bool parseOrderBy(redisClient  *c,
                          char         *by,
                          int           tmatch,
@@ -242,7 +245,7 @@ bool parseWCAddtlSQL(redisClient *c,
                      cswc_t      *w,
                      int          tmatch) {
     bool check_sto = 1;
-    w->lvr         = token; /* assume parse error */
+    w->lvr         = token;   /* assume parse error */
     if (!strncasecmp(token, "ORDER ", 6)) {
         char *by      = next_token(token);
         if (!by) {
@@ -264,7 +267,7 @@ bool parseWCAddtlSQL(redisClient *c,
         w->lvr = token; /* assume parse error */
         if (!strncasecmp(token, "STORE ", 6)) {
             w->stor = token;
-            w->lvr  = NULL; /* negate parse error */
+            w->lvr  = NULL;   /* negate parse error */
         }
     }
     return 1;
@@ -286,6 +289,7 @@ static bool addRCmdToINList(redisClient *c,
 #define IN_RCMD_ERR_MSG \
   "-ERR SELECT FROM WHERE col IN(Redis_cmd) - inner command had error: "
 
+/* SYNTAX: IN (a,b,c) OR IN($redis_command arg1 arg2) */
 static uchar parseWC_IN(redisClient  *c,
                         char         *token,
                         list        **inl,
@@ -401,8 +405,7 @@ uchar checkSQLWhereClauseReply(redisClient *c,
         while (isblank(*start)) start++; /* find start of value */
         if (!*start) goto check_sql_wc_err;
         finish       = strchr(start, ' ');
-        int   len    = finish ? finish - start : 
-                                (int)sdslen(w->token) - (start - w->token);
+        int   len    = finish ? finish - start : (uint32)strlen(start);
         w->key       = createStringObject(start, len);
         if (!w->cmatch || !finish) { /* return on PK=X or nutn 2 parse */
             w->lvr = finish;
@@ -447,57 +450,55 @@ check_sql_wc_err:
 
 /* JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN */
 /* JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN */
+static int parse_ind_from_tbl_col(redisClient *c, char *tname, char *nextc) {
+    char *nextp = _strnchr(tname, '.', nextc - tname);
+    if (!nextp) {
+        addReply(c, shared.badindexedcolumnsyntax);
+        return -1;
+    }
+    int tmatch = find_table_n(tname, nextp - tname);
+    if (tmatch == -1) {
+        addReply(c, shared.nonexistenttable);
+        return -1;
+    }
+    nextp++;
+    int cmatch = find_column_n(tmatch, nextp, nextc - nextp);
+    if (cmatch == -1) {
+        addReply(c,shared.nonexistentcolumn);
+        return -1;
+    }
+    return find_index(tmatch, cmatch);
+}
 
 static int parseIndexedColumnListOrReply(redisClient *c,
                                          char        *ilist,
                                          int          j_indxs[]) {
-    int   n_ind       = 0;
-    char *curr_tname  = ilist;
-    char *nextc       = ilist;
+    int   n_ind  = 0;
+    char *tname  = ilist;
+    char *nextc  = ilist;
     while ((nextc = strchr(nextc, ','))) {
-        //TODO no '\0' parsing
         if (n_ind == MAX_JOIN_INDXS) {
             addReply(c, shared.toomanyindicesinjoin);
             return 0;
         }
-        *nextc = '\0';
-        char *nextp = strchr(curr_tname, '.');
-        if (!nextp) {
-            addReply(c, shared.badindexedcolumnsyntax);
-            return 0;
-        }
-        *nextp = '\0';
-        TABLE_CHECK_OR_REPLY(curr_tname, 0)
-        nextp++;
-        COLUMN_CHECK_OR_REPLY(nextp, 0)
-        int imatch = find_index(tmatch, cmatch);
+        int imatch = parse_ind_from_tbl_col(c, tname, nextc);
         if (imatch == -1) {
             addReply(c, shared.nonexistentindex);
             return 0;
         }
+
         j_indxs[n_ind] = imatch;
         n_ind++;
         nextc++;
-        curr_tname     = nextc;
+        tname     = nextc;
     }
-    {
-        char *nextp = strchr(curr_tname, '.');
-        if (!nextp) {
-            addReply(c, shared.badindexedcolumnsyntax);
-            return 0;
-        }
-        *nextp = '\0';
-        TABLE_CHECK_OR_REPLY(curr_tname, 0)
-        nextp++;
-        COLUMN_CHECK_OR_REPLY(nextp, 0)
-        int imatch = find_index(tmatch, cmatch);
-        if (imatch == -1) {
-            addReply(c, shared.nonexistentindex);
-            return 0;
-        }
-        j_indxs[n_ind] = imatch;
-        n_ind++;
+    int imatch = parse_ind_from_tbl_col(c, tname, tname + strlen(tname));
+    if (imatch == -1) {
+        addReply(c, shared.nonexistentindex);
+        return 0;
     }
+    j_indxs[n_ind] = imatch;
+    n_ind++;
 
     if (n_ind < 2) {
         addReply(c, shared.toofewindicesinjoin);
@@ -514,58 +515,56 @@ static bool joinParseWCReply(redisClient  *c, jb_t *jb) {
     char  **next  = &(jb->w.token);
     bool    fin  = 0;
     while (*next && !fin) {
-              fin   = 1;
         uchar wtype = SQL_ERR_LOOKUP;
+        fin         = 1;
         jind1       = NULL;
         jind2       = NULL;
+        //TODO needs to be str_unescaped_quotes_str(" AND ")
         char *and   = strstr(*next, " AND "); /* AND bounds the parse tuplet */
         int   alen  = and ? and - *next : (int)strlen(*next);
         char *tok1  = *next;
         char * eq   = _strnchr(tok1, '=', alen); /* "col = X" before AND */
         if (eq) { /* "col=" */
-            char *tok2;
             char *end   = eq - 1;
             while (isblank(*end)) end--; /* find end of col */
-            int   len   = (end - tok1 + 1);
-            jind1       = createStringObject(tok1, len);
+            jind1       = createStringObject(tok1, (end - tok1 + 1));
 
-            if ((alen - len) < 1) goto joincmd_end;
-            char *start = eq + 1;
-            if (isblank(*start))  tok2 = next_token(start); /* col= x */
-            else                  tok2 = start; /* col=x */
-            if (!tok2 || tok2 > and) goto joincmd_end;
-            char *x     = strchr(tok2, ' ');
-            int t2len   = x ? x - tok2 : (int)strlen(tok2);
-            jind2       = createStringObject(tok2, t2len);
+            char *start  = eq + 1;
+            while (isblank(*start)) start++; /* find start of value */
 
-            if (x) while (isblank(*x)) x++;
-            *next       = x;
-            wtype       = SQL_SINGLE_LOOKUP;
+            char *finish  = strchr(start, ' ');
+            int   len     = finish ? finish - start : (int)strlen(start);
+            jind2         = createStringObject(start, len);
+
+            *next         = next_token(start);
+            wtype         = SQL_SINGLE_LOOKUP;
         } else { /* "col BETWEEN" or "col IN" */
-            char *nextp = strchr(tok1, ' ');
+            char *nextp   = strchr(tok1, ' ');
             if (!nextp) goto joincmd_end;
-            int   t1len = nextp - tok1;
-            jind1       = createStringObject(tok1, t1len);
+            jind1         = createStringObject(tok1, nextp - tok1);
 
             while (isblank(*nextp)) nextp++;
-            char *tok2    = nextp;
-            char *end     = NULL;
-            if (!strncasecmp(tok2, "IN ", 3)) {
-                char *tkn = next_token(tok2);
+            char *tkn     = nextp;
+            char *finish  = NULL;
+            if (!strncasecmp(tkn, "IN ", 3)) {
+                tkn       = next_token(tkn);
                 if (!tkn) goto joincmd_end;
-                wtype     = parseWC_IN(c, tkn, &jb->w.inl, &end);
-            } else if (!strncasecmp(tok2, "BETWEEN ", 8)) { /* RANGE QUERY */
-                char *tkn = next_token(tok2);
+                wtype     = parseWC_IN(c, tkn, &jb->w.inl, &finish);
+            } else if (!strncasecmp(tkn, "BETWEEN ", 8)) { /* RANGE QUERY */
+                tkn       = next_token(tkn);
                 if (!tkn) goto joincmd_end;
-                wtype     = parseRangeReply(c, tkn, &jb->w, &end);
+                wtype     = parseRangeReply(c, tkn, &jb->w, &finish);
             } else {
                 goto joincmd_end;
             }
-            *next = end;
+            *next = finish;
         }
 
         if (wtype == SQL_ERR_LOOKUP) goto joincmd_end;
 
+// TODO START REPLACE
+        //TODO on SQL_SINGLE_LOOKUP one col can be an INT
+        // e.g. WHERE x.id = 4 AND x.id = y.id (reversed)
         sds  jp1      = jind1->ptr;
         sds  jp2      = jind2 ? jind2->ptr : NULL;
         bool mult_ind = ((sdslen(icl)) && !strstr(icl, jp1));
@@ -585,6 +584,7 @@ static bool joinParseWCReply(redisClient  *c, jb_t *jb) {
             if (sdslen(icl)) icl = sdscatlen(icl, ",", 1); 
             icl = sdscatlen(icl, jp2, sdslen(jp2));
         }
+// TODO END REPLACE
 
         if (*next) { /* Parse Next AND-Tuplet */
             if (!strncasecmp(*next, "AND ", 4)) {
@@ -614,6 +614,7 @@ static bool joinParseWCReply(redisClient  *c, jb_t *jb) {
         if (jind2) decrRefCount(jind2);
         jind2 = NULL;
     }
+    jb->w.lvr = *next;
 
     // TODO: combine this into the loop above
     jb->n_ind = parseIndexedColumnListOrReply(c, icl, jb->j_indxs);
@@ -672,6 +673,7 @@ void joinReply(redisClient *c) {
     jb_t jb;
     init_join_block(&jb, c->argv[5]->ptr);
     if (!parseJoinReply(c, &jb, c->argv[1]->ptr, c->argv[3]->ptr)) return;
+    if (!leftoverParsingReply(c, jb.w.lvr)) goto join_end;
 
     if (jb.w.stor) {
         if (!jb.w.low && !jb.w.inl) {

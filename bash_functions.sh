@@ -1570,3 +1570,11 @@ function bad_tests() {
   bad_normer
 }
 
+function update_variation_test() {
+  $CLI CREATE TABLE updatee "(id INT, t1 TEXT, t2 TEXT, t3 TEXT)"
+  $CLI INSERT INTO updatee VALUES "(1,ONE,TWO,THREE)"
+  echo "ONE COL UPDATE -> ERROR "
+  $CLI UPDATE updatee SET "t1 = \\\\\\ \, t2=2" WHERE id = 1; $CLI DUMP updatee
+  echo "TWO COL UPDATE -> OK "
+  $CLI UPDATE updatee SET "t1 = \\\\\\ , t2=2" WHERE id = 1; $CLI DUMP updatee
+}

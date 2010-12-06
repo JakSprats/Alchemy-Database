@@ -739,12 +739,15 @@ static void update_vals_mod(int *argc, char **argv) {
 }
 
 static void create_table_mod(int *argc, char **argv) {
+    if (*argc < 3) return;
     merge_vals(argc, argv, 3, (*argc - 1), 1);
 }
 static void update_where_mod(int *argc, char **argv) {
+    if (*argc < 5) return;
     merge_vals(argc, argv, 5, (*argc - 1), 1);
 }
 static void delete_where_mod(int *argc, char **argv) {
+    if (*argc < 4) return;
     merge_vals(argc, argv, 4, (*argc - 1), 1);
 }
 static void select_mod_from(int *argc, char **argv) {

@@ -1769,7 +1769,7 @@ static void createSharedObjects(void) {
     shared.nonexistentindex = createObject(REDIS_STRING,sdsnew(
         "-ERR Index does not exist\r\n"));
     shared.badindexedcolumnsyntax = createObject(REDIS_STRING,sdsnew(
-        "-ERR Indexed Column syntax is: ON tablename (columname)\r\n"));
+        "-ERR SYNTAX: JOIN WHERE tablename.columname ...\r\n"));
     shared.index_nonrel_decl_fmt = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: CREATE INDEX ind ON tbl NON_RELATIONAL_ADD_CMD [NON_RELATIONAL_DEL_CMD] - syntax for CMD: [SET,GET,etc...] $col_name text\r\n"));
 
