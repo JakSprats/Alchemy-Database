@@ -216,14 +216,10 @@ static struct redisCommand cmdTable[] = {
     {"select",       -2,CMDFLAG_NONE},
     {"update",        6,CMDFLAG_NONE},
     {"delete",        5,CMDFLAG_NONE},
-
     {"scanselect",   -4,CMDFLAG_NONE},
+
     {"norm",         -2,CMDFLAG_NONE},
     {"denorm",        3,CMDFLAG_NONE},
-
-    {"legacytable",   3,CMDFLAG_NONE},
-    {"legacyinsert",  3,CMDFLAG_NONE},
-    {"legacyindex",   3,CMDFLAG_NONE},
 
     {"lua",          -1,CMDFLAG_NONE},
 #endif

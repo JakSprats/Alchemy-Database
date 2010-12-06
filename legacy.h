@@ -30,7 +30,6 @@ ALL RIGHTS RESERVED
 #include "redis.h"
 
 void legacyTableCommand(redisClient *c); /* LEGACY syntax for createTable() */
-void legacyIndexCommand(redisClient *c);
 void legacyInsertCommand(redisClient *c);
 
 #endif /* __LEGACY__H */ 

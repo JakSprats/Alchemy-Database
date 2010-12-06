@@ -58,6 +58,11 @@ extern r_tbl_t  Tbl[MAX_NUM_DB][MAX_NUM_TABLES];
 int     Num_indx[MAX_NUM_DB];
 r_ind_t Index   [MAX_NUM_DB][MAX_NUM_INDICES];
 
+// PROTOTYPES
+static d_l_t *init_d_l_t();
+static void destroy_d_l_t(d_l_t *nrlind);
+
+
 // HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS
 // HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS
 int find_index(int tmatch, int cmatch) {
@@ -94,24 +99,6 @@ int match_index_name(char *iname) {
         }
     }
     return -1;
-}
-
-int checkIndexedColumnOrReply(redisClient *c, char *curr_tname) {
-    char *nextp = strchr(curr_tname, '.');
-    if (!nextp) {
-        addReply(c, shared.badindexedcolumnsyntax);
-        return -1;
-    }
-    *nextp = '\0';
-    TABLE_CHECK_OR_REPLY(curr_tname, -1)
-    nextp++;
-    COLUMN_CHECK_OR_REPLY(nextp, -1)
-    int imatch = find_index(tmatch, cmatch);
-    if (imatch == -1) {
-        addReply(c, shared.nonexistentindex);
-        return -1;
-    }
-    return imatch;
 }
 
 /* INDEX_MAINTENANCE INDEX_MAINTENANCE INDEX_MAINTENANCE INDEX_MAINTENANCE */
@@ -200,7 +187,7 @@ void updateIndex(redisDb *db,
     bool  nrl     = Index[server.dbid][inum].nrl;
     if (nrl) {
         RL4 "NRL updateIndex");
-        /* TODO add in nrldel */
+        /* TODO add in nrldel(OLD), then nrlIndexAdd(NEW) */
         return;
     }
     int   cmatch  = Index[server.dbid][inum].column;
@@ -217,8 +204,8 @@ void updateIndex(redisDb *db,
     decrRefCount(old_val);
 }
 
-// SIMPLE_COMMANDS SIMPLE_COMMANDS SIMPLE_COMMANDS SIMPLE_COMMANDS
-// SIMPLE_COMMANDS SIMPLE_COMMANDS SIMPLE_COMMANDS SIMPLE_COMMANDS
+/* CREATE_INDEX  CREATE_INDEX  CREATE_INDEX  CREATE_INDEX  CREATE_INDEX */
+/* CREATE_INDEX  CREATE_INDEX  CREATE_INDEX  CREATE_INDEX  CREATE_INDEX */
 void newIndex(redisClient *c,
               char        *iname,
               int          tmatch,
@@ -238,14 +225,14 @@ void newIndex(redisClient *c,
 
     robj *ibt;
     if (virt) {
-        ibt                   = createEmptyBtreeObject();
+        ibt         = createEmptyBtreeObject();
         Tbl[server.dbid][tmatch].virt_indx = imatch;
     } else if (Index[server.dbid][imatch].nrl) {
         nrlind->num = imatch;
-        ibt = createObject(REDIS_NRL_INDEX, nrlind);
+        ibt         = createObject(REDIS_NRL_INDEX, nrlind);
     } else {
-        int ctype = Tbl[server.dbid][tmatch].col_type[cmatch];
-        ibt       = createBtreeObject(ctype, imatch, BTREE_INDEX);
+        int ctype   = Tbl[server.dbid][tmatch].col_type[cmatch];
+        ibt         = createBtreeObject(ctype, imatch, BTREE_INDEX);
     }
     //store BtreeObject in HashTable key: indexname
     dictAdd(c->db->dict, ind, ibt);
@@ -268,6 +255,7 @@ static void makeIndexFromStream(uchar *stream,
     }
 }
 
+/* CREATE INDEX on Table w/ Columns */
 int buildIndex(bt *btr, bt_n *x, bt *ibtr, int icol, int itbl, bool nrl) {
     for (int i = 0; i < x->n; i++) {
         uchar *stream = KEYS(btr, x)[i];
@@ -283,14 +271,14 @@ int buildIndex(bt *btr, bt_n *x, bt *ibtr, int icol, int itbl, bool nrl) {
     return 0;
 }
 
-void indexCommit(redisClient *c,
-                 char        *iname,
-                 char        *trgt,
-                 bool        nrl,
-                 char       *nrltbl,
-                 char       *nrladd,
-                 char       *nrldel,
-                 bool        build) {
+static void indexCommit(redisClient *c,
+                        char        *iname,
+                        char        *tname,
+                        char        *cname,
+                        bool         nrl,
+                        char        *nrltbl,
+                        char        *nrladd,
+                        char        *nrldel) {
     if (Num_indx[server.dbid] >= MAX_NUM_INDICES) {
         addReply(c, shared.toomanyindices);
         return;
@@ -301,77 +289,53 @@ void indexCommit(redisClient *c,
         return;
     }
 
-    sds    o_target = NULL; /* must come before first GOTO */
     d_l_t *nrlind   = NULL;
     int    cmatch   = - 1;
     int    tmatch   = - 1;
-
     if (!nrl) {
-        // parse tablename.columnname
-        o_target     = sdsdup(trgt);
-        int   len    = sdslen(o_target);
-        char *target = o_target;
-        if (target[len - 1] == ')') target[len - 1] = '\0';
-        if (*target         == '(') target++;
-        char *column = strchr(target, '.');
-        if (!column) {
-            addReply(c, shared.indextargetinvalid);
-            goto ind_commit_err;
-        }
-        *column = '\0';
-        column++;
-        tmatch  = find_table(target);
+        tmatch  = find_table(tname);
         if (tmatch == -1) {
             addReply(c, shared.nonexistenttable);
-            goto ind_commit_err;
+            return;
         }
-    
-        cmatch = find_column(tmatch, column);
+        cmatch = find_column(tmatch, cname);
         if (cmatch == -1) {
             addReply(c, shared.indextargetinvalid);
-            goto ind_commit_err;
+            return;
         }
-    
         for (int i = 0; i < Num_indx[server.dbid]; i++) { /* already indxd? */
             if (Index[server.dbid][i].table == tmatch &&
                 Index[server.dbid][i].column == cmatch) {
                 addReply(c, shared.indexedalready);
-                goto ind_commit_err;
+                return;
             }
         }
     } else {
         tmatch = find_table(nrltbl);
         if (tmatch == -1) {
             addReply(c, shared.nonexistenttable);
-            goto ind_commit_err;
+            return;
         }
 
-        nrlind = malloc(sizeof(d_l_t)); /* freed in freeNrlIndexObject */
-        nrlind->l1 = listCreate();
-        nrlind->l2 = listCreate();
+        nrlind = init_d_l_t(); /* freed in freeNrlIndexObject */
         if (!parseNRLcmd(nrladd, nrlind->l1, nrlind->l2, tmatch)) {
             addReply(c, shared.index_nonrel_decl_fmt);
-            free(nrlind);
-            goto ind_commit_err;
+            destroy_d_l_t(nrlind);
+            return;
         }
     }
 
     newIndex(c, iname, tmatch, cmatch, 0, nrlind);
     addReply(c, shared.ok);
 
-    if (build) {
-        /* IF table has rows - loop thru and populate index */
-        robj *o   = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
-        bt   *btr = (bt *)o->ptr;
-        if (btr->numkeys > 0) {
-            robj *ind  = Index[server.dbid][Num_indx[server.dbid] - 1].obj;
-            robj *ibt  = lookupKey(c->db, ind);
-            buildIndex(btr, btr->root, ibt->ptr, cmatch, tmatch, nrl);
-        }
+    /* IF table has rows - loop thru and populate index */
+    robj *o   = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
+    bt   *btr = (bt *)o->ptr;
+    if (btr->numkeys > 0) {
+        robj *ind  = Index[server.dbid][Num_indx[server.dbid] - 1].obj;
+        robj *ibt  = lookupKey(c->db, ind);
+        buildIndex(btr, btr->root, ibt->ptr, cmatch, tmatch, nrl);
     }
-
-ind_commit_err:
-    if (o_target) sdsfree(o_target);
 }
 
 void createIndex(redisClient *c) {
@@ -380,22 +344,17 @@ void createIndex(redisClient *c) {
         return;
     }
 
-    char *nrldel = NULL;
-
-    if (*((char *)c->argv[5]->ptr) != '(') { /* legacyIndex */
-        nrldel  = (c->argc > 6) ? c->argv[6]->ptr : NULL;
-        indexCommit(c, c->argv[2]->ptr, NULL, 1,
-                    c->argv[4]->ptr, c->argv[5]->ptr, nrldel, 1);
+    char *token = c->argv[5]->ptr;
+    char *end   = strchr(token, ')');
+    if (!end || (*token != '(')) { /* NonRelationalIndex */
+        char *nrldel  = (c->argc > 6) ? c->argv[6]->ptr : NULL;
+        indexCommit(c, c->argv[2]->ptr, NULL, NULL,
+                    1, c->argv[4]->ptr, c->argv[5]->ptr, nrldel);
     } else {
-        /* TODO lazy programming, change legacyIndex syntax */
-        /* NOTE: no free needed for sdstrim() */
-        sds leg_col      = sdstrim(sdsdup(c->argv[5]->ptr), "()");
-        sds leg_ind_sntx = sdscatprintf(sdsempty(), "%s.%s",
-                                        (char *)c->argv[4]->ptr,
-                                        (char *)leg_col);
-        indexCommit(c, c->argv[2]->ptr, leg_ind_sntx, 0, NULL, NULL, NULL, 1);
-        sdsfree(leg_ind_sntx);
-        sdsfree(leg_col);
+        sds cname = sdsnewlen(token + 1, end - token - 1);
+        indexCommit(c, c->argv[2]->ptr, c->argv[4]->ptr, cname,
+                    0, NULL, NULL, NULL);
+        sdsfree(cname);
     }
 }
 
@@ -825,9 +784,15 @@ void descCommand(redisClient *c) {
     lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
 }
 
-void freeNrlIndexObject(robj *o) {
+/* CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP */
+static d_l_t *init_d_l_t() {
+    d_l_t *nrlind = malloc(sizeof(d_l_t)); /* freed in freeNrlIndexObject */
+    nrlind->l1    = listCreate();
+    nrlind->l2    = listCreate();
+    return nrlind;
+}
+static void destroy_d_l_t(d_l_t *nrlind) {
     listNode *ln;
-    d_l_t    *nrlind = (d_l_t *)o->ptr;
     listIter *li     = listGetIterator(nrlind->l1, AL_START_HEAD);
     while((ln = listNext(li)) != NULL) {
         sdsfree(ln->value); /* free sds* from parseNRLcmd() */
@@ -835,4 +800,9 @@ void freeNrlIndexObject(robj *o) {
     listRelease(nrlind->l1);
     listRelease(nrlind->l2);
     free(nrlind);
+}
+
+void freeNrlIndexObject(robj *o) {
+    d_l_t    *nrlind = (d_l_t *)o->ptr;
+    destroy_d_l_t(nrlind);
 }

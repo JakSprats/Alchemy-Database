@@ -788,7 +788,6 @@ void denormCommand(redisClient *c);
 
 void legacyTableCommand(redisClient *c);
 void legacyInsertCommand(redisClient *c);
-void legacyIndexCommand(redisClient *c);
 
 void luaCommand(redisClient *c);
 #endif /* ALSOSQL END */
@@ -921,6 +920,8 @@ static struct redisCommand cmdTable[] = {
     {"dump",         dumpCommand,          -2,REDIS_CMD_INLINE,NULL,1,1,1,1},
 
     {"insert",       insertCommand,        -5,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
+    //TODO deprecate the following when 
+    //      ./gen-benchmark is mature enough to deprecate redis-benchmark
     /* selectRedisqlCommand is CMD_BULK for simplicity in redis-benchmark.s */
     {"select",       selectRedisqlCommand, -2,REDIS_CMD_BULK,NULL,1,1,1,1},
     {"update",       updateCommand,         6,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
@@ -932,7 +933,6 @@ static struct redisCommand cmdTable[] = {
 
     {"legacytable",  legacyTableCommand,    3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
     {"legacyinsert", legacyInsertCommand,   3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
-    {"legacyindex",  legacyIndexCommand,    3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
 
     {"lua",          luaCommand,            2,REDIS_CMD_INLINE,NULL,1,1,1,1},
 #endif /* ALSOSQL END */
@@ -9172,8 +9172,8 @@ static int fwriteBulkLong(FILE *fp, long l) {
 
 static bool appendOnlyDumpIndices(FILE *fp, int tmatch, int dbnum) {
     sds  tname  = Tbl[server.dbid][tmatch].name->ptr;
-    char cmd3[] = "*3\r\n$11\r\nLEGACYINDEX\r\n";
-    char cmd4[] = "*4\r\n$11\r\nLEGACYINDEX\r\n";
+    char cmd3[] = "*4\r\n$6r\nCREATE\r\n$5\r\nINDEX\r\n";
+    char cmd4[] = "*5\r\n$6r\nCREATE\r\n$5\r\nINDEX\r\n";
     MATCH_INDICES(tmatch)
     for (int i = 0; i < matches; i++) {
         int inum = indices[i];
@@ -9194,11 +9194,11 @@ static bool appendOnlyDumpIndices(FILE *fp, int tmatch, int dbnum) {
             if (!(fwrite(cmd3, sizeof(cmd3) - 1, 1, fp))) goto awerr;
             sds s    = Index[server.dbid][inum].obj->ptr;
             if (fwriteBulkString(fp, s, sdslen(s)) == -1) goto awerr;
-            s        = sdsnewlen(tname, sdslen(tname));
-            s        = sdscatlen(s, PERIOD, 1);
+            s        = tname;
+            if (fwriteBulkString(fp, s, sdslen(s)) == -1) goto awerr;
             int icol = Index[server.dbid][inum].column;
             sds t    = Tbl[server.dbid][tmatch].col_name[icol]->ptr;
-            s        = sdscatlen(s, t, sdslen(t));
+            s        = sdscatprintf(sdsempty(), "(%s)", t);
             if (fwriteBulkString(fp, s, sdslen(s)) == -1) goto awerr;
             sdsfree(s);
         }

@@ -36,7 +36,6 @@ ALL RIGHTS RESERVED
 int find_index( int tmatch, int cmatch);
 int match_index(int tmatch, int indices[]);
 int match_index_name(char *iname);
-int checkIndexedColumnOrReply(redisClient *c, char *curr_tname);
 
 /* MATCH_INDICES(tmatch)
      creates (int indices[], int matches)     */
@@ -44,6 +43,7 @@ int checkIndexedColumnOrReply(redisClient *c, char *curr_tname);
     int   indices[REDIS_DEFAULT_DBNUM];            \
     int   matches = match_index(tmatch, indices);
 
+/* INDEX INDEX INDEX */
 void newIndex(redisClient *c,
               char        *iname,
               int          tmatch,
@@ -53,14 +53,7 @@ void newIndex(redisClient *c,
 void createIndex(redisClient *c);
 
 int buildIndex(bt *btr, bt_n *x, bt *ibtr, int icol, int itbl, bool nrl);
-void indexCommit(redisClient *c,
-                 char        *iname,
-                 char        *trgt, 
-                 bool        nrl,   
-                 char       *nrltbl,
-                 char       *nrladd,
-                 char       *nrldel,
-                 bool        build);
+
 
 void iAdd(bt *btr, robj *i_key, robj *i_val, uchar pktype);
 
@@ -77,6 +70,7 @@ void updateIndex( redisDb *db,
 
 void dropIndex(redisClient *c);
 
+/* RANGE_OPS RANGE_OPS RANGE_OPS RANGE_OPS */
 void iselectAction(redisClient *c,
                    cswc_t      *w,
                    int          tmatch,

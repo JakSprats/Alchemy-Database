@@ -58,25 +58,6 @@ void legacyInsertCommand(redisClient *c) {
 }
 
 /* LEGACY functions used on AOF readin */
-void legacyIndexCommand(redisClient *c) {
-    bool nrl     = 0;
-    char *trgt   = NULL;
-    char *nrltbl = NULL;
-    char *nrladd = NULL;
-    char *nrldel = NULL;
-    if (c->argc > 3) {
-        nrl = 1;
-        nrltbl = c->argv[2]->ptr;
-        nrladd = (c->argc > 3) ? c->argv[3]->ptr : NULL;
-        nrldel = (c->argc > 4) ? c->argv[4]->ptr : NULL;
-    } else {
-        trgt = c->argv[2]->ptr;
-    }
-    /* the final argument means -> if(nrl) dont build index */
-    indexCommit(c, c->argv[1]->ptr, trgt, nrl, nrltbl, nrladd, nrldel, !nrl);
-}
-
-/* LEGACY functions used on AOF readin */
 void legacyTableCommand(redisClient *c) {
     if (Num_tbls[server.dbid] >= MAX_NUM_TABLES) {
         addReply(c,shared.toomanytables);

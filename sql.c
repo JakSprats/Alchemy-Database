@@ -59,11 +59,6 @@ char   *Ignore_keywords[] = {"PRIMARY", "CONSTRAINT", "UNIQUE",
 uint32  Num_ignore_keywords = 5;
 
 /* CREATE_TABLE_HELPERS CREATE_TABLE_HELPERS CREATE_TABLE_HELPERS */
-#if 0
-cflags found w/
-        if (!strncasecmp(x, "AUTO_INCREMENT", 14)) cflag = 1;
-#endif
-
 bool ignore_cname(char *tkn) {
     for (uint32 i = 0; i < Num_ignore_keywords; i++) {
         if (!strncasecmp(tkn, Ignore_keywords[i], strlen(Ignore_keywords[i]))) {
