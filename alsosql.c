@@ -38,6 +38,7 @@ ALL RIGHTS RESERVED
 #include "row.h"
 #include "index.h"
 #include "range.h"
+#include "desc.h"
 #include "join.h"
 #include "store.h"
 #include "zmalloc.h"

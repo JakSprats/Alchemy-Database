@@ -70,7 +70,4 @@ void updateIndex( redisDb *db,
 
 void dropIndex(redisClient *c);
 
-/* DESC */
-ull get_sum_all_index_size_for_table(redisClient *c, int tmatch);
-
 #endif /* __INDEX__H */ 
