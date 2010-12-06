@@ -115,28 +115,17 @@ void iselectAction(redisClient *c,
     if (ll) listRelease(ll);
 
     if (w->lim != -1 && (uint32)sent < card) card = sent;
-    if (cstar) {
-        lenobj->ptr = sdscatprintf(sdsempty(), ":%lu\r\n", card);
-    } else {
-        lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
-    }
+    if (cstar) lenobj->ptr = sdscatprintf(sdsempty(), ":%lu\r\n", card);
+    else       lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
 }
 
-static void addPKtoRQList(list *ll,
-                          robj *pko,
-                          robj *row,
-                          int   obc,
-                          int   tmatch,
-                          bool  ctype) {
-    addORowToRQList(ll, pko, row, obc, pko, tmatch, ctype);
-}
 
-#define BUILD_RQ_OPERATION(Q)                                    \
-    if (Q) {                                                     \
-        addPKtoRQList(ll, key, row, w->obc, tmatch, ctype);      \
-    } else {                                                     \
-        robj *cln  = cloneRobj(key); /* clone orig is BtRobj */  \
-        listAddNodeTail(ll, cln);                                \
+#define BUILD_RQ_OPERATION(Q)                                      \
+    if (Q) {                                                       \
+        addORowToRQList(ll, key, row, w->obc, key, tmatch, ctype); \
+    } else {                                                       \
+        robj *cln  = cloneRobj(key); /* clone orig is BtRobj */    \
+        listAddNodeTail(ll, cln);                                  \
     }
 
 

@@ -29,18 +29,18 @@ ALL RIGHTS RESERVED
 #include <strings.h>
 #include <unistd.h>
 
-#include "zmalloc.h"
 #include "redis.h"
+#include "zmalloc.h"
 
-#include "alsosql.h"
 #include "bt.h"
 #include "bt_iterator.h"
 #include "row.h"
 #include "index.h"
 #include "store.h"
-#include "common.h"
 #include "orderby.h"
 #include "parser.h"
+#include "alsosql.h"
+#include "common.h"
 #include "join.h"
 
 // FROM redis.c
@@ -63,7 +63,7 @@ static void freeDictOfIndRow(dict *d, int num_cols, bool is_ob);
 
 /* appends, not really a hashing function ... always evals to new key */
 static unsigned int dictAppendHash(const void *key) {
-    unsigned long long ll = (unsigned long long)key;
+    ull ll = (ull)key;
     return (unsigned int)(ll % UINT_MAX);
 }
 
@@ -128,16 +128,17 @@ static bool jRowReply(jrow_reply_t *r, int lvl) {
         }
     }
 
-    if (r->sto != -1) { /* JSTORE */
-        if (Order_by) { /* add the argv's to the list */
+    if (r->sto != -1) { /* JOIN_STORE */
+        if (Order_by) {
             prepare_jRowStore(r);
-            robj **argv = cloneArgv(r->fc->argv, r->fc->argc);
+            robj **argv = copyArgv(r->fc->argv, r->fc->argc);
             addJoinOutputRowToList(r, argv);
             return 1;
         } else {
             return jRowStore(r);
         }
     } else {
+        if (!Order_by && r->cstar) return 1; /* NOOP just count */
         int slot = 0;
         for (int i = 0; i < cnt; i++) {
             char *s   = *Jrcols[i];
@@ -152,10 +153,8 @@ static bool jRowReply(jrow_reply_t *r, int lvl) {
         if (Order_by) {
             addJoinOutputRowToList(r, resp);
         } else {
-            if (!r->cstar) {
-                addReplyBulk(r->c, resp);
-                decrRefCount(resp);
-            }
+            addReplyBulk(r->c, resp);
+            decrRefCount(resp);
         }
         return 1;
     }
@@ -257,6 +256,12 @@ typedef struct char_uint32 {
     uint32 len;
 } cu32_t;
 
+/* EXPLANATION: The join algorithm
+    0.) for each table in join
+    1.) pointers to ALL candidate columns & lengths are saved to a tuplet
+    2.) this tuplet is then stored in a (Btree or HashTable) for L8R joining
+  NOTE: (CON) This is only efficient for small table joins [if at all :)]
+*/
 static void joinAddColsFromInd(join_add_cols_t *a,
                                robj            *rset[],
                                int              obt,
@@ -272,7 +277,7 @@ static void joinAddColsFromInd(join_add_cols_t *a,
     a->jk = cloneRobj(a->jk); // copies BtRobj global in bt.c - NOT MEM_LEAK
 
     for (int i = 0; i < a->qcols; i++) {
-        int tmatch  = a->j_tbls[i];
+        int tmatch = a->j_tbls[i];
         if (tmatch == a->itable) {
             cresp[nresp].s  = getCopyColStr(row, a->j_cols[i], key, tmatch,
                                             &cresp[nresp].len);
@@ -308,7 +313,7 @@ static void joinAddColsFromInd(join_add_cols_t *a,
     // NOTE: (clarification of clusterfuct implementation)
     //       1st index: BT         of Lists
     //       2nd index: ValSetDict of AppendSets (should be List)
-    if (a->index == 0) { // first joined index is BTREE to be sorted
+    if (a->index == 0) { // first joined index needs BTREE (i.e. sorted)
         joinRowEntry  k;
         k.key           = a->jk;
         joinRowEntry *x = btJoinFindVal(a->jbtr, &k);
@@ -383,9 +388,7 @@ void joinGeneric(redisClient *c,
     }
 
     EMPTY_LEN_OBJ
-    if (jb->w.sto == -1) {
-        INIT_LEN_OBJ
-    }
+    if (jb->w.sto == -1) { INIT_LEN_OBJ } /* JoinStore can throw nested errs */
 
     int    j_ind_len [MAX_JOIN_INDXS];
     int    jind_ncols[MAX_JOIN_INDXS];
@@ -408,11 +411,10 @@ void joinGeneric(redisClient *c,
     jc.j_ind_len  = j_ind_len;
     jc.jbtr       = jbtr;
     
-    for (int i = 0; i < jb->n_ind; i++) {    /* iterate indices */
+    for (int i = 0; i < jb->n_ind; i++) { /* iterate join indices */
         btEntry    *be, *nbe;
         j_ind_len[i]  = 0;
         jc.index      = i;
-
         jc.itable     = Index[server.dbid][jb->j_indxs[i]].table;
         jc.o          = lookupKeyRead(c->db, Tbl[server.dbid][jc.itable].name);
         jc.virt       = Index[server.dbid][jb->j_indxs[i]].virt;
@@ -439,7 +441,7 @@ void joinGeneric(redisClient *c,
                 }
             }
             btReleaseRangeIterator(bi);
-        } else {       /* IN () QUERY */
+        } else {             /* IN() QUERY */
             listNode *ln;
             listIter *li  = listGetIterator(jb->w.inl, AL_START_HEAD);
             if (jc.virt) {
@@ -451,10 +453,10 @@ void joinGeneric(redisClient *c,
                                                   jb->w.obt, jb->w.obc);
                 }
             } else {
-                int  ind_col = (int)Index[server.dbid][jb->j_indxs[i]].column;
-                bool fktype  = Tbl[server.dbid][jc.itable].col_type[ind_col];
                 btSIter *nbi;
-                robj *ibt = lookupKey(c->db, ind);   
+                int   ind_col = (int)Index[server.dbid][jb->j_indxs[i]].column;
+                bool  fktype  = Tbl[server.dbid][jc.itable].col_type[ind_col];
+                robj *ibt     = lookupKey(c->db, ind);   
                 while((ln = listNext(li)) != NULL) {
                     jc.jk     = ln->value;
                     robj *val = btIndFindVal(ibt->ptr, jc.jk, fktype);
@@ -486,10 +488,10 @@ void joinGeneric(redisClient *c,
 
     bool        err   = 0;
     int         sent  = 0;
-    btIterator *bi    = NULL; /* declared here due to GOTO */
-    char       *reply = NULL; /* declared here due to GOTO */
+    btIterator *bi    = NULL; /* B4 GOTO */
+    char       *reply = NULL; /* B4 GOTO */
     if (!one_empty) {
-        int   reply_size = 0;
+        int reply_size = 0;
         for (int i = 0; i < jb->n_ind; i++) { // get maxlen possbl 4 joined row
             reply_size += j_ind_len[i] + 1;
         }
@@ -605,7 +607,6 @@ void joinStoreCommit(redisClient *c, jb_t *jb) {
     jb->nname = createStringObject(nname, nlen);
 
     robj               *argv[STORAGE_MAX_ARGC + 1];
-    //TODO fc can be pushed into joinGeneric
     struct redisClient *fc = rsql_createFakeClient();
     fc->argv               = argv;
 

@@ -676,7 +676,7 @@ bool leftoverParsingReply(redisClient *c, cswc_t *w) {
 }
 
 /* SELECT cols,,,,, FROM tbls,,,, WHERE clause - (6 args) */
-void selectRedisqlCommand(redisClient *c) {
+void sqlSelectCommand(redisClient *c) {
     if (c->argc == 2) { /* this is a REDIS "select DB" command" */
         selectCommand(c);
         return;

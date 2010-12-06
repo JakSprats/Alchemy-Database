@@ -115,5 +115,3 @@ void legacyTableCommand(redisClient *c) {
     }
     createTableCommitReply(c, col_names, col_count, tname, sdslen(tname));
 }
-
-

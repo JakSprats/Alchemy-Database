@@ -67,14 +67,14 @@ void denormCommand(redisClient *c) {
     fmt++;
     *fmt             = 'd'; /* changes "%s" into "%d" - FIX: too complicated */
 
-    robj               *argv[4];
-    struct redisClient *fc = rsql_createFakeClient();
-    fc->argv               = argv;
-    fc->argc               = 4;
-
-    btEntry          *be;
-    robj             *o  = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
-    btSIter *bi = btGetFullRangeIterator(o, 0, 1);
+    btEntry     *be;
+    robj        *argv[4];
+    redisClient *fc   = rsql_createFakeClient();
+    fc->argv          = argv;
+    fc->argc          = 4;
+    ulong        card = 0;
+    robj        *o    = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
+    btSIter     *bi   = btGetFullRangeIterator(o, 0, 1);
     while ((be = btRangeNext(bi, 0)) != NULL) {      // iterate btree
         robj *key = be->key;
         robj *row = be->val;
@@ -95,11 +95,12 @@ void denormCommand(redisClient *c) {
             fc->argv[2] = createStringObject(tname, sdslen(tname));
             sds cname   = r->ptr;
             fc->argv[3] = createStringObject(cname, sdslen(cname));
-            hsetCommand(fc);
+            hsetCommand(fc); /* does this free argv[*}? possible MEM_LEAK */
         }
+        card++;
     }
 
-    addReply(c, shared.ok);
+    addReplyLongLong(c, card);
     sdsfree(s_wldcrd);
     sdsfree(d_wldcrd);
     rsql_freeFakeClient(fc);

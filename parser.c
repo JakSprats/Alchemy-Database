@@ -56,7 +56,7 @@ robj *cloneRobj(robj *r) { // must be decrRefCount()ed
     }
 }
 
-robj **cloneArgv(robj **argv, int argc) {
+robj **copyArgv(robj **argv, int argc) {
     robj **cargv = zmalloc(sizeof(robj*)*argc);
     for (int j = 0; j < argc; j++) {
         cargv[j] = createObject(REDIS_STRING, argv[j]->ptr);
@@ -64,6 +64,7 @@ robj **cloneArgv(robj **argv, int argc) {
     return cargv;
 }
 
+// TODO: this is used in WHERE IN(list) ... clean this up
 robj *convertRobj(robj *r, int type) {
     if ((r->encoding == REDIS_ENCODING_RAW && type == COL_TYPE_STRING) ||
         (r->encoding == REDIS_ENCODING_INT && type == COL_TYPE_INT)) {
@@ -99,13 +100,13 @@ char *rem_backticks(char *token, int *len) {
 }
 
 char *_strn_next_unescaped_chr(char *beg, char *s, int x, int len) {
-    bool  isn = (len >= 0);
+    bool  isn   = (len >= 0);
     char *nextc = s;
     while (1) {
         nextc = isn ? _strnchr(nextc, x, len) : strchr(nextc, x);
         if (!nextc) break;
-        if (nextc - beg > 1) { /* handle backslash-escaped commas */
-            if  (*(nextc - 1) == '\\') {
+        if (nextc - beg > 1) {  /* skip first character */
+            if  (*(nextc - 1) == '\\') { /* handle backslash-escaped commas */
                 char *backslash = nextc - 1;
                 while (backslash >= beg) {
                     if (*backslash != '\\') break;
@@ -129,7 +130,9 @@ char *strn_next_unescaped_chr(char *beg, char *s, int x, int len) {
     return _strn_next_unescaped_chr(beg, s, x, len);
 }
 
-/* This is essentially the inner-argv[] parser */
+/* PARSER PARSER PARSER PARSER PARSER PARSER PARSER PARSER PARSER PARSER */
+/* PARSER PARSER PARSER PARSER PARSER PARSER PARSER PARSER PARSER PARSER */
+/* *_token*() make up the primary c->argv[]->ptr parser */
 char *next_token(char *nextp) {
     char *p = strchr(nextp, ' ');
     if (!p) return NULL;
@@ -149,14 +152,14 @@ static char *min2(char *p, char *q) {
 }
 
 static char *min3(char *p, char *q, char *o) {
-    if (!p)      return min2(q, o);
+    if      (!p) return min2(q, o);
     else if (!q) return min2(p, o);
     else if (!o) return min2(p, q);
     else { /* p && q && o */
         if (p < q) {
             if (p < o) return p;
             else       return o;
-        } else {
+        } else { /* p > q */
             if (q < o) return q;
             else       return o;
         }
@@ -180,17 +183,22 @@ char *next_token_delim(char *p, char x, char z) {
 }
 
 
+//TODO double check that this covers ALL "CREATE TABLE column def" syntaxes
+// NOTE: undefined behavior for fubared strings (e.g. start w/: "xxx)xxx(xxx,")
+/* Parses for next ',' not in a "(...)"
+     Matches:        ",", "(,),"
+     Does not match: "(,)" */
 char *get_next_token_nonparaned_comma(char *token) {
-   bool got_open_parn = 0;
+   bool got_oparn = 0;
    while (token) {
-       sds x = token;
+       sds x    = token;
        int xlen = get_token_len(x);
-       if (_strnchr(x, '(', xlen)) got_open_parn = 1;
-       if (got_open_parn) {
+       if (_strnchr(x, '(', xlen)) got_oparn = 1;
+       if (got_oparn) {
            char *y = _strnchr(x, ')', xlen);
            if (y) {
-               int ylen = get_token_len(y);
-               got_open_parn = 0;
+               got_oparn = 0;
+               int ylen  = get_token_len(y);
                char *z = _strnchr(y, ',', ylen);
                if (z) {
                    token = z + 1;
@@ -211,6 +219,8 @@ char *get_next_token_nonparaned_comma(char *token) {
 }
 
 
+/* PIPE_PARSING PIPE_PARSING PIPE_PARSING PIPE_PARSING PIPE_PARSING */
+/* PIPE_PARSING PIPE_PARSING PIPE_PARSING PIPE_PARSING PIPE_PARSING */
 robj **parseCmdToArgvReply(redisClient *c, char *as_cmd, int *rargc) {
     sds           *argv  = sdssplitlen(as_cmd, strlen(as_cmd), " ", 1, rargc);
     redisCommand  *cmd   = lookupCommand(argv[0]);

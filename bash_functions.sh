@@ -365,47 +365,64 @@ function orderbyer() {
   istore_customer_hobby_order_by_denorm_to_many_lists
 }
 
+function select_count_range() {
+  $CLI SELECT "COUNT(*)" FROM customer WHERE "hobby BETWEEN b AND s"
+}
+function select_count_join() {
+  $CLI SELECT "COUNT(*)" FROM healthplan,worker WHERE healthplan.id=worker.health AND healthplan.id BETWEEN 2 AND 5
+}
+function select_count_fk() {
+  $CLI SELECT "COUNT(*)" FROM customer WHERE employee = 4
+}
+function select_counter() {
+  select_count_range
+  select_count_join
+  select_count_fk
+}
+
 function in_test_cust_id() {
-    echo SELECT \* FROM customer WHERE "id IN (1,2,3,4)"
-    $CLI SELECT \* FROM customer WHERE "id IN (1,2,3,4)"
-    $CLI DEL LINDEX_cust_id
-    $CLI LPUSH LINDEX_cust_id 4
-    $CLI LPUSH LINDEX_cust_id 2
-    $CLI LPUSH LINDEX_cust_id 1
-    $CLI LPUSH LINDEX_cust_id 3
-    echo SELECT \* FROM customer WHERE "id IN (\$LRANGE LINDEX_cust_id 0 3)"
-    $CLI SELECT \* FROM customer WHERE "id IN (\$LRANGE LINDEX_cust_id 0 3)"
+  echo SELECT \* FROM customer WHERE "id IN (1,2,3,4)"
+  $CLI SELECT \* FROM customer WHERE "id IN (1,2,3,4)"
+  $CLI DEL LINDEX_cust_id
+  $CLI LPUSH LINDEX_cust_id 4
+  $CLI LPUSH LINDEX_cust_id 2
+  $CLI LPUSH LINDEX_cust_id 1
+  $CLI LPUSH LINDEX_cust_id 3
+  echo SELECT \* FROM customer WHERE "id IN (\$LRANGE LINDEX_cust_id 0 3)"
+  $CLI SELECT \* FROM customer WHERE "id IN (\$LRANGE LINDEX_cust_id 0 3)"
 }
 function in_test_select() {
-    echo SELECT \* FROM customer WHERE "id IN (\$SELECT id FROM customer WHERE id between 1 AND 3) ORDER BY name"
-    $CLI SELECT \* FROM customer WHERE "id IN (\$SELECT id FROM customer WHERE id between 1 AND 3) ORDER BY name"
+  echo SELECT \* FROM customer WHERE "id IN (\$SELECT id FROM customer WHERE id between 1 AND 3) ORDER BY name"
+  $CLI SELECT \* FROM customer WHERE "id IN (\$SELECT id FROM customer WHERE id between 1 AND 3) ORDER BY name"
 }
 function in_test_cust_hobby() {
-    $CLI DEL list_index_customer_hobby
-    $CLI LPUSH list_index_customer_hobby yachting
-    $CLI LPUSH list_index_customer_hobby painting
-    $CLI LPUSH list_index_customer_hobby violin
-    $CLI LPUSH list_index_customer_hobby choir
-    echo SELECT \* FROM customer WHERE "hobby IN (\$LRANGE list_index_customer_hobby 0 2)" ORDER BY name
-    $CLI SELECT \* FROM customer WHERE "hobby IN (\$LRANGE list_index_customer_hobby 0 2)" ORDER BY name
+  echo SELECT \* FROM customer WHERE "hobby IN (yachting,painting,violin)" ORDER BY name
+  $CLI SELECT \* FROM customer WHERE "hobby IN (yachting,painting,violin)" ORDER BY name
+  $CLI DEL list_index_customer_hobby
+  $CLI LPUSH list_index_customer_hobby yachting
+  $CLI LPUSH list_index_customer_hobby painting
+  $CLI LPUSH list_index_customer_hobby violin
+  $CLI LPUSH list_index_customer_hobby choir
+  echo SELECT \* FROM customer WHERE "hobby IN (\$LRANGE list_index_customer_hobby 0 2)" ORDER BY name
+  $CLI SELECT \* FROM customer WHERE "hobby IN (\$LRANGE list_index_customer_hobby 0 2)" ORDER BY name
 }
 
 function in_test_join_nonrelational() {
-    echo SELECT division.id,division.name,division.location,external.name,external.salary FROM division,external WHERE division.id=external.division AND division.id IN "(44,55,33,11,22)"
-    $CLI SELECT "division.id,division.name,division.location,external.name,external.salary" FROM "division,external" WHERE "division.id=external.division AND division.id IN (44,55,33,11,22)"
-    $CLI DEL L_IND_div_id
-    echo LPUSH L_IND_div_id 22
-    $CLI LPUSH L_IND_div_id 22
-    echo LPUSH L_IND_div_id 11
-    $CLI LPUSH L_IND_div_id 11
-    echo LPUSH L_IND_div_id 33
-    $CLI LPUSH L_IND_div_id 33
-    echo LPUSH L_IND_div_id 55
-    $CLI LPUSH L_IND_div_id 55
-    echo LPUSH L_IND_div_id 44
-    $CLI LPUSH L_IND_div_id 44
-    echo SELECT division.id,division.name,division.location,external.name,external.salary FROM division,external WHERE division.id=external.division AND division.id IN "(\$LRANGE L_IND_div_id 0 -1)"
-    $CLI SELECT "division.id,division.name,division.location,external.name,external.salary" FROM "division,external" WHERE "division.id=external.division AND division.id IN (\$LRANGE L_IND_div_id 0 -1)"
+  echo SELECT division.id,division.name,division.location,external.name,external.salary FROM division,external WHERE division.id=external.division AND division.id IN "(44,55,33,11,22)"
+  $CLI SELECT "division.id,division.name,division.location,external.name,external.salary" FROM "division,external" WHERE "division.id=external.division AND division.id IN (44,55,33,11,22)"
+  $CLI DEL L_IND_div_id
+  echo LPUSH L_IND_div_id 22
+  $CLI LPUSH L_IND_div_id 22
+  echo LPUSH L_IND_div_id 11
+  $CLI LPUSH L_IND_div_id 11
+  echo LPUSH L_IND_div_id 33
+  $CLI LPUSH L_IND_div_id 33
+  echo LPUSH L_IND_div_id 55
+  $CLI LPUSH L_IND_div_id 55
+  echo LPUSH L_IND_div_id 44
+  $CLI LPUSH L_IND_div_id 44
+  echo SELECT division.id,division.name,division.location,external.name,external.salary FROM division,external WHERE division.id=external.division AND division.id IN "(\$LRANGE L_IND_div_id 0 -1)"
+  $CLI SELECT "division.id,division.name,division.location,external.name,external.salary" FROM "division,external" WHERE "division.id=external.division AND division.id IN (\$LRANGE L_IND_div_id 0 -1)"
 }
 
 function in_tester() {
@@ -946,6 +963,7 @@ function all_tests() {
   scanner
   in_tester
   orderbyer
+  select_counter
 
   istorer
   join_storer

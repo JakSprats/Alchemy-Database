@@ -271,6 +271,7 @@ int buildIndex(bt *btr, bt_n *x, bt *ibtr, int icol, int itbl, bool nrl) {
     return 0;
 }
 
+//TODO break out NRI_IndexCommit()
 static void indexCommit(redisClient *c,
                         char        *iname,
                         char        *tname,
@@ -289,9 +290,9 @@ static void indexCommit(redisClient *c,
         return;
     }
 
-    d_l_t *nrlind   = NULL;
-    int    cmatch   = - 1;
-    int    tmatch   = - 1;
+    d_l_t *nrlind = NULL;
+    int    cmatch = -1;
+    int    tmatch = -1;
     if (!nrl) {
         tmatch  = find_table(tname);
         if (tmatch == -1) {
@@ -389,12 +390,14 @@ void dropIndex(redisClient *c) {
 }
 
 /* CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP */
+/* CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP */
 static d_l_t *init_d_l_t() {
     d_l_t *nrlind = malloc(sizeof(d_l_t)); /* freed in freeNrlIndexObject */
     nrlind->l1    = listCreate();
     nrlind->l2    = listCreate();
     return nrlind;
 }
+
 static void destroy_d_l_t(d_l_t *nrlind) {
     listNode *ln;
     listIter *li     = listGetIterator(nrlind->l1, AL_START_HEAD);

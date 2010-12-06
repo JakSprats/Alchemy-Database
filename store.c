@@ -65,9 +65,9 @@ stor_cmd StorageCommands[NUM_STORAGE_TYPES];
 /* PARSE_STORE PARSE_STORE PARSE_STORE PARSE_STORE PARSE_STORE PARSE_STORE */
 /* PARSE_STORE PARSE_STORE PARSE_STORE PARSE_STORE PARSE_STORE PARSE_STORE */
 static bool checkStoreTypeReply(redisClient *c, int *sto, char *stot) {
+    *sto      = -1;
     char *x   = strchr(stot, ' ');
     int   len = x ? x - stot : (int)strlen(stot);
-    *sto      = -1;
     for (int i = 0; i < NUM_STORAGE_TYPES; i++) {
         if (!strncasecmp(stot, StorageCommands[i].name, len)) {
             *sto = i;
@@ -107,15 +107,18 @@ bool prepareToStoreReply(redisClient  *c,
     *last   = *nname + *nlen - 1;
     if (*(*last) == '$') { /* means final arg munging */
         *sub_pk  = 1;
-        *nargc   = *nargc + 1;
-        *(*last) = '\0';
+        *(*last) = '\0';   /* temporarily erase '$' - add in later for AOF */
         *nlen    = *nlen - 1;
+        if ((*nargc + 1) != qcols) {
+            addReply(c, shared.storagenumargsmismatch);
+            return 0;
+        }
+    } else {
+        if (*nargc != qcols) {
+            addReply(c, shared.storagenumargsmismatch);
+            return 0;
+        }
     }
-    if (*nargc != qcols) {
-        addReply(c, shared.storagenumargsmismatch);
-        return 0;
-    }
-    if (*sub_pk) *nargc = *nargc - 1;
     return 1;
 }
 
@@ -154,7 +157,7 @@ bool istoreAction(redisClient *c,
     }
 
     fc->argc     = qcols + 1;
-    fc->argv[1]  = createStringObject(nname, strlen(nname));/*NEW Objects NAME*/
+    fc->argv[1]  = _createStringObject(nname); /*NEW Objects NAME*/
     //argv[0] NOT NEEDED
     int    n     = 0;
     robj **argv  = fc->argv;
@@ -200,8 +203,8 @@ void istoreCommit(redisClient *c,
     if (!prepareToStoreReply(c, w, &nname, &nlen,
                              &sub_pk, &nargc, &last, qcols)) return;
 
-    list *ll    = NULL;
     uchar ctype = COL_TYPE_NONE;
+    list *ll    = NULL;
     if (w->obc != -1) {
         ll    = listCreate();
         ctype = Tbl[server.dbid][tmatch].col_type[w->obc];
@@ -242,9 +245,9 @@ void istoreCommit(redisClient *c,
         free(vector);
     }
 
-    if (sub_pk) *last = '$';/* write back in "$" for AOF and Slaves */
-
 istore_end:
+    if (sub_pk) *last = '$';/* write back in "$" for AOF */
+
     if (nbi)  btReleaseRangeIterator(nbi);
     if (bi)   btReleaseRangeIterator(bi);
     if (ll)   listRelease(ll);
@@ -276,6 +279,7 @@ void prepare_jRowStore(jrow_reply_t *r) {
         argv[3]      = createStringObject(*Jrcols[n], Jrc_lens[n]);
         r->fc->argc  = 4;
     }
+    //TODO check sixbit MEM LEAK here
 }
 
 bool jRowStore(jrow_reply_t *r) {

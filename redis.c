@@ -778,7 +778,7 @@ void descCommand(redisClient *c);
 void dumpCommand(redisClient *c);
 
 void insertCommand(redisClient *c);
-void selectRedisqlCommand(redisClient *c);
+void sqlSelectCommand(redisClient *c);
 void updateCommand(redisClient *c);
 void deleteCommand(redisClient *c);
 
@@ -914,27 +914,27 @@ static struct redisCommand cmdTable[] = {
     {"punsubscribe",punsubscribeCommand,-1,REDIS_CMD_INLINE,NULL,0,0,0,0},
     {"publish",publishCommand,3,REDIS_CMD_BULK|REDIS_CMD_FORCE_REPLICATION,NULL,0,0,0,0},
 #ifdef ALSOSQL
-    {"create",       createCommand,        -3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
-    {"drop",         dropCommand,           3,REDIS_CMD_INLINE,NULL,1,1,1,1},
-    {"desc",         descCommand,           2,REDIS_CMD_INLINE,NULL,1,1,1,1},
-    {"dump",         dumpCommand,          -2,REDIS_CMD_INLINE,NULL,1,1,1,1},
+    {"create",       createCommand,      -3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
+    {"drop",         dropCommand,         3,REDIS_CMD_INLINE,NULL,1,1,1,1},
+    {"desc",         descCommand,         2,REDIS_CMD_INLINE,NULL,1,1,1,1},
+    {"dump",         dumpCommand,        -2,REDIS_CMD_INLINE,NULL,1,1,1,1},
 
-    {"insert",       insertCommand,        -5,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
+    {"insert",       insertCommand,      -5,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
     //TODO deprecate the following when 
     //      ./gen-benchmark is mature enough to deprecate redis-benchmark
-    /* selectRedisqlCommand is CMD_BULK for simplicity in redis-benchmark.s */
-    {"select",       selectRedisqlCommand, -2,REDIS_CMD_BULK,NULL,1,1,1,1},
-    {"update",       updateCommand,         6,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
-    {"delete",       deleteCommand,         5,REDIS_CMD_INLINE,NULL,1,1,1,1},
+    /* sqlSelectCommand is CMD_BULK for simplicity in redis-benchmark.s */
+    {"select",       sqlSelectCommand,   -2,REDIS_CMD_BULK,NULL,1,1,1,1},
+    {"update",       updateCommand,       6,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
+    {"delete",       deleteCommand,       5,REDIS_CMD_INLINE,NULL,1,1,1,1},
 
-    {"scanselect",   tscanCommand,         -4,REDIS_CMD_INLINE,NULL,1,1,1,1},
-    {"norm",         normCommand,          -2,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
-    {"denorm",       denormCommand,         3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
+    {"scanselect",   tscanCommand,       -4,REDIS_CMD_INLINE,NULL,1,1,1,1},
+    {"norm",         normCommand,        -2,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
+    {"denorm",       denormCommand,       3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
 
-    {"legacytable",  legacyTableCommand,    3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
-    {"legacyinsert", legacyInsertCommand,   3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
+    {"legacytable",  legacyTableCommand,  3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
+    {"legacyinsert", legacyInsertCommand, 3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
 
-    {"lua",          luaCommand,            2,REDIS_CMD_INLINE,NULL,1,1,1,1},
+    {"lua",          luaCommand,          2,REDIS_CMD_INLINE,NULL,1,1,1,1},
 #endif /* ALSOSQL END */
     {NULL,NULL,0,0,NULL,0,0,0,0}
 };
@@ -2170,7 +2170,7 @@ static void initServer() {
     StorageCommands[9].argc = -2;      /* < 0 means combine 1st arg w/ name */
 
     //#define ACCESS_SELECT_COMMAND_NUM 0
-    AccessCommands[0].func   = selectRedisqlCommand;
+    AccessCommands[0].func   = sqlSelectCommand;
     AccessCommands[0].name   = "SELECT";
     AccessCommands[0].argc   = 4;
 

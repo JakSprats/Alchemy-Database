@@ -65,7 +65,8 @@ static int col_cmp(char *a, char *b, int ctype) {
 // SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN
 // SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN
 
-/* TODO too many args for a full table scan -> pack into a struct */
+/* TODO too many args for a func called per row on a full table scan
+         -> pack into a struct */
 static void condSelectReply(redisClient   *c,
                             cswc_t        *w,
                             robj          *o,
@@ -151,9 +152,9 @@ void tscanCommand(redisClient *c) {
         return;
     }
 
-    bool rq    = 0; /* come before first GOTO */
-    uchar  sop = SQL_SCANSELECT;
     cswc_t w;
+    bool   rq  = 0; /* come before first GOTO */
+    uchar  sop = SQL_SCANSELECT;
     init_check_sql_where_clause(&w, wc); /* all errors now GOTO tscan_cmd_err */
 
     if (no_wc && c->argc > 4) { /* ORDER BY or STORE w/o WHERE CLAUSE */
@@ -169,7 +170,7 @@ void tscanCommand(redisClient *c) {
             if (w.obc != -1) no_wc = 1;
         }
     }
-    if (no_wc && w.obc == -1 && c->argc > 4) {
+    if (no_wc && w.obc == -1 && c->argc > 4) { /* argv[4] parse error */
         w.lvr = where;
         leftoverParsingReply(c, &w);
         goto tscan_cmd_err;
@@ -190,7 +191,7 @@ void tscanCommand(redisClient *c) {
 
         if (wtype == SQL_RANGE_QUERY) {
             rq          = 1;
-        } else { /* TODO this should be an SINGLE op */
+        } else { /* TODO this should be a SINGLE op */
             w.low  = w.key;
             w.high = w.key;
         }
