@@ -207,7 +207,7 @@ static struct redisCommand cmdTable[] = {
     {"punsubscribe",-1,CMDFLAG_NONE},
     {"publish",3,CMDFLAG_NONE},
 #ifdef ALSOSQL
-    {"create",       -3,CMDFLAG_NONE},
+    {"create",       -4,CMDFLAG_NONE},
     {"drop",          3,CMDFLAG_NONE},
     {"desc",          2,CMDFLAG_NONE},
     {"dump",         -2,CMDFLAG_NONE},

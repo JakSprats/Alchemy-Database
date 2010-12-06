@@ -65,12 +65,14 @@ extern r_ind_t  Index   [MAX_NUM_DB][MAX_NUM_INDICES];
 // ROW_COMMANDS ROW_COMMANDS ROW_COMMANDS ROW_COMMANDS ROW_COMMANDS ROW_COMMANDS
 // ROW_COMMANDS ROW_COMMANDS ROW_COMMANDS ROW_COMMANDS ROW_COMMANDS ROW_COMMANDS
 
-static bool checkUIntReply(redisClient *c, long l) {
+bool checkUIntReply(redisClient *c, long l, bool ispk) {
     if (l >= TWO_POW_32) {
-        addReply(c, shared.col_uint_too_big);
+        if (ispk) addReply(c, shared.uint_pk_too_big);
+        else      addReply(c, shared.col_uint_too_big);
         return 0;
     } else if (l < 0) {
-        addReply(c, shared.col_uint_no_negative_values);
+        if (ispk) addReply(c, shared.uint_no_negative_values);
+        else      addReply(c, shared.col_uint_no_negative_values);
         return 0;
     }
     return 1;
@@ -108,7 +110,7 @@ static uint32 createICol(redisClient *c,
     buf[len] = '\0';
     long l   = atol(buf);
 
-    if (!checkUIntReply(c, l)) return 0;
+    if (!checkUIntReply(c, l, 0)) return 0;
     return _createICol(l, sflag, col);
 }
 static uint32 createFCol(redisClient *c,
@@ -610,7 +612,7 @@ bool updateRow(redisClient *c,
             avals[i].sixbit = 0;
             if (Tbl[server.dbid][tmatch].col_type[i]        == COL_TYPE_INT) {
                 long l        = atol(vals[i]);
-                if (!checkUIntReply(c, l)) return 0;
+                if (!checkUIntReply(c, l, !i)) return 0;
                 avals[i].i    = l;
                 avals[i].type = COL_TYPE_INT;
                 avals[i].enc  = COL_TYPE_INT;

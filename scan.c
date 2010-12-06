@@ -140,7 +140,11 @@ void tscanCommand(redisClient *c) {
     bool join   =  0;
     sds  where  = (c->argc > 4) ? c->argv[4]->ptr : NULL;
     sds  wc     = (c->argc > 5) ? c->argv[5]->ptr : NULL;
-    if (!parseSelectReply(c, &no_wc, &tmatch, cmatchs, &qcols, &join,
+    if ((where && !*where) || (wc && !*wc)) {
+        addReply(c, shared.scanselectsyntax);
+        return;
+    }
+    if (!parseSelectReply(c, 1, &no_wc, &tmatch, cmatchs, &qcols, &join,
                           &cstar, c->argv[1]->ptr, c->argv[2]->ptr,
                           c->argv[3]->ptr, where)) return;
     if (join) {
@@ -161,8 +165,7 @@ void tscanCommand(redisClient *c) {
         if (!strncasecmp(where, "ORDER ", 6) ||
             !strncasecmp(where, "STORE ", 6)) {
             if (!parseWCAddtlSQL(c, c->argv[4]->ptr, &w, tmatch) ||
-                !leftoverParsingReply(c, &w))
-                    goto tscan_cmd_err;
+                !leftoverParsingReply(c, w.lvr))            goto tscan_cmd_err;
             if (w.stor) { /* if STORE comes after ORDER BY */
                 addReply(c, shared.scan_store);
                 goto tscan_cmd_err;
@@ -172,14 +175,14 @@ void tscanCommand(redisClient *c) {
     }
     if (no_wc && w.obc == -1 && c->argc > 4) { /* argv[4] parse error */
         w.lvr = where;
-        leftoverParsingReply(c, &w);
+        leftoverParsingReply(c, w.lvr);
         goto tscan_cmd_err;
     }
 
     if (!no_wc && w.obc == -1) {
         uchar wtype  = checkSQLWhereClauseReply(c, &w, tmatch, sop, 1);
-        if (wtype == SQL_ERR_LOOKUP)      goto tscan_cmd_err;
-        if (!leftoverParsingReply(c, &w)) goto tscan_cmd_err;
+        if (wtype == SQL_ERR_LOOKUP)         goto tscan_cmd_err;
+        if (!leftoverParsingReply(c, w.lvr)) goto tscan_cmd_err;
         if (w.imatch != -1) {/* disallow SCANSELECT on indexed columns */
             addReply(c, shared.scan_on_index);
             goto tscan_cmd_err;

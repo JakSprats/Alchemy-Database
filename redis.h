@@ -295,7 +295,7 @@ struct sharedObjectsStruct {
 
     *createsyntax, *dropsyntax, *drop_virtual_index,
 
-    *insertsyntax,           *insertsyntax_no_into,  *insertsyntax_col_decl,
+    *insertsyntax,           *insertsyntax_no_into,
     *insertsyntax_no_values, *index_nonrel_decl_fmt,
 
     *whereclause_in_err,         *where_in_select,

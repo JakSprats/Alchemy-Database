@@ -117,6 +117,7 @@ bool parseCommaSpaceListReply(redisClient *c,
                               bool        *cstar);
 
 bool parseSelectReply(redisClient *c,
+                      bool         is_scan,
                       bool        *no_wc,
                       int         *tmatch,
                       int          cmatchs[MAX_COLUMN_PER_TABLE],
@@ -131,24 +132,7 @@ bool parseSelectReply(redisClient *c,
 void init_check_sql_where_clause(cswc_t *w, sds token);
 void destroy_check_sql_where_clause(cswc_t *w);
 
-bool leftoverParsingReply(redisClient *c, cswc_t *w);
-
-#define ASSIGN_UPDATE_HITS_AND_MISSES               \
-    unsigned char  cmiss[MAX_COLUMN_PER_TABLE];     \
-    char          *vals [MAX_COLUMN_PER_TABLE];     \
-    unsigned int   vlens[MAX_COLUMN_PER_TABLE];     \
-    for (int i = 0; i < ncols; i++) {               \
-        unsigned char miss = 1;                     \
-        for (int j = 0; j < qcols; j++) {           \
-            if (i == cmatchs[j]) {                  \
-                miss     = 0;                       \
-                vals[i]  = mvals[j];                \
-                vlens[i] = mvlens[j];               \
-                break;                              \
-            }                                       \
-        }                                           \
-        cmiss[i] = miss;                            \
-    }
+bool leftoverParsingReply(redisClient *c, char *x);
 
 int parseUpdateOrReply(redisClient  *c,
                        int           tmatch,
@@ -179,11 +163,12 @@ void createTableCommitReply(redisClient *c,
                             int          tlen);
 
 void insertCommitReply(redisClient *c, 
-                       sds          vals,
+                       char        *vals,
                        int          ncols,
                        int          tmatch,
                        int          matches,
-                       int          indices[]);
+                       int          indices[],
+                       bool         ret_size);
 
 unsigned long tableEmpty(redisDb *db, int tmatch);
 

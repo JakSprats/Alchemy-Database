@@ -48,13 +48,15 @@ extern int      Num_tbls[MAX_NUM_DB];
 extern r_tbl_t  Tbl     [MAX_NUM_DB][MAX_NUM_TABLES];
 
 /* LEGACY functions used on AOF readin */
+/* legacyInsertCommand also used in InternalDataPipes */
 void legacyInsertCommand(redisClient *c) {
     TABLE_CHECK_OR_REPLY(c->argv[1]->ptr,)
     int ncols = Tbl[server.dbid][tmatch].col_count;
     MATCH_INDICES(tmatch)
 
-    char *vals   = c->argv[2]->ptr;
-    insertCommitReply(c, vals, ncols, tmatch, matches, indices);
+    char *vals = sdscatprintf(sdsempty(), "(%s)", c->argv[2]->ptr);
+    insertCommitReply(c, vals, ncols, tmatch, matches, indices, 0);
+    sdsfree(vals);
 }
 
 /* LEGACY functions used on AOF readin */

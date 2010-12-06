@@ -279,7 +279,7 @@ static void createTableAsSelect(redisClient *c, char *as_cmd) {
     int    rargc = 6;
     robj **rargv = parseSelectCmdToArgv(as_cmd);
 
-    if (!parseSelectReply(c, 0, &tmatch, cmatchs, &qcols, &join,
+    if (!parseSelectReply(c, 0, NULL, &tmatch, cmatchs, &qcols, &join,
                           &cstar,  rargv[1]->ptr, rargv[2]->ptr,
                           rargv[3]->ptr, rargv[4]->ptr)) return;
     if (cstar) {

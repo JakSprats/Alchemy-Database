@@ -185,6 +185,7 @@ void runNrlIndexFromStream(uchar *stream, d_l_t *nrlind, int itbl) {
 }
 
 /* CREATE NON-RELATIONAL-INDEX */
+/* Parses "xxx$col1 yyy$col2 zzz" -> "xxx[col1] yyy[col2] zzz" */
 bool parseNRLcmd(char *o_s, list *nrltoks, list *nrlcols, int tmatch) {
     char *s   = strchr(o_s, '$');
     if (!s) {

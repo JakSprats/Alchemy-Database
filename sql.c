@@ -455,6 +455,7 @@ static int parseIndexedColumnListOrReply(redisClient *c,
     char *curr_tname  = ilist;
     char *nextc       = ilist;
     while ((nextc = strchr(nextc, ','))) {
+        //TODO no '\0' parsing
         if (n_ind == MAX_JOIN_INDXS) {
             addReply(c, shared.toomanyindicesinjoin);
             return 0;

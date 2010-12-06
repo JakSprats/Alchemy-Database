@@ -914,7 +914,7 @@ static struct redisCommand cmdTable[] = {
     {"punsubscribe",punsubscribeCommand,-1,REDIS_CMD_INLINE,NULL,0,0,0,0},
     {"publish",publishCommand,3,REDIS_CMD_BULK|REDIS_CMD_FORCE_REPLICATION,NULL,0,0,0,0},
 #ifdef ALSOSQL
-    {"create",       createCommand,      -3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
+    {"create",       createCommand,      -4,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
     {"drop",         dropCommand,         3,REDIS_CMD_INLINE,NULL,1,1,1,1},
     {"desc",         descCommand,         2,REDIS_CMD_INLINE,NULL,1,1,1,1},
     {"dump",         dumpCommand,        -2,REDIS_CMD_INLINE,NULL,1,1,1,1},
@@ -1817,8 +1817,6 @@ static void createSharedObjects(void) {
         "-ERR SYNTAX: INSERT INTO tablename VALUES (vals,,,,)\r\n"));
     shared.insertsyntax_no_into = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: INSERT INTO tablename VALUES (vals,,,,) - \"INTO\" keyword MISSING\r\n"));
-    shared.insertsyntax_col_decl = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: INSERT INTO tablename VALUES (vals,,,,) - Column Declaration not supported\r\n"));
     shared.insertsyntax_no_values = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: INSERT INTO tablename VALUES (vals,,,,) - \"VALUES\" keyword MISSING\r\n"));
 

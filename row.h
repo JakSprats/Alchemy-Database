@@ -41,6 +41,8 @@ typedef struct AlsoSqlObject {
     flag    sixbit;
 } aobj;
 
+bool checkUIntReply(redisClient *c, long l, bool ispk);
+
 robj *createRow(redisClient *c,
                 int          tmatch,
                 int          ncols,

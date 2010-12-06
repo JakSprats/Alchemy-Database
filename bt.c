@@ -239,7 +239,7 @@ char *createSimKeyFromRaw(void    *key_ptr,
         unsigned long i = (unsigned long)key_ptr;
         simkey          = SimKeyBuffer;
         if (i >= TWO_POW_32) {
-            redisLog(REDIS_WARNING, "column value > UINT_MAX");
+            //redisLog(REDIS_WARNING, "column value > UINT_MAX");
             return NULL;
         }
         if (i < TWO_POW_14) {        // 14bit INT

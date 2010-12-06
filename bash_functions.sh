@@ -236,8 +236,8 @@ function iselecter() {
   iselecter_customer
 }
 function iupdater_customer() {
-  echo UPDATE customer SET hobby=fishing,employee=6 WHERE hobby BETWEEN v AND z
-  $CLI UPDATE customer SET "hobby =fishing,employee=6" WHERE "hobby BETWEEN v AND z"
+  echo UPDATE customer SET hobby=FISHING,employee=6 WHERE hobby BETWEEN v AND z
+  $CLI UPDATE customer SET "hobby =FISHING,employee=6" WHERE "hobby BETWEEN v AND z"
 }
 function iupdater_customer_rev() {
   echo UPDATE customer SET hobby=ziplining,employee=7 WHERE hobby BETWEEN f AND g
@@ -1441,7 +1441,120 @@ function bad_create_table_genner() {
   echo "CREATE TABLE toomanycols"
   $CLI CREATE TABLE toomanycols "(id INT, col_0 INT, col_1 INT, col_2 INT, col_3 INT, col_4 INT, col_5 INT, col_6 INT, col_7 INT, col_8 INT, col_9 INT, col_10 INT, col_11 INT, col_12 INT, col_13 INT, col_14 INT, col_15 INT, col_16 INT, col_17 INT, col_18 INT, col_19 INT, col_20 INT, col_21 INT, col_22 INT, col_23 INT, col_24 INT, col_25 INT, col_26 INT, col_27 INT, col_28 INT, col_29 INT, col_30 INT, col_31 INT, col_32 INT, col_33 INT, col_34 INT, col_35 INT, col_36 INT, col_37 INT, col_38 INT, col_39 INT, col_40 INT, col_41 INT, col_42 INT, col_43 INT, col_44 INT, col_45 INT, col_46 INT, col_47 INT, col_48 INT, col_49 INT, col_50 INT, col_51 INT, col_52 INT, col_53 INT, col_54 INT, col_55 INT, col_56 INT, col_57 INT, col_58 INT, col_59 INT, col_60 INT, col_61 INT, col_62 INT, col_63 INT, col_64 INT, col_65 INT, col_66 INT, col_67 INT, col_68 INT, col_69 INT, col_70 INT, col_71 INT, col_72 INT, col_73 INT, col_74 INT, col_75 INT, col_76 INT, col_77 INT, col_78 INT, col_79 INT, col_80 INT, col_81 INT, col_82 INT, col_83 INT, col_84 INT, col_85 INT, col_86 INT, col_87 INT, col_88 INT, col_89 INT, col_90 INT, col_91 INT, col_92 INT, col_93 INT, col_94 INT, col_95 INT, col_96 INT, col_97 INT, col_98 INT, col_99)"
 }
+
+function bad_inserter() {
+  $CLI CREATE TABLE bad_insert \(id INT, i INT, f FLOAT, t TEXT\)
+  echo ONE OK
+  $CLI INSERT INTO bad_insert VALUES \(1,1,1.11111111,ONE\)
+  echo REPEAT PK
+  $CLI INSERT INTO bad_insert VALUES \(1,1,1.11111111,ONE\)
+  echo NEGATIVE PK
+  $CLI INSERT INTO bad_insert VALUES \(-1,1,1.11111111,ONE\)
+  echo NEGATIVE UINT
+  $CLI INSERT INTO bad_insert VALUES \(2,-1,1.11111111,ONE\)
+  echo TOO FEW COLS
+  $CLI INSERT INTO bad_insert VALUES \(2,1,1.11111111\)
+  echo TEXT AS UINT
+  $CLI INSERT INTO bad_insert VALUES \(2,TEXT,1.11111111,TWO\)
+  echo TEXT AS FLOAT
+  $CLI INSERT INTO bad_insert VALUES \(3,1,TEXT,THREE\)
+  echo ALL TEXT
+  $CLI INSERT INTO bad_insert VALUES \(TEXT,TEXT,TEXT,TEXT\)
+}
+
+function bad_select_where_clause() {
+  echo OK
+  echo SELECT \* FROM customer WHERE employee=4 ORDER BY hobby DESC LIMIT 2 OFFSET 1
+  $CLI SELECT \* FROM customer WHERE "employee=4 ORDER BY hobby DESC LIMIT 2 OFFSET 1"
+  $CLI SELECT \* FROM customer WHERE "employee=4 ORDER BY hobby DESC LIMIT 2 OFFSET "
+  $CLI SELECT \* FROM customer WHERE "employee=4 ORDER BY hobby DESC LIMIT 2 OFFSE"
+  $CLI SELECT \* FROM customer WHERE "employee=4 ORDER BY hobby DESC LIMIT 2 "
+  $CLI SELECT \* FROM customer WHERE "employee=4 ORDER BY hobby DESC LIMIT "
+  $CLI SELECT \* FROM customer WHERE "employee=4 ORDER BY hobby DESC LIMI "
+  $CLI SELECT \* FROM customer WHERE "employee=4 ORDER BY hobby DESC "
+  $CLI SELECT \* FROM customer WHERE "employee=4 ORDER BY hobby DES"
+  $CLI SELECT \* FROM customer WHERE "employee=4 ORDER BY hobby"
+  $CLI SELECT \* FROM customer WHERE "employee=4 ORDER BY hobb"
+  $CLI SELECT \* FROM customer WHERE "employee=4 ORDER BY "
+  $CLI SELECT \* FROM customer WHERE "employee=4 ORDER B"
+  $CLI SELECT \* FROM customer WHERE "employee=4 ORDER "
+  $CLI SELECT \* FROM customer WHERE "employee=4 ORDE"
+  $CLI SELECT \* FROM customer WHERE "employee=4"
+  $CLI SELECT \* FROM customer WHERE "employee="
+  $CLI SELECT \* FROM customer WHERE "employee"
+  $CLI SELECT \* FROM customer WHERE "employe"
+  $CLI SELECT \* FROM customer WHERE ""
+  $CLI SELECT \* FROM customer WHERE "" ""
+  $CLI SELECT \* FROM customer WHERE "" "" ""
+  $CLI SELECT \* FROM customer WHERE "" "" "" ""
+  $CLI SELECT \* FROM customer WHERE
+  $CLI SELECT \* FROM customer WHER
+  $CLI SELECT \* FROM customer 
+  $CLI SELECT \* FROM custome
+  $CLI SELECT \* FROM 
+  $CLI SELECT \* FRO
+}
+
+function bad_scanselect_where_clause() {
+  echo OK
+  echo SCANSELECT \* FROM customer WHERE name BETWEEN a AND z ORDER BY hobby DESC LIMIT 3 OFFSET 2
+  $CLI SCANSELECT \* FROM customer WHERE "name BETWEEN a AND z ORDER BY hobby DESC LIMIT 3 OFFSET 2"
+  $CLI SCANSELECT \* FROM customer WHERE "name BETWEEN a AND z ORDER BY hobby DESC LIMIT 3 OFFSET "
+  $CLI SCANSELECT \* FROM customer WHERE "name BETWEEN a AND z ORDER BY hobby DESC LIMIT 3 OFFSE"
+  $CLI SCANSELECT \* FROM customer WHERE "name BETWEEN a AND z ORDER BY hobby DESC LIMIT 3"
+  $CLI SCANSELECT \* FROM customer WHERE "name BETWEEN a AND z ORDER BY hobby DESC LIMIT "
+  $CLI SCANSELECT \* FROM customer WHERE "name BETWEEN a AND z ORDER BY hobby DESC LIMI"
+  $CLI SCANSELECT \* FROM customer WHERE "name BETWEEN a AND z ORDER BY hobby DESC "
+  $CLI SCANSELECT \* FROM customer WHERE "name BETWEEN a AND z ORDER BY hobby DES"
+  $CLI SCANSELECT \* FROM customer WHERE "name BETWEEN a AND z ORDER BY hobby "
+  $CLI SCANSELECT \* FROM customer WHERE "name BETWEEN a AND z ORDER BY hobb"
+  $CLI SCANSELECT \* FROM customer WHERE "name BETWEEN a AND z ORDER BY "
+  $CLI SCANSELECT \* FROM customer WHERE "name BETWEEN a AND z ORDER B"
+  $CLI SCANSELECT \* FROM customer WHERE "name BETWEEN a AND z ORDER "
+  $CLI SCANSELECT \* FROM customer WHERE "name BETWEEN a AND z ORDE"
+  $CLI SCANSELECT \* FROM customer WHERE "name BETWEEN a AND z "
+  $CLI SCANSELECT \* FROM customer WHERE "name BETWEEN a AND "
+  $CLI SCANSELECT \* FROM customer WHERE "name BETWEEN a AN"
+  $CLI SCANSELECT \* FROM customer WHERE "name BETWEEN a "
+  $CLI SCANSELECT \* FROM customer WHERE "name BETWEEN "
+  $CLI SCANSELECT \* FROM customer WHERE "name BETWEE"
+  $CLI SCANSELECT \* FROM customer WHERE "name "
+  $CLI SCANSELECT \* FROM customer WHERE "name"
+  $CLI SCANSELECT \* FROM customer WHERE ""
+  $CLI SCANSELECT \* FROM customer WHERE 
+  $CLI SCANSELECT \* FROM customer WHER
+  $CLI SCANSELECT \* FROM customer
+  $CLI SCANSELECT \* FROM customer "ORDER BY hobby DESC LIMIT 3 OFFSET 2"
+  $CLI SCANSELECT \* FROM customer "ORDER BY hobby DESC LIMIT 3 OFFSET "
+  $CLI SCANSELECT \* FROM customer "ORDER BY hobby DESC LIMIT 3 OFFSE"
+  $CLI SCANSELECT \* FROM customer "ORDER BY hobby DESC LIMIT 3 "
+  $CLI SCANSELECT \* FROM customer "ORDER BY hobby DESC LIMIT "
+  $CLI SCANSELECT \* FROM customer "ORDER BY hobby DESC LIMI"
+  $CLI SCANSELECT \* FROM customer "ORDER BY hobby DESC "
+  $CLI SCANSELECT \* FROM customer "ORDER BY hobby DES"
+  $CLI SCANSELECT \* FROM customer "ORDER BY hobby"
+  $CLI SCANSELECT \* FROM customer "ORDER BY hobb"
+  $CLI SCANSELECT \* FROM customer "ORDER BY "
+  $CLI SCANSELECT \* FROM customer "ORDER B"
+  $CLI SCANSELECT \* FROM customer "ORDER "
+  $CLI SCANSELECT \* FROM customer "ORDER"
+  $CLI SCANSELECT \* FROM customer ""
+  $CLI SCANSELECT \* FROM customer
+}
+function bad_insert_return_size() {
+  $CLI INSERT INTO external VALUES \(5,22,1,9999.99,"slim"\) RETURN
+  $CLI INSERT INTO external VALUES \(5,22,1,9999.99,"slim"\) RETURN SIZ
+  $CLI INSERT INTO external VALUES \(5,22,1,9999.99,"slim"\) RETURN SIZE
+}
+
 function bad_tests() {
+  $CLI FLUSHALL
+  populate
+
+  bad_select_where_clause
+  echo
+  bad_scanselect_where_clause
+  echo
   bad_storer
   echo
   bad_inner
@@ -1449,6 +1562,10 @@ function bad_tests() {
   bad_create_tables_as_selecter
   echo
   bad_create_table_genner
+  echo
+  bad_inserter
+  echo
+  bad_insert_return_size
   echo
   bad_normer
 }

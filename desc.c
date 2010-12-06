@@ -154,11 +154,11 @@ ull get_sum_all_index_size_for_table(redisClient *c, int tmatch) {
     for (int i = 0; i < Num_indx[server.dbid]; i++) {
         if (!Index[server.dbid][i].virt &&
              Index[server.dbid][i].table == tmatch) {
-            robj *ind   = Index[server.dbid][i].obj;
-            robj *ibt   = lookupKey(c->db, ind);
-            if (ibt->type != REDIS_NRL_INDEX) { /*TODO: desc info on NRL inds */
-                bt   *ibtr  = (bt *)(ibt->ptr);
-                isize      += ibtr->malloc_size;
+            robj *ind = Index[server.dbid][i].obj;
+            robj *ibt = lookupKey(c->db, ind);
+            if (ibt->type != REDIS_NRL_INDEX) {
+                bt *ibtr  = (bt *)(ibt->ptr);
+                isize    += ibtr->malloc_size;
             }
         }
     }
@@ -201,6 +201,8 @@ void descCommand(redisClient *c) {
         decrRefCount(r);
 	card++;
     }
+    /*TODO: desc info on NRL inds */
+
     ull  index_size = get_sum_all_index_size_for_table(c, tmatch);
     bt  *btr        = (bt *)o->ptr;
     robj minkey, maxkey;
