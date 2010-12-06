@@ -1,5 +1,5 @@
 /*
- * This file implements "SELECT ... ORDER BY col LIMIT X" helper funcs
+ * This file implements "SELECT ... ORDER BY col LIMIT X OFFSET Y" helper funcs
  *
 
 GPL License

@@ -708,6 +708,11 @@ function join_store_worker_location_hash() {
   $CLI SELECT "worker.name,division.location" FROM "worker,division" WHERE "worker.division=division.id AND division.id BETWEEN 11 AND 80 STORE HSET worker_city_hash"
   echo HGETALL worker_city_hash
   $CLI HGETALL worker_city_hash
+  echo "TEST JOIN ORDER BY STORE"
+  echo SELECT "worker.name,division.location" FROM "worker,division" WHERE "worker.division=division.id AND division.id BETWEEN 11 AND 80 ORDER BY division.location STORE HSET worker_city_hash2"
+  $CLI SELECT "worker.name,division.location" FROM "worker,division" WHERE "worker.division=division.id AND division.id BETWEEN 11 AND 80 ORDER BY division.location STORE HSET worker_city_hash2"
+  echo HGETALL worker_city_hash2
+  $CLI HGETALL worker_city_hash2
 }
 
 
@@ -772,6 +777,40 @@ function create_table_as_obj() {
   $CLI CREATE TABLE copy3 "AS DUMP copy2"
   $CLI DUMP copy3
 }
+
+# PROTOCOL PROTOCOL PROTOCOL PROTOCOL PROTOCOL PROTOCOL PROTOCOL
+# PROTOCOL PROTOCOL PROTOCOL PROTOCOL PROTOCOL PROTOCOL PROTOCOL
+function protocol_example_sql() {
+  $CLI CREATE TABLE foo "(id INT, val FLOAT, name TEXT)"
+  $CLI CREATE INDEX foo_val_index ON foo \(val\)
+  $CLI INSERT INTO foo VALUES \(1,1.1111111,one\)
+  $CLI INSERT INTO foo VALUES \(2,2.2222222,two\)
+  $CLI SELECT "*" FROM foo WHERE "id = 1"
+  $CLI SCANSELECT "*" FROM foo
+  $CLI UPDATE foo SET val=9.999999 WHERE "id = 1"
+  $CLI DELETE FROM foo WHERE "id = 2"
+  $CLI DROP INDEX foo_val_index
+  $CLI DESC foo
+  $CLI DUMP foo
+}
+
+function protocol_example_lua() {
+  $CLI CONFIG SET luafilename helper.lua
+  $CLI LUA "return select('*','foo','id = 1');"
+}
+function protocol_example_norm() {
+  $CLI SET user:1:name bill
+  $CLI SET user:1:age 33
+  $CLI SET user:1:address:city "capitol city"
+
+  $CLI SET user:2:age 22
+  $CLI SET user:2:name jane
+  $CLI SET user:2:address:city "houston"
+
+  $CLI NORM user address
+  $CLI denorm user "user:*"
+}
+alias TCPDUMP_ALCHEMY="sudo tcpdump -l -q -A -s 1500 -i lo 'tcp port 6379'"
 
 # BENCHMARK_HELPERS BENCHMARK_HELPERS BENCHMARK_HELPERS BENCHMARK_HELPERS
 # BENCHMARK_HELPERS BENCHMARK_HELPERS BENCHMARK_HELPERS BENCHMARK_HELPERS
@@ -1413,3 +1452,4 @@ function bad_tests() {
   echo
   bad_normer
 }
+

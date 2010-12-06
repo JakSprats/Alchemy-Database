@@ -1,5 +1,5 @@
 /*
- * This file implements "SELECT ... ORDER BY col LIMIT X" helper funcs
+ * This file implements "SELECT ... ORDER BY col LIMIT X OFFSET Y" helper funcs
  *
 
 GPL License
@@ -47,6 +47,7 @@ ALL RIGHTS RESERVED
 extern char  *Order_by_col_val;
 
 
+//TODO there is most likely too much register assignment in these functions
 /* ORDER BY START */
 int intOrderBySort(const void *s1, const void *s2) {
     obsl_t *o1 = (obsl_t *)s1;
@@ -111,7 +112,7 @@ void addORowToRQList(list  *ll,
     if (r) {
         ob->row = cloneRobj(r); /*decrRefCount()d N sortedOrderByCleanup() */
     } else {
-         /* used ONLY in istoreCommit SELECT PK ORDER BY notPK (preserve pk) */
+        /* ONLY in istoreCommit SELECT PK ORDER BY notPK (to preserve pk) */
         ob->row = row->ptr;
     }
     aobj    ao  = getRawCol(row, obc, pko, tmatch, &cflag, ctype, 0);
@@ -160,7 +161,7 @@ void sortedOrderByCleanup(obsl_t **vector,
     for (int k = 0; k < vlen; k++) {
         obsl_t *ob = vector[k];
         if (decr_row)                 decrRefCount(ob->row);
-        if (ctype == COL_TYPE_STRING) free(ob->val);
+        if (ctype == COL_TYPE_STRING) free(        ob->val);
         free(ob);
     }
 }
@@ -168,16 +169,17 @@ void sortedOrderByCleanup(obsl_t **vector,
 /* ISTORE ISTORE ISTORE ISTORE ISTORE ISTORE ISTORE ISTORE ISTORE ISTORE */
 /* ISTORE ISTORE ISTORE ISTORE ISTORE ISTORE ISTORE ISTORE ISTORE ISTORE */
 static robj IstoreOrderByRobj;
-static void init_IstoreOrderByRobj() {
+static void init_IstoreOrderByRobj() { /* NOTE: only needs to be called once */
     IstoreOrderByRobj.type     = REDIS_ROW;
     IstoreOrderByRobj.encoding = REDIS_ENCODING_RAW;
     IstoreOrderByRobj.refcount = 1;
 }
 
+/* istoreAction only understands robj's */
 static robj *createObjFromCol(void *col, uchar ctype) {
     robj *r;
     if (ctype == COL_TYPE_INT) {
-        r = createObject(REDIS_STRING, NULL);
+        r           = createObject(REDIS_STRING, NULL);
         r->encoding = REDIS_ENCODING_INT;
         r->ptr      = col;
     } else if (ctype == COL_TYPE_FLOAT) {
@@ -186,9 +188,9 @@ static robj *createObjFromCol(void *col, uchar ctype) {
         char buf[32];
         snprintf(buf, 31, "%10.10g", f);
         buf[31] = '\0';
-        r = createStringObject(buf, strlen(buf));
+        r = _createStringObject(buf);
     } else {
-        r = createStringObject(col, strlen(col));
+        r = _createStringObject(col);
     }
     return r;
 }
@@ -284,7 +286,7 @@ int sortJoinOrderByAndReply(redisClient        *c,
                 b->j.fc->argv = ob->row; /* argv's in list */
                 if (!performStoreCmdOrReply(b->j.c, b->j.fc, b->j.sto, 1))
                     return -1;
-            } else if (!b->j.cstar) {
+            } else {
                 addReplyBulk(c, ob->row);
                 decrRefCount(ob->row);
             }
