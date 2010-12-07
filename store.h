@@ -63,7 +63,6 @@ bool prepareToStoreReply(redisClient  *c,
                          int           qcols);
 void istoreCommit(redisClient *c,
                   cswc_t      *w,
-                  int          tmatch,
                   int          cmatchs[MAX_COLUMN_PER_TABLE],
                   int          qcols);
 

@@ -198,7 +198,6 @@ static robj *createObjFromCol(void *col, uchar ctype) {
 int sortedOrderByIstore(redisClient  *c,
                         cswc_t       *w,
                         redisClient  *fc,
-                        int           tmatch,
                         int           cmatchs[],
                         int           qcols,
                         char         *nname,
@@ -224,7 +223,7 @@ int sortedOrderByIstore(redisClient  *c,
             IstoreOrderByRobj.ptr = ob->row;
             robj *key             = createObjFromCol(ob->val, ctype);
             robj *row             = &IstoreOrderByRobj;
-            if (!istoreAction(c, fc, tmatch, cmatchs, qcols, w->sto,
+            if (!istoreAction(c, fc, w->tmatch, cmatchs, qcols, w->sto,
                               key, row, nname, sub_pk, nargc))
                                   return -1;
         }

@@ -53,17 +53,16 @@ extern r_tbl_t  Tbl  [MAX_NUM_DB][MAX_NUM_TABLES];
 extern r_ind_t  Index[MAX_NUM_DB][MAX_NUM_INDICES];
 
 
-#define ISELECT_OPERATION(Q)                                            \
-    if (!cstar) {                                                       \
-        robj *r = outputRow(row, qcols, cmatchs, key, tmatch, 0);       \
-        if (Q) addORowToRQList(ll, r, row, w->obc, key, tmatch, ctype); \
-        else   addReplyBulk(c, r);                                      \
-        decrRefCount(r);                                                \
+#define ISELECT_OPERATION(Q)                                               \
+    if (!cstar) {                                                          \
+        robj *r = outputRow(row, qcols, cmatchs, key, w->tmatch, 0);       \
+        if (Q) addORowToRQList(ll, r, row, w->obc, key, w->tmatch, ctype); \
+        else   addReplyBulk(c, r);                                         \
+        decrRefCount(r);                                                   \
     }
 
 void iselectAction(redisClient *c,
                    cswc_t      *w,
-                   int          tmatch,
                    int          cmatchs[MAX_COLUMN_PER_TABLE],
                    int          qcols,
                    bool         cstar) {
@@ -71,7 +70,7 @@ void iselectAction(redisClient *c,
     uchar ctype = COL_TYPE_NONE;
     if (w->obc != -1) {
         ll    = listCreate();
-        ctype = Tbl[server.dbid][tmatch].col_type[w->obc];
+        ctype = Tbl[server.dbid][w->tmatch].col_type[w->obc];
     }
 
     bool     qed = 0;
@@ -120,12 +119,12 @@ void iselectAction(redisClient *c,
 }
 
 
-#define BUILD_RQ_OPERATION(Q)                                      \
-    if (Q) {                                                       \
-        addORowToRQList(ll, key, row, w->obc, key, tmatch, ctype); \
-    } else {                                                       \
-        robj *cln  = cloneRobj(key); /* clone orig is BtRobj */    \
-        listAddNodeTail(ll, cln);                                  \
+#define BUILD_RQ_OPERATION(Q)                                         \
+    if (Q) {                                                          \
+        addORowToRQList(ll, key, row, w->obc, key, w->tmatch, ctype); \
+    } else {                                                          \
+        robj *cln  = cloneRobj(key); /* clone orig is BtRobj */       \
+        listAddNodeTail(ll, cln);                                     \
     }
 
 
@@ -133,7 +132,7 @@ void iselectAction(redisClient *c,
     list *ll    = listCreate();                                               \
     uchar ctype = COL_TYPE_NONE;                                              \
     if (w->obc != -1) {                                                       \
-        ctype = Tbl[server.dbid][tmatch].col_type[w->obc];                    \
+        ctype = Tbl[server.dbid][w->tmatch].col_type[w->obc];                 \
     }                                                                         \
                                                                               \
     bool     cstar = 0;                                                       \
@@ -156,11 +155,10 @@ void iselectAction(redisClient *c,
     }
 
 void ideleteAction(redisClient *c,
-                   cswc_t      *w,
-                   int          tmatch) {
+                   cswc_t      *w) {
     BUILD_RANGE_QUERY_LIST
 
-    MATCH_INDICES(tmatch)
+    MATCH_INDICES(w->tmatch)
 
     int sent = 0;
     if (card) {
@@ -174,7 +172,7 @@ void ideleteAction(redisClient *c,
                     sent++;
                     obsl_t *ob = vector[k];
                     robj *nkey = ob->row;
-                    deleteRow(c, tmatch, nkey, matches, indices);
+                    deleteRow(c, w->tmatch, nkey, matches, indices);
                 }
             }
             sortedOrderByCleanup(vector, listLength(ll), ctype, 1);
@@ -184,7 +182,7 @@ void ideleteAction(redisClient *c,
             listIter  *li = listGetIterator(ll, AL_START_HEAD);
             while((ln = listNext(li)) != NULL) {
                 robj *nkey = ln->value;
-                deleteRow(c, tmatch, nkey, matches, indices);
+                deleteRow(c, w->tmatch, nkey, matches, indices);
                 decrRefCount(nkey); /* from cloneRobj in BUILD_RQ_OPERATION */
             }
             listReleaseIterator(li);
@@ -199,7 +197,6 @@ void ideleteAction(redisClient *c,
 
 void iupdateAction(redisClient *c,
                    cswc_t      *w,
-                   int          tmatch,
                    int          ncols,
                    int          matches,
                    int          indices[],
@@ -208,10 +205,10 @@ void iupdateAction(redisClient *c,
                    uchar        cmiss[]) {
     BUILD_RANGE_QUERY_LIST
 
-    bool pktype = Tbl[server.dbid][tmatch].col_type[0];
+    bool pktype = Tbl[server.dbid][w->tmatch].col_type[0];
     int  sent   = 0;
     if (card) {
-        robj *o = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
+        robj *o = lookupKeyRead(c->db, Tbl[server.dbid][w->tmatch].name);
         if (qed) {
             obsl_t **vector = sortOrderByToVector(ll, ctype, w->asc);
             for (int k = 0; k < (int)listLength(ll); k++) {
@@ -223,7 +220,7 @@ void iupdateAction(redisClient *c,
                     obsl_t *ob = vector[k];
                     robj *nkey = ob->row;
                     robj *row  = btFindVal(o, nkey, pktype);
-                    updateRow(c, o, nkey, row, tmatch, ncols,
+                    updateRow(c, o, nkey, row, w->tmatch, ncols,
                               matches, indices, vals, vlens, cmiss);
                 }
             }
@@ -235,7 +232,7 @@ void iupdateAction(redisClient *c,
             while((ln = listNext(li)) != NULL) {
                 robj *nkey = ln->value;
                 robj *row  = btFindVal(o, nkey, pktype);
-                updateRow(c, o, nkey, row, tmatch, ncols, matches, indices,
+                updateRow(c, o, nkey, row, w->tmatch, ncols, matches, indices,
                           vals, vlens, cmiss);
                 decrRefCount(nkey); /* from cloneRobj in BUILD_RQ_OPERATION */
             }

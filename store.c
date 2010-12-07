@@ -179,20 +179,19 @@ bool istoreAction(redisClient *c,
 }
 
 
-#define ISTORE_OPERATION(Q)                                          \
-    if (Q) {                                                         \
-        addORowToRQList(ll, NULL, row, w->obc, key, tmatch, ctype);  \
-    } else {                                                         \
-        if (!istoreAction(c, fc, tmatch, cmatchs, qcols, w->sto,     \
-                          key, row, nname, sub_pk, nargc)) {         \
-            err = 1;                                                 \
-            goto istore_end;                                         \
-        }                                                            \
+#define ISTORE_OPERATION(Q)                                            \
+    if (Q) {                                                           \
+        addORowToRQList(ll, NULL, row, w->obc, key, w->tmatch, ctype); \
+    } else {                                                           \
+        if (!istoreAction(c, fc, w->tmatch, cmatchs, qcols, w->sto,    \
+                          key, row, nname, sub_pk, nargc)) {           \
+            err = 1;                                                   \
+            goto istore_end;                                           \
+        }                                                              \
     }
 
 void istoreCommit(redisClient *c,
                   cswc_t      *w,
-                  int          tmatch,
                   int          cmatchs[MAX_COLUMN_PER_TABLE],
                   int          qcols) {
     char *nname;
@@ -207,7 +206,7 @@ void istoreCommit(redisClient *c,
     list *ll    = NULL;
     if (w->obc != -1) {
         ll    = listCreate();
-        ctype = Tbl[server.dbid][tmatch].col_type[w->obc];
+        ctype = Tbl[server.dbid][w->tmatch].col_type[w->obc];
     }
 
     robj        *argv[STORAGE_MAX_ARGC + 1];
@@ -237,7 +236,7 @@ void istoreCommit(redisClient *c,
 
     if (qed) {
         obsl_t **vector = sortOrderByToVector(ll, ctype, w->asc);
-        sent            = sortedOrderByIstore(c, w, fc, tmatch, cmatchs, qcols,
+        sent            = sortedOrderByIstore(c, w, fc, cmatchs, qcols,
                                               nname, sub_pk, nargc, ctype,
                                               vector, listLength(ll));
         if (sent == -1) err = 1;

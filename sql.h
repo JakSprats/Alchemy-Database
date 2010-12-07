@@ -62,12 +62,10 @@ bool parseCreateTable(redisClient *c,
 
 bool parseWCAddtlSQL(redisClient *c,
                      char        *token,
-                     cswc_t      *w,
-                     int          tmatch);
+                     cswc_t      *w);
 
 uchar checkSQLWhereClauseReply(redisClient *c,
                                cswc_t      *w,
-                               int          tmatch,
                                uchar        sop,
                                bool         is_scan);
 

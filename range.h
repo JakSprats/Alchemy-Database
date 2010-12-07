@@ -35,18 +35,15 @@ ALL RIGHTS RESERVED
 
 void iselectAction(redisClient *c,
                    cswc_t      *w,
-                   int          tmatch,
                    int          cmatchs[MAX_COLUMN_PER_TABLE],
                    int          qcols,
                    bool         cstar);
 
 void ideleteAction(redisClient *c,
-                   cswc_t      *w,
-                   int          tmatch);
+                   cswc_t      *w);
 
 void iupdateAction(redisClient *c,
                    cswc_t      *w,
-                   int          tmatch,
                    int          ncols,
                    int          matches,
                    int          indices[],
@@ -57,16 +54,16 @@ void iupdateAction(redisClient *c,
 
 #define RANGE_QUERY_LOOKUP_START                                              \
     btEntry *be, *nbe;                                                        \
-    robj *o       = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);      \
     robj *ind     = Index[server.dbid][w->imatch].obj;                        \
     bool  virt    = Index[server.dbid][w->imatch].virt;                       \
-    robj *btt     = virt ? o : lookupKey(c->db, ind);                         \
     int   ind_col = (int)Index[server.dbid][w->imatch].column;                \
-    bool  pktype  = Tbl[server.dbid][tmatch].col_type[0];                     \
+    bool  pktype  = Tbl[server.dbid][w->tmatch].col_type[0];                  \
     bool  q_pk    = (!w->asc || (w->obc != -1 && w->obc != 0));               \
     bool  brk_pk  = (w->asc && w->obc == 0);                                  \
     bool  q_fk    = (w->obc != -1 && w->obc != ind_col);                      \
     bool  brk_fk  = (w->asc && !q_fk);                                        \
+    robj *o       = lookupKeyRead(c->db, Tbl[server.dbid][w->tmatch].name);   \
+    robj *btt     = virt ? o : lookupKey(c->db, ind);                         \
     qed           = virt ? q_pk : q_fk;                                       \
     long  loops   = -1;                                                       \
     bi            = btGetRangeIterator(btt, w->low, w->high, virt);           \
@@ -113,10 +110,10 @@ void iupdateAction(redisClient *c,
 
 #define IN_QUERY_LOOKUP_START                                                 \
     listNode  *ln;                                                            \
-    bool  virt   = Index[server.dbid][w->imatch].virt;                        \
-    robj *o      = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);       \
-    bool  pktype = Tbl[server.dbid][tmatch].col_type[0];                      \
-    listIter         *li  = listGetIterator(w->inl, AL_START_HEAD);           \
+    bool      virt   = Index[server.dbid][w->imatch].virt;                    \
+    bool      pktype = Tbl[server.dbid][w->tmatch].col_type[0];               \
+    robj     *o      = lookupKeyRead(c->db, Tbl[server.dbid][w->tmatch].name);\
+    listIter *li     = listGetIterator(w->inl, AL_START_HEAD);                \
     if (virt) {                                                               \
         bool  brk_pk  = (w->asc && w->obc == 0);                              \
         bool  q_pk    = (!w->asc || (w->obc != -1 && w->obc != 0));           \
@@ -137,7 +134,7 @@ void iupdateAction(redisClient *c,
         robj *ind     = Index[server.dbid][w->imatch].obj;                    \
         robj *ibt     = lookupKey(c->db, ind);                                \
         int   ind_col = (int)Index[server.dbid][w->imatch].column;            \
-        bool  fktype  = Tbl[server.dbid][tmatch].col_type[ind_col];           \
+        bool  fktype  = Tbl[server.dbid][w->tmatch].col_type[ind_col];        \
         bool  brk_fk  = (w->asc  && w->obc != -1 && w->obc == ind_col);       \
         bool  q_fk    = (w->obc != -1);                                       \
         qed           = q_fk;                                                 \

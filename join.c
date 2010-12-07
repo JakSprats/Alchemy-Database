@@ -606,9 +606,9 @@ void joinStoreCommit(redisClient *c, jb_t *jb) {
                              &sub_pk, &nargc, &last, jb->qcols)) return;
     jb->nname = createStringObject(nname, nlen);
 
-    robj               *argv[STORAGE_MAX_ARGC + 1];
-    struct redisClient *fc = rsql_createFakeClient();
-    fc->argv               = argv;
+    robj        *argv[STORAGE_MAX_ARGC + 1];
+    redisClient *fc = rsql_createFakeClient();
+    fc->argv        = argv;
 
     joinGeneric(c, fc, jb, sub_pk, nargc);
 

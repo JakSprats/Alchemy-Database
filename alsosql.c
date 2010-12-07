@@ -605,7 +605,7 @@ static void selectSinglePKReply(redisClient  *c,
     decrRefCount(r);
 }
 
-void init_check_sql_where_clause(cswc_t *w, sds token) {
+void init_check_sql_where_clause(cswc_t *w, int tmatch, sds token) {
     w->key    = NULL;
     w->low    = NULL;
     w->high   = NULL;
@@ -613,6 +613,7 @@ void init_check_sql_where_clause(cswc_t *w, sds token) {
     w->stor   = NULL;
     w->lvr    = NULL;
     w->imatch = -1;
+    w->tmatch = tmatch;
     w->cmatch = -1;
     w->obc    = -1;
     w->obt    = -1;
@@ -676,8 +677,8 @@ void sqlSelectCommand(redisClient *c) {
 
     cswc_t w;
     uchar  sop   = SQL_SELECT;
-    init_check_sql_where_clause(&w, c->argv[5]->ptr);
-    uchar  wtype = checkSQLWhereClauseReply(c, &w, tmatch, sop, 0);
+    init_check_sql_where_clause(&w, tmatch, c->argv[5]->ptr);
+    uchar  wtype = checkSQLWhereClauseReply(c, &w, sop, 0);
     if (wtype == SQL_ERR_LOOKUP)         goto select_cmd_end;
     if (!leftoverParsingReply(c, w.lvr)) goto select_cmd_end;
 
@@ -696,16 +697,16 @@ void sqlSelectCommand(redisClient *c) {
                 "-ERR command not allowed when used memory > 'maxmemory'\r\n"));
             goto select_cmd_end;
         }
-        istoreCommit(c, &w, tmatch, cmatchs, qcols);
+        istoreCommit(c, &w, cmatchs, qcols);
     } else if (wtype == SQL_RANGE_QUERY || wtype == SQL_IN_LOOKUP) { /* RQ */
         if (w.imatch == -1) {
             addReply(c, shared.rangequery_index_not_found);
             goto select_cmd_end;
         }
-        iselectAction(c, &w, tmatch, cmatchs, qcols, cstar);
+        iselectAction(c, &w, cmatchs, qcols, cstar);
     } else {
-        robj *o = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
-        selectSinglePKReply(c, o, w.key, tmatch, cmatchs, qcols);
+        robj *o = lookupKeyRead(c->db, Tbl[server.dbid][w.tmatch].name);
+        selectSinglePKReply(c, o, w.key, w.tmatch, cmatchs, qcols);
     }
 
 select_cmd_end:
@@ -729,8 +730,8 @@ void deleteCommand(redisClient *c) {
 
     cswc_t w;
     uchar  sop   = SQL_DELETE;
-    init_check_sql_where_clause(&w, c->argv[4]->ptr);
-    uchar  wtype = checkSQLWhereClauseReply(c, &w, tmatch, sop, 0);
+    init_check_sql_where_clause(&w, tmatch, c->argv[4]->ptr);
+    uchar  wtype = checkSQLWhereClauseReply(c, &w, sop, 0);
     if (wtype == SQL_ERR_LOOKUP)         goto delete_cmd_end;
     if (!leftoverParsingReply(c, w.lvr)) goto delete_cmd_end;
 
@@ -741,10 +742,10 @@ void deleteCommand(redisClient *c) {
             addReply(c, shared.rangequery_index_not_found);
             goto delete_cmd_end;
         }
-        ideleteAction(c, &w, tmatch);
+        ideleteAction(c, &w);
     } else {
-        MATCH_INDICES(tmatch)
-        bool del = deleteRow(c, tmatch, w.key, matches, indices);
+        MATCH_INDICES(w.tmatch)
+        bool del = deleteRow(c, w.tmatch, w.key, matches, indices);
         addReply(c, del ? shared.cone :shared.czero);
     }
 
@@ -803,8 +804,8 @@ void updateCommand(redisClient *c) {
 
     cswc_t w;
     uchar  sop   = SQL_UPDATE;
-    init_check_sql_where_clause(&w, c->argv[5]->ptr);
-    uchar  wtype = checkSQLWhereClauseReply(c, &w, tmatch, sop, 0);
+    init_check_sql_where_clause(&w, tmatch, c->argv[5]->ptr);
+    uchar  wtype = checkSQLWhereClauseReply(c, &w, sop, 0);
     if (wtype == SQL_ERR_LOOKUP)         goto update_cmd_end;
     if (!leftoverParsingReply(c, w.lvr)) goto update_cmd_end;
 
@@ -819,11 +820,11 @@ void updateCommand(redisClient *c) {
             addReply(c, shared.rangequery_index_not_found);
             goto update_cmd_end;
         }
-        iupdateAction(c, &w, tmatch, ncols, matches, indices,
+        iupdateAction(c, &w, ncols, matches, indices,
                       vals, vlens, cmiss);
     } else {
-        uchar  pktype = Tbl[server.dbid][tmatch].col_type[0];
-        robj  *o      = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
+        uchar  pktype = Tbl[server.dbid][w.tmatch].col_type[0];
+        robj  *o      = lookupKeyRead(c->db, Tbl[server.dbid][w.tmatch].name);
         robj  *row    = btFindVal(o, w.key, pktype);
         if (!row) { /* no row to update */
             addReply(c, shared.czero);
@@ -840,7 +841,7 @@ void updateCommand(redisClient *c) {
             }
         }
 
-        if (!updateRow(c, o, w.key, row, tmatch, ncols, matches, indices, 
+        if (!updateRow(c, o, w.key, row, w.tmatch, ncols, matches, indices, 
                        vals, vlens, cmiss)) goto update_cmd_end;
 
         addReply(c, shared.cone);

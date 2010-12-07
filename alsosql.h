@@ -66,6 +66,7 @@ typedef struct check_sql_where_clause {
     char  *stor; 
     char  *lvr;  
     int    imatch;
+    int    tmatch;
     int    cmatch;
     int    obc;    /* ORDER BY col */
     int    obt;    /* ORDER BY tbl -> JOINS */
@@ -129,8 +130,10 @@ bool parseSelectReply(redisClient *c,
                       char        *tlist,
                       char        *where);
 
-void init_check_sql_where_clause(cswc_t *w, sds token);
+void init_check_sql_where_clause(cswc_t *w, int tmatch, sds token);
 void destroy_check_sql_where_clause(cswc_t *w);
+
+void singleFKHack(cswc_t *w, uchar *wtype);
 
 bool leftoverParsingReply(redisClient *c, char *x);
 

@@ -133,7 +133,7 @@ static void condSelectReply(redisClient   *c,
 */
 void tscanCommand(redisClient *c) {
     int  cmatchs[MAX_COLUMN_PER_TABLE];
-    bool no_wc;       /* NO WHERE CLAUSE */
+    bool no_wc  =  1; /* NO WHERE CLAUSE */
     bool cstar  =  0;
     int  qcols  =  0;
     int  tmatch = -1;
@@ -159,12 +159,12 @@ void tscanCommand(redisClient *c) {
     cswc_t w;
     bool   rq  = 0; /* come before first GOTO */
     uchar  sop = SQL_SCANSELECT;
-    init_check_sql_where_clause(&w, wc); /* all errors now GOTO tscan_cmd_err */
+    init_check_sql_where_clause(&w, tmatch, wc); /* errors GOTO tscan_cmd_err */
 
     if (no_wc && c->argc > 4) { /* ORDER BY or STORE w/o WHERE CLAUSE */
         if (!strncasecmp(where, "ORDER ", 6) ||
             !strncasecmp(where, "STORE ", 6)) {
-            if (!parseWCAddtlSQL(c, c->argv[4]->ptr, &w, tmatch) ||
+            if (!parseWCAddtlSQL(c, c->argv[4]->ptr, &w) ||
                 !leftoverParsingReply(c, w.lvr))            goto tscan_cmd_err;
             if (w.stor) { /* if STORE comes after ORDER BY */
                 addReply(c, shared.scan_store);
@@ -180,7 +180,7 @@ void tscanCommand(redisClient *c) {
     }
 
     if (!no_wc && w.obc == -1) {
-        uchar wtype  = checkSQLWhereClauseReply(c, &w, tmatch, sop, 1);
+        uchar wtype  = checkSQLWhereClauseReply(c, &w, sop, 1);
         if (wtype == SQL_ERR_LOOKUP)         goto tscan_cmd_err;
         if (!leftoverParsingReply(c, w.lvr)) goto tscan_cmd_err;
         if (w.imatch != -1) {/* disallow SCANSELECT on indexed columns */

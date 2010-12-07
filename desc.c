@@ -34,6 +34,7 @@ ALL RIGHTS RESERVED
 
 #include "bt.h"
 #include "bt_iterator.h"
+#include "index.h"
 #include "alsosql.h"
 #include "common.h"
 #include "desc.h"

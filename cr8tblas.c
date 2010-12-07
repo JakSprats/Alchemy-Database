@@ -305,10 +305,10 @@ static void createTableAsSelect(redisClient *c, char *as_cmd) {
     } else  {   /* CREATE TABLE AS SELECT RANGE QUERY */
         uchar  sop = SQL_SELECT;
         cswc_t w;
-        init_check_sql_where_clause(&w, rargv[5]->ptr);
-        checkSQLWhereClauseReply(rfc, &w, tmatch, sop, 0);
+        init_check_sql_where_clause(&w, tmatch, rargv[5]->ptr);
+        checkSQLWhereClauseReply(rfc, &w, sop, 0);
         if (replyIfNestedErr(c, rfc, msg)) {
-            ok = internalCreateTable(c, rfc, qcols, cmatchs, tmatch);
+            ok = internalCreateTable(c, rfc, qcols, cmatchs, w.tmatch);
         }
         destroy_check_sql_where_clause(&w);
     }
