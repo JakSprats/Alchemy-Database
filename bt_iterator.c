@@ -33,6 +33,7 @@ ALL RIGHTS RESERVED
 #include "redis.h"
 #include "bt.h"
 #include "bt_iterator.h"
+#include "parser.h"
 #include "common.h"
 
 /* GLOBALS */
@@ -41,15 +42,6 @@ ALL RIGHTS RESERVED
 
 /* Currently: BT_Iterators[2] would work UNTIL parallel joining is done, then MAX_NUM_INDICES is needed */
 static btSIter BT_Iterators[MAX_NUM_INDICES]; /* avoid malloc()s */
-
-/* copy of strdup - compiles w/o warnings */
-static inline char *_strdup(char *s) {
-    int len = strlen(s);
-    char *x = malloc(len + 1);
-    memcpy(x, s, len);
-    x[len]  = '\0';
-    return x;
-}
 
 bt_ll_n *get_new_iter_child(btIterator *iter) {
     assert(iter->num_nodes < MAX_BTREE_DEPTH);

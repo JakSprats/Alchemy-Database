@@ -476,14 +476,16 @@ static uchar parseWCTokenRelation(redisClient  *c,
         char *start  = eq + 1;
         while (isblank(*start)) start++; /* find start of value */
         if (!*start) goto sql_tok_rel_err;
-        *finish      = strchr(start, ' ');
-        int   len    = *finish ? *finish - start : (uint32)strlen(start);
+        char *tokfin = strchr(start, ' ');
+        int   len    = tokfin ? tokfin - start : (uint32)strlen(start);
         w->key       = createStringObject(start, len);
-        if (!w->cmatch || !*finish) { /* PK=X(single row) OR nutn 2 parse */
-            w->lvr = *finish;
+
+        if (tokfin) while (isblank(*tokfin)) tokfin++;
+        *finish = tokfin;
+        if (!w->cmatch || !tokfin) { /* PK=X(single row) OR nutn 2 parse */
+            w->lvr = tokfin;
             return wtype;
         }
-        while (isblank(**finish)) *finish = *finish + 1;
     } else { /* Range_Query  or IN_Query */
         char *nextp = strchr(token, ' ');
         if (!nextp) goto sql_tok_rel_err;
@@ -555,6 +557,8 @@ static bool joinParseWCReply(redisClient  *c, jb_t *jb) {
     char   *finish = jb->w.token;
     cswc_t *w      = &jb->w;
     int     ntoks  = 0;
+    sds     token  = NULL;
+    bool    ret    = 0;
 
     while (1) {
         //TODO needs to be str_case_unescaped_quotes_str(" AND ")
@@ -563,20 +567,19 @@ static bool joinParseWCReply(redisClient  *c, jb_t *jb) {
         char *btwn   = strcasestr(finish, " BETWEEN ");
         if (and && btwn && btwn < and) and = strcasestr(and + 5, " AND ");
         int   tlen   = and ? and - finish : (int)strlen(finish);
-        sds   token  = sdsnewlen(finish, tlen);
+        token        = sdsnewlen(finish, tlen);
         wtype        = parseWCTokenRelation(c, w, sop, token, &tokfin, 0, 1);
-        sdsfree(token);
-        if (wtype == SQL_ERR_LOOKUP) return 0;
+        if (wtype == SQL_ERR_LOOKUP) goto j_pcw_end;
 
-        if (!addInd2Join(c, w->imatch, &jb->n_ind, jb->j_indxs)) return 0;
+        if (!addInd2Join(c, w->imatch, &jb->n_ind, jb->j_indxs)) goto j_pcw_end;
 
         sds key = w->key ? w->key->ptr : NULL;
         if (key) { /* parsed key may be "tablename.columnname" i.e. join_indx */
             if (isalpha(*key) && strchr(key, '.')) {
                 if (!parseInumTblCol(c, &w->tmatch, key, sdslen(key),
-                                    &w->cmatch, &w->imatch, 0))  return 0;
+                                    &w->cmatch, &w->imatch, 0))  goto j_pcw_end;
                 if (!addInd2Join(c, w->imatch,
-                                 &jb->n_ind, jb->j_indxs))       return 0;
+                                 &jb->n_ind, jb->j_indxs))       goto j_pcw_end;
                 decrRefCount(w->key);
                 w->key = NULL;
            } else { /* or if it is a key, it currently needs to be a range */
@@ -594,13 +597,13 @@ static bool joinParseWCReply(redisClient  *c, jb_t *jb) {
             finish = tokfin;
             while (isblank(*finish)) finish++;
             if (!*finish) break;
-            if (!parseWCAddtlSQL(c, finish, w)) return 0;
+            if (!parseWCAddtlSQL(c, finish, w)) goto j_pcw_end;
             break;
         }
     }
     if (w->lvr) { /* leftover from parsing */
         while (isblank(*(w->lvr))) w->lvr++;
-        if (*(w->lvr)) return 0;
+        if (*(w->lvr)) goto j_pcw_end;
     }
 
     if (w->obc != -1 ) { /* ORDER BY -> Table must be in join */
@@ -613,26 +616,34 @@ static bool joinParseWCReply(redisClient  *c, jb_t *jb) {
         }
         if (!hit) {
             addReply(c, shared.join_table_not_in_query);
-            return 0;
+            goto j_pcw_end;
         }
     }
     if (jb->n_ind == 0) {
         addReply(c, shared.joinindexedcolumnlisterror);
-        return 0;
+        goto j_pcw_end;
     }
     if (jb->n_ind < 2) {
         addReply(c, shared.toofewindicesinjoin);
-        return 0;
+        goto j_pcw_end;
     }
     if (!w->low && !w->inl) {
         addReply(c, shared.join_requires_range);
-        return 0;
+        goto j_pcw_end;
     }
     if (jb->n_ind > ntoks) {
         addReply(c, shared.join_on_multi_col);
-        return 0;
+        goto j_pcw_end;
     }
-    return 1;
+
+    ret = 1;
+j_pcw_end:
+    //TODO w->stor and w->lvr are INVALID outside of this func
+    //     they ref "token" which gets freed below -> HACK
+    if (w->stor) w->stor = _strdup(w->stor);
+    if (w->lvr)  w->lvr  = _strdup(w->lvr);
+    if (token) sdsfree(token);
+    return ret;
 }
 
 void init_join_block(jb_t *jb, char *wc) {
@@ -673,20 +684,20 @@ bool parseJoinReply(redisClient *c,
 void joinReply(redisClient *c) {
     jb_t jb;
     init_join_block(&jb, c->argv[5]->ptr);
-    if (!parseJoinReply(c, &jb, c->argv[1]->ptr, c->argv[3]->ptr)) return;
+    if (!parseJoinReply(c, &jb, c->argv[1]->ptr, c->argv[3]->ptr)) goto j_end;
 
     if (jb.w.stor) {
         if (!jb.w.low && !jb.w.inl) {
             addReply(c, shared.selectsyntax_store_norange);
-            goto join_end;
+            goto j_end;
         } else if (jb.cstar) {
             addReply(c, shared.select_store_count);
-            goto join_end;
+            goto j_end;
         }
         if (server.maxmemory && zmalloc_used_memory() > server.maxmemory) {
             addReplySds(c, sdsnew(
                 "-ERR command not allowed when used memory > 'maxmemory'\r\n"));
-            goto join_end;
+            goto j_end;
         }
         joinStoreCommit(c, &jb);
     } else {
@@ -701,6 +712,8 @@ void joinReply(redisClient *c) {
         joinGeneric(c, NULL, &jb, 0, -1);
     }
 
-join_end:
+j_end:
+    if (jb.w.stor) free(jb.w.stor); /* HACK from joinParseWCReply */
+    if (jb.w.lvr)  free(jb.w.lvr);  /* HACK from joinParseWCReply */
     destroy_join_block(&jb);
 }

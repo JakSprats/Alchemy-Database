@@ -994,7 +994,7 @@ function basic_tests() {
 }
 
 function all_tests() {
-  $CLI flushdb
+  $CLI FLUSHALL
   works
   dropper
 

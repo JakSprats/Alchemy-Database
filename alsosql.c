@@ -877,7 +877,6 @@ unsigned long tableEmpty(redisDb *db, int tmatch) {
         //TODO shuffle indices to make space for deleted indices
     }
 
-
     deleteKey(db, Tbl[server.dbid][tmatch].name);
     for (int j = 0; j < Tbl[server.dbid][tmatch].col_count; j++) {
         decrRefCount(Tbl[server.dbid][tmatch].col_name[j]);

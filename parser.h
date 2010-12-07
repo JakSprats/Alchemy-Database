@@ -29,11 +29,12 @@ ALL RIGHTS RESERVED
 
 #include "common.h"
 
-char *_strnchr(char *s, int c, int len); /* HELPER */
+char *_strdup(char *s);
+char *_strnchr(char *s, int c, int len);
 robj *_createStringObject(char *s);
-robj *cloneRobj(robj *r);                /* HELPER */
+robj *cloneRobj(robj *r);
 robj **copyArgv(robj **argv, int argc);
-robj *convertRobj(robj *r, int type);    /* HELPER */
+robj *convertRobj(robj *r, int type);
 
 char *rem_backticks(char *token, int *len);
 char *str_next_unescaped_chr(char *beg, char *s, int x);

@@ -157,8 +157,8 @@ bool istoreAction(redisClient *c,
     }
 
     fc->argc     = qcols + 1;
+    fc->argv[0]  = _createStringObject(StorageCommands[sto].name);
     fc->argv[1]  = _createStringObject(nname); /*NEW Objects NAME*/
-    //argv[0] NOT NEEDED
     int    n     = 0;
     robj **argv  = fc->argv;
     if (sub_pk) { /* overwrite pk=nname:cols[0] */
@@ -263,6 +263,7 @@ istore_end:
 //TODO refactor against istoreAction()
 void prepare_jRowStore(jrow_reply_t *r) {
     robj **argv = r->fc->argv;
+    argv[0]     = _createStringObject(StorageCommands[r->sto].name);
     argv[1]     = cloneRobj(r->nname);
     int    n    = 1;
     r->fc->argc = 3;

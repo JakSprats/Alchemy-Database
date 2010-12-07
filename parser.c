@@ -34,7 +34,16 @@ ALL RIGHTS RESERVED
 
 #include "parser.h"
 
-char *_strnchr(char *s, int c, int len) {
+/* copy of strdup - compiles w/o warnings */
+inline char *_strdup(char *s) {
+    int len = strlen(s);
+    char *x = malloc(len + 1);
+    memcpy(x, s, len);
+    x[len]  = '\0';
+    return x;
+}
+
+inline char *_strnchr(char *s, int c, int len) {
     for (int i = 0; i < len; i++) {
         if (*s == c) return s;
         s++;
