@@ -258,6 +258,12 @@ btSIter *btGetFullRangeIterator(robj *o, bool asc, bool virt) {
     bool med; uchar sflag; unsigned int ksize;
     char *simkey = /* FREE me*/
                createSimKeyFromRaw(BtLow.ptr, btr->ktype, &med, &sflag, &ksize);
+    if (btr->ktype == COL_TYPE_STRING) {
+        sdsfree(BtHigh.ptr); /* free assignKeyRobj sflag[1,4] */
+        BtHigh.ptr = NULL;
+        sdsfree(BtLow.ptr); /* free assignKeyRobj sflag[1,4] */
+        BtLow.ptr  = NULL;
+    }
 
     if (!simkey) return NULL;
     if (!init_iterator(btr, simkey, &(iter->x))) {
@@ -271,6 +277,10 @@ btSIter *btGetFullRangeIterator(robj *o, bool asc, bool virt) {
 
 void btReleaseRangeIterator(btSIter *iter) {
     if (iter) {
+        if (iter->key.ptr && iter->ktype == COL_TYPE_STRING) {
+            sdsfree(iter->key.ptr); /* free previous assignKeyRobj sflag[1,4] */
+            iter->key.ptr = NULL;
+        }
         if (iter->x.highc) free(iter->x.highc);
         iter->x.highc = NULL;
     }

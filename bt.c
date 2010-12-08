@@ -85,9 +85,8 @@ static void emptyBtNode(bt *btr, bt_n *n, uchar vtype) {
             //RL4 "INDEX_NODE: %p n: %d", *nbtr, (*nbtr)->numkeys);
             emptyBtNode(*nbtr, (*nbtr)->root, BTREE_INDEX_NODE);
             bt_free_btree(*nbtr, btr); /* memory management in btr */
-        } else {
-            bt_free(be, btr, ssize);
         }
+        bt_free(be, btr, ssize);
     }
     if (!n->leaf) {
         for (int i = 0; i <= n->n; i++) {
