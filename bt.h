@@ -48,20 +48,20 @@ int btStreamCmp(void *a, void *b);
 #define BTREE_INDEX_NODE      2
 #define BTREE_JOIN_RESULT_SET 3
 
-void  btRelease(bt *node_btr, bt *btr);
+void  btRelease(bt *node_btr);
 int   btAdd(    robj *o,       void *key, void *val, int ctype);
 int   btReplace(robj *o,       void *key, void *val, int ctype);
 int   btDelete( robj *o, const void *key,            int ctype);
 robj *btFindVal(robj *o, const void *key,            int ctype);
 
 
-int   btIndAdd(    bt *btr, void *key,       void *val, int k_type);
+int   btIndAdd(    bt *btr, void *key,       bt  *nbtr, int k_type);
 robj *btIndFindVal(bt *btr, const void *key,            int k_type);
 int   btIndDelete( bt *btr, const void *key,            int k_type);
 
-robj *createIndexNode(uchar pktype);
-int   btIndNodeAdd(   bt *btr, void *key,        int k_type);
-int   btIndNodeDelete(bt *btr, const void *key, int k_type);
+bt   *createIndexNode(uchar pktype);
+int   btIndNodeAdd(   bt *btr, void *key,               int k_type);
+int   btIndNodeDelete(bt *btr, const void *key,         int k_type);
 
 char *createSimKey(       const robj   *key,
                           int           ktype,

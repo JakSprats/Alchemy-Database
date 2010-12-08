@@ -107,13 +107,13 @@ void iAdd(bt *ibtr, robj *i_key, robj *i_val, uchar pktype) {
     bt   *nbtr;
     robj *nbt = btIndFindVal(ibtr, i_key, ibtr->ktype);
     if (!nbt) {
-        nbt  = createIndexNode(pktype);
-        btIndAdd(ibtr, i_key, nbt, ibtr->ktype);
-        nbtr = (bt *)(nbt->ptr);
+        nbtr               = createIndexNode(pktype);
+        btIndAdd(ibtr, i_key, nbtr, ibtr->ktype);
         ibtr->malloc_size += nbtr->malloc_size; /* ibtr inherits nbtr */
     } else {
         nbtr = (bt *)(nbt->ptr);
     }
+    /* NOTE "nbt" is no longer valid, only "nbtr" */
     ull pre_size  = nbtr->malloc_size;
     btIndNodeAdd(nbtr, i_val, pktype);
     ull post_size = nbtr->malloc_size;
@@ -128,7 +128,7 @@ static void iRem(bt *ibtr, robj *i_key, robj *i_val, int pktype) {
     ull   post_size    = nbtr->malloc_size;
     ibtr->malloc_size += (post_size - pre_size); /* inherits nbtr */
     if (!n_size) {
-        btRelease(nbtr, NULL); /* first free indexNodeBT's contents */
+        btRelease(nbtr); /* first free indexNodeBT's contents */
         btIndDelete(ibtr, i_key, ibtr->ktype); /* destroys indexNodeBT */
     }
 }

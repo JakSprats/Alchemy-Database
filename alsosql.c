@@ -599,7 +599,7 @@ static void selectSinglePKReply(redisClient  *c,
         return;
     }
 
-    robj *lenobj = createStringObject("*1\r\n", 4);
+    robj *lenobj = createStringObject("*1\r\n", 4); //TODO shared.constant_strng
     addReply(c, lenobj);
     decrRefCount(lenobj);
     robj *r = outputRow(row, qcols, cmatchs, key, tmatch, 0);

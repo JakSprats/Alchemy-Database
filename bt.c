@@ -41,6 +41,8 @@ ALL RIGHTS RESERVED
 #define RL4 redisLog(4,
 extern char *COLON;
 
+/* PROTOTYPES */
+static uint32 skipToVal(uchar **stream);
 
 #define INIT_DATA_BTREE_BYTES        4096
 #define INIT_INDEX_BTREE_BYTES       1024
@@ -68,15 +70,24 @@ robj *createEmptyBtreeObject() {      /* Virtual indices */
     bt *btr = NULL;
     return createObject(REDIS_BTREE, btr);
 }
-robj *createIndexNode(uchar pktype) { /* Nodes of Indices */
-    return createBtreeObject(pktype, -1, BTREE_INDEX_NODE);
+bt *createIndexNode(uchar pktype) { /* Nodes of Indices */
+    return btCreate(pktype, -1, BTREE_INDEX_NODE);
 }
 
 static void emptyBtNode(bt *btr, bt_n *n, uchar vtype) {
     for (int i = 0; i < n->n; i++) {
         void *be    = KEYS(btr, n)[i];
         int   ssize = getStreamMallocSize(be, vtype, btr->is_index);
-        bt_free(be, btr, ssize);
+        if (btr->is_index == BTREE_INDEX) { /* BT of IndexNodeBTs */
+            uchar *stream = be;
+            skipToVal(&stream);
+            bt    **nbtr   = (bt **)stream;
+            //RL4 "INDEX_NODE: %p n: %d", *nbtr, (*nbtr)->numkeys);
+            emptyBtNode(*nbtr, (*nbtr)->root, BTREE_INDEX_NODE);
+            bt_free_btree(*nbtr, btr); /* memory management in btr */
+        } else {
+            bt_free(be, btr, ssize);
+        }
     }
     if (!n->leaf) {
         for (int i = 0; i <= n->n; i++) {
@@ -86,7 +97,7 @@ static void emptyBtNode(bt *btr, bt_n *n, uchar vtype) {
     bt_free_btreenode(n, btr); /* memory management in btr */
 }
 
-void btRelease(bt *nbtr, bt *btr) {
+void btRelease(bt *nbtr) {
     if (nbtr->root) {
         uchar vtype = (nbtr->is_index == BTREE_TABLE) ? REDIS_ROW : REDIS_BTREE;
         emptyBtNode(nbtr, nbtr->root, vtype);
@@ -94,7 +105,7 @@ void btRelease(bt *nbtr, bt *btr) {
     }
 }
 static void btDestroy(bt *nbtr, bt *btr) {
-    btRelease(nbtr, btr);
+    btRelease(nbtr);
     bt_free_btree(nbtr, btr); /* memory management in btr */
 }
 
@@ -490,9 +501,11 @@ int btDelete(robj *o, const void *key, int ktype) {
 
 // INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX
 // INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX
-int btIndAdd(bt *ibtr, void *key, void *val, int ktype) {
+robj BtIndVal;
+int btIndAdd(bt *ibtr, void *key, bt *nbtr, int ktype) {
+    BtIndVal.ptr = nbtr;
     if (_bt_find_val(ibtr, key, ktype, REDIS_BTREE, 1)) return DICT_ERR;
-    _bt_insert(ibtr, key, val, ktype, REDIS_BTREE);
+    _bt_insert(ibtr, key, &BtIndVal, ktype, REDIS_BTREE);
     return DICT_OK;
 }
 robj *btIndFindVal(bt *ibtr, const void *key, int ktype) {
