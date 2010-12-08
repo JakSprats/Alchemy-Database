@@ -1720,7 +1720,7 @@ static void createSharedObjects(void) {
     shared.missingcolumntype = createObject(REDIS_STRING,sdsnew(
         "-ERR LegacyTable: Column Type Missing\r\n"));
     shared.undefinedcolumntype = createObject(REDIS_STRING,sdsnew(
-        "-ERR Column Type Unknown AlchemyDatabase uses[INT,FLOAT,TEXT] and recognizes INT=[*INT],FLOAT=[FLOAT,REAL,DOUBLE],TEXT=[*CHAR,TEXT,BLOB,BINARY]\r\n"));
+        "-ERR Column Type Unknown AlchemyDatabase uses[INT,FLOAT,TEXT] and recognizes INT=[*INT,TIMESTAMP],FLOAT=[FLOAT,REAL,DOUBLE],TEXT=[*CHAR,TEXT,BLOB,BINARY,BYTE]\r\n"));
     shared.columnnametoobig = createObject(REDIS_STRING,sdsnew(
         "-ERR ColumnName too long MAX(64)\r\n"));
     shared.toomanycolumns = createObject(REDIS_STRING,sdsnew(
