@@ -74,7 +74,7 @@ static struct btreenode *allocbtreenode(bt *btr) {
     struct btreenode *btn  = malloc(size);
     bt_increment_used_memory(btr, size);
     bzero(btn, size);
-    btn->leaf = 1;
+    btn->leaf              = 1;
     return btn;
 }
 
@@ -136,8 +136,8 @@ struct btree *bt_create(bt_cmp_t cmp, int size) {
     int t   = (n + 1) / 2;
     assert(t >= 2);
     n       = 2 * t - 1;
-    textra += sizeof btr->root + n * (sizeof(struct btreenode *) +
-                                      sizeof(bt_data_t));
+    textra += sizeof (btr->root) +
+                           n * (sizeof(struct btreenode *) + sizeof(bt_data_t));
 
     btr                     = allocbtree();
     btr->cmp                = cmp;
@@ -202,13 +202,11 @@ static inline int _log2(unsigned int a, int nbits) {
 
     if (a > alloced) {
         table = realloc(table, (a + 1) * sizeof *table);
-        for (i = alloced; i < a + 1; i++)
-            table[i] = -1;
+        for (i = alloced; i < a + 1; i++) table[i] = -1;
         alloced = a + 1;
     }
 
-    if (table[a] == -1)
-        table[a] = real_log2(a, nbits);
+    if (table[a] == -1) table[a] = real_log2(a, nbits);
 
     return table[a];
 }
@@ -229,12 +227,11 @@ static int findkindex(struct btree      *btr,
     i = 0;
     a = x->n - 1;
     while (a > 0) {
-        b = _log2(a, (int)btr->nbits);
-        int slot = (1 << b) + i;
-
-        bt_data_t k2 =  KEYS(btr, x)[slot];
+        b            = _log2(a, (int)btr->nbits);
+        int slot     = (1 << b) + i;
+        bt_data_t k2 = KEYS(btr, x)[slot];
         if ((*rr = btr->cmp(k, k2)) < 0) {
-            a = (1 << b) - 1;
+            a  = (1 << b) - 1;
         } else {
             a -= (1 << b);
             i |= (1 << b);
@@ -255,8 +252,8 @@ static void btreesplitchild(struct btree     *btr,
                             struct btreenode *x,
                             int               i,
                             struct btreenode *y) {
-    struct btreenode *z;
     int j;
+    struct btreenode *z;
 
     btr->numnodes++;
     if ((z = allocbtreenode(btr)) == NULL) exit(1);
@@ -266,25 +263,30 @@ static void btreesplitchild(struct btree     *btr,
     z->n    = btr->t - 1;
 
     /* copy the last half of y into z */
-    for (j = 0; j < btr->t - 1; j++)
+    for (j = 0; j < btr->t - 1; j++) {
         KEYS(btr, z)[j] = KEYS(btr, y)[j + btr->t];
+    }
 
     /* if it's an internal node, copy the ptr's too */
-    if (!y->leaf)
-        for (j = 0; j < btr->t; j++)
+    if (!y->leaf) {
+        for (j = 0; j < btr->t; j++) {
             NODES(btr, z)[j] = NODES(btr, y)[j + btr->t];
+        }
+    }
 
     /* store resulting number of nodes in old part */
     y->n = btr->t - 1;
 
     /* move node ptrs in parent node down one, and store new node */
-    for (j = x->n; j > i; j--)
+    for (j = x->n; j > i; j--) { // TODO this can be a single memcpy()
         NODES(btr, x)[j + 1] = NODES(btr, x)[j];
+    }
     NODES(btr, x)[i + 1] = z;
 
     /* adjust the keys from previous move, and store new key */
-    for (j = x->n - 1; j >= i; j--)
+    for (j = x->n - 1; j >= i; j--) {
         KEYS(btr, x)[j + 1] = KEYS(btr, x)[j];
+    }
     KEYS(btr, x)[i] = KEYS(btr, y)[btr->t - 1];
     x->n++;
 }
@@ -297,9 +299,10 @@ static void btreeinsertnonfull(struct btree     *btr,
     if (x->leaf) {
         /* we are a leaf, just add it in */
         i = findkindex(btr, x, k, NULL, NULL);
-        if (i != x->n - 1)
+        if (i != x->n - 1) {
             memmove(KEYS(btr, x) + i + 2, KEYS(btr, x) + i + 1,
                     (x->n - i - 1) * sizeof k);
+        }
         KEYS(btr, x)[i + 1] = k;
         x->n++;
     } else {
@@ -347,16 +350,16 @@ static bt_data_t nodedeletekey(struct btree     *btr,
                                struct btreenode *x,
                                bt_data_t         k,
                                int               s) {
-    int i;
-    int r = -1;
     struct btreenode *xp, *y, *z;
-    bt_data_t kp;
-    int yn, zn;
+    bt_data_t         kp;
+    int               yn, zn;
+    int               i;
+    int               r = -1;
 
     if (x == NULL) return 0;
 
     if (s) {
-        if (!x->leaf)
+        if (!x->leaf) {
             switch (s) {
                 case 1:
                     r = 1;
@@ -365,8 +368,9 @@ static bt_data_t nodedeletekey(struct btree     *btr,
                     r = -1;
                     break;
             }
-        else
+        } else {
             r = 0;
+        }
         switch (s) {
             case 1:
                 i = x->n - 1;
@@ -391,7 +395,7 @@ static bt_data_t nodedeletekey(struct btree     *btr,
                 KEYS(btr, x) + i + 1,
                 (x->n - i - 1) * sizeof k);
         x->n--;
-        KEYS(btr, x)[x->n] = NULL; /* JakSprats added for iterator */
+        KEYS(btr, x)[x->n] = NULL; /* RUSS added for iterator */
         return kp;
     }
 
@@ -434,6 +438,7 @@ static bt_data_t nodedeletekey(struct btree     *btr,
              * keys. */
             /* RUSS fixed a bug here, the return ptr was wrong */
             if (!case_2c_ptr) case_2c_ptr = KEYS(btr, x)[i];
+
             y                    = NODES(btr, x)[i];
             z                    = NODES(btr, x)[i + 1];
             KEYS(btr, y)[y->n++] = k;
@@ -574,7 +579,6 @@ static bt_data_t findnodekey(struct btree     *btr,
     int i, r;
     while (x != NULL) {
         i = findkindex(btr, x, k, &r, NULL);
-
         if (i >= 0 && r == 0) return KEYS(btr, x)[i];
         if (x->leaf)          return NULL;
         x = NODES(btr, x)[i + 1];

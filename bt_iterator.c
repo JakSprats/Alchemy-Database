@@ -40,9 +40,6 @@ ALL RIGHTS RESERVED
 #define RL4 redisLog(4,
 #define RL7 if (iter->which == 0) redisLog(4,
 
-/* Currently: BT_Iterators[2] would work UNTIL parallel joining is done, then MAX_NUM_INDICES is needed */
-static btSIter BT_Iterators[MAX_NUM_INDICES]; /* avoid malloc()s */
-
 bt_ll_n *get_new_iter_child(btIterator *iter) {
     assert(iter->num_nodes < MAX_BTREE_DEPTH);
     bt_ll_n *nn = &(iter->nodes[iter->num_nodes]);
@@ -78,11 +75,11 @@ static void iter_to_parent(btIterator *iter) {
         return;
     }
     iter->depth--;
-    struct btree *btr  = iter->btr;
-    void *child        = KEYS(btr, iter->bln->self)[iter->bln->ik];
-    iter->bln          = iter->bln->parent;                        // -> parent
-    void *parent       = KEYS(btr, iter->bln->self)[iter->bln->ik];
-    int   x            = btr->cmp(child, parent);
+    struct btree *btr = iter->btr;
+    void *child       = KEYS(btr, iter->bln->self)[iter->bln->ik];
+    iter->bln         = iter->bln->parent;                        // -> parent
+    void *parent      = KEYS(btr, iter->bln->self)[iter->bln->ik];
+    int   x           = btr->cmp(child, parent);
     if (x > 0) {
         if (!advance_node(iter, 1)) {
             iter_to_parent(iter);                            // right-most-leaf
@@ -127,7 +124,7 @@ void *btNext(btIterator *iter) {
     return curr;
 }
 
-int init_iterator(bt *btr, bt_data_t simkey, struct btIterator *iter) {
+static int btIterInit(bt *btr, bt_data_t simkey, struct btIterator *iter) {
     int ret = bt_init_iterator(btr, simkey, iter);
     if (ret) { /* range queries, find nearest match */
         int x = btr->cmp(simkey, KEYS(btr, iter->bln->self)[iter->bln->ik]);
@@ -142,28 +139,35 @@ int init_iterator(bt *btr, bt_data_t simkey, struct btIterator *iter) {
     return 1;
 }
 
+/* Currently: BT_Iterators[2] would work UNTIL parallel joining is done, then MAX_NUM_INDICES is needed */
+static btSIter BT_Iterators[MAX_NUM_INDICES]; /* avoid malloc()s */
+
+static void init_iter(btIterator *iter, bt *btr) {
+    iter->btr         = btr;
+    iter->highc       = NULL;
+    iter->finished    = 0;
+    iter->num_nodes   = 0;
+    iter->bln         = &(iter->nodes[iter->num_nodes]);
+    iter->num_nodes++;
+    iter->bln->parent = NULL;
+    iter->bln->self   = btr->root;
+    iter->bln->child  = NULL;
+    iter->depth       = 0;
+}
+
 static btSIter *createIterator(bt *btr, bool virt, int which) {
     assert(which >= 0 || which < MAX_NUM_INDICES);
     btSIter *iter = &BT_Iterators[which];
 
-    iter->ktype            = (unsigned char)btr->ktype;
-    iter->vtype            = (unsigned char)(virt ? REDIS_ROW : REDIS_BTREE);
-    iter->which            = which;
-    iter->key.ptr          = NULL;
-    iter->be.key           = &(iter->key);
-    iter->val.ptr          = NULL;
-    iter->be.val           = &(iter->val);
+    iter->ktype   = (unsigned char)btr->ktype;
+    iter->vtype   = (unsigned char)(virt ? REDIS_ROW : REDIS_BTREE);
+    iter->which   = which;
+    iter->key.ptr = NULL;
+    iter->be.key  = &(iter->key);
+    iter->val.ptr = NULL;
+    iter->be.val  = &(iter->val);
 
-    iter->x.btr            = btr;
-    iter->x.highc          = NULL;
-    iter->x.finished       = 0;
-    iter->x.num_nodes      = 0;
-    iter->x.bln            = &(iter->x.nodes[iter->x.num_nodes]);
-    iter->x.num_nodes++;
-    iter->x.bln->parent    = NULL;
-    iter->x.bln->self      = btr->root;
-    iter->x.bln->child     = NULL;
-    iter->x.depth          = 0;
+    init_iter(&iter->x, btr);
     return iter;
 }
 
@@ -182,7 +186,7 @@ btSIter *btGetRangeIterator(robj *o, void *low, void *high, bool virt) {
     bool med; uchar sflag; unsigned int ksize;
     char *simkey = createSimKey(low, btr->ktype, &med, &sflag, &ksize); /*FREE*/
     if (!simkey) return NULL;
-    if (!init_iterator(btr, simkey, &(iter->x))) {
+    if (!btIterInit(btr, simkey, &(iter->x))) {
         btReleaseRangeIterator(iter);
         iter = NULL;
     }
@@ -266,7 +270,7 @@ btSIter *btGetFullRangeIterator(robj *o, bool asc, bool virt) {
     }
 
     if (!simkey) return NULL;
-    if (!init_iterator(btr, simkey, &(iter->x))) {
+    if (!btIterInit(btr, simkey, &(iter->x))) {
         btReleaseRangeIterator(iter);
         iter = NULL;
     }
@@ -292,31 +296,20 @@ static btIterator JoinIterator; /* avoid malloc()s */
 
 static btIterator *createJoinIterator(bt *btr) {
     btIterator *iter  = &JoinIterator;
-    iter->btr         = btr;
-    iter->highc       = NULL;
-    iter->finished    = 0;
-    iter->num_nodes   = 0;
-    iter->bln         = &(iter->nodes[iter->num_nodes]);
-    iter->num_nodes++;
-    iter->bln->parent = NULL;
-    iter->bln->self   = btr->root;
-    iter->bln->child  = NULL;
-    iter->depth       = 0;
+    init_iter(iter, btr);
     return iter;
 }
 
-btIterator *btGetJoinRangeIterator(bt           *btr,
-                                   joinRowEntry *low, 
-                                   joinRowEntry *high, 
-                                   int           ktype) {
+static btIterator *btGetJoinRangeIterator(bt           *btr,
+                                          joinRowEntry *low, 
+                                          joinRowEntry *high, 
+                                          int           ktype) {
     btIterator *iter = createJoinIterator(btr);
-    if (!init_iterator(btr, low, iter)) {
+    if (!btIterInit(btr, low, iter)) {
         btReleaseJoinRangeIterator(iter);
         return NULL;
     }
-
     robj *hkey = high->key;
-    //robj *lkey = low->key;
     if      (ktype == COL_TYPE_STRING) iter->highc = _strdup(hkey->ptr);
     else if (ktype == COL_TYPE_INT)    iter->high  = (int)(long)(hkey->ptr);
     else if (ktype == COL_TYPE_FLOAT)  iter->highf = atof(hkey->ptr);

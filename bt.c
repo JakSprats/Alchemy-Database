@@ -62,15 +62,15 @@ bt *btCreate(uchar ktype, int num, uchar is_index) {
     return btr;
 }
 
-robj *createBtreeObject(uchar ktype, int num, uchar is_index) {
+robj *createBtreeObject(uchar ktype, int num, uchar is_index) { /*Data & Index*/
     bt *btr = btCreate(ktype, num, is_index);
     return createObject(REDIS_BTREE, btr);
 }
-robj *createEmptyBtreeObject() {      /* Virtual indices */
+robj *createEmptyBtreeObject() {                           /* Virtual indices */
     bt *btr = NULL;
     return createObject(REDIS_BTREE, btr);
 }
-bt *createIndexNode(uchar pktype) { /* Nodes of Indices */
+bt *createIndexNode(uchar pktype) {                       /* Nodes of Indices */
     return btCreate(pktype, -1, BTREE_INDEX_NODE);
 }
 
@@ -78,13 +78,12 @@ static void emptyBtNode(bt *btr, bt_n *n, uchar vtype) {
     for (int i = 0; i < n->n; i++) {
         void *be    = KEYS(btr, n)[i];
         int   ssize = getStreamMallocSize(be, vtype, btr->is_index);
-        if (btr->is_index == BTREE_INDEX) { /* BT of IndexNodeBTs */
+        if (btr->is_index == BTREE_INDEX) { /* Index is BT of IndexNodeBTs */
             uchar *stream = be;
             skipToVal(&stream);
-            bt    **nbtr   = (bt **)stream;
-            //RL4 "INDEX_NODE: %p n: %d", *nbtr, (*nbtr)->numkeys);
+            bt    **nbtr  = (bt **)stream;
             emptyBtNode(*nbtr, (*nbtr)->root, BTREE_INDEX_NODE);
-            bt_free_btree(*nbtr, btr); /* memory management in btr */
+            bt_free_btree(*nbtr, btr); /* memory management in btr(Index) */
         }
         bt_free(be, btr, ssize);
     }
@@ -109,7 +108,7 @@ static void btDestroy(bt *nbtr, bt *btr) {
 }
 
 void freeBtreeObject(robj *o) {
-    bt *btr  = (bt *)(o->ptr);
+    bt *btr = (bt *)(o->ptr);
     if (!btr) return; /* virtual indices have a NULL here */
     btDestroy(btr, NULL);
 }
@@ -118,6 +117,7 @@ void freeBtreeObject(robj *o) {
 /* STREAM STREAM STREAM STREAM STREAM STREAM STREAM STREAM STREAM STREAM */
 
 /* TODO these flags should be #defines */
+//TODO this should be a one-liner, not a nested if-else
 static uchar getSflag(uchar b1) {
     if      (b1 & 1)  return 1;
     else if (b1 & 2)  return 2;
@@ -189,13 +189,13 @@ int btStreamCmp(void *a, void *b) {
         }
     } else if (sflag1 <= 16) {        // INT
         uint32 key1, key2;
-        if (sflag1 == 2)      key1  = get14BitInt(s1);
-        else if (sflag1 == 8) key1  = get28BitInt(s1);
-        else                  key1  = getInt(&s1);
+        if      (sflag1 == 2)   key1  = get14BitInt(s1);
+        else if (sflag1 == 8)   key1  = get28BitInt(s1);
+        else  /* sflag == 16 */ key1  = getInt(&s1); 
 
-        if (sflag2 == 2)      key2  = get14BitInt(s2);
-        else if (sflag2 == 8) key2  = get28BitInt(s2);
-        else                  key2  = getInt(&s2);
+        if      (sflag2 == 2)   key2  = get14BitInt(s2);
+        else if (sflag2 == 8)   key2  = get28BitInt(s2);
+        else  /* sflag == 16 */ key2  = getInt(&s2);
         return (key1 == key2) ? 0 : ((key1 > key2) ? 1 : -1);
     } else {                          // FLOAT
         float key1 = getFloat(s1);
@@ -206,7 +206,7 @@ int btStreamCmp(void *a, void *b) {
     return 0;
 }
 
-#define SIMKEY_BUFFER_SIZE 512
+#define SIMKEY_BUFFER_SIZE 2048
 static char SimKeyBuffer[SIMKEY_BUFFER_SIZE]; /*avoid malloc()s */
 
 void destroySimKey(char *simkey, bool med) {
@@ -219,36 +219,35 @@ char *createSimKeyFromRaw(void    *key_ptr,
                           uchar   *sflag,
                           uint32  *ksize) {
     assert(key_ptr || ktype != COL_TYPE_STRING); /* INT & FLOAT can be 0 */
-
     *med           = 0;
     char   *simkey = NULL; /* compiler warning */
-    uint32  data = 0;
+    uint32  data   = 0;
     if (ktype == COL_TYPE_STRING) {
         assert(sdslen(key_ptr) < TWO_POW_32);
         if (sdslen(key_ptr) < TWO_POW_7) { // tiny STRING
-            *sflag = 1;
-            *ksize = sdslen(key_ptr) + 1;
-            data   = sdslen(key_ptr) * 2 + 1;
-            if (1 + sdslen(key_ptr) >= SIMKEY_BUFFER_SIZE) {
-                simkey = malloc(1 + sdslen(key_ptr)); /* MUST be freed soon */
+            *sflag     = 1;
+            *ksize     = sdslen(key_ptr) + 1;
+            data       = sdslen(key_ptr) * 2 + 1;
+            if (sdslen(key_ptr) + 1 >= SIMKEY_BUFFER_SIZE) {
+                simkey = malloc(sdslen(key_ptr) + 1); /* MUST be freed soon */
                 *med   = 1;
             } else {
                 simkey = SimKeyBuffer;
             }
-            *simkey = (char)data;
+            *simkey    = (char)data;
             memcpy(simkey + 1, key_ptr, sdslen(key_ptr));
         } else {                           // STRING
             uint32 len = sdslen(key_ptr);
             *sflag     = 4;
             *ksize     = sdslen(key_ptr) + 5;
-            if (5 + sdslen(key_ptr) >= SIMKEY_BUFFER_SIZE) {
-                simkey = malloc(5 + sdslen(key_ptr)); /* MUST be freed soon */
+            if (sdslen(key_ptr) + 5 >= SIMKEY_BUFFER_SIZE) {
+                simkey = malloc(sdslen(key_ptr) + 5); /* MUST be freed soon */
                 *med   = 1;
             } else {
                 simkey = SimKeyBuffer;
             }
-            *simkey = 4;
-            data    = len;
+            *simkey    = 4;
+            data       = len;
             memcpy(simkey + 1, &data, 4);
             memcpy(simkey + 5, key_ptr, sdslen(key_ptr));
         }
@@ -262,19 +261,19 @@ char *createSimKeyFromRaw(void    *key_ptr,
         if (i < TWO_POW_14) {        // 14bit INT
             unsigned short m = (unsigned short)(i * 4 + 2);
             memcpy(simkey, &m, 2);
-            *sflag = 2;
-            *ksize = 2;
+            *sflag           = 2;
+            *ksize           = 2;
         } else if (i < TWO_POW_28) { // 28bit INT
-            data = (i * 16 + 8);
+            data             = (i * 16 + 8);
             memcpy(simkey, &data, 4);
-            *sflag = 8;
-            *ksize = 4;
+            *sflag           = 8;
+            *ksize           = 4;
         } else {                     // INT
-            *simkey = 16;
-            data    = i;
+            *simkey          = 16;
+            data             = i;
             memcpy(simkey + 1, &data, 4);
-            *sflag = 16;
-            *ksize = 5;
+            *sflag           = 16;
+            *ksize           = 5;
         }
     } else if (ktype == COL_TYPE_FLOAT) {
         *sflag  = 32;
@@ -292,8 +291,7 @@ char *createSimKey(const robj *key,
                    bool       *med,
                    uchar      *sflag,
                    uint32     *ksize) {
-    void *ptr     = NULL;
-    sds   tempkey = NULL;
+    void *ptr = NULL; /* compiler warning */
     if (ktype == COL_TYPE_INT) {
         if (key->encoding == REDIS_ENCODING_INT) ptr = (key->ptr);
         else                                     ptr = (void *)atol(key->ptr);
@@ -302,9 +300,7 @@ char *createSimKey(const robj *key,
     } else if (ktype == COL_TYPE_FLOAT) {
         ptr = key->ptr;
     }
-    char *x = createSimKeyFromRaw(ptr, ktype, med, sflag, ksize);
-    if (tempkey) sdsfree(tempkey);
-    return x;
+    return createSimKeyFromRaw(ptr, ktype, med, sflag, ksize);
 }
 
 void assignKeyRobj(uchar *stream, robj *key) {
@@ -332,8 +328,8 @@ void assignKeyRobj(uchar *stream, robj *key) {
         key->encoding = REDIS_ENCODING_INT;
         key->ptr      = (void*)((long)k);
     } else if (sflag == 32) { // FLOAT
-        double f      = getFloat(stream);
         char buf[32];
+        double f      = getFloat(stream);
         sprintfOutputFloat(buf, 32, f);
         key->encoding = REDIS_ENCODING_RAW;
         key->ptr      = sdsnewlen(buf, strlen(buf)); /* must be freed */
@@ -348,12 +344,12 @@ static uint32 skipToVal(uchar **stream) {
     uint32  slen  = 0;
     if (sflag == 1) {         // TINY STRING
         getTinyString(*stream, &slen);
-        klen = 1 + slen;
+        klen = slen + 1;
     } else if (sflag == 2) {  // 14bit INT
         klen = 2;
     } else if (sflag == 4) {  // STRING
         getString(*stream, &slen);
-        klen = 5 + slen;
+        klen = slen + 5;
     } else if (sflag == 8) {  // 28bit INT
         klen = 4;
     } else if (sflag == 16) { // INT
@@ -371,11 +367,13 @@ void assignValRobj(uchar *stream, int vtype, robj *val, uchar is_index) {
 
     if (vtype == REDIS_ROW) {
         val->ptr     = stream;
-    } else if (is_index == BTREE_INDEX_NODE) {
-        val->ptr     = NULL;
-    } else { // only BTREE_INDEX
-        char **p_ptr = (char **)stream;
-        val->ptr     = *p_ptr;
+    } else { /* REDIS_BTREE */
+        if (is_index == BTREE_INDEX_NODE) {
+            val->ptr     = NULL;
+        } else { /* INDEX */
+            char **p_ptr = (char **)stream;
+            val->ptr     = *p_ptr;
+        }
     }
 }
 
@@ -387,10 +385,10 @@ uint32 getStreamMallocSize(uchar *stream,
 
     if (vtype == REDIS_ROW) {
         vlen = getRowMallocSize(stream);
-    } else { // only REDIS_BTREE (for now)
+    } else { /* REDIS_BTREE */
         if (is_index == BTREE_INDEX_NODE) {
             vlen = 0;
-        } else {
+        } else { /* INDEX */
             char **p_ptr = (char **)stream;
             bt    *btr   = (bt *)*p_ptr;
             vlen = sizeof(void *);
@@ -419,9 +417,8 @@ static robj* _bt_find_val(bt         *btr,
                           int         ktype,
                           int         vtype,
                           int         nesting) {
-    uchar *stream = _bt_access_raw_val(btr, key, ktype, 0);
+    uchar *stream            = _bt_access_raw_val(btr, key, ktype, 0);
     if (!stream) return NULL;
-
     BtRobj[nesting].type     = ktype;
     BtRobj[nesting].encoding = REDIS_ENCODING_RAW;
     BtRobj[nesting].refcount = 1;
@@ -435,7 +432,7 @@ static int _bt_del(bt *btr, const robj *key, int ktype, int vtype) {
 
     uint32 ssize  = getStreamMallocSize(stream, vtype, btr->is_index);
     //RL4 "vtype: %d free: %p size: %u", vtype, stream, ssize);
-    bt_free(stream, btr, ssize);
+    bt_free(stream, btr, ssize); /* memory bookkeeping in btr */
     return 1;
 }
 
@@ -450,7 +447,7 @@ static uint32 _bt_insert(bt *btr, robj *key, robj *val, int ktype, int vtype) {
     else if (val_ptr)       vlen = sizeof(void *);
     ssize += vlen;
 
-    char *bt_val   = bt_malloc(ssize, btr); // mem bookkeeping done in BT
+    char *bt_val   = bt_malloc(ssize, btr); /* mem bookkeeping done in BT */
     char *o_bt_val = bt_val;
 
     memcpy(bt_val, simkey, ksize);
@@ -466,8 +463,8 @@ static uint32 _bt_insert(bt *btr, robj *key, robj *val, int ktype, int vtype) {
     return ssize;
 }
 
-// API API API  API API API  API API API  API API API  API API API  API API API 
-// API API API  API API API  API API API  API API API  API API API  API API API 
+/* API API API  API API API  API API API  API API API  API API API  */
+/* API API API  API API API  API API API  API API API  API API API  */
 int btAdd(robj *o, void *key, void *val, int ktype) {
     bt   *btr = (bt *)(o->ptr);
     robj *v   = _bt_find_val(btr, key, ktype, REDIS_ROW, 0);
@@ -475,7 +472,7 @@ int btAdd(robj *o, void *key, void *val, int ktype) {
     else   return _bt_insert(btr, key, val, ktype, REDIS_ROW);
 }
 
-//TODO need a _bt_replace, no need to mess w/ the btree for a replace
+//TODO need a native BT bt_replace, no need to mess w/ the btree for a replace
 //                         just replace pointer
 int btReplace(robj *o, void *key, void *val, int ktype) {
     bt  *btr = (bt *)(o->ptr);
@@ -498,8 +495,8 @@ int btDelete(robj *o, const void *key, int ktype) {
     else      return DICT_OK;
 }
 
-// INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX
-// INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX
+/* INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX */
+/* INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX */
 robj BtIndVal;
 int btIndAdd(bt *ibtr, void *key, bt *nbtr, int ktype) {
     BtIndVal.ptr = nbtr;
@@ -515,8 +512,8 @@ int btIndDelete(bt *ibtr, const void *key, int ktype) {
     return ibtr->numkeys;
 }
 
-// INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE
-// INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE
+/* INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE */
+/* INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE */
 int btIndNodeAdd(bt *nbtr, void *key, int ktype) {
     if (_bt_find_val(nbtr, key, ktype, REDIS_BTREE, 1)) return DICT_ERR;
     _bt_insert(nbtr, key, NULL, ktype, REDIS_BTREE);
@@ -528,8 +525,8 @@ int btIndNodeDelete(bt *nbtr, const void *key, int ktype) {
     return nbtr->numkeys;
 }
 
-// JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT
-// JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT
+/* JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT */
+/* JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT */
 #define INIT_JOIN_BTREE_BYTES 1024
 void btReleaseJoinRangeIterator(btIterator *iter);
 
@@ -567,7 +564,7 @@ static int floatJoinRowCmp(void *a, void *b) {
 
 bt *createJoinResultSet(uchar pkt) {
     bt *btr = NULL; /* compiler warning */
-    if (pkt == COL_TYPE_INT) {
+    if (       pkt == COL_TYPE_INT) {
         btr = bt_create(intJoinRowCmp,   INIT_JOIN_BTREE_BYTES);
     } else if (pkt == COL_TYPE_STRING) {
         btr = bt_create(strJoinRowCmp,   INIT_JOIN_BTREE_BYTES);
