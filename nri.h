@@ -35,17 +35,6 @@ ALL RIGHTS RESERVED
 
 void freeNrlIndexObject(robj *o);
 
-void runCmdInFakeClient(sds s);
-
-sds genNRL_Cmd(d_l_t  *nrlind,
-               robj   *pko,
-               char   *vals,
-               uint32  cofsts[],
-               bool    from_insert,
-               robj   *row,
-               int     tmatch);
-
-
 void nrlIndexAdd(robj *o, robj *pko, char *vals, uint32 cofsts[]);
 
 bool parseNRLcmd(char *o_s, list *nrltoks, list *nrlcols, int tmatch);

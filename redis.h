@@ -338,6 +338,7 @@ struct redisServer {
 #ifdef ALSOSQL
     unsigned int  dbid;
     char         *luafilename;
+    redisClient  *currClient;
 #endif   
     int port;
     int fd;

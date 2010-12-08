@@ -2729,6 +2729,9 @@ static void resetClient(redisClient *c) {
 void call(redisClient *c, struct redisCommand *cmd) {
     long long dirty;
 
+#ifdef ALSOSQL
+    server.currClient = c;
+#endif
     dirty = server.dirty;
     cmd->proc(c);
     dirty = server.dirty-dirty;

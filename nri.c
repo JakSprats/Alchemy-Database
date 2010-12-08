@@ -29,8 +29,9 @@ ALL RIGHTS RESERVED
 #include <strings.h>
 #include <unistd.h>
 
-#include "adlist.h"
 #include "redis.h"
+#include "adlist.h"
+#include "zmalloc.h"
 
 #include "bt.h"
 #include "row.h"
@@ -42,18 +43,17 @@ ALL RIGHTS RESERVED
 #define RL4 redisLog(4,
 extern struct redisServer server;
 
-extern r_tbl_t  Tbl[MAX_NUM_DB][MAX_NUM_TABLES];
+extern r_tbl_t Tbl  [MAX_NUM_DB][MAX_NUM_TABLES];
+extern r_ind_t Index[MAX_NUM_DB][MAX_NUM_INDICES];
 
-// GLOBALS
-r_ind_t Index   [MAX_NUM_DB][MAX_NUM_INDICES];
-
-sds genNRL_Cmd(d_l_t  *nrlind,
-               robj   *pko,
-               char   *vals,
-               uint32  cofsts[],
-               bool    from_insert,
-               robj   *row,
-               int     tmatch) {
+/* creates text for trigger's command */
+static sds genNRL_Cmd(d_l_t  *nrlind,
+                      robj   *pko,
+                      char   *vals,
+                      uint32  cofsts[],
+                      bool    from_insert,
+                      robj   *row,
+                      int     tmatch) {
     sds       cmd     = sdsempty();
     list     *nrltoks = nrlind->l1;
     list     *nrlcols = nrlind->l2;
@@ -65,104 +65,90 @@ sds genNRL_Cmd(d_l_t  *nrlind,
         if (ln1) {
             sds token = ln1->value;
             cmd       = sdscatlen(cmd, token, sdslen(token));
+            ln1       = listNext(li1);
         }
         int cmatch = -1;
         if (ln2) {
-            cmatch = (int)(long)ln2->value;
-            cmatch--; /* because (0 != NULL) */
+            cmatch = ((int)(long)ln2->value) - 1; /* because (0 != NULL) */
+            ln2    = listNext(li2);
         }
         if (cmatch != -1) {
             char *x;
             int   xlen;
             robj *col = NULL;
             if (from_insert) {
-                if (!cmatch) {
+                if (!cmatch) { /* PK not in ROW */
                     x    = pko->ptr;
                     xlen = sdslen(x);
-                } else {
+                } else {       /* get COL from cofsts */
                     x    = vals + cofsts[cmatch - 1];
                     xlen = cofsts[cmatch] - cofsts[cmatch - 1] - 1;
                 }
-            } else {
-                col = createColObjFromRow(row, cmatch, pko, tmatch);
+            } else { /* not from INSERT -> fetch row */
+                col  = createColObjFromRow(row, cmatch, pko, tmatch);
                 x    = col->ptr;
                 xlen = sdslen(col->ptr);
             }
             cmd = sdscatlen(cmd, x, xlen);
             if (col) decrRefCount(col);
         }
-        ln1 = listNext(li1);
-        ln2 = listNext(li2);
     }
     listReleaseIterator(li1);
     listReleaseIterator(li2);
     return cmd;
 }
 
-void runCmdInFakeClient(sds s) {
+//TODO: "SELECT" needs special handling
+static void runCmdInFakeClient(sds s) {
     //RL4 "runCmdInFakeClient: %s", s);
     char *end = strchr(s, ' ');
     if (!end) return;
 
-    sds   *argv    = NULL; /* must come before first GOTO */
-    int    a_arity = 0;
-    sds cmd_name   = sdsnewlen(s, end - s);
-    end++;
-    struct redisCommand *cmd = lookupCommand(cmd_name);
-    if (!cmd) goto run_cmd_err;
-    int arity = abs(cmd->arity);
-
-    char *args = NULL;
-    if (arity > 2) {
-        args = strchr(end, ' ');
-        if (!args) goto run_cmd_err;
-        args++;
-    }
-
-    argv                = malloc(sizeof(sds) * arity);
-    argv[0]             = cmd_name;
-    a_arity++;
-    argv[1]             = args ? sdsnewlen(end, args - end - 1) :
-                                 sdsnewlen(end, strlen(end)) ;
-    a_arity++;
-    if (arity == 3) {
-        argv[2]         = sdsnewlen(args, strlen(args));
-        a_arity++;
-    } else if (arity > 3) {
-        char *dlm       = strchr(args, ' ' );;
-        if (!dlm) goto run_cmd_err;
-        dlm++;
-        argv[2]         = sdsnewlen(args, dlm - args - 1);
-        a_arity++;
-        if (arity == 4) {
-            argv[3]     = sdsnewlen(dlm, strlen(dlm));
-            a_arity++;
-        } else { /* INSERT */
-            char *vlist = strchr(dlm, ' ' );;
-            if (!vlist) goto run_cmd_err;
-            vlist++;
-            argv[3]     = sdsnewlen(dlm, vlist - dlm - 1);
-            a_arity++;
-            argv[4]     = sdsnewlen(vlist, strlen(vlist));
-            a_arity++;
+    int           argc;
+    sds          *argv = sdssplitlen(s, sdslen(s), " ", 1, &argc);
+    if (!argv || argc < 1) goto run_cmd_end;
+    redisCommand *cmd  = lookupCommand(argv[0]);
+    if (!cmd)              goto run_cmd_end;
+    if ((cmd->arity > 0 && cmd->arity > argc) || (argc < -cmd->arity))
+                           goto run_cmd_end;
+    int    arity;
+    robj **rargv;
+    if (cmd->arity > 0 || cmd->proc == insertCommand    ||
+                          cmd->proc == sqlSelectCommand ||
+                          cmd->proc == tscanCommand) {
+        arity = abs(cmd->arity);
+        rargv = zmalloc(sizeof(robj *) * arity);
+        for (int j = 0; j < arity - 1; j++) {
+            rargv[j] = createStringObject(argv[j], sdslen(argv[j]));
         }
-    }
-
-    robj **rargv = malloc(sizeof(robj *) * arity);
-    for (int j = 0; j < arity; j++) {
-        rargv[j] = createObject(REDIS_STRING, argv[j]);
+        sds lastarg = sdsempty();
+        for (int j = arity - 1; j < argc; j++) {
+            if (j != (arity - 1)) lastarg = sdscatlen(lastarg, " ", 1);
+            lastarg = sdscatlen(lastarg, argv[j], sdslen(argv[j]));
+        }
+        rargv[arity - 1] = createStringObject(lastarg, sdslen(lastarg));
+    } else {
+        rargv = zmalloc(sizeof(robj *) * argc);
+        for (int j = 0; j < argc; j++) {
+            rargv[j] = createStringObject(argv[j], sdslen(argv[j]));
+        }
+        arity = argc;
     }
     redisClient *fc = rsql_createFakeClient();
     fc->argv        = rargv;
     fc->argc        = arity;
     rsql_resetFakeClient(fc);
     call(fc, cmd);
+    //TODO do something w/ return args
     rsql_freeFakeClient(fc);
-    free(rargv);
+    for (int j = 0; j < arity; j++) decrRefCount(rargv[j]);
+    zfree(rargv);
 
-run_cmd_err:
-    if (!a_arity) sdsfree(cmd_name);
-    if (argv)     free(argv);
+run_cmd_end:
+    if (argv) {
+        for (int j = 0; j < argc; j++) sdsfree(argv[j]);
+        zfree(argv);
+    }
 }
 
 void nrlIndexAdd(robj *o, robj *pko, char *vals, uint32 cofsts[]) {
@@ -172,7 +158,6 @@ void nrlIndexAdd(robj *o, robj *pko, char *vals, uint32 cofsts[]) {
     return;
 }
 
-
 void runNrlIndexFromStream(uchar *stream, d_l_t *nrlind, int itbl) {
     robj  key, val;
     assignKeyRobj(stream,            &key);
@@ -181,6 +166,7 @@ void runNrlIndexFromStream(uchar *stream, d_l_t *nrlind, int itbl) {
     sds cmd = genNRL_Cmd(nrlind, &key, NULL, NULL, 0, &val, itbl);
     runCmdInFakeClient(cmd);
     sdsfree(cmd);
+    //TODO this should be destroyKeyRobj()
     if (key.encoding == REDIS_ENCODING_RAW) {
         sdsfree(key.ptr); /* free from assignKeyRobj sflag[1,4] */
     }
@@ -197,12 +183,11 @@ bool parseNRLcmd(char *o_s, list *nrltoks, list *nrlcols, int tmatch) {
             s++; /* advance past "$" */
             char *nxo  = s;
             while (isalnum(*nxo) || *nxo == '_') nxo++; /* col must be alpnum */
-            char *nexts  = strchr(s, '$');              /* var is '$' delimed */
             int   cmatch = find_column_n(tmatch, s, nxo - s);
             if (cmatch == -1) return 0;
             listAddNodeTail(nrlcols, (void *)(long)(cmatch + 1)); /* 0!=NULL */
-
             listAddNodeTail(nrltoks, sdsnewlen(o_s, (s - 1) - o_s)); /*no "$"*/
+            char *nexts  = strchr(s, '$');              /* var is '$' delimed */
             if (!nexts) { /* no more vars */
                 if (*nxo) listAddNodeTail(nrltoks, sdsnewlen(nxo, strlen(nxo)));
                 break;
@@ -214,7 +199,7 @@ bool parseNRLcmd(char *o_s, list *nrltoks, list *nrlcols, int tmatch) {
     return 1;
 }
 
-/* for REWRITEAOF */
+/* for REWRITEAOF and DESC */
 sds rebuildOrigNRLcmd(robj *o) {
     d_l_t    *nrlind  = o->ptr;
     int       tmatch  = Index[server.dbid][nrlind->num].table;

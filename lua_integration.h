@@ -29,6 +29,7 @@ ALL RIGHTS RESERVED
 #include "redis.h"
 
 void luaCommand(redisClient *c);
+
 int redisLua(lua_State *L);
 
 #endif /* __LUA_INTEGRATION__H */ 

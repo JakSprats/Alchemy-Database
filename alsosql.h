@@ -165,6 +165,7 @@ void createTableCommitReply(redisClient *c,
                             int          ccount,
                             char        *tname,
                             int          tlen);
+void createCommand(redisClient *c);
 
 void insertCommitReply(redisClient *c, 
                        char        *vals,
@@ -174,6 +175,17 @@ void insertCommitReply(redisClient *c,
                        int          indices[],
                        bool         ret_size);
 
+void insertCommand(redisClient *c);
+void sqlSelectCommand(redisClient *c);
+void updateCommand(redisClient *c);
+void deleteCommand(redisClient *c);
+void dumpCommand(redisClient *c);
+
 unsigned long emptyTable(redisDb *db, int tmatch);
+
+/* FILLERS FILLERS FILLERS FILLERS FILLERS FILLERS FILLERS */
+void tscanCommand(redisClient *c);  /* scan.h does not exist */
+void normCommand(redisClient *c);   /* norm.h does not exist */
+void denormCommand(redisClient *c); /* denorm.h does not exist */
 
 #endif /*__ALSOSQL__H */ 
