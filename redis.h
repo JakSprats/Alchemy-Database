@@ -324,7 +324,7 @@ struct sharedObjectsStruct {
     *create_table_as_num_args,           *create_table_as_count,
     *create_table_as_cmd_num_args,
 
-    *denorm_wildcard_no_star,
+    *dump_syntax, *denorm_wildcard_no_star,
 #endif /* ALSOSQL END */
     *outofrangeerr, *plus,
     *select0, *select1, *select2, *select3, *select4,

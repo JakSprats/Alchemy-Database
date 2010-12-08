@@ -122,6 +122,13 @@ int find_column_n(int tmatch, char *column, int len) {
     return -1;
 }
 
+int get_all_cols(int tmatch, int cmatchs[]) {
+    for (int i = 0; i < Tbl[server.dbid][tmatch].col_count; i++) {
+        cmatchs[i] = i;
+    }
+    return Tbl[server.dbid][tmatch].col_count;
+}
+
 /* PARSE PARSE PARSE PARSE PARSE PARSE PARSE PARSE PARSE PARSE PARSE */
 /* PARSE PARSE PARSE PARSE PARSE PARSE PARSE PARSE PARSE PARSE PARSE */
 static char *parseRowVals(char    *vals,
@@ -163,10 +170,7 @@ static bool parseSelectCol(int   tmatch,
                            int  *qcols,
                            bool *cstar) {
     if (*cname == '*') {
-        for (int i = 0; i < Tbl[server.dbid][tmatch].col_count; i++) {
-            cmatchs[i] = i;
-        }
-        *qcols = Tbl[server.dbid][tmatch].col_count;
+        *qcols = get_all_cols(tmatch, cmatchs);
         return 1;
     }
     if (!strcasecmp(cname, "COUNT(*)")) {

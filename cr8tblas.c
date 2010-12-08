@@ -406,17 +406,12 @@ void createTableAsObject(redisClient *c) {
         }
         TABLE_CHECK_OR_REPLY(dumpee,)
 
-        bool bdum;
-        int  cmatchs[MAX_COLUMN_PER_TABLE];
-        int  qcols  = 0;
-        // TODO function to fill up cmatchs[] w/ all of tmatch's cols
-        parseCommaSpaceListReply(NULL, "*", 1, 0, 0, tmatch, cmatchs,
-                                 0, NULL, NULL, NULL, &qcols, &bdum);
-
-        robj               *argv[3];
-        redisClient *cfc = rsql_createFakeClient();
-        cfc->argv        = argv;
-        cfc->argv[1]     = c->argv[2]; /* new tablename */
+        robj        *argv[3];
+        int          cmatchs[MAX_COLUMN_PER_TABLE];
+        int          qcols = get_all_cols(tmatch, cmatchs);
+        redisClient *cfc   = rsql_createFakeClient();
+        cfc->argv          = argv;
+        cfc->argv[1]       = c->argv[2]; /* new tablename */
 
         bool ok = internalCreateTable(c, cfc, qcols, cmatchs, tmatch);
         if (!replyIfNestedErr(c, cfc, INTERNAL_CREATE_TABLE_ERR_MSG)) ok = 0;

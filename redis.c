@@ -1798,7 +1798,7 @@ static void createSharedObjects(void) {
         "-ERR SELECT: JOIN: ORDER BY tablename.columname - table not in SELECT *\r\n"));
 
     shared.accesstypeunknown = createObject(REDIS_STRING,sdsnew(
-        "-ERR STORE: AccessType must be read commands (SELECT,LRANGE,ZRANGE,ZRANGEBYSCORE,ZREVRANGE,HMGET,HKEYS,HVALS,HGETALL,SUNION,SDIFF,SINTER,SMEMBERS,SORT)\r\n"));
+        "-ERR STORE: AccessType must be read commands (SELECT,GET,LRANGE,ZRANGE,ZRANGEBYSCORE,ZREVRANGE,HMGET,HKEYS,HVALS,HGETALL,SUNION,SDIFF,SINTER,SMEMBERS,SORT)\r\n"));
     shared.accessnumargsmismatch = createObject(REDIS_STRING,sdsnew(
         "-ERR WHERE col IN(redis_cmd): Argc to redis_cmd is wrong\r\n"));
     shared.storagetypeunkown = createObject(REDIS_STRING,sdsnew(
@@ -1908,6 +1908,8 @@ static void createSharedObjects(void) {
     shared.create_table_as_cmd_num_args = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: CREATE TABLE tablename AS [LRANGE,ZRANGE,ZRANGEBYSCORE,ZREVRANGE,HMGET,HKEYS,HVALS,HGETALL,SUNION,SDIFF,SINTER,SMEMBERS,SORT] - too few arguments to inner function\r\n"));
 
+    shared.dump_syntax = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: DUMP tablename [TO MYSQL]\r\n"));
     shared.denorm_wildcard_no_star = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: NORM tablename wildcard - wildcard must have '*'\r\n"));
 #endif /* ALSOSQL END */
@@ -2217,6 +2219,10 @@ static void initServer() {
     AccessCommands[13].func  = sinterCommand;
     AccessCommands[13].name  = "SMEMBERS";
     AccessCommands[13].argc  = 2;
+
+    AccessCommands[14].func  = getCommand;
+    AccessCommands[14].name  = "GET";
+    AccessCommands[14].argc  = 2;
 
     init_six_bit_strings();
 
@@ -9222,12 +9228,8 @@ static bool appendOnlyDumpTable(FILE *fp, robj *o, bt *btr, int tmatch) {
     /* Dump Table DATA */
     if (btr->numkeys) {
         char cmd2[] = "*3\r\n$12\r\nLEGACYINSERT\r\n";
-        bool bdum;
         int  cmatchs[MAX_COLUMN_PER_TABLE];
-        int  qcols  = 0;
-        // TODO function to fill up cmatchs[] w/ all of tmatch's cols
-        parseCommaSpaceListReply(NULL, "*", 1, 0, 0, tmatch, cmatchs,
-                                 0, NULL, NULL, NULL, &qcols, &bdum);
+        int  qcols = get_all_cols(tmatch, cmatchs);
 
         btEntry *be;
         btSIter *bi = btGetFullRangeIterator(o, 0, 1);

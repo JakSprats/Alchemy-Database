@@ -35,6 +35,7 @@ ALL RIGHTS RESERVED
 #include "bt.h"
 #include "bt_iterator.h"
 #include "index.h"
+#include "nri.h"
 #include "alsosql.h"
 #include "common.h"
 #include "desc.h"
@@ -51,91 +52,79 @@ extern r_tbl_t  Tbl[MAX_NUM_DB][MAX_NUM_TABLES];
 int     Num_indx[MAX_NUM_DB];
 r_ind_t Index   [MAX_NUM_DB][MAX_NUM_INDICES];
 
-
-#define ADD_REPLY_BULK(r, buf)                \
-    r = createStringObject(buf, strlen(buf)); \
-    addReplyBulk(c, r);                       \
-    decrRefCount(r);                          \
+#define ADD_REPLY_BULK(r, buf)    \
+    r = _createStringObject(buf); \
+    addReplyBulk(c, r);           \
+    decrRefCount(r);              \
     card++;
 
 void dumpCommand(redisClient *c) {
     char buf[192];
     TABLE_CHECK_OR_REPLY(c->argv[1]->ptr,)
-    robj *o = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
+    if ((c->argc == 3) ||
+        ((c->argc > 3) && (strcasecmp(c->argv[2]->ptr, "TO") ||
+                           strcasecmp(c->argv[3]->ptr, "MYSQL")))) {
+        addReply(c, shared.dump_syntax);
+        return;
+    }
 
-    bool bdum;
-    int  cmatchs[MAX_COLUMN_PER_TABLE];
-    int  qcols = 0;
-    parseCommaSpaceListReply(c, "*", 1, 0, 0, tmatch, cmatchs,
-                             0, NULL, NULL, NULL, &qcols, &bdum);
+    robj *o     = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
     bt   *btr   = (bt *)o->ptr;
     char *tname = Tbl[server.dbid][tmatch].name->ptr;
 
     LEN_OBJ
 
     bool  to_mysql = 0;
-    bool  ret_size = 0;
-    char *m_tname  = tname;
-    if (c->argc > 3) {
-        if (!strcasecmp(c->argv[2]->ptr, "TO") &&
-            !strcasecmp(c->argv[3]->ptr, "MYSQL")      ) {
-            to_mysql = 1;
-            if (c->argc > 4) m_tname = c->argv[4]->ptr;
-            robj *r;
-            snprintf(buf, 191, "DROP TABLE IF EXISTS `%s`;", m_tname);
-            buf[191] = '\0';
-            ADD_REPLY_BULK(r, buf)
-            snprintf(buf, 191, "CREATE TABLE `%s` ( ", m_tname);
-            buf[191] = '\0';
-            r = createStringObject(buf, strlen(buf));
-            for (int i = 0; i < Tbl[server.dbid][tmatch].col_count; i++) {
-                bool is_int =
-                         (Tbl[server.dbid][tmatch].col_type[i] == COL_TYPE_INT);
-                r->ptr = sdscatprintf(r->ptr, "%s %s %s%s",
-                          (i == 0) ? ""        : ",",
-                          (char *)Tbl[server.dbid][tmatch].col_name[i]->ptr,
-                          is_int ? "INT" : (i == 0) ? "VARCHAR(512)" : "TEXT",
-                          (i == 0) ? " PRIMARY KEY" : "");
-            }
-            r->ptr = sdscat(r->ptr, ");");
-            addReplyBulk(c, r);
-            decrRefCount(r);
-            card++;
-            snprintf(buf, 191, "LOCK TABLES `%s` WRITE;", m_tname);
-            buf[191] = '\0';
-            ADD_REPLY_BULK(r, buf)
-        } else if (!strcasecmp(c->argv[2]->ptr, "RETURN") &&
-                   !strcasecmp(c->argv[3]->ptr, "SIZE")      ) {
-            ret_size = 1;
-            snprintf(buf, 191, "KEYS: %d BT-DATA: %lld BT-MALLOC: %lld",
-                          btr->numkeys, btr->data_size, btr->malloc_size);
-            buf[191] = '\0';
-            robj *r = createStringObject(buf, strlen(buf));
-            addReplyBulk(c, r);
-            decrRefCount(r);
-            card++;
+    char *m_tname  = NULL;
+    if (c->argc > 3) { /* NOTE syntax already validated */
+        robj *r;
+        to_mysql = 1;
+        if (c->argc > 4) m_tname = c->argv[4]->ptr;
+        else             m_tname = tname;
+        snprintf(buf, 191, "DROP TABLE IF EXISTS `%s`;", m_tname);
+        buf[191] = '\0';
+        ADD_REPLY_BULK(r, buf)
+        snprintf(buf, 191, "CREATE TABLE `%s` ( ", m_tname);
+        buf[191] = '\0';
+        r = _createStringObject(buf);
+        for (int i = 0; i < Tbl[server.dbid][tmatch].col_count; i++) {
+            bool b = (Tbl[server.dbid][tmatch].col_type[i] == COL_TYPE_INT);
+            r->ptr = sdscatprintf(r->ptr, "%s %s %s%s",
+                              (!i) ? "" : ",",
+                              (char *)Tbl[server.dbid][tmatch].col_name[i]->ptr,
+                              b ? "INT" : (i == 0) ? "VARCHAR(512)" : "TEXT",
+                              (i == 0) ? " PRIMARY KEY" : "");
         }
+        r->ptr = sdscat(r->ptr, ");");
+        addReplyBulk(c, r);
+        decrRefCount(r);
+        card++;
+        snprintf(buf, 191, "LOCK TABLES `%s` WRITE;", m_tname);
+        buf[191] = '\0';
+        ADD_REPLY_BULK(r, buf)
     }
 
     if (btr->numkeys) {
-        btEntry    *be;
-        btSIter *bi = btGetFullRangeIterator(o, 0, 1);
+        int cmatchs[MAX_COLUMN_PER_TABLE];
+        btEntry *be;
+        int      qcols = get_all_cols(tmatch, cmatchs);
+        btSIter *bi    = btGetFullRangeIterator(o, 0, 1);
         while ((be = btRangeNext(bi, 0)) != NULL) {      // iterate btree
             robj *pko = be->key;
             robj *row = be->val;
             robj *r   = outputRow(row, qcols, cmatchs, pko, tmatch, to_mysql);
-            if (!to_mysql) {
-                addReplyBulk(c, r);
-                decrRefCount(r);
-            } else {
+            if (to_mysql) {
                 snprintf(buf, 191, "INSERT INTO `%s` VALUES (", m_tname);
                 buf[191] = '\0';
-                robj *ins = createStringObject(buf, strlen(buf));
+                robj *ins = _createStringObject(buf);
                 ins->ptr  = sdscatlen(ins->ptr, r->ptr, sdslen(r->ptr));
                 ins->ptr  = sdscatlen(ins->ptr, ");", 2);
                 addReplyBulk(c, ins);
                 decrRefCount(ins);
+            } else {
+                addReplyBulk(c, r);
             }
+            decrRefCount(r);
             card++;
         }
         btReleaseRangeIterator(bi);
@@ -143,9 +132,8 @@ void dumpCommand(redisClient *c) {
 
     if (to_mysql) {
         robj *r;
-        snprintf(buf, 191, "UNLOCK TABLES;");
-        buf[191] = '\0'; /* not necessary, rule -> no sprintf's */
-        ADD_REPLY_BULK(r, buf)
+        char *buf2 = "UNLOCK TABLES;";
+        ADD_REPLY_BULK(r, buf2)
     }
     lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
 }
@@ -153,17 +141,35 @@ void dumpCommand(redisClient *c) {
 ull get_sum_all_index_size_for_table(redisClient *c, int tmatch) {
     ull isize = 0;
     for (int i = 0; i < Num_indx[server.dbid]; i++) {
-        if (!Index[server.dbid][i].virt &&
+        if (!Index[server.dbid][i].virt && !Index[server.dbid][i].nrl &&
              Index[server.dbid][i].table == tmatch) {
-            robj *ind = Index[server.dbid][i].obj;
-            robj *ibt = lookupKey(c->db, ind);
-            if (ibt->type != REDIS_NRL_INDEX) {
-                bt *ibtr  = (bt *)(ibt->ptr);
-                isize    += ibtr->malloc_size;
-            }
+            robj *ind   = Index[server.dbid][i].obj;
+            robj *ibt   = lookupKey(c->db, ind);
+            bt   *ibtr  = (bt *)(ibt->ptr);
+            isize      += ibtr->malloc_size;
         }
     }
     return isize;
+}
+
+static void outputNonRelIndexInfo(redisClient *c, int tmatch, ulong *card) {
+    MATCH_INDICES(tmatch)
+    if (matches) { /* Add to Indices */
+        for (int i = 0; i < matches; i++) {
+            int j = indices[i];
+            if (Index[server.dbid][j].nrl) {
+                robj *o  = lookupKeyRead(c->db, Index[server.dbid][j].obj);
+                sds nrii = sdscatprintf(sdsempty(),
+                                        "NON RELATIONAL INDEX: %s [CMD: %s]",
+                                         (char *)Index[server.dbid][j].obj->ptr,
+                                         rebuildOrigNRLcmd(o));
+                robj *r    = createObject(REDIS_STRING, nrii);
+                addReplyBulk(c, r);
+                decrRefCount(r);
+                *card = *card + 1;
+            }
+        }
+    }
 }
 
 static void zero_robj(robj *r) {
@@ -172,7 +178,6 @@ static void zero_robj(robj *r) {
 }
 
 void descCommand(redisClient *c) {
-    char buf[256];
     TABLE_CHECK_OR_REPLY( c->argv[1]->ptr,)
     robj *o = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
 
@@ -185,12 +190,13 @@ void descCommand(redisClient *c) {
                            (char *)Tbl[server.dbid][tmatch].col_name[j]->ptr,
                            Col_type_defs[Tbl[server.dbid][tmatch].col_type[j]]);
         } else {
-            robj *ind    = Index[server.dbid][imatch].obj;
-            ull   isize  = 0;
-            if (!Index[server.dbid][imatch].virt) {
+            robj *ind   = Index[server.dbid][imatch].obj;
+            ull   isize = 0;
+            if (!Index[server.dbid][imatch].virt &&
+                !Index[server.dbid][imatch].nrl) {
                 robj *ibt  = lookupKey(c->db, ind);
                 bt   *ibtr = (bt *)(ibt->ptr);
-                isize      = ibtr ? ibtr->malloc_size : 0;
+                isize      = ibtr->malloc_size;
             }
             r->ptr = sdscatprintf(sdsempty(),
                             "%s | %s | INDEX: %s [BYTES: %lld]",
@@ -202,20 +208,27 @@ void descCommand(redisClient *c) {
         decrRefCount(r);
 	card++;
     }
-    /*TODO: desc info on NRL inds */
 
+    outputNonRelIndexInfo(c, tmatch, &card);
+
+    robj minkey, maxkey;
     ull  index_size = get_sum_all_index_size_for_table(c, tmatch);
     bt  *btr        = (bt *)o->ptr;
-    robj minkey, maxkey;
-    if (!btr->numkeys || !assignMinKey(btr, &minkey)) zero_robj(&minkey);
-    if (!btr->numkeys || !assignMaxKey(btr, &maxkey)) zero_robj(&maxkey);
+    if (btr->numkeys) {
+        assignMinKey(btr, &minkey);
+        assignMaxKey(btr, &maxkey);
+    } else {
+        zero_robj(&minkey);
+        zero_robj(&maxkey);
+    }
 
+    char buf[256];
     if (minkey.encoding == REDIS_ENCODING_RAW) {
-        if (minkey.ptr && sdslen(minkey.ptr) > 64) {
+        if (minkey.ptr && sdslen(minkey.ptr) > 64) { /* abbreviated min */
             char *x = (char *)(minkey.ptr);
             x[64] ='\0';
         }
-        if (maxkey.ptr && sdslen(maxkey.ptr) > 64) {
+        if (maxkey.ptr && sdslen(maxkey.ptr) > 64) { /* abbreviated max */
             char *x = (char *)(maxkey.ptr);
             x[64] ='\0';
         }
@@ -231,10 +244,9 @@ void descCommand(redisClient *c) {
             btr->data_size, btr->malloc_size, index_size);
         buf[255] = '\0';
     }
-    robj *r = createStringObject(buf, strlen(buf));
+    robj *r = _createStringObject(buf);
     addReplyBulk(c, r);
     decrRefCount(r);
     card++;
     lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
 }
-

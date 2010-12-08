@@ -81,6 +81,7 @@ int find_table(char *tname);
 int find_table_n(char *tname, int len);
 int find_column(int tmatch, char *column);
 int find_column_n(int tmatch, char *column, int len);
+int get_all_cols(int tmatch, int cmatchs[]);
 
 bool cCpyOrReply(redisClient *c, char *src, char *dest, unsigned int len);
 

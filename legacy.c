@@ -54,7 +54,7 @@ void legacyInsertCommand(redisClient *c) {
     int ncols = Tbl[server.dbid][tmatch].col_count;
     MATCH_INDICES(tmatch)
 
-    char *vals = sdscatprintf(sdsempty(), "(%s)", c->argv[2]->ptr);
+    char *vals = sdscatprintf(sdsempty(), "(%s)", (char *)c->argv[2]->ptr);
     insertCommitReply(c, vals, ncols, tmatch, matches, indices, 0);
     sdsfree(vals);
 }

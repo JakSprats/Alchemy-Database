@@ -54,47 +54,48 @@ sds genNRL_Cmd(d_l_t  *nrlind,
                bool    from_insert,
                robj   *row,
                int     tmatch) {
-        sds       cmd     = sdsempty();
-        list     *nrltoks = nrlind->l1;
-        list     *nrlcols = nrlind->l2;
-        listIter *li1     = listGetIterator(nrltoks, AL_START_HEAD);
-        listIter *li2     = listGetIterator(nrlcols, AL_START_HEAD);
-        listNode *ln1     = listNext(li1);
-        listNode *ln2     = listNext(li2);
-        while (ln1 || ln2) {
-            if (ln1) {
-                sds token = ln1->value;
-                cmd       = sdscatlen(cmd, token, sdslen(token));
-            }
-            int cmatch = -1;
-            if (ln2) {
-                cmatch = (int)(long)ln2->value;
-                cmatch--; /* because (0 != NULL) */
-            }
-            if (cmatch != -1) {
-                char *x;
-                int   xlen;
-                robj *col = NULL;
-                if (from_insert) {
-                    if (!cmatch) {
-                        x    = pko->ptr;
-                        xlen = sdslen(x);
-                    } else {
-                        x    = vals + cofsts[cmatch - 1];
-                        xlen = cofsts[cmatch] - cofsts[cmatch - 1] - 1;
-                    }
-                } else {
-                    col = createColObjFromRow(row, cmatch, pko, tmatch);
-                    x    = col->ptr;
-                    xlen = sdslen(col->ptr);
-                }
-                cmd = sdscatlen(cmd, x, xlen);
-                if (col) decrRefCount(col);
-            }
-            ln1 = listNext(li1);
-            ln2 = listNext(li2);
+    sds       cmd     = sdsempty();
+    list     *nrltoks = nrlind->l1;
+    list     *nrlcols = nrlind->l2;
+    listIter *li1     = listGetIterator(nrltoks, AL_START_HEAD);
+    listIter *li2     = listGetIterator(nrlcols, AL_START_HEAD);
+    listNode *ln1     = listNext(li1);
+    listNode *ln2     = listNext(li2);
+    while (ln1 || ln2) {
+        if (ln1) {
+            sds token = ln1->value;
+            cmd       = sdscatlen(cmd, token, sdslen(token));
         }
-    /*TODO destroy both listIter's */
+        int cmatch = -1;
+        if (ln2) {
+            cmatch = (int)(long)ln2->value;
+            cmatch--; /* because (0 != NULL) */
+        }
+        if (cmatch != -1) {
+            char *x;
+            int   xlen;
+            robj *col = NULL;
+            if (from_insert) {
+                if (!cmatch) {
+                    x    = pko->ptr;
+                    xlen = sdslen(x);
+                } else {
+                    x    = vals + cofsts[cmatch - 1];
+                    xlen = cofsts[cmatch] - cofsts[cmatch - 1] - 1;
+                }
+            } else {
+                col = createColObjFromRow(row, cmatch, pko, tmatch);
+                x    = col->ptr;
+                xlen = sdslen(col->ptr);
+            }
+            cmd = sdscatlen(cmd, x, xlen);
+            if (col) decrRefCount(col);
+        }
+        ln1 = listNext(li1);
+        ln2 = listNext(li2);
+    }
+    listReleaseIterator(li1);
+    listReleaseIterator(li2);
     return cmd;
 }
 
@@ -194,13 +195,10 @@ bool parseNRLcmd(char *o_s, list *nrltoks, list *nrlcols, int tmatch) {
     } else {
         while (1) {
             s++; /* advance past "$" */
-            char *nxo = s;
+            char *nxo  = s;
             while (isalnum(*nxo) || *nxo == '_') nxo++; /* col must be alpnum */
-            char *nexts = strchr(s, '$');               /* var is '$' delimed */
-
-            int cmatch = -1;
-            if (nxo) cmatch = find_column_n(tmatch, s, nxo - s);
-            else     cmatch = find_column(tmatch, s);
+            char *nexts  = strchr(s, '$');              /* var is '$' delimed */
+            int   cmatch = find_column_n(tmatch, s, nxo - s);
             if (cmatch == -1) return 0;
             listAddNodeTail(nrlcols, (void *)(long)(cmatch + 1)); /* 0!=NULL */
 
@@ -220,7 +218,6 @@ bool parseNRLcmd(char *o_s, list *nrltoks, list *nrlcols, int tmatch) {
 sds rebuildOrigNRLcmd(robj *o) {
     d_l_t    *nrlind  = o->ptr;
     int       tmatch  = Index[server.dbid][nrlind->num].table;
-
     list     *nrltoks = nrlind->l1;
     list     *nrlcols = nrlind->l2;
     listIter *li1     = listGetIterator(nrltoks, AL_START_HEAD);
@@ -243,7 +240,8 @@ sds rebuildOrigNRLcmd(robj *o) {
             ln2 = listNext(li2);
         }
     }
-    /*TODO destroy both listIter's */
-    cmd = sdscatlen(cmd, "\"", 1); /* has to be one arg */
+    listReleaseIterator(li1);
+    listReleaseIterator(li2);
+    cmd = sdscatlen(cmd, "\"", 1);          /* has to be one arg */
     return cmd;
 }
