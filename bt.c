@@ -41,20 +41,6 @@ ALL RIGHTS RESERVED
 #define RL4 redisLog(4,
 extern char *COLON;
 
-robj *createBtreeObject(uchar ktype, int num, uchar is_index) {
-    bt *btr = btCreate(ktype, num, is_index);
-    return createObject(REDIS_BTREE, btr);
-}
-robj *createEmptyBtreeObject() {  /*used for virtual indices */
-    bt *btr = NULL;
-    return createObject(REDIS_BTREE, btr);
-}
-void freeBtreeObject(robj *o) {
-    bt *btr  = (bt *)(o->ptr);
-    if (!btr) return; /* virtual indices have a NULL here */
-    btRelease(btr, NULL);
-    // TODO: shuffle index data back to replace deleted index
-}
 
 #define INIT_DATA_BTREE_BYTES        4096
 #define INIT_INDEX_BTREE_BYTES       1024
@@ -74,6 +60,18 @@ bt *btCreate(uchar ktype, int num, uchar is_index) {
     return btr;
 }
 
+robj *createBtreeObject(uchar ktype, int num, uchar is_index) {
+    bt *btr = btCreate(ktype, num, is_index);
+    return createObject(REDIS_BTREE, btr);
+}
+robj *createEmptyBtreeObject() {      /* Virtual indices */
+    bt *btr = NULL;
+    return createObject(REDIS_BTREE, btr);
+}
+robj *createIndexNode(uchar pktype) { /* Nodes of Indices */
+    return createBtreeObject(pktype, -1, BTREE_INDEX_NODE);
+}
+
 static void emptyBtNode(bt *btr, bt_n *n, uchar vtype) {
     for (int i = 0; i < n->n; i++) {
         void *be    = KEYS(btr, n)[i];
@@ -90,11 +88,20 @@ static void emptyBtNode(bt *btr, bt_n *n, uchar vtype) {
 
 void btRelease(bt *nbtr, bt *btr) {
     if (nbtr->root) {
-        emptyBtNode(nbtr, nbtr->root, 
-                    (nbtr->is_index == BTREE_TABLE) ? REDIS_ROW : REDIS_BTREE);
-        nbtr->root = NULL;
-        bt_free_btree(nbtr, btr); /* memory management in btr */
+        uchar vtype = (nbtr->is_index == BTREE_TABLE) ? REDIS_ROW : REDIS_BTREE;
+        emptyBtNode(nbtr, nbtr->root, vtype);
+        nbtr->root  = NULL;
     }
+}
+static void btDestroy(bt *nbtr, bt *btr) {
+    btRelease(nbtr, btr);
+    bt_free_btree(nbtr, btr); /* memory management in btr */
+}
+
+void freeBtreeObject(robj *o) {
+    bt *btr  = (bt *)(o->ptr);
+    if (!btr) return; /* virtual indices have a NULL here */
+    btDestroy(btr, NULL);
 }
 
 /* STREAM STREAM STREAM STREAM STREAM STREAM STREAM STREAM STREAM STREAM */
@@ -498,10 +505,6 @@ int btIndDelete(bt *ibtr, const void *key, int ktype) {
 
 // INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE
 // INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE
-robj *createIndexNode(uchar pktype) {
-    return createBtreeObject(pktype, -1, BTREE_INDEX_NODE);
-}
-
 int btIndNodeAdd(bt *nbtr, void *key, int ktype) {
     if (_bt_find_val(nbtr, key, ktype, REDIS_BTREE, 1)) return DICT_ERR;
     _bt_insert(nbtr, key, NULL, ktype, REDIS_BTREE);

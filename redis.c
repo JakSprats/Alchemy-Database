@@ -2062,13 +2062,8 @@ static void initServerConfig() {
 static void init_Tbl_and_Index() {
     bzero(&Num_tbls, sizeof(int) * MAX_NUM_DB);
     bzero(&Num_indx, sizeof(int) * MAX_NUM_DB);
-
-    for (int i = 0; i < MAX_NUM_TABLES; i++) {
-        Tbl[server.dbid][i].name = NULL;
-    }
-    for (int i = 0; i < MAX_NUM_TABLES; i++) {
-        Index[server.dbid][i].obj = NULL;
-    }
+    bzero(&Tbl,      sizeof(r_tbl_t) * MAX_NUM_DB * MAX_NUM_TABLES);
+    bzero(&Index,    sizeof(r_ind_t) * MAX_NUM_DB * MAX_NUM_TABLES);
 }
 
 static void initServer() {
@@ -2245,7 +2240,7 @@ static long long emptyDb() {
 #ifdef ALSOSQL
         server.dbid           = j;
         for (int k = 0; k < Num_tbls[j]; k++) {
-            tableEmpty(&server.db[j], k); /* deletes indices also */
+            emptyTable(&server.db[j], k); /* deletes indices also */
         }
         Num_tbls[j] = 0;
         Num_indx[j] = 0;
@@ -7405,7 +7400,7 @@ static void flushdbCommand(redisClient *c) {
     server.dbid   = c->db->id;
 #ifdef ALSOSQL
     for (int k = 0; k < Num_tbls[server.dbid]; k++) {
-        tableEmpty(&server.db[server.dbid], k); /* deletes indices also */
+        emptyTable(&server.db[server.dbid], k); /* deletes indices also */
     }
     Num_tbls[c->db->id] = 0;
     Num_indx[c->db->id] = 0;

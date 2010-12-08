@@ -173,6 +173,6 @@ void insertCommitReply(redisClient *c,
                        int          indices[],
                        bool         ret_size);
 
-unsigned long tableEmpty(redisDb *db, int tmatch);
+unsigned long emptyTable(redisDb *db, int tmatch);
 
 #endif /*__ALSOSQL__H */ 

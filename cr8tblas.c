@@ -89,6 +89,7 @@ static bool addSingle(redisClient *c,
     rfc->argv[2] = createStringObject("", 0);
 #endif
     //RL4 "SGL: INSERT [1]: %s [2]: %s", rfc->argv[1]->ptr, rfc->argv[2]->ptr);
+    rsql_resetFakeClient(rfc);
     legacyInsertCommand(rfc);
     decrRefCount(vals);
     if (!replyIfNestedErr(c, rfc, INTERNAL_INSERT_ERR_MSG)) return 0;
@@ -128,6 +129,7 @@ static bool addDouble(redisClient *c,
     rfc->argv[2] = createStringObject("BUG", 3);
 #endif
     //RL4 "DBL: INSERT [1]: %s [2]: %s", rfc->argv[1]->ptr, rfc->argv[2]->ptr);
+    rsql_resetFakeClient(rfc);
     legacyInsertCommand(rfc);
     decrRefCount(vals);
     if (!replyIfNestedErr(c, rfc, INTERNAL_INSERT_ERR_MSG)) return 0;
@@ -195,6 +197,7 @@ static bool _internalCreateTable(redisClient *c,
 #ifdef FORCE_BUG_3
     rfc->argv[2] = createStringObject("BUG", 3);
 #endif
+    rsql_resetFakeClient(rfc);
     legacyTableCommand(rfc);
     if (!replyIfNestedErr(c, rfc, INTERNAL_CREATE_TABLE_ERR_MSG)) return 0;
     else                                                          return 1;
@@ -345,7 +348,7 @@ static bool createInternalTableForCmdAndDump(redisClient *c,
 #ifdef FORCE_BUG_4
     rfc->argv[2]     = createStringObject("BUG", 3);
 #endif
-
+    rsql_resetFakeClient(rfc);
     legacyTableCommand(rfc);
     if (!replyIfNestedErr(c, rfc, INTERNAL_CREATE_TABLE_ERR_MSG)) return 0;
     rsql_freeFakeClient(rfc);

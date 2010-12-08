@@ -175,6 +175,7 @@ bool istoreAction(redisClient *c,
         if (cols[i].sixbit) free(cols[i].s);
     }
 
+    rsql_resetFakeClient(fc);
     return performStoreCmdOrReply(c, fc, sto, 0);
 }
 
@@ -284,5 +285,6 @@ void prepare_jRowStore(jrow_reply_t *r) {
 
 bool jRowStore(jrow_reply_t *r) {
     prepare_jRowStore(r);
+    rsql_resetFakeClient(r->fc);
     return performStoreCmdOrReply(r->c, r->fc, r->sto, 1);
 }

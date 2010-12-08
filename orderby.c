@@ -283,6 +283,7 @@ int sortJoinOrderByAndReply(redisClient        *c,
             obsl_t *ob = vector[k];
             if (b->j.sto != -1) { /* JSTORE */
                 b->j.fc->argv = ob->row; /* argv's in list */
+                rsql_resetFakeClient(b->j.fc);
                 if (!performStoreCmdOrReply(b->j.c, b->j.fc, b->j.sto, 1))
                     return -1;
             } else {

@@ -154,6 +154,7 @@ void runCmdInFakeClient(sds s) {
     redisClient *fc = rsql_createFakeClient();
     fc->argv        = rargv;
     fc->argc        = arity;
+    rsql_resetFakeClient(fc);
     call(fc, cmd);
     rsql_freeFakeClient(fc);
     free(rargv);

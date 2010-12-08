@@ -69,7 +69,6 @@ char *SPACE        = " ";
 
 char *Col_type_defs[] = {"TEXT", "INT", "FLOAT" };
 
-extern int     Num_indx[MAX_NUM_DB];
 extern r_ind_t Index   [MAX_NUM_DB][MAX_NUM_INDICES];
 
 /* HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS */
@@ -395,6 +394,10 @@ void createTableCommitReply(redisClient *c,
                             int          ccount,
                             char        *tname,
                             int          tlen) {
+    if (Num_tbls[server.dbid] == MAX_NUM_TABLES) {
+        addReply(c, shared.toomanytables);
+        return;
+    }
     if (ccount < 2) {
         addReply(c, shared.toofewcolumns);
         return;
@@ -410,6 +413,16 @@ void createTableCommitReply(redisClient *c,
             }
         }
     }
+
+    // BTREE implies an index on "tbl:pk:index" -> autogenerate
+    sds  iname = sdscatprintf(sdsempty(), "%s:%s:%s",
+                                          tname, cnames[0], INDEX_DELIM);
+    if (!newIndexReply(c, iname, Num_tbls[server.dbid], 0, 1, NULL)) {
+        sdsfree(iname);
+        return;
+    }
+    sdsfree(iname);
+
     int ntbls = Num_tbls[server.dbid];
 
     addReply(c, shared.ok);
@@ -418,27 +431,16 @@ void createTableCommitReply(redisClient *c,
         Tbl[server.dbid][ntbls].col_name[i] = _createStringObject(cnames[i]);
     }
     int   pktype = Tbl[server.dbid][ntbls].col_type[0];
-    robj *tbl    = createStringObject(tname, tlen);
     robj *bt     = createBtreeObject(pktype, ntbls, BTREE_TABLE);
+    robj *tbl    = createStringObject(tname, tlen);
     Tbl[server.dbid][ntbls].name      = tbl;
     Tbl[server.dbid][ntbls].col_count = ccount;
     dictAdd(c->db->dict, tbl, bt);
 
-    // BTREE implies an index on "tbl:pk:index" -> autogenerate
-    robj *iname = cloneRobj(tbl);
-    iname->ptr  = sdscatprintf(iname->ptr, "%s%s%s%s",
-                                       COLON, cnames[0], COLON, INDEX_DELIM);
-    newIndex(c, iname->ptr, Num_tbls[server.dbid], 0, 1, NULL);
-    decrRefCount(iname);
     Num_tbls[server.dbid]++;
 }
 
 static void createTable(redisClient *c) {
-    if (Num_tbls[server.dbid] == MAX_NUM_TABLES) {
-        addReply(c, shared.toomanytables);
-        return;
-    }
-
     int   tlen  = sdslen(c->argv[2]->ptr);
     char *tname = c->argv[2]->ptr;
     /* Mysql denotes strings w/ backticks */
@@ -853,31 +855,21 @@ update_cmd_end:
 
 /* DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP */
 /* DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP */
-unsigned long tableEmpty(redisDb *db, int tmatch) {
+unsigned long emptyTable(redisDb *db, int tmatch) {
     if (!Tbl[server.dbid][tmatch].name) return 0; /* already deleted */
 
     MATCH_INDICES(tmatch)
     unsigned long deleted = 0;
     if (matches) { // delete indices first
-        robj *index_del_list[MAX_COLUMN_PER_TABLE];
         for (int i = 0; i < matches; i++) { // build list of robj's to delete
-            int inum          = indices[i];
-            index_del_list[i] = Index[server.dbid][inum].obj;
-        }
-        for (int i = 0; i < matches; i++) { //delete index robj's
-            int inum                        = indices[i];
-            Index[server.dbid][inum].obj    = NULL;
-            Index[server.dbid][inum].table  = -1;
-            Index[server.dbid][inum].column = -1;
-            Index[server.dbid][inum].type   = 0;
-            Index[server.dbid][inum].virt   = 0;
-            deleteKey(db, index_del_list[i]);
+            emptyIndex(db, indices[i]);
             deleted++;
         }
         //TODO shuffle indices to make space for deleted indices
     }
 
     deleteKey(db, Tbl[server.dbid][tmatch].name);
+    Tbl[server.dbid][tmatch].name      = NULL;
     for (int j = 0; j < Tbl[server.dbid][tmatch].col_count; j++) {
         decrRefCount(Tbl[server.dbid][tmatch].col_name[j]);
         Tbl[server.dbid][tmatch].col_name[j] = NULL;
@@ -885,7 +877,6 @@ unsigned long tableEmpty(redisDb *db, int tmatch) {
     }
     Tbl[server.dbid][tmatch].col_count = 0;
     Tbl[server.dbid][tmatch].virt_indx = -1;
-    Tbl[server.dbid][tmatch].name      = NULL;
 
     deleted++;
     //TODO shuffle tables to make space for deleted indices
@@ -895,7 +886,7 @@ unsigned long tableEmpty(redisDb *db, int tmatch) {
 
 static void dropTable(redisClient *c) {
     TABLE_CHECK_OR_REPLY(c->argv[2]->ptr,)
-    unsigned long deleted = tableEmpty(c->db, tmatch);
+    unsigned long deleted = emptyTable(c->db, tmatch);
     addReplyLongLong(c, deleted);
     server.dirty++;
 }

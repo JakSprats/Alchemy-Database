@@ -128,8 +128,8 @@ static void iRem(bt *ibtr, robj *i_key, robj *i_val, int pktype) {
     ull   post_size    = nbtr->malloc_size;
     ibtr->malloc_size += (post_size - pre_size); /* inherits nbtr */
     if (!n_size) {
-        btIndDelete(ibtr, i_key, ibtr->ktype);
-        btRelease(nbtr, NULL);
+        btRelease(nbtr, NULL); /* first free indexNodeBT's contents */
+        btIndDelete(ibtr, i_key, ibtr->ktype); /* destroys indexNodeBT */
     }
 }
 
@@ -142,14 +142,14 @@ void addToIndex(redisDb *db, robj *pko, char *vals, uint32 cofsts[], int inum) {
         nrlIndexAdd(ibt, pko, vals, cofsts);
         return;
     }
+    int   itm     = Index[server.dbid][inum].table;
+    int   pktype  = Tbl[server.dbid][itm].col_type[0];
     bt   *ibtr    = (bt *)(ibt->ptr);
     int   i       = Index[server.dbid][inum].column;
     int   j       = i - 1;
     int   end     = cofsts[j];
     int   len     = cofsts[i] - end - 1;
     robj *col_key = createStringObject(vals + end, len); /* freeME */
-    int   itm     = Index[server.dbid][inum].table;
-    int   pktype  = Tbl[server.dbid][itm].col_type[0];
 
     iAdd(ibtr, col_key, pko, pktype);
     decrRefCount(col_key);
@@ -165,11 +165,11 @@ void delFromIndex(redisDb *db, robj *old_pk, robj *row, int inum, int tmatch) {
     }
     robj *ind     = Index[server.dbid][inum].obj;
     int   cmatch  = Index[server.dbid][inum].column;
+    int   itm     = Index[server.dbid][inum].table;
+    int   pktype  = Tbl[server.dbid][itm].col_type[0];
     robj *ibt     = lookupKey(db, ind);
     bt   *ibtr    = (bt *)(ibt->ptr);
     robj *old_val = createColObjFromRow(row, cmatch, old_pk, tmatch); /*freeME*/
-    int   itm     = Index[server.dbid][inum].table;
-    int   pktype  = Tbl[server.dbid][itm].col_type[0];
 
     iRem(ibtr, old_val, old_pk, pktype);
     decrRefCount(old_val);
@@ -192,11 +192,11 @@ void updateIndex(redisDb *db,
     }
     int   cmatch  = Index[server.dbid][inum].column;
     robj *ind     = Index[server.dbid][inum].obj;
+    int   itm     = Index[server.dbid][inum].table;
+    int   pktype  = Tbl[server.dbid][itm].col_type[0];
     robj *ibt     = lookupKey(db, ind);
     bt   *ibtr    = (bt *)(ibt->ptr);
     robj *old_val = createColObjFromRow(row, cmatch, old_pk, tmatch); //freeME
-    int   itm     = Index[server.dbid][inum].table;
-    int   pktype  = Tbl[server.dbid][itm].col_type[0];
 
     iRem(ibtr, old_val, old_pk, pktype);
     if (pk_update) iAdd(ibtr, old_val, new_pk, pktype);
@@ -206,14 +206,19 @@ void updateIndex(redisDb *db,
 
 /* CREATE_INDEX  CREATE_INDEX  CREATE_INDEX  CREATE_INDEX  CREATE_INDEX */
 /* CREATE_INDEX  CREATE_INDEX  CREATE_INDEX  CREATE_INDEX  CREATE_INDEX */
-void newIndex(redisClient *c,
-              char        *iname,
-              int          tmatch,
-              int          cmatch,
-              bool         virt,
-              d_l_t       *nrlind) {
+bool newIndexReply(redisClient *c,
+                   sds          iname,
+                   int          tmatch,
+                   int          cmatch,
+                   bool         virt,
+                   d_l_t       *nrlind) {
+    if (Num_indx[server.dbid] == MAX_NUM_INDICES) {
+        addReply(c, shared.toomanyindices);
+        return 0;
+    }
+
     // commit index definition
-    robj *ind    = createStringObject(iname, strlen(iname));
+    robj *ind    = createStringObject(iname, sdslen(iname));
     int   imatch = Num_indx[server.dbid];
     Index[server.dbid][imatch].obj     = ind;
     Index[server.dbid][imatch].table   = tmatch;
@@ -237,6 +242,7 @@ void newIndex(redisClient *c,
     //store BtreeObject in HashTable key: indexname
     dictAdd(c->db->dict, ind, ibt);
     Num_indx[server.dbid]++;
+    return 1;
 }
 
 static void makeIndexFromStream(uchar *stream,
@@ -273,18 +279,13 @@ int buildIndex(bt *btr, bt_n *x, bt *ibtr, int icol, int itbl, bool nrl) {
 
 //TODO break out NRI_IndexCommit()
 static void indexCommit(redisClient *c,
-                        char        *iname,
+                        sds          iname,
                         char        *tname,
                         char        *cname,
                         bool         nrl,
                         char        *nrltbl,
                         char        *nrladd,
                         char        *nrldel) {
-    if (Num_indx[server.dbid] >= MAX_NUM_INDICES) {
-        addReply(c, shared.toomanyindices);
-        return;
-    }
-
     if (match_index_name(iname) != -1) {
         addReply(c, shared.nonuniqueindexnames); 
         return;
@@ -326,7 +327,10 @@ static void indexCommit(redisClient *c,
         }
     }
 
-    newIndex(c, iname, tmatch, cmatch, 0, nrlind);
+    if (!newIndexReply(c, iname, tmatch, cmatch, 0, nrlind)) {
+        if (nrlind) destroy_d_l_t(nrlind);
+        return;
+    }
     addReply(c, shared.ok);
 
     /* IF table has rows - loop thru and populate index */
@@ -359,22 +363,23 @@ void createIndex(redisClient *c) {
     }
 }
 
-
 void emptyIndex(redisDb *db, int inum) {
     robj *ind                       = Index[server.dbid][inum].obj;
+    if (!ind) return;
     deleteKey(db, ind);
+    Index[server.dbid][inum].obj    = NULL;
     Index[server.dbid][inum].table  = -1;
     Index[server.dbid][inum].column = -1;
-    Index[server.dbid][inum].type   = 0;
-    Index[server.dbid][inum].virt   = 0;
-    Index[server.dbid][inum].obj    = NULL;
+    Index[server.dbid][inum].type   =  0;
+    Index[server.dbid][inum].virt   =  0;
+    Index[server.dbid][inum].nrl    =  0;
     server.dirty++;
     //TODO shuffle indices to make space for deleted indices
 }
 
 void dropIndex(redisClient *c) {
-    char *iname  = c->argv[2]->ptr;
-    int   inum   = match_index_name(iname);
+    char *iname = c->argv[2]->ptr;
+    int   inum  = match_index_name(iname);
 
     if (inum == -1) {
         addReply(c, shared.nullbulk);

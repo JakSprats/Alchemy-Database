@@ -48,7 +48,6 @@ int btStreamCmp(void *a, void *b);
 #define BTREE_INDEX_NODE      2
 #define BTREE_JOIN_RESULT_SET 3
 
-bt   *btCreate( uchar ctype, int num, uchar is_index);
 void  btRelease(bt *node_btr, bt *btr);
 int   btAdd(    robj *o,       void *key, void *val, int ctype);
 int   btReplace(robj *o,       void *key, void *val, int ctype);

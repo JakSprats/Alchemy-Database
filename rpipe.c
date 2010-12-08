@@ -85,6 +85,7 @@ long fakeClientPipe(redisClient *c,
                     (redisClient *c, void *x, robj *key, long *l, int b, int n),
                     bool (* emptyer) (redisClient *c)) {
     redisCommand *cmd = lookupCommand(rfc->argv[0]->ptr);
+    rsql_resetFakeClient(rfc);
     cmd->proc(rfc);
 
     listNode *ln;

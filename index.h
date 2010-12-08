@@ -44,12 +44,12 @@ int match_index_name(char *iname);
     int   matches = match_index(tmatch, indices);
 
 /* INDEX INDEX INDEX */
-void newIndex(redisClient *c,
-              char        *iname,
-              int          tmatch,
-              int          cmatch,
-              bool         virt,
-              d_l_t       *nrlind);
+bool newIndexReply(redisClient *c,
+                   sds          iname,
+                   int          tmatch,
+                   int          cmatch,
+                   bool         virt,
+                   d_l_t       *nrlind);
 void createIndex(redisClient *c);
 
 int buildIndex(bt *btr, bt_n *x, bt *ibtr, int icol, int itbl, bool nrl);
@@ -68,6 +68,7 @@ void updateIndex( redisDb *db,
                   uchar    pk_update,
                   int      tmatch);
 
+void emptyIndex(redisDb *db, int inum);
 void dropIndex(redisClient *c);
 
 #endif /* __INDEX__H */ 

@@ -68,7 +68,7 @@ void denormCommand(redisClient *c) {
     *fmt             = 'd'; /* changes "%s" into "%d" - FIX: too complicated */
 
     btEntry     *be;
-    robj        *argv[4];
+    robj        *argv[4]; // TODO this can be done natively, no need for Client
     redisClient *fc   = rsql_createFakeClient();
     fc->argv          = argv;
     fc->argc          = 4;
@@ -95,6 +95,7 @@ void denormCommand(redisClient *c) {
             fc->argv[2] = createStringObject(tname, sdslen(tname));
             sds cname   = r->ptr;
             fc->argv[3] = createStringObject(cname, sdslen(cname));
+            rsql_resetFakeClient(fc);
             hsetCommand(fc); /* does this free argv[*}? possible MEM_LEAK */
         }
         card++;
