@@ -431,12 +431,11 @@ static bool parseInumCol(redisClient *c,
                         int         *imatch,
                         bool         is_scan) {
     *cmatch = find_column_n(*tmatch, token, tlen);
-    if (*cmatch == -1) return 0;
-    *imatch = (*cmatch == -1) ? -1 : find_index(*tmatch, *cmatch); 
     if (*cmatch == -1) {
         addReply(c, shared.whereclause_col_not_found);
         return 0;
     }
+    *imatch = (*cmatch == -1) ? -1 : find_index(*tmatch, *cmatch); 
     if (!is_scan && *imatch == -1) { /* non-indexed column */
         addReply(c, shared.whereclause_col_not_indxd);
         return 0;
