@@ -57,7 +57,6 @@ static bool respNotErr(redisClient *rfc) {
     if (!ln) return 1;
     robj     *o  = ln->value;
     char     *s  = o->ptr;
-    //RL4 "respNotErr: %s", s);
     if (!strncmp(s, "-ERR", 4)) return 0;
     else                        return 1;
 }
@@ -75,6 +74,20 @@ bool replyIfNestedErr(redisClient *c, redisClient *rfc, char *msg) {
     return 1;
 }
 
+static robj *parseUpToR(listIter     *li,
+                        listNode    **ln,
+                        char         *x) {
+    char *y = strchr(x, '\r'); /* ignore the final \r\n */
+    if (!y) { /* colon is coming in next ln->value [incrCommand] */
+        if (!(*ln = listNext(li))) return NULL;
+        robj *o = (*ln)->value;
+        x       = o->ptr;
+        y       = strchr(x, '\r'); /* ignore the final \r\n */
+        if (!y) y = x + sdslen(x);
+    }
+    return createStringObject(x, y - x);
+}
+
 /* NOTE: this function implements a fakeClient pipe */
 long fakeClientPipe(redisClient *c,
                     redisClient *rfc,
@@ -89,74 +102,78 @@ long fakeClientPipe(redisClient *c,
     cmd->proc(rfc);
 
     listNode *ln;
-    *flg             = PIPE_NONE_FLAG;
-    int       nlines = 0;
-    long      card   = 1; /* ZER0 as pk can cause problems */
-    bool      fline  = 1;
+    *flg               = PIPE_NONE_FLAG;
+    int       nlines   = 0;
+    long      card     = 1; /* ZER0 as pk can cause problems */
+    bool      fline    = 1;
+    bool      ldef = 0;
     listIter  *li = listGetIterator(rfc->reply, AL_START_HEAD);
     while((ln = listNext(li)) != NULL) {
         robj *o    = ln->value;
         sds   s    = o->ptr;
         bool  o_fl = fline;
-        fline = 0;
+        fline      = 0;
         //RL4 "PIPE: %s", s);
-        /* ignore protocol, we just want data */
-        if (*s == '\r' && *(s + 1) == '\n') continue;
-         /* TODO introduce more state -> data starting w/ '\r\n' ignored */
         if (o_fl) {
             if (*s == '-') {
-                *flg = PIPE_ERR_FLAG;
+                *flg    = PIPE_ONE_LINER_FLAG;
+                robj *r = parseUpToR(li, &ln, s);
+                if (!r) return -1;
                 if (!(*adder)(c, wfc, o, &card, is_ins, nlines)) return -1;
                 break; /* error */
-            }
-            if (*s == '+') {
-                *flg = PIPE_ONE_LINER_FLAG;
-                if (!(*adder)(c, wfc, o, &card, is_ins, nlines)) return -1;
+            } else if (*s == '+') {
+                *flg    = PIPE_ONE_LINER_FLAG;
+                robj *r = parseUpToR(li, &ln, s);
+                if (!r) return -1;
+                if (!(*adder)(c, wfc, r, &card, is_ins, nlines)) return -1;
                 break; /* OK */
-            }
-            if (*s == ':') {
-                robj *r;
-                char *x = s + 1;
-                char *y = strchr(x, '\r'); /* ignore the final \r\n */
-                if (!y) { /* colon is coming in next ln->value [incrCommand] */
-                    if (!(ln = listNext(li))) return -1;
-                    o = ln->value;
-                    x = o->ptr;
-                    y = strchr(x, '\r'); /* ignore the final \r\n */
-                    if (!y) y = x + sdslen(x);
-                }
-                r = createStringObject(x, y - x);
+            } else if (*s == ':') {
+                *flg    = PIPE_ONE_LINER_FLAG;
+                robj *r = parseUpToR(li, &ln, s);
+                if (!r) return -1;
                 if (!(*adder)(c, wfc, r, &card, is_ins, nlines)) return -1;
                 break; /* single integer reply */
-            }
-            if (*s == '*') {
-                nlines = atoi(s+1); /* some pipes need to know num_lines */
-                if (nlines == 0) {
-                    *flg = PIPE_EMPTY_SET_FLAG;
-                    break;
+            } else if (*s == '*') {
+                nlines = atoi(s + 1); /* some pipes need to know num_lines */
+                if (nlines == -1) {
+                    *flg    = PIPE_EMPTY_SET_FLAG;
+                    break; /* "*-1" multibulk empty */
                 }
-                continue;
-            }
-        }
-        if (*s == '$') { /* parse doubles which are w/in this list element */
-            if (*(s + 1) == '-') continue; /* $-1 -> nil */
-            char   *x    = strchr(s, '\r');
-            if (!x) return -1;
-            uint32  llen = x - s;
-            if (llen + 2 < sdslen(s)) { /* got a double */
-                x += 2; /* move past \r\n */
-                char *y = strchr(x, '\r'); /* ignore the final \r\n */
-                if (!y) return -1;
-                robj *r = createStringObject(x, y - x);
-                if (!(*adder)(c, wfc, r, &card, is_ins, nlines)) return -1;
             }
             continue;
         }
-        /* all ranges are single */
-        if (!(*adder)(c, wfc, o, &card, is_ins, nlines)) return -1;
+        /* not first line -> 2+ */
+        if (*s == '$') { /* parse length [and element] */
+            if (*(s + 1) == '-') { /* $-1 -> nil */
+                *flg    = PIPE_EMPTY_SET_FLAG;
+                /* NOTE: "-1" must be "adder()"d for Multi-NonRelIndxs */
+                robj *r = createStringObject("-1", 2);
+                if (!(*adder)(c, wfc, r, &card, is_ins, nlines)) return -1;
+                continue;
+            }
+            ldef         = 1;
+            char   *x    = strchr(s, '\r');
+            if (!x) return -1;
+            uint32  llen = x - s;
+            if (llen + 2 < sdslen(s)) { /* more on next line (past "\r\n") */
+                x       += 2; /* move past \r\n */
+                robj *r  = parseUpToR(li, &ln, x);
+                if (!r) return -1;
+                if (!(*adder)(c, wfc, r, &card, is_ins, nlines)) return -1;
+                ldef     = 0;
+            }
+            continue;
+        }
+        /* ignore empty protocol lines */
+        if (!ldef && sdslen(s) == 2 && *s == '\r' && *(s + 1) == '\n') continue;
+
+        robj *r = createStringObject(s, sdslen(s));
+        if (!(*adder)(c, wfc, r, &card, is_ins, nlines)) return -1;
+        ldef = 0;
     }
     listReleaseIterator(li);
-    if (card == 1) { /* empty response from rfc */
+
+    if (card == 1) { /* rfc never got called, call empty handler */
         if (!(*emptyer)(c)) return -1;
     }
     return card - 1; /* started at 1 */

@@ -73,10 +73,11 @@ robj **copyArgv(robj **argv, int argc) {
     return cargv;
 }
 
-// TODO: this is used in WHERE IN(list) ... clean this up
+/* used in "SELECT ... WHERE IN (list)" */
 robj *convertRobj(robj *r, int type) {
     if ((r->encoding == REDIS_ENCODING_RAW && type == COL_TYPE_STRING) ||
-        (r->encoding == REDIS_ENCODING_INT && type == COL_TYPE_INT)) {
+        (r->encoding == REDIS_ENCODING_INT && type == COL_TYPE_INT)    ||
+        (r->encoding == REDIS_ENCODING_RAW && type == COL_TYPE_FLOAT))    {
         return r;
     }
     robj *n = NULL;
@@ -92,8 +93,6 @@ robj *convertRobj(robj *r, int type) {
     decrRefCount(r);
     return n;
 }
-
-
 
 char *rem_backticks(char *token, int *len) {
     char *otoken = token;

@@ -335,10 +335,10 @@ struct sharedObjectsStruct {
 } shared;
 
 struct redisServer {
+    //TODO make AlchemyServer global struct, no need to be in redisServer
 #ifdef ALSOSQL
-    unsigned int  dbid;
-    char         *luafilename;
-    redisClient  *currClient;
+    unsigned int       dbid;
+    unsigned long long filler;
 #endif   
     int port;
     int fd;

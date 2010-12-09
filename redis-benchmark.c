@@ -1406,8 +1406,8 @@ int main(int argc, char **argv) {
             printf("test_delete_test_table\n");
             test_delete_test_table();
 
-            printf("denorm_set_for_compare_w_test_table\n");
-            denorm_set_for_compare_w_test_table();
+            //printf("denorm_set_for_compare_w_test_table\n");
+            //denorm_set_for_compare_w_test_table();
 
             return 0;
         }

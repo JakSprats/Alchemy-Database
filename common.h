@@ -30,6 +30,7 @@ ALL RIGHTS RESERVED
 
 #define uint32 unsigned int
 #define uchar  unsigned char
+#define ushort unsigned short
 #define ulong  unsigned long
 #define ull    unsigned long long
 

@@ -71,6 +71,7 @@ static void dumpnode(struct btree     *btr,
         } else {
             RL4 "  F: key: %s: val: %f slot: %d - %p", c, s, i, be);
         }
+        destroyAssignKeyRobj(&rk);
     }
 
     if (!x->leaf) {

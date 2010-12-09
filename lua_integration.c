@@ -37,6 +37,7 @@ ALL RIGHTS RESERVED
 #include "zmalloc.h"
 
 #include "rpipe.h"
+#include "parser.h"
 #include "lua_integration.h"
 
 extern struct sharedObjectsStruct shared;
@@ -50,9 +51,9 @@ extern flag         LuaFlag;
 #define RL4 redisLog(4,
 
 void luaCommand(redisClient *c) {
-    LuaClient = c;             /* used in func redisLua */
-    LuaFlag   = PIPE_NONE_FLAG;
     //RL4 "LUA: %s", c->argv[1]->ptr);
+    LuaFlag   = PIPE_NONE_FLAG;
+    LuaClient = c;             /* used in func redisLua */
     int s     = luaL_dostring(Lua, c->argv[1]->ptr);
     if (s) {
         const char *x = lua_tostring(Lua, -1);
@@ -70,7 +71,7 @@ void luaCommand(redisClient *c) {
             lua_pushinteger(Lua, i);
             lua_gettable(Lua, -2);
             char *x = (char *)lua_tostring(Lua, -1);
-            robj *r = createStringObject(x, strlen(x));
+            robj *r = _createStringObject(x);
             addReplyBulk(c, r);
             decrRefCount(r);
             lua_pop(Lua, 1);
@@ -78,27 +79,23 @@ void luaCommand(redisClient *c) {
         lua_pop(Lua, 1);
     } else if (LuaFlag == PIPE_EMPTY_SET_FLAG) {
         addReply(c, shared.emptymultibulk);
-    } else if (LuaFlag == PIPE_ONE_LINER_FLAG || LuaFlag == PIPE_ERR_FLAG) {
+        lua_pop(Lua, 1); /* pop because Pipe adds "-1" for Multi-NonRelIndxs */
+    } else if (!lret) {
+        addReply(c, shared.nullbulk);
+    } else {
         char *x = (char *)lua_tostring(Lua, -1);
         if (!x) {
             addReply(c, shared.nullbulk);
-        } else if (!strncmp(x, "+OK", 3) || !strncmp(x, "-ERR", 4)) {
-            addReplySds(c, sdsnewlen(x, strlen(x)));
-            addReply(c,shared.crlf);
-        } else { /* PIPE_ONE_LINER_FLAG passed to a lua_func() */
-            robj *r = createStringObject(x, strlen(x));
-            addReplyBulk(c, r);
-            decrRefCount(r);
+        } else { 
+            if (LuaFlag == PIPE_ONE_LINER_FLAG) {
+                addReplySds(c, sdscatprintf(sdsempty(), "%s\r\n", x));
+            } else {
+                robj *r = _createStringObject(x);
+                addReplyBulk(c, r);
+                decrRefCount(r);
+            }
         }
         lua_pop(Lua, 1);
-    } else if (!lret) {
-        addReply(c, shared.nullbulk);
-    } else { //TODO this can be factored out, it is a ONE_LINER
-        char *x = (char *)lua_tostring(Lua, -1);
-        lua_pop(Lua, 1);
-        robj *r = createStringObject(x, strlen(x));
-        addReplyBulk(c, r);
-        decrRefCount(r);
     }
 }
 
@@ -115,8 +112,8 @@ static bool luaLine(redisClient *c,
                     int          i,
                     int          n) {
     c = NULL; i = 0; /* compiler warning */
-    lua_State *L = (lua_State *)x;
     //RL4 "luaLine: %s", key->ptr);
+    lua_State *L = (lua_State *)x;
     if (n > 1) {
         if (*card == 1) lua_newtable(L);
         lua_pushnumber(L, *card);
@@ -135,7 +132,7 @@ static int redisLuaArityErr(lua_State *L, char *name) {
               name);
     buf[63] = '\0';
     lua_pushstring(L, buf);
-    LuaFlag = PIPE_ERR_FLAG;
+    LuaFlag = PIPE_ONE_LINER_FLAG;
     return 1;
 }
 
@@ -153,46 +150,44 @@ int redisLua(lua_State *L) {
         snprintf(buf, 63, "-ERR Unknown command '%s'\r\n", arg1);
         buf[63] = '\0';
         lua_pushstring(L, buf);
-        LuaFlag = PIPE_ERR_FLAG;
+        LuaFlag = PIPE_ONE_LINER_FLAG;
         return 1;
     } else if ((cmd->arity > 0 && cmd->arity != argc) || (argc < -cmd->arity)) {
         return redisLuaArityErr(L, cmd->name);
     }
 
     if (server.maxmemory && (cmd->flags & REDIS_CMD_DENYOOM) &&
-        zmalloc_used_memory() > server.maxmemory) {
-        char *buf =
-                  "-ERR command not allowed when used memory > 'maxmemory'\r\n";
-        lua_pushstring(L, buf);
-        LuaFlag = PIPE_ERR_FLAG;
+        (zmalloc_used_memory() > server.maxmemory)) {
+        LuaFlag = PIPE_ONE_LINER_FLAG;
+        lua_pushstring(L,
+                 "-ERR command not allowed when used memory > 'maxmemory'\r\n");
         return 1;
     }
 
-    if (server.vm_enabled         &&
-        server.vm_max_threads > 0 &&
+    if (server.vm_enabled && server.vm_max_threads > 0 &&
         blockClientOnSwappedKeys(LuaClient, cmd)) return 1;
 
-    long ok = 0; /* must come before first GOTO */
+    long         ok  = 0; /* must come before first GOTO */
     redisClient *rfc = rsql_createFakeClient();
     robj **rargv     = zmalloc(sizeof(robj *) * argc);
     rfc->argv        = rargv;
+    rfc->argc        = argc;
     for (int i = 0; i < argc; i++) {
-        if (!lua_isstring(L, i + 1)) {
+        char *arg    = (char *)lua_tostring(L, i + 1);
+        if (!arg) {
             char *lbuf = "args must be strings";
             luaL_argerror (L, i, lbuf);
-            LuaFlag    = PIPE_ERR_FLAG;
+            LuaFlag    = PIPE_ONE_LINER_FLAG;
             ok         = 1;
             goto redis_lua_err;
         }
-        char *arg    = (char *)lua_tostring(L, i + 1);
-        rfc->argv[i] = createStringObject(arg, strlen(arg));
+        rfc->argv[i] = _createStringObject(arg);
     }
-    rfc->argc = argc;
 
     ok = fakeClientPipe(LuaClient, rfc, L, 0, &LuaFlag, luaLine, emptyNoop);
 
 redis_lua_err:
-    // TODO free argv[]'s elements???
+    for (int i = 0; i < argc; i++) decrRefCount(rargv[i]);
     zfree(rargv);
     rsql_freeFakeClient(rfc);
     return ok ? 1 : 0;

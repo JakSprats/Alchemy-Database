@@ -76,6 +76,7 @@ char *createSimKeyFromRaw(void         *key_ptr,
 void  destroySimKey(char *simkey, bool  med);
 
 /* convert stream to robj's */
+void destroyAssignKeyRobj(robj *key);
 void assignKeyRobj(uchar *stream,            robj *key);
 void assignValRobj(uchar *stream, int ctype, robj *val, uchar is_index);
 

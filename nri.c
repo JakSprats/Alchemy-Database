@@ -35,13 +35,16 @@ ALL RIGHTS RESERVED
 
 #include "bt.h"
 #include "row.h"
+#include "rpipe.h"
 #include "alsosql.h"
 #include "common.h"
 #include "nri.h"
 
 // FROM redis.c
 #define RL4 redisLog(4,
-extern struct redisServer server;
+extern struct redisServer  server;
+extern ulong               CurrCard;
+extern redisClient        *CurrClient;
 
 extern r_tbl_t Tbl  [MAX_NUM_DB][MAX_NUM_TABLES];
 extern r_ind_t Index[MAX_NUM_DB][MAX_NUM_INDICES];
@@ -98,24 +101,46 @@ static sds genNRL_Cmd(d_l_t  *nrlind,
     return cmd;
 }
 
-//TODO: "SELECT" needs special handling
+static bool emptyNonRelIndRespHandler(redisClient *c) {
+    addReply(c, shared.nullbulk);
+    CurrCard++;
+    return 1;
+}
+
+uchar NriFlag = 0;
+static bool nonRelIndRespHandler(redisClient *c,
+                                 void        *x,
+                                 robj        *key,
+                                 long        *card,
+                                 int          b,   /* variable ignored */
+                                 int          n) { /* variable ignored */
+    x = 0; b = 0; n = 0; /* compiler warnings */
+    if (NriFlag == PIPE_ONE_LINER_FLAG) {
+        robj *r = _createStringObject(key->ptr + 1);
+        decrRefCount(key);
+        key    = r;
+    }
+    addReplyBulk(c, key);
+    *card   = *card + 1;
+    CurrCard++;
+    return 1;
+}
+
 static void runCmdInFakeClient(sds s) {
     //RL4 "runCmdInFakeClient: %s", s);
-    char *end = strchr(s, ' ');
-    if (!end) return;
-
     int           argc;
     sds          *argv = sdssplitlen(s, sdslen(s), " ", 1, &argc);
-    if (!argv || argc < 1) goto run_cmd_end;
+    if (!argv)    return;
+    if (argc < 1) goto run_cmd_end;
     redisCommand *cmd  = lookupCommand(argv[0]);
-    if (!cmd)              goto run_cmd_end;
+    if (!cmd)     goto run_cmd_end;
     if ((cmd->arity > 0 && cmd->arity > argc) || (argc < -cmd->arity))
-                           goto run_cmd_end;
+                  goto run_cmd_end;
     int    arity;
     robj **rargv;
     if (cmd->arity > 0 || cmd->proc == insertCommand    ||
                           cmd->proc == sqlSelectCommand ||
-                          cmd->proc == tscanCommand) {
+                          cmd->proc == tscanCommand)       {
         arity = abs(cmd->arity);
         rargv = zmalloc(sizeof(robj *) * arity);
         for (int j = 0; j < arity - 1; j++) {
@@ -126,20 +151,20 @@ static void runCmdInFakeClient(sds s) {
             if (j != (arity - 1)) lastarg = sdscatlen(lastarg, " ", 1);
             lastarg = sdscatlen(lastarg, argv[j], sdslen(argv[j]));
         }
-        rargv[arity - 1] = createStringObject(lastarg, sdslen(lastarg));
+        rargv[arity - 1] = createObject(REDIS_STRING, lastarg);
     } else {
-        rargv = zmalloc(sizeof(robj *) * argc);
-        for (int j = 0; j < argc; j++) {
+        arity = argc;
+        rargv = zmalloc(sizeof(robj *) * arity);
+        for (int j = 0; j < arity; j++) {
             rargv[j] = createStringObject(argv[j], sdslen(argv[j]));
         }
-        arity = argc;
     }
+    redisClient *c  = CurrClient;
     redisClient *fc = rsql_createFakeClient();
     fc->argv        = rargv;
     fc->argc        = arity;
-    rsql_resetFakeClient(fc);
-    call(fc, cmd);
-    //TODO do something w/ return args
+    fakeClientPipe(c, fc, NULL, 0, &NriFlag,
+                   nonRelIndRespHandler, emptyNonRelIndRespHandler);
     rsql_freeFakeClient(fc);
     for (int j = 0; j < arity; j++) decrRefCount(rargv[j]);
     zfree(rargv);
@@ -166,10 +191,7 @@ void runNrlIndexFromStream(uchar *stream, d_l_t *nrlind, int itbl) {
     sds cmd = genNRL_Cmd(nrlind, &key, NULL, NULL, 0, &val, itbl);
     runCmdInFakeClient(cmd);
     sdsfree(cmd);
-    //TODO this should be destroyKeyRobj()
-    if (key.encoding == REDIS_ENCODING_RAW) {
-        sdsfree(key.ptr); /* free from assignKeyRobj sflag[1,4] */
-    }
+    destroyAssignKeyRobj(&key);
 }
 
 /* CREATE NON-RELATIONAL-INDEX */

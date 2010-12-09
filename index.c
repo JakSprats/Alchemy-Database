@@ -256,9 +256,7 @@ static void makeIndexFromStream(uchar *stream,
     robj *fk = createColObjFromRow(&val, icol, &key, itbl); /* freeME */
     iAdd(ibtr, fk, &key, Tbl[server.dbid][itbl].col_type[0]);
     decrRefCount(fk);
-    if (key.encoding == REDIS_ENCODING_RAW) {
-        sdsfree(key.ptr); /* free from assignKeyRobj sflag[1,4] */
-    }
+    destroyAssignKeyRobj(&key);
 }
 
 /* CREATE INDEX on Table w/ Columns */

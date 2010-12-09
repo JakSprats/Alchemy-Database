@@ -282,13 +282,13 @@ bool parseWCAddtlSQL(redisClient *c, char *token, cswc_t *w) {
 static bool addRCmdToINList(redisClient *c,
                             void        *x,
                             robj        *key,
-                            long        *l,   /* variable ignored */
+                            long        *card,
                             int          b,   /* variable ignored */
                             int          n) { /* variable ignored */
-    c = NULL; l = NULL; b = 0; n = 0; /* compiler warnings */
+    c = NULL; b = 0; n = 0; /* compiler warnings */
     list **inl = (list **)x;
-    robj *r    = cloneRobj(key);
-    listAddNodeTail(*inl, r);
+    listAddNodeTail(*inl, key);
+    *card      = *card + 1;
     return 1;
 }
 

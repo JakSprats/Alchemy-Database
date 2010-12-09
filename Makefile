@@ -147,10 +147,11 @@ sds.o: sds.c sds.h zmalloc.h
 zipmap.o: zipmap.c zmalloc.h
 zmalloc.o: zmalloc.c config.h
 
+# ALSOSQL
 bt.o: bt.c btree.h btreepriv.h redis.h row.h bt.h common.h
 bt_code.o: bt_code.c btree.h btreepriv.h redis.h common.h
 bt_output.o: bt_output.c btree.h btreepriv.h redis.h
-alsosql.o: redis.h alsosql.h bt_iterator.h index.h range.h desc.h bt.h sixbit.h row.h cr8tblas.h common.h
+alsosql.o: alsosql.h bt_iterator.h index.h range.h desc.h bt.h sixbit.h row.h cr8tblas.h redis.h common.h
 index.o: index.h bt_iterator.h alsosql.h orderby.h nri.h legacy.h redis.h common.h
 bt_iterator.o: redis.h bt_iterator.h btree.h btreepriv.h common.h
 norm.o: redis.h sql.h bt_iterator.h legacy.h common.h
@@ -158,11 +159,11 @@ join.o: redis.h join.h bt_iterator.h alsosql.h orderby.h store.h common.h
 store.o: redis.h store.h bt_iterator.h alsosql.h orderby.h legacy.h common.h
 rdb_alsosql.o: redis.h rdb_alsosql.h bt_iterator.h alsosql.h nri.h index.h common.h
 sixbit.o: sixbit.h
-row.o: row.h alsosql.h common.h
+row.o: row.h alsosql.h redis.h common.h
 sql.o: redis.h sql.h bt_iterator.h cr8tblas.h rpipe.h common.h
 denorm.o: redis.h bt_iterator.h alsosql.h parser.h legacy.h common.h
-scan.o: alsosql.h bt_iterator.h sql.h
-orderby.o: orderby.h store.h join.h common.h
+scan.o: alsosql.h bt_iterator.h redis.h sql.h
+orderby.o: orderby.h store.h join.h redis.h common.h
 lua_integration.o: lua_integration.h rpipe.h redis.h zmalloc.h
 parser.o: parser.h redis.h zmalloc.h common.h
 nri.o: nri.h redis.h alsosql.h common.h

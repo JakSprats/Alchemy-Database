@@ -252,28 +252,28 @@ char *createSimKeyFromRaw(void    *key_ptr,
             memcpy(simkey + 5, key_ptr, sdslen(key_ptr));
         }
     } else if (ktype == COL_TYPE_INT) {
-        unsigned long i = (unsigned long)key_ptr;
-        simkey          = SimKeyBuffer;
+        ulong i = (ulong)key_ptr;
+        simkey  = SimKeyBuffer;
         if (i >= TWO_POW_32) {
             //redisLog(REDIS_WARNING, "column value > UINT_MAX");
             return NULL;
         }
         if (i < TWO_POW_14) {        // 14bit INT
-            unsigned short m = (unsigned short)(i * 4 + 2);
+            ushort m = (ushort)(i * 4 + 2);
             memcpy(simkey, &m, 2);
-            *sflag           = 2;
-            *ksize           = 2;
+            *sflag    = 2;
+            *ksize    = 2;
         } else if (i < TWO_POW_28) { // 28bit INT
-            data             = (i * 16 + 8);
+            data      = (i * 16 + 8);
             memcpy(simkey, &data, 4);
-            *sflag           = 8;
-            *ksize           = 4;
+            *sflag    = 8;
+            *ksize    = 4;
         } else {                     // INT
-            *simkey          = 16;
-            data             = i;
+            *simkey   = 16;
+            data      = i;
             memcpy(simkey + 1, &data, 4);
-            *sflag           = 16;
-            *ksize           = 5;
+            *sflag    = 16;
+            *ksize    = 5;
         }
     } else if (ktype == COL_TYPE_FLOAT) {
         *sflag  = 32;
@@ -303,6 +303,12 @@ char *createSimKey(const robj *key,
     return createSimKeyFromRaw(ptr, ktype, med, sflag, ksize);
 }
 
+void destroyAssignKeyRobj(robj *key) {
+   if (key->encoding == REDIS_ENCODING_RAW) {
+        sdsfree(key->ptr); /* free from assignKeyRobj sflag[1,4] */
+        key->ptr = NULL;
+    }
+}
 void assignKeyRobj(uchar *stream, robj *key) {
     uint32  k, slen;
     uchar   b1     = *stream;

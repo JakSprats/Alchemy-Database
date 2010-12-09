@@ -53,6 +53,7 @@ ALL RIGHTS RESERVED
 #define RL4 redisLog(4,
 extern struct sharedObjectsStruct shared;
 extern struct redisServer server;
+extern ulong              CurrCard;
 
 // GLOBALS
 int Num_tbls[MAX_NUM_DB];
@@ -522,13 +523,18 @@ void insertCommitReply(redisClient *c,
     nrow = createRow(c, tmatch, ncols, vals, cofsts);
     if (!nrow) goto insert_commit_end; /* value did not match cdef */
 
+    EMPTY_LEN_OBJ
+    bool nrl = 0;
     if (matches) { /* Add to Indices */
         for (int i = 0; i < matches; i++) {
+            if (Index[server.dbid][indices[i]].nrl) {
+                if (!nrl) { INIT_LEN_OBJ }
+                nrl = 1;
+            }
             addToIndex(c->db, pko, vals, cofsts, indices[i]);
         }
     }
     int len = btAdd(o, pko, nrow, pktype);
-
     if (ret_size) { /* print SIZE stats */
         char buf[128];
         bt  *btr        = (bt *)o->ptr;
@@ -541,7 +547,12 @@ void insertCommitReply(redisClient *c,
         addReplyBulk(c, r);
         decrRefCount(r);
     } else {
-        addReply(c, shared.ok);
+        if (nrl) { /* responses come from NonRelationalIndex Cmd responses */
+            card        = CurrCard;
+            lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
+        } else {
+            addReply(c, shared.ok);
+        }
     }
 
 insert_commit_end:

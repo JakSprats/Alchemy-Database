@@ -96,12 +96,15 @@
 #include "nri.h"             /* ALSOSQL's NonRelationIndexes */
 #include "lua_integration.h" /* Lua c bindings for lua function "client */
 
-lua_State   *Lua       = NULL;
-redisClient *LuaClient = NULL;
-flag         LuaFlag   = PIPE_NONE_FLAG;
 #define ALSOSQL
-
 #ifdef ALSOSQL
+lua_State   *Lua         = NULL;
+redisClient *LuaClient   = NULL; /* combine w/ CurrClient? */
+flag         LuaFlag     = PIPE_NONE_FLAG;
+ulong        CurrCard    = 0;
+redisClient *CurrClient  = NULL;
+char        *Luafilename = NULL;
+
 //#define SAVE_BY_DEFAULT
 #endif
 
@@ -1972,7 +1975,7 @@ static unsigned char am_big_endian() {
 
 #ifdef ALSOSQL
 static bool loadLuaHelperFile() {
-    if (luaL_loadfile(Lua, server.luafilename) || lua_pcall(Lua, 0, 0, 0)) {
+    if (luaL_loadfile(Lua, Luafilename) || lua_pcall(Lua, 0, 0, 0)) {
         /* TODO return as -ERR */
         printf("loadLuaHelperFile: error: %s\r\n", lua_tostring(Lua, -1));
         lua_pop(Lua, 1); /* pop error from stack */
@@ -1985,8 +1988,8 @@ static bool initLua() {
     luaL_openlibs(Lua);
     lua_register(Lua, "client", redisLua);
 
-    if (server.luafilename) return loadLuaHelperFile();
-    else                    return 1;
+    if (Luafilename) return loadLuaHelperFile();
+    else             return 1;
 }
 static void closeLua() {
     lua_close(Lua);
@@ -2009,9 +2012,9 @@ static void initServerConfig() {
     server.glueoutputbuf = 1;
     server.daemonize = 0;
     server.appendonly = 0;
-    /* ALSOSQL START */
-    server.luafilename = NULL;
-    /* ALSOSQL END */
+#ifdef ALSOSQL
+    Luafilename = NULL;
+#endif
     server.appendfsync = APPENDFSYNC_EVERYSEC;
     server.lastfsync = time(NULL);
     server.appendfd = -1;
@@ -2232,6 +2235,8 @@ static void initServer() {
     if (!il) exit(-1);
 
     server.dbid = 0;
+    CurrClient  = NULL;
+    CurrCard    = 0;
 #endif /* ALSOSQL END */
 }
 
@@ -2436,8 +2441,8 @@ static void loadServerConfig(char *filename) {
             server.hash_max_zipmap_value = memtoll(argv[1], NULL);
 #ifdef ALSOSQL
         } else if (!strcasecmp(argv[0],"luafilename") && argc == 2) {
-            if (server.luafilename) zfree(server.luafilename);
-            server.luafilename = zstrdup(argv[1]);
+            if (Luafilename) zfree(Luafilename);
+            Luafilename = zstrdup(argv[1]);
 #endif
         } else {
             err = "Bad directive or wrong number of arguments"; goto loaderr;
@@ -2730,7 +2735,8 @@ void call(redisClient *c, struct redisCommand *cmd) {
     long long dirty;
 
 #ifdef ALSOSQL
-    server.currClient = c;
+    CurrCard   = 0;
+    CurrClient = c;
 #endif
     dirty = server.dirty;
     cmd->proc(c);
@@ -8985,6 +8991,7 @@ struct redisClient *createFakeClient(void) {
 }
 
 #ifdef ALSOSQL
+//TODO this can be a static redisClient
 struct redisClient *rsql_createFakeClient(void) {
     int                 curr_db_id = server.dbid;
     struct redisClient *fc         = createFakeClient();
@@ -10781,8 +10788,8 @@ static void configSetCommand(redisClient *c) {
         sdsfreesplitres(v,vlen);
 #ifdef ALSOSQL
     } else if (!strcasecmp(c->argv[2]->ptr, "luafilename")) {
-        if (server.luafilename) zfree(server.luafilename);
-        server.luafilename = zstrdup(o->ptr);
+        if (Luafilename) zfree(Luafilename);
+        Luafilename = zstrdup(o->ptr);
         if (!reloadLua()) {
             addReplySds(c,sdscatprintf(sdsempty(),
                "-ERR problem loading lua helper file: %s\r\n", (char *)o->ptr));
@@ -10885,7 +10892,7 @@ static void configGetCommand(redisClient *c) {
 #ifdef ALSOSQL
     if (stringmatch(pattern, "luafilename", 0)) {
         addReplyBulkCString(c, "luafilename");
-        addReplyBulkCString(c, server.luafilename);
+        addReplyBulkCString(c, Luafilename);
         matches++;
     }
 #endif

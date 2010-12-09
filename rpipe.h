@@ -33,9 +33,8 @@ ALL RIGHTS RESERVED
 bool emptyNoop(redisClient *c);
 
 #define PIPE_NONE_FLAG      0
-#define PIPE_ERR_FLAG       1
-#define PIPE_ONE_LINER_FLAG 2
-#define PIPE_EMPTY_SET_FLAG 3
+#define PIPE_ONE_LINER_FLAG 1
+#define PIPE_EMPTY_SET_FLAG 2
 
 bool respOk(redisClient *rfc);
 bool replyIfNestedErr(redisClient *c, redisClient *rfc, char *msg);

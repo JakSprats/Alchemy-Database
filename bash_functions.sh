@@ -358,11 +358,15 @@ function istore_customer_hobby_order_by_denorm_to_many_lists() {
   $CLI LRANGE employee_ordered_hobby_list:4 0 -1
 }
 
-function orderbyer() {
-  echo ORDERBYER
+function sql_orderby_test() {
   order_by_test
   order_by_limit_offset_test
   order_by_test_joins
+}
+
+function orderbyer() {
+  echo ORDERBYER
+  sql_orderby_test
   istore_customer_hobby_order_by_denorm_to_many_lists
 }
 
@@ -381,9 +385,12 @@ function select_counter() {
   select_count_fk
 }
 
-function in_test_cust_id() {
+function sql_in_test_cust_id() {
   echo SELECT \* FROM customer WHERE "id IN (1,2,3,4)"
   $CLI SELECT \* FROM customer WHERE "id IN (1,2,3,4)"
+}
+function in_test_cust_id() {
+  sql_in_test_cust_id
   $CLI DEL LINDEX_cust_id
   $CLI LPUSH LINDEX_cust_id 4
   $CLI LPUSH LINDEX_cust_id 2
@@ -392,13 +399,16 @@ function in_test_cust_id() {
   echo SELECT \* FROM customer WHERE "id IN (\$LRANGE LINDEX_cust_id 0 3)"
   $CLI SELECT \* FROM customer WHERE "id IN (\$LRANGE LINDEX_cust_id 0 3)"
 }
-function in_test_select() {
+function sql_in_test_select() {
   echo SELECT \* FROM customer WHERE "id IN (\$SELECT id FROM customer WHERE id between 1 AND 3) ORDER BY name"
   $CLI SELECT \* FROM customer WHERE "id IN (\$SELECT id FROM customer WHERE id between 1 AND 3) ORDER BY name"
 }
-function in_test_cust_hobby() {
+function sql_in_test_cust_hobby() {
   echo SELECT \* FROM customer WHERE "hobby IN (yachting,painting,violin)" ORDER BY name
   $CLI SELECT \* FROM customer WHERE "hobby IN (yachting,painting,violin)" ORDER BY name
+}
+function in_test_cust_hobby() {
+  sql_in_test_cust_hobby
   $CLI DEL list_index_customer_hobby
   $CLI LPUSH list_index_customer_hobby yachting
   $CLI LPUSH list_index_customer_hobby painting
@@ -426,10 +436,15 @@ function in_test_join_nonrelational() {
   $CLI SELECT "division.id,division.name,division.location,external.name,external.salary" FROM "division,external" WHERE "division.id=external.division AND division.id IN (\$LRANGE L_IND_div_id 0 -1)"
 }
 
+function sql_in_tester() {
+  sql_in_test_cust_id
+  sql_in_test_select
+  sql_in_test_cust_hobby
+}
 function in_tester() {
   echo IN_TESTER
   in_test_cust_id
-  in_test_select
+  sql_in_test_select
   in_test_cust_hobby
   in_test_join_nonrelational
 }
@@ -451,6 +466,19 @@ function joiner() {
 function populate() {
   initer
   inserter
+}
+
+function sql_test() {
+  works
+  scanner
+  sql_in_tester
+  sql_orderby_test
+  select_counter
+  sql_create_table_as_tester
+  sql_float_tests
+  init_test_table
+  NUM=$(echo "math.randomseed(os.time()); print (math.random(1000));" | lua)
+  ./redisql-benchmark -n $NUM -r $NUM -c 100 -T
 }
 
 function works() {
@@ -525,6 +553,13 @@ function scan_customer() {
   $CLI SCANSELECT \* FROM customer WHERE "name in (bethany,gregory,jennifer) ORDER BY hobby"
   echo SCANSELECT \* FROM customer WHERE "name BETWEEN a AND z ORDER BY hobby DESC"
   $CLI SCANSELECT \* FROM customer WHERE "name BETWEEN a AND z ORDER BY hobby DESC"
+}
+
+function scanner() {
+  echo SCANNER
+  scan_customer
+  scan_external
+  scan_healthpan
 }
 
 function init_x3() {
@@ -628,13 +663,23 @@ function test_x5() {
   update_x5
 }
 
-function float_tests() {
+function test_float_nrl() {
+  echo test_float_nrl
+  $CLI ZADD Z 1.11 1; $CLI ZADD Z 2.22 2; $CLI ZADD Z 3.33 3
+  $CLI SELECT \* FROM X4 WHERE "f IN (\$ZRANGE Z 0 -1 WITHSCORES)"
+}
+
+function sql_float_tests() {
   $CLI DROP TABLE X3
   $CLI DROP TABLE X4
   $CLI DROP TABLE X5
   test_x3
   test_x4
   test_x5
+}
+function float_tests() {
+  sql_float_tests
+  test_float_nrl
 }
 
 function istore_worker_name_list() {
@@ -938,12 +983,32 @@ function secondary_many_range_query_test() {
   done
 }
 
+function init_complex() {
+  $CLI DROP TABLE complex
+  $CLI CREATE TABLE complex "(id int primary key, state int, message TEXT)"
+  $CLI CREATE INDEX nrl_ind_complex_scan ON complex "SCANSELECT * FROM complex"
+}
+function insert_complex() {
+  echo INSERT INTO complex VALUES "(1,1,ONE)"
+  $CLI INSERT INTO complex VALUES "(1,1,ONE)"
+  echo INSERT INTO complex VALUES "(2,2,TWO)"
+  $CLI INSERT INTO complex VALUES "(2,2,TWO)"
+  echo INSERT INTO complex VALUES "(3,3,THREE)"
+  $CLI INSERT INTO complex VALUES "(3,3,THREE)"
+  echo INSERT INTO complex VALUES "(4,4,FOUR)"
+  $CLI INSERT INTO complex VALUES "(4,4,FOUR)"
+  echo INSERT INTO complex VALUES "(5,5,FIVE)"
+  $CLI INSERT INTO complex VALUES "(5,5,FIVE)"
+}
+
 function non_rel_index_test() {
+  $CLI DROP TABLE nrl
+  $CLI DROP TABLE T_NRL
   $CLI CREATE TABLE nrl "(id int primary key, state int, message TEXT)"
   $CLI CREATE INDEX nrl:pub:index ON nrl "PUBLISH NRL:\$state message=\$message -END"
   $CLI CREATE INDEX nrl:zadd:index ON nrl "ZADD Z_NRL \$state \$id"
   # yes this does a lua transform and then publishes it (per insert)
-  $CLI CREATE INDEX nrl:lua_pub:index ON nrl "LUA len=string.len('\$message'); client('PUBLISH','NRL:\$state','LUA:message=\$message '..'len='..len);"
+  $CLI CREATE INDEX nrl:lua_pub:index ON nrl "LUA len=string.len('\$message'); return client('PUBLISH', 'NRL:\$state', 'LUA:message=\$message ' .. ' len=' .. len .. ' date: ' .. os.date('%c'));"
   $CLI CREATE TABLE T_NRL "(id int primary key, message TEXT)"
   $CLI CREATE INDEX nrl:insert:index ON nrl "INSERT INTO T_NRL VALUES (\$id,\$message)"
 
@@ -969,17 +1034,14 @@ function join_storer() {
   join_store_city_wrkr_denorm_to_many_hash
 }
 
-function scanner() {
-  echo SCANNER
-  scan_customer
-  scan_external
-  scan_healthpan
+function sql_create_table_as_tester() {
+  create_table_as_select_customer
+  create_table_as_select_join_worker_health
 }
 
 function create_table_as_tester() {
   echo CREATE_TABLE_AS
-  create_table_as_select_customer
-  create_table_as_select_join_worker_health
+  sql_create_table_as_tester
   create_table_as_obj
 }
 
@@ -1227,6 +1289,7 @@ function dump_mysql_table_to_redisql() {
 RECONF="$CLI CONFIG SET luafilename helper.lua"
 
 function lua_return_value_test() {
+  $RECONF
   echo LUA "NOT LUA ERROR"
   echo -ne "  "; $CLI LUA "NOT LUA ERROR"
   echo "No return"
@@ -1245,6 +1308,10 @@ function lua_return_value_test() {
   echo -ne "  "; $CLI LUA "return client('SET', 'X', 'valX');"
   echo "GET X"
   echo -ne "  "; $CLI LUA "return client('GET', 'X');"
+  echo "SET X valX"
+  echo -ne "  "; $CLI LUA "return client('SET', 'X', '5');"
+  echo "GET X"
+  echo -ne "  "; $CLI LUA "return client('GET', 'X');"
   $CLI ZADD ZZZ 1 ONE
   $CLI ZADD ZZZ 2 TWO
   $CLI ZADD ZZZ 3 THREE
@@ -1252,7 +1319,15 @@ function lua_return_value_test() {
   $CLI LUA "return client('ZRANGE', 'ZZZ', 0, -1);"
   $CLI DESC copy_ZZZ
   $CLI DUMP copy_ZZZ
-  $CLI LUA "return client('SELECT','*','FROM','copy_ZZZ','WHERE','pk BETWEEN 1 AND 2');"}
+  $CLI LUA "return client('SELECT','*','FROM','copy_ZZZ','WHERE','pk BETWEEN 1 AND 2');"
+
+  echo "t= {'X', 1}; return client('GET',t[1]); -> GET X"
+  echo -ne "  "; $CLI LUA "t= {'X', 1}; return client('GET',t[1]);"
+  echo "t= {'X', 1}; return client('GET',t[2]); -> GET 1"
+  echo -ne "  "; $CLI LUA "t= {'X', 1}; return client('GET',t[2]);"
+  echo "t= {'X', 1}; return client('GET',t[0]); -> GET undefined -> ERROR"
+  echo -ne "  "; $CLI LUA "t= {'X', 1}; return client('GET',t[0]);"
+
 }
 
 function init_messages_table() {
