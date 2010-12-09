@@ -58,9 +58,9 @@ void iupdateAction(redisClient *c,
     bool  virt    = Index[server.dbid][w->imatch].virt;                       \
     int   ind_col = (int)Index[server.dbid][w->imatch].column;                \
     bool  pktype  = Tbl[server.dbid][w->tmatch].col_type[0];                  \
-    bool  q_pk    = (!w->asc || (w->obc != -1 && w->obc != 0));               \
+    bool  q_pk    = (!w->asc || (w->obc > 0));                                \
     bool  brk_pk  = (w->asc && w->obc == 0);                                  \
-    bool  q_fk    = (w->obc != -1 && w->obc != ind_col);                      \
+    bool  q_fk    = ((w->obc > 0) != ind_col);                                \
     bool  brk_fk  = (w->asc && !q_fk);                                        \
     robj *o       = lookupKeyRead(c->db, Tbl[server.dbid][w->tmatch].name);   \
     robj *btt     = virt ? o : lookupKey(c->db, ind);                         \
