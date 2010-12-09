@@ -1718,6 +1718,7 @@ static void createSharedObjects(void) {
     shared.queued = createObject(REDIS_STRING,sdsnew("+QUEUED\r\n"));
 
 #ifdef ALSOSQL
+    shared.singlerow = createObject(REDIS_STRING,sdsnew("*1\r\n"));
     shared.toomanytables = createObject(REDIS_STRING,sdsnew(
         "-ERR MAX tables reached (256)\r\n"));
     shared.missingcolumntype = createObject(REDIS_STRING,sdsnew(
@@ -5089,6 +5090,11 @@ static void delCommand(redisClient *c) {
     int deleted = 0, j;
 
     for (j = 1; j < c->argc; j++) {
+#ifdef ALSOSQL
+        robj *o = lookupKeyRead(c->db, c->argv[j]);
+        if (o && 
+           (o->type == REDIS_BTREE || o->type == REDIS_NRL_INDEX)) continue;
+#endif
         if (deleteKey(c->db,c->argv[j])) {
             server.dirty++;
             deleted++;
@@ -5271,6 +5277,9 @@ static int renameGenericCommand(redisClient *c, int nx,
     if ((o = lookupKeyWrite(c->db,cargv1)) == NULL) {
         return -1;
     }
+#ifdef ALSOSQL
+    if (o->type == REDIS_BTREE || o->type == REDIS_NRL_INDEX) return -3;
+#endif
 
     incrRefCount(o);
     deleteIfVolatile(c->db,cargv2);
@@ -5298,6 +5307,10 @@ static void renameCommand(redisClient *c) {
         addReply(c,shared.czero);
     } else if (ret == 1) {
         addReply(c, shared.ok);
+#ifdef ALSOSQL
+    } else if (ret == -3) {
+        addReply(c,shared.wrongtypeerr);
+#endif
     }
 }
 
@@ -5311,7 +5324,10 @@ static void renamenxCommand(redisClient *c) {
         addReply(c,shared.czero);
     } else if (ret == 1) {
         addReply(c,shared.cone);
-        //addReply(c, shared.ok);
+#ifdef ALSOSQL
+    } else if (ret == -3) {
+        addReply(c,shared.wrongtypeerr);
+#endif
     }
 }
 
@@ -5343,6 +5359,13 @@ static void moveCommand(redisClient *c) {
         addReply(c,shared.czero);
         return;
     }
+
+#ifdef ALSOSQL
+    if (o->type == REDIS_BTREE || o->type == REDIS_NRL_INDEX) {
+        addReply(c,shared.wrongtypeerr);
+        return;
+    }
+#endif
 
     /* Try to add the element to the target DB */
     deleteIfVolatile(dst,c->argv[1]);

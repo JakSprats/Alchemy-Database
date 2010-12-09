@@ -271,6 +271,7 @@ struct sharedObjectsStruct {
     *emptymultibulk, *wrongtypeerr, *nokeyerr, *syntaxerr, *sameobjecterr,
 
 #ifdef ALSOSQL /* ALSOSQL START */
+    *singlerow,
     *toomanytables,       *undefinedcolumntype,  *missingcolumntype,
     *toomanycolumns,      *columnnametoobig,     *insertcannotoverwrite,
     *toofewcolumns,       *toomanyindices,       *nonuniquecolumns,

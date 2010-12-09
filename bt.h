@@ -48,7 +48,7 @@ int btStreamCmp(void *a, void *b);
 #define BTREE_INDEX_NODE      2
 #define BTREE_JOIN_RESULT_SET 3
 
-void  btRelease(bt *node_btr);
+void btDestroy(bt *nbtr, bt *btr);
 int   btAdd(    robj *o,       void *key, void *val, int ctype);
 int   btReplace(robj *o,       void *key, void *val, int ctype);
 int   btDelete( robj *o, const void *key,            int ctype);

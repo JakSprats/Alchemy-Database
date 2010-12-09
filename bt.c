@@ -95,15 +95,12 @@ static void emptyBtNode(bt *btr, bt_n *n, uchar vtype) {
     bt_free_btreenode(n, btr); /* memory management in btr */
 }
 
-void btRelease(bt *nbtr) {
+void btDestroy(bt *nbtr, bt *btr) {
     if (nbtr->root) {
         uchar vtype = (nbtr->is_index == BTREE_TABLE) ? REDIS_ROW : REDIS_BTREE;
         emptyBtNode(nbtr, nbtr->root, vtype);
         nbtr->root  = NULL;
     }
-}
-static void btDestroy(bt *nbtr, bt *btr) {
-    btRelease(nbtr);
     bt_free_btree(nbtr, btr); /* memory management in btr */
 }
 
@@ -437,7 +434,7 @@ static int _bt_del(bt *btr, const robj *key, int ktype, int vtype) {
     if (!stream) return 0;
 
     uint32 ssize  = getStreamMallocSize(stream, vtype, btr->is_index);
-    //RL4 "vtype: %d free: %p size: %u", vtype, stream, ssize);
+    //RL4 "is_index: %d vtype: %d free: %p size: %u", btr->is_index, vtype, stream, ssize);
     bt_free(stream, btr, ssize); /* memory bookkeeping in btr */
     return 1;
 }

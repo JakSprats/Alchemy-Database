@@ -128,8 +128,8 @@ static void iRem(bt *ibtr, robj *i_key, robj *i_val, int pktype) {
     ull   post_size    = nbtr->malloc_size;
     ibtr->malloc_size += (post_size - pre_size); /* inherits nbtr */
     if (!n_size) {
-        btRelease(nbtr);          /* first free indexNodeBT's contents */
-        btIndDelete(ibtr, i_key, ibtr->ktype); /* destroys indexNodeBT */
+        btIndDelete(ibtr, i_key, ibtr->ktype); /* remove Ind ref to NodeBT */
+        btDestroy(nbtr, ibtr); /* must come after btIndDelete() */
     }
 }
 

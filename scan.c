@@ -156,9 +156,10 @@ void tscanCommand(redisClient *c) {
         return;
     }
 
-    cswc_t w;
-    bool   rq  = 0; /* come before first GOTO */
-    uchar  sop = SQL_SCANSELECT;
+    cswc_t  w;
+    bool    rq  = 0;    /* B4 GOTO */
+    list   *ll  = NULL; /* B4 GOTO */
+    uchar   sop = SQL_SCANSELECT;
     init_check_sql_where_clause(&w, tmatch, wc); /* errors GOTO tscan_cmd_err */
 
     if (no_wc && c->argc > 4) { /* ORDER BY or STORE w/o WHERE CLAUSE */
@@ -201,7 +202,6 @@ void tscanCommand(redisClient *c) {
     }
 
     uchar ctype = COL_TYPE_NONE;
-    list *ll    = NULL;
     if (w.obc != -1) {
         ll    = listCreate();
         ctype = Tbl[server.dbid][tmatch].col_type[w.obc];
@@ -243,5 +243,6 @@ tscan_cmd_err:
         w.low  = NULL;
         w.high = NULL;
     }
+    if (ll) listRelease(ll);
     destroy_check_sql_where_clause(&w);
 }
