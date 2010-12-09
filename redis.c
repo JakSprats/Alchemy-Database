@@ -1975,8 +1975,8 @@ static unsigned char am_big_endian() {
 }
 
 #ifdef ALSOSQL
-static bool loadLuaHelperFile() {
-    if (luaL_loadfile(Lua, Luafilename) || lua_pcall(Lua, 0, 0, 0)) {
+static bool loadLuaHelperFile(char *fname) {
+    if (luaL_loadfile(Lua, fname) || lua_pcall(Lua, 0, 0, 0)) {
         /* TODO return as -ERR */
         printf("loadLuaHelperFile: error: %s\r\n", lua_tostring(Lua, -1));
         lua_pop(Lua, 1); /* pop error from stack */
@@ -1989,7 +1989,7 @@ static bool initLua() {
     luaL_openlibs(Lua);
     lua_register(Lua, "client", redisLua);
 
-    if (Luafilename) return loadLuaHelperFile();
+    if (Luafilename) return loadLuaHelperFile(Luafilename);
     else             return 1;
 }
 static void closeLua() {
@@ -10816,6 +10816,7 @@ static void configSetCommand(redisClient *c) {
         if (!reloadLua()) {
             addReplySds(c,sdscatprintf(sdsempty(),
                "-ERR problem loading lua helper file: %s\r\n", (char *)o->ptr));
+            decrRefCount(o);
             return;
         }
 #endif
@@ -10837,6 +10838,22 @@ badfmt: /* Bad format errors */
             (char*)c->argv[2]->ptr));
     decrRefCount(o);
 }
+
+#ifdef ALSOSQL
+static void configAddCommand(redisClient *c) {
+    robj *o = getDecodedObject(c->argv[3]);
+    if (!strcasecmp(c->argv[2]->ptr, "lua")) {
+        if (!loadLuaHelperFile(o->ptr)) {
+            addReplySds(c,sdscatprintf(sdsempty(),
+               "-ERR problem adding lua helper file: %s\r\n", (char *)o->ptr));
+            decrRefCount(o);
+            return;
+        }
+    }
+    decrRefCount(o);
+    addReply(c,shared.ok);
+}
+#endif
 
 static void configGetCommand(redisClient *c) {
     robj *o = getDecodedObject(c->argv[2]);
@@ -10927,6 +10944,11 @@ static void configCommand(redisClient *c) {
     if (!strcasecmp(c->argv[1]->ptr,"set")) {
         if (c->argc != 4) goto badarity;
         configSetCommand(c);
+#ifdef ALSOSQL
+    } else if (!strcasecmp(c->argv[1]->ptr,"ADD")) {
+        if (c->argc != 4) goto badarity;
+        configAddCommand(c);
+#endif
     } else if (!strcasecmp(c->argv[1]->ptr,"get")) {
         if (c->argc != 3) goto badarity;
         configGetCommand(c);
