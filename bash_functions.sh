@@ -469,6 +469,7 @@ function populate() {
 }
 
 function sql_test() {
+  dropper
   works
   scanner
   sql_in_tester
