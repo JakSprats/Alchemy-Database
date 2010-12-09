@@ -78,6 +78,7 @@ static struct config {
 
     int          sequential;
     int          modulo;
+    int          incr_seq;
 
     sds          query;
     int          qargc;
@@ -183,7 +184,8 @@ static void clientDone(client c) {
         return;
     }
     resetClient(c);
-    if (config.randomkeys || config.sequential) randomizeClientKey(c);
+    if (config.randomkeys || config.sequential || config.incr_seq)
+        randomizeClientKey(c);
 }
 
 static void readHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
@@ -344,7 +346,8 @@ static void createMissingClients(client c) {
         if (!new) continue;
         sdsfree(new->obuf);
         new->obuf = sdsdup(c->obuf);
-        if (config.randomkeys || config.sequential) randomizeClientKey(c);
+        if (config.randomkeys || config.sequential || config.incr_seq)
+            randomizeClientKey(c);
         prepareClientForReply(new,c->replytype);
     }
 }
@@ -453,6 +456,10 @@ void parseOptions(int argc, char **argv) {
             config.modulo = atoi(argv[i+1]);
             if (config.modulo < 0) config.modulo = 0;
             i++;
+        } else if (!strcmp(argv[i],"-i") && !lastarg) {
+            config.incr_seq = atoi(argv[i+1]);
+            if (config.incr_seq < 0) config.incr_seq = 0;
+            i++;
         } else if (!strcmp(argv[i],"-q")) {
             config.quiet      = 1;
         } else if (!strcmp(argv[i],"-l")) {
@@ -476,6 +483,7 @@ static void usage(char *arg) {
     printf(" -n <requests>           Total num requests (default 10000)\n");
     printf(" -r <keyspacelen>        Use random keys\n");
     printf(" -s                      Use sequential keys\n");
+    printf(" -i <incr_num>           Use incremental sequential keys\n");
     printf(" -m <modulo>             Modulo for foreign keys (2nd instance of \"0000\")\n");
     printf("  Using this option the benchmark will string replace queries\n");
     printf("  in the form 000012345678 instead of constant 000000000001\n");
@@ -499,8 +507,9 @@ long Sequence = 1;
 static void randomizeClientKey(client c) {
     char *p = c->obuf;
     long  r;
-    if (config.sequential) r = Sequence++;
-    else                   r = random() % config.randomkeys_keyspacelen;
+    if (config.sequential)    r = Sequence++;
+    else if (config.incr_seq) r = Sequence += config.incr_seq;
+    else                      r = random() % config.randomkeys_keyspacelen;
     int hits = 0;
     while ((p = strstr(p, "0000"))) {
         char x = *(p - 1);
@@ -537,6 +546,7 @@ int main(int argc, char **argv) {
     config.hostport               = 6379;
 
     config.sequential             = 0;
+    config.incr_seq               = 0;
     config.modulo                 = 0;
     config.query                  = NULL;
     config.reply_type             = -1;

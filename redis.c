@@ -1913,7 +1913,7 @@ static void createSharedObjects(void) {
         "-ERR SYNTAX: CREATE TABLE tablename AS [LRANGE,ZRANGE,ZRANGEBYSCORE,ZREVRANGE,HMGET,HKEYS,HVALS,HGETALL,SUNION,SDIFF,SINTER,SMEMBERS,SORT] - too few arguments to inner function\r\n"));
 
     shared.dump_syntax = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: DUMP tablename [TO MYSQL]\r\n"));
+        "-ERR SYNTAX: DUMP tablename [TO MYSQL [mysqltablename]],[TO FILE fname]\r\n"));
     shared.denorm_wildcard_no_star = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: NORM tablename wildcard - wildcard must have '*'\r\n"));
 #endif /* ALSOSQL END */

@@ -58,12 +58,30 @@ r_ind_t Index   [MAX_NUM_DB][MAX_NUM_INDICES];
     decrRefCount(r);              \
     card++;
 
+#define FILE_DUMP_SUCCESS "SUCCESS: DUMPED: %llu bytes in %lu rows to file: %s"
+#define FILE_DUMP_FAILURE "FAILURE: DUMPED: %llu bytes in %lu rows to file: %s"
+#define SINGLE_LINE       "*1\r\n$%lu\r\n%s\r\n"
+
+/* SYNTAX:
+     1.) DUMP table
+     2.) DUMP table TO MYSQL [mysql_table]
+     3.) DUMP table TO FILE filename        */
 void dumpCommand(redisClient *c) {
     char buf[192];
     TABLE_CHECK_OR_REPLY(c->argv[1]->ptr,)
-    if ((c->argc == 3) ||
-        ((c->argc > 3) && (strcasecmp(c->argv[2]->ptr, "TO") ||
-                           strcasecmp(c->argv[3]->ptr, "MYSQL")))) {
+    bool err = 0;
+    if (c->argc > 5 || c->argc == 3) {
+        err = 1;
+    } else if ((c->argc > 3)) {
+        if ((strcasecmp(c->argv[2]->ptr, "TO") ||
+               (strcasecmp(c->argv[3]->ptr, "MYSQL") &&
+                strcasecmp(c->argv[3]->ptr, "FILE")))) {
+            err = 1;
+        } else if (!strcasecmp(c->argv[3]->ptr, "FILE") && (c->argc < 5)) {
+            err = 1;
+        }
+    }
+    if (err) {
         addReply(c, shared.dump_syntax);
         return;
     }
@@ -75,8 +93,13 @@ void dumpCommand(redisClient *c) {
     LEN_OBJ
 
     bool  to_mysql = 0;
+    bool  to_file  = 0;
     char *m_tname  = NULL;
-    if (c->argc > 3) { /* NOTE syntax already validated */
+    char *fname    = NULL;
+    if (c->argc > 3 && !strcasecmp(c->argv[3]->ptr, "FILE")) {
+        to_file = 1;
+        fname   = c->argv[4]->ptr;
+    } else if (c->argc > 3 && !strcasecmp(c->argv[3]->ptr, "MYSQL")) {
         robj *r;
         to_mysql = 1;
         if (c->argc > 4) m_tname = c->argv[4]->ptr;
@@ -104,8 +127,17 @@ void dumpCommand(redisClient *c) {
         ADD_REPLY_BULK(r, buf)
     }
 
+    FILE *fp    = NULL;
+    ull   bytes = 0;
     if (btr->numkeys) {
         int cmatchs[MAX_COLUMN_PER_TABLE];
+        if (to_file) {
+            if((fp = fopen(fname, "w")) == NULL) {
+                lenobj->ptr = sdscatprintf(sdsempty(),
+                                  "-ERR failed to open: %s\r\n", fname);
+                return;
+            }
+        }
         btEntry *be;
         int      qcols = get_all_cols(tmatch, cmatchs);
         btSIter *bi    = btGetFullRangeIterator(o, 0, 1);
@@ -121,6 +153,18 @@ void dumpCommand(redisClient *c) {
                 ins->ptr  = sdscatlen(ins->ptr, ");", 2);
                 addReplyBulk(c, ins);
                 decrRefCount(ins);
+            } else if (to_file) {
+                if ((fwrite(r->ptr, sdslen(r->ptr), 1, fp) == 0) ||
+                    ((fwrite("\n", 1, 1, fp) == 0))) {
+                    sds s = sdscatprintf(sdsempty(), FILE_DUMP_FAILURE,
+                                                      bytes, card, fname);
+                    lenobj->ptr = sdscatprintf(sdsempty(), SINGLE_LINE,
+                                                            sdslen(s), s);
+                    sdsfree(s);
+                    fclose(fp);
+                    return;
+                }
+                bytes += sdslen(r->ptr) + 1;
             } else {
                 addReplyBulk(c, r);
             }
@@ -135,7 +179,14 @@ void dumpCommand(redisClient *c) {
         char *buf2 = "UNLOCK TABLES;";
         ADD_REPLY_BULK(r, buf2)
     }
-    lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
+    if (to_file) {
+        sds s = sdscatprintf(sdsempty(), FILE_DUMP_SUCCESS, bytes, card, fname);
+        lenobj->ptr = sdscatprintf(sdsempty(), SINGLE_LINE, sdslen(s), s);
+        sdsfree(s);
+        fclose(fp);
+    } else {
+        lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
+    }
 }
  
 ull get_sum_all_index_size_for_table(redisClient *c, int tmatch) {
