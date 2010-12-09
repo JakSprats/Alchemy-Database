@@ -114,7 +114,7 @@ static void condSelectReply(redisClient   *c,
             uchar  pktype = Tbl[server.dbid][tmatch].col_type[0];
             robj  *row    = btFindVal(o, key, pktype);
             robj  *r      = outputRow(row, qcols, cmatchs, key, tmatch, 0);
-            if (w->obc != -1) {
+            if (w->obc > 0) {
                 addORowToRQList(ll, r, row, w->obc, key, tmatch, ctype);
             } else {
                 addReplyBulk(c, r);
@@ -210,20 +210,27 @@ void tscanCommand(redisClient *c) {
         sent = card; /* for morons that do "SELECT COUNT(*) ORDER BY */
     } else {
         uchar ctype = COL_TYPE_NONE;
-        if (w.obc != -1) {
+        if (w.obc > 0) {
             ll    = listCreate();
             ctype = Tbl[server.dbid][tmatch].col_type[w.obc];
         }
 
         btEntry *be;
-        btSIter *bi = btGetFullRangeIterator(o, 0, 1);
+        long     loops = -1;
+        btSIter *bi    = btGetFullRangeIterator(o, 0, 1);
         while ((be = btRangeNext(bi, 0)) != NULL) {      // iterate btree
+            loops++;
+            if (w.obc == 0) { /* ORDRBY PK LIM */
+                if (w.ofst != -1 && loops < w.ofst) continue;
+                sent++;
+                if ((uint32)w.lim == card) break;
+            }
             condSelectReply(c, &w, o, be->key, be->val, tmatch, qcols, cmatchs,
                             &card, no_wc, ctype, ll, cstar);
         }
         btReleaseRangeIterator(bi);
 
-        if (w.obc != -1 && card) {
+        if (w.obc > 0 && card) {
             obsl_t **vector = sortOrderByToVector(ll, ctype, w.asc);
             for (int k = 0; k < (int)listLength(ll); k++) {
                 if (w.lim != -1 && sent == w.lim) break;
