@@ -133,7 +133,7 @@ static void condSelectReply(redisClient   *c,
 */
 void tscanCommand(redisClient *c) {
     int  cmatchs[MAX_COLUMN_PER_TABLE];
-    bool no_wc  =  1; /* NO WHERE CLAUSE */
+    bool no_wc  =  0; /* NO WHERE CLAUSE */
     bool cstar  =  0;
     int  qcols  =  0;
     int  tmatch = -1;
@@ -171,7 +171,6 @@ void tscanCommand(redisClient *c) {
                 addReply(c, shared.scan_store);
                 goto tscan_cmd_err;
             }
-            if (w.obc != -1) no_wc = 1;
         }
     }
     if (no_wc && w.obc == -1 && c->argc > 4) { /* argv[4] parse error */
@@ -201,37 +200,44 @@ void tscanCommand(redisClient *c) {
         }
     }
 
-    uchar ctype = COL_TYPE_NONE;
-    if (w.obc != -1) {
-        ll    = listCreate();
-        ctype = Tbl[server.dbid][tmatch].col_type[w.obc];
-    }
-
     LEN_OBJ
-    btEntry *be;
-    robj    *o  = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
-    btSIter *bi = btGetFullRangeIterator(o, 0, 1);
-    while ((be = btRangeNext(bi, 0)) != NULL) {      // iterate btree
-        condSelectReply(c, &w, o, be->key, be->val, tmatch, qcols, cmatchs,
-                        &card, no_wc, ctype, ll, cstar);
-    }
-    btReleaseRangeIterator(bi);
+    int   sent = 0;
+    robj *o    = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
 
-    int sent = 0;
-    if (w.obc != -1 && card) {
-        obsl_t **vector = sortOrderByToVector(ll, ctype, w.asc);
-        for (int k = 0; k < (int)listLength(ll); k++) {
-            if (w.lim != -1 && sent == w.lim) break;
-            if (w.ofst > 0) {
-                w.ofst--;
-            } else {
-                sent++;
-                obsl_t *ob = vector[k];
-                addReplyBulk(c, ob->row);
-            }
+    if (cstar && no_wc) {
+        bt *btr = (bt *)o->ptr;
+        card = btr->numkeys;
+        sent = card; /* for morons that do "SELECT COUNT(*) ORDER BY */
+    } else {
+        uchar ctype = COL_TYPE_NONE;
+        if (w.obc != -1) {
+            ll    = listCreate();
+            ctype = Tbl[server.dbid][tmatch].col_type[w.obc];
         }
-        sortedOrderByCleanup(vector, listLength(ll), ctype, 1);
-        free(vector);
+
+        btEntry *be;
+        btSIter *bi = btGetFullRangeIterator(o, 0, 1);
+        while ((be = btRangeNext(bi, 0)) != NULL) {      // iterate btree
+            condSelectReply(c, &w, o, be->key, be->val, tmatch, qcols, cmatchs,
+                            &card, no_wc, ctype, ll, cstar);
+        }
+        btReleaseRangeIterator(bi);
+
+        if (w.obc != -1 && card) {
+            obsl_t **vector = sortOrderByToVector(ll, ctype, w.asc);
+            for (int k = 0; k < (int)listLength(ll); k++) {
+                if (w.lim != -1 && sent == w.lim) break;
+                if (w.ofst > 0) {
+                    w.ofst--;
+                } else {
+                    sent++;
+                    obsl_t *ob = vector[k];
+                    addReplyBulk(c, ob->row);
+                }
+            }
+            sortedOrderByCleanup(vector, listLength(ll), ctype, 1);
+            free(vector);
+        }
     }
 
     if (w.lim != -1 && (uint32)sent < card) card = sent;

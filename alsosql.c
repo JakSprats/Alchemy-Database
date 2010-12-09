@@ -607,10 +607,15 @@ static void selectSinglePKReply(redisClient  *c,
                                 robj         *key,
                                 int           tmatch,
                                 int           cmatchs[],
-                                int           qcols) {
+                                int           qcols,
+                                bool          cstar) {
     robj *row = btFindVal(o, key, Tbl[server.dbid][tmatch].col_type[0]);
     if (!row) {
         addReply(c, shared.nullbulk);
+        return;
+    }
+    if (cstar) {
+        addReply(c, shared.cone);
         return;
     }
 
@@ -721,7 +726,7 @@ void sqlSelectCommand(redisClient *c) {
         iselectAction(c, &w, cmatchs, qcols, cstar);
     } else {
         robj *o = lookupKeyRead(c->db, Tbl[server.dbid][w.tmatch].name);
-        selectSinglePKReply(c, o, w.key, w.tmatch, cmatchs, qcols);
+        selectSinglePKReply(c, o, w.key, w.tmatch, cmatchs, qcols, cstar);
     }
 
 select_cmd_end:
