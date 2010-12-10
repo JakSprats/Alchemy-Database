@@ -601,7 +601,7 @@ void joinStoreCommit(redisClient *c, jb_t *jb) {
     int   nlen;  
     bool  sub_pk;
     int   nargc; 
-    char *last;
+    char *last = NULL;
     if (!prepareToStoreReply(c, &jb->w, &nname, &nlen, 
                              &sub_pk, &nargc, &last, jb->qcols)) return;
     jb->nname = createStringObject(nname, nlen);
@@ -612,7 +612,8 @@ void joinStoreCommit(redisClient *c, jb_t *jb) {
 
     joinGeneric(c, fc, jb, sub_pk, nargc);
 
-    if (sub_pk) *last = '$';/* write back in "$" for AOF and Slaves */
+    if (last) *last = '$';/* write back in "$" for AOF and Slaves */
+
     rsql_freeFakeClient(fc);
 }
 

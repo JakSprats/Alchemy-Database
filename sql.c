@@ -116,7 +116,6 @@ bool parseCreateTable(redisClient *c,
                    strcasestr(type, "BINARY")) {
             Tbl[server.dbid][ntbls].col_type[*ccount] = COL_TYPE_STRING;
         } else {
-RL4 "type: %s", type);
             addReply(c, shared.undefinedcolumntype);
             return 0;
         }

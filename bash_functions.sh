@@ -1548,3 +1548,14 @@ function run_new_join_tests() {
   populate_new_join
   new_join_test
 }
+
+function wait_on_proc_net_tcp() {
+  LIM=$1
+  SLEEP_TIME=2
+  PROC_TCP=99999
+  while [ $PROC_TCP -gt $LIM ]; do
+    echo $0: sleep $SLEEP_TIME - PROC_TCP=$PROC_TCP
+    sleep $SLEEP_TIME
+    PROC_TCP=$(wc -l /proc/net/tcp | cut -f 1 -d \ )
+  done
+}

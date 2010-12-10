@@ -101,14 +101,15 @@ bool prepareToStoreReply(redisClient  *c,
         return 0;
     }
 
-    *nlen   = get_token_len(*nname);
-    *sub_pk = (StorageCommands[w->sto].argc < 0);
-    *nargc  = abs(StorageCommands[w->sto].argc);
-    *last   = *nname + *nlen - 1;
-    if (*(*last) == '$') { /* means final arg munging */
-        *sub_pk  = 1;
-        *(*last) = '\0';   /* temporarily erase '$' - add in later for AOF */
-        *nlen    = *nlen - 1;
+    *nlen     = get_token_len(*nname);
+    char *end = *nname + *nlen - 1;
+    *sub_pk   = (StorageCommands[w->sto].argc < 0);
+    *nargc    = abs(StorageCommands[w->sto].argc);
+    if (*end == '$') { /* means final arg munging */
+        *sub_pk = 1;
+        *last   = end;
+        *end    = '\0';   /* temporarily erase '$' - add in later for AOF */
+        *nlen   = *nlen - 1;
         if ((*nargc + 1) != qcols) {
             addReply(c, shared.storagenumargsmismatch);
             return 0;
@@ -179,30 +180,23 @@ bool istoreAction(redisClient *c,
     return performStoreCmdOrReply(c, fc, sto, 0);
 }
 
-
-#define ISTORE_OPERATION(Q)                                            \
-    if (Q) {                                                           \
-        addORowToRQList(ll, NULL, row, w->obc, key, w->tmatch, ctype); \
-    } else {                                                           \
-        if (!istoreAction(c, fc, w->tmatch, cmatchs, qcols, w->sto,    \
-                          key, row, nname, sub_pk, nargc)) {           \
-            err = 1;                                                   \
-            goto istore_end;                                           \
-        }                                                              \
+bool istore_op(range_t *g, robj *key, robj *row, bool q) {
+    if (q) {
+        addORowToRQList(g->co.ll, NULL, row, g->co.w->obc,
+                        key, g->co.w->tmatch, g->co.ctype);
+    } else {
+        if (!istoreAction(g->co.c, g->st.fc, g->co.w->tmatch, g->se.cmatchs,
+                          g->se.qcols, g->co.w->sto, key, row, g->st.nname,
+                          g->st.sub_pk, g->st.nargc))
+                              return 0;
     }
+    return 1;
+}
 
 void istoreCommit(redisClient *c,
                   cswc_t      *w,
                   int          cmatchs[MAX_COLUMN_PER_TABLE],
                   int          qcols) {
-    char *nname;
-    int   nlen;
-    bool  sub_pk;
-    int   nargc;
-    char *last;
-    if (!prepareToStoreReply(c, w, &nname, &nlen,
-                             &sub_pk, &nargc, &last, qcols)) return;
-
     uchar ctype = COL_TYPE_NONE;
     list *ll    = NULL;
     if (w->obc != -1) {
@@ -210,51 +204,56 @@ void istoreCommit(redisClient *c,
         ctype = Tbl[server.dbid][w->tmatch].col_type[w->obc];
     }
 
-    robj        *argv[STORAGE_MAX_ARGC + 1];
-    redisClient *fc = rsql_createFakeClient();
-    fc->argv        = argv;
+    long         card  = 0;    /* B4 GOTO */ 
+    int          sent  = 0;    /* B4 GOTO */ 
+    redisClient *fc    = NULL; /* B4 GOTO */
+    bool         err   = 0;    /* B4 GOTO */
 
-    int     sent  = 0; /* come before first GOTO */
-    bool    cstar = 0;
-    bool    err   = 0;
-    bool    qed   = 0;
-    ulong   card  = 0;
-    btSIter *bi   = NULL;
-    btSIter *nbi  = NULL;
-    if (w->low) { /* RANGE QUERY */
-        RANGE_QUERY_LOOKUP_START
-            ISTORE_OPERATION(q_pk)
-        RANGE_QUERY_LOOKUP_MIDDLE
-                ISTORE_OPERATION(q_fk)
-        RANGE_QUERY_LOOKUP_END
-    } else {    /* IN () QUERY */
-        IN_QUERY_LOOKUP_START
-            ISTORE_OPERATION(q_pk)
-        IN_QUERY_LOOKUP_MIDDLE
-                ISTORE_OPERATION(q_fk)
-        IN_QUERY_LOOKUP_END
+    int          nlen;
+    char        *last  = NULL;
+    range_t      g;
+    init_range(&g, c, w, ll, ctype);
+    if (!prepareToStoreReply(c, w, &g.st.nname, &nlen, &g.st.sub_pk,
+                             &g.st.nargc, &last, qcols)) {
+        err = 1;
+        goto istore_end;
     }
 
-    if (qed) {
-        obsl_t **vector = sortOrderByToVector(ll, ctype, w->asc);
-        sent            = sortedOrderByIstore(c, w, fc, cmatchs, qcols,
-                                              nname, sub_pk, nargc, ctype,
-                                              vector, listLength(ll));
-        if (sent == -1) err = 1;
-        sortedOrderByCleanup(vector, listLength(ll), ctype, 0);
-        free(vector);
+    robj *argv[STORAGE_MAX_ARGC + 1];
+    fc           = rsql_createFakeClient();
+    fc->argv     = argv;
+    g.se.qcols   = qcols;
+    g.se.cmatchs = cmatchs;
+    g.st.fc      = fc;
+    if (w->low) { /* RANGE QUERY */
+        card = rangeOp(&g, istore_op);
+    } else {    /* IN () QUERY */
+        card = inOp(&g, istore_op);
+    }
+    if (card != -1) {
+        if (g.co.qed) {
+            obsl_t **v = sortOrderByToVector(ll, ctype, g.co.w->asc);
+            sent       = sortedOrderByIstore(c, w, fc, g.se.cmatchs, qcols,
+                                             g.st.nname, g.st.sub_pk,
+                                             g.st.nargc, ctype, v,
+                                             listLength(ll));
+            sortedOrderByCleanup(v, listLength(ll), ctype, 0);
+            free(v);
+            if (sent == -1) err = 1;
+        }
+    } else {
+        err = 1;
     }
 
 istore_end:
-    if (sub_pk) *last = '$';/* write back in "$" for AOF */
+    if (last) *last = '$';/* write back in "$" for AOF */
 
-    if (nbi)  btReleaseRangeIterator(nbi);
-    if (bi)   btReleaseRangeIterator(bi);
-    if (ll)   listRelease(ll);
-    rsql_freeFakeClient(fc);
+    if (ll) listRelease(ll);
+    if (fc) rsql_freeFakeClient(fc);
 
     if (err) return;
-    if (w->lim != -1 && (uint32)sent < card) card = sent;
+
+    if (w->lim != -1 && sent < card) card = sent;
     addReplyLongLong(c, card);
 }
 
