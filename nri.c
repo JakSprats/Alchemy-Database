@@ -116,7 +116,8 @@ static bool nonRelIndRespHandler(redisClient *c,
                                  int          n) { /* variable ignored */
     x = 0; b = 0; n = 0; /* compiler warnings */
     if (NriFlag == PIPE_ONE_LINER_FLAG) {
-        robj *r = _createStringObject(key->ptr + 1);
+        char *s = key->ptr;
+        robj *r = _createStringObject(s + 1); /* +1 skips '+','-',':' */
         decrRefCount(key);
         key    = r;
     }

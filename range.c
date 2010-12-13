@@ -52,148 +52,228 @@ extern char    *Col_type_defs[];
 extern r_tbl_t  Tbl  [MAX_NUM_DB][MAX_NUM_TABLES];
 extern r_ind_t  Index[MAX_NUM_DB][MAX_NUM_INDICES];
 
-void init_range(range_t *g, redisClient *c, cswc_t *w, list *ll, uchar ctype) {
+static void setRangeQueued(cswc_t *w, qr_t *q) {
+    bzero(q, sizeof(qr_t));
+    bool virt    = Index[server.dbid][w->imatch].virt;
+    int  ind_col = (int)Index[server.dbid][w->imatch].column;
+    q->pk        = (!w->asc || (w->obc > 0));
+    q->pk_lim    = (w->asc && w->obc == 0);
+    q->pk_lo     = (!q->pk && (w->lim != -1) && (w->ofst != -1));
+
+    q->fk        = (w->obc > 0 && w->obc != ind_col);
+    q->fk_lim    = (w->asc && !q->fk);
+    q->fk_lo     = (!q->fk && (w->lim != -1) && (w->ofst != -1));
+
+    q->qed       = virt ? q->pk : q->fk;
+}
+
+static void setInQueued(cswc_t *w, qr_t *q) {
+    bzero(q, sizeof(qr_t));
+    bool virt = Index[server.dbid][w->imatch].virt;
+    if (virt) {
+        q->pk         = (!w->asc || (w->obc != -1 && w->obc != 0));
+        q->pk_lim     = (w->asc && w->obc == 0);
+        q->qed        = q->pk;
+    } else {
+        int   ind_col = (int)Index[server.dbid][w->imatch].column;
+        q->fk         = (w->obc != -1);
+        q->fk_lim     = (w->asc  && w->obc != -1 && w->obc == ind_col);
+        q->qed        = q->fk;
+    }
+}
+
+void setQueued(cswc_t *w, qr_t *q) {
+    if (w->low) setRangeQueued(w, q);
+    else        setInQueued(w, q);
+}
+
+void init_range(range_t     *g,
+                redisClient *c,
+                cswc_t      *w,
+                qr_t        *q,
+                list        *ll,
+                uchar        ctype) {
     bzero(g, sizeof(range_t));
     g->co.c     = c;
     g->co.w     = w;
+    g->q        = q;
     g->co.ll    = ll;
     g->co.ctype = ctype;
 }
 
-
-long rangeOp(range_t *g, row_op *p) {
+static long rangeOpFK(range_t *g, row_op *p) {
     btEntry *be, *nbe;
-    btSIter *nbi     = NULL; /* B4 GOTO */
-    cswc_t  *w       = g->co.w;
-    robj    *ind     = Index[server.dbid][w->imatch].obj;
-    bool     virt    = Index[server.dbid][w->imatch].virt;
-    int      ind_col = (int)Index[server.dbid][w->imatch].column;
-    bool     pktype  = Tbl[server.dbid][w->tmatch].col_type[0];
-    bool     q_pk    = (!w->asc || (w->obc > 0));
-    bool     brk_pk  = (w->asc && w->obc == 0);
-    bool     q_fk    = (w->obc > 0 && w->obc != ind_col);
-    bool     brk_fk  = (w->asc && !q_fk);
-    robj    *o       = lookupKeyRead(g->co.c->db,
-                                     Tbl[server.dbid][w->tmatch].name);
-    robj    *btt     = virt ? o : lookupKey(g->co.c->db, ind);
-    g->co.qed        = virt ? q_pk : q_fk;
-    long     loops   = -1;
-    long     card    =  0;
-    btSIter *bi      = btGetRangeIterator(btt, w->low, w->high, virt);
-    while ((be = btRangeNext(bi, 1)) != NULL) {     /* iterate btree */
-        if (virt) {
-            loops++;
-            if (brk_pk) {
-                if (w->ofst != -1 && loops < w->ofst) continue;
-                if ((uint32)w->lim == card) break; /* ORDRBY PK LIM */
-            }
-            robj *key = be->key;
-            robj *row = be->val;
-            /* PK operation specific code comes here */
-            if (!(*p)(g, key, row, q_pk)) goto range_op_err;
-            card++;
+    cswc_t  *w      = g->co.w;
+    qr_t    *q      = g->q;
+    btSIter *nbi    = NULL; /* B4 GOTO */
+    robj    *ind    = Index[server.dbid][w->imatch].obj;
+    bool     pktype = Tbl[server.dbid][w->tmatch].col_type[0];
+    robj    *tname  = Tbl[server.dbid][w->tmatch].name;
+    robj    *tbl    = lookupKeyRead(g->co.c->db, tname);
+    robj    *btt    = lookupKey(g->co.c->db, ind);
+    long     ofst   = (long)w->ofst;
+    long     loops  = -1;
+    long     card   =  0;
+    btSIter *bi = q->pk_lo ? btGetIteratorXth(btt, w->low, w->high, ofst, 0) :
+                             btGetRangeIterator(btt, w->low, w->high, 0);
+    while ((be = btRangeNext(bi)) != NULL) {     /* iterate btree */
+        robj *val  = be->val;
+        bt   *nbtr = (bt *)val->ptr;
+        if (g->se.cstar) { /* FK cstar w/o filters is simple */
+            card += nbtr->numkeys;
         } else {
-            robj *val = be->val;
-            if (g->se.cstar) { /* FK cstar w/o filters is simple */
-                bt *nbtr  = (bt *)val->ptr;
-                card     += nbtr->numkeys;
-            } else {
-                nbi       = btGetFullRangeIterator(val, 0, 0);
-                while ((nbe = btRangeNext(nbi, 1)) != NULL) {  /* NodeBT */
-                    loops++;
-                    if (brk_fk) {
-                        if (w->ofst != -1 && loops < w->ofst) continue;
-                        if ((uint32)w->lim == card) break; /* ORDRBY FK LIM */
-                    }
-                    robj *key = nbe->key;
-                    robj *row = btFindVal(o, key, pktype);
-                    /* FK operation specific code comes here */
-                    if (!(*p)(g, key, row, q_fk)) goto range_op_err;
-                    card++;
+            if (q->fk_lo) {
+                if (nbtr->numkeys <= ofst) { /* skip IndexNode */
+                    ofst -= nbtr->numkeys;
+                    continue;
                 }
-                if (brk_fk && (uint32)w->lim == card) break; /*ORDRBY FK LIM*/
             }
-            btReleaseRangeIterator(nbi);
-            nbi = NULL; /* explicit in case of GOTO in inner loop */
+            nbi = (q->fk_lo && ofst) ? btGetFullIteratorXth(val, ofst, 0) :
+                                       btGetFullRangeIterator(val, 0);
+            while ((nbe = btRangeNext(nbi)) != NULL) {  /* NodeBT */
+                loops++;
+                if (q->fk_lim) {
+                    if (!q->fk_lo && ofst != -1 && loops < ofst) continue;
+                    if ((uint32)w->lim == card) break; /* ORDRBY FK LIM */
+                }
+                robj *key = nbe->key;
+                robj *row = btFindVal(tbl, key, pktype);
+                if (!(*p)(g, key, row, q->fk)) goto range_op_err;
+                card++;
+            }
+            if (q->fk_lo) ofst = 0; /* OFFSET fulfilled */
+            if (q->fk_lim && (uint32)w->lim == card) break; /*ORDRBY FK LIM*/
         }
+        btReleaseRangeIterator(nbi);
+        nbi = NULL; /* explicit in case of GOTO in inner loop */
     }
     btReleaseRangeIterator(bi);
     bi = NULL; /* explicit in case of GOTO in inner loop */
     return card;
 
 range_op_err:
-    if (nbi)  btReleaseRangeIterator(nbi);
-    if (bi)   btReleaseRangeIterator(bi);
+    if (nbi) btReleaseRangeIterator(nbi);
+    if (bi)  btReleaseRangeIterator(bi);
     return -1;
 }
 
-long inOp(range_t *g, row_op *p) {
-    listNode  *ln;
-    btSIter *nbi     = NULL; /* B4 GOTO */
-    cswc_t  *w       = g->co.w;
-    bool     virt    = Index[server.dbid][w->imatch].virt;
-    bool     pktype  = Tbl[server.dbid][w->tmatch].col_type[0];
-    robj    *o       = lookupKeyRead(g->co.c->db,
-                                     Tbl[server.dbid][w->tmatch].name);
-    long     card    =  0;
-    listIter *li     = listGetIterator(w->inl, AL_START_HEAD);
-    if (virt) {
-        bool  brk_pk  = (w->asc && w->obc == 0);
-        bool  q_pk    = (!w->asc || (w->obc != -1 && w->obc != 0));
-        g->co.qed     = q_pk;
-        while((ln = listNext(li)) != NULL) {
-            if (brk_pk && (uint32)w->lim == card) break; /* ORDRBY PK LIM */
-            robj *key = convertRobj(ln->value, pktype);
-            robj *row = btFindVal(o, key, pktype);
-            if (row) {
-                /* PK operation specific code comes here */
-                if (!(*p)(g, key, row, q_pk)) goto in_op_err;
-                card++;
-            }
-            decrRefCount(key); /* from addRedisCmdToINList() */
-         }
-     } else {
-        btEntry *nbe;
-        robj *ind     = Index[server.dbid][w->imatch].obj;
-        robj *ibt     = lookupKey(g->co.c->db, ind);
-        int   ind_col = (int)Index[server.dbid][w->imatch].column;
-        bool  fktype  = Tbl[server.dbid][w->tmatch].col_type[ind_col];
-        bool  brk_fk  = (w->asc  && w->obc != -1 && w->obc == ind_col);
-        bool  q_fk    = (w->obc != -1);
-        g->co.qed     = q_fk;
-        while((ln = listNext(li)) != NULL) {
-            robj *ikey = convertRobj(ln->value, fktype);
-            robj *val  = btIndFindVal(ibt->ptr, ikey, fktype);
-            if (val) {
-                if (g->se.cstar) { /* FK cstar w/o filters is simple */
-                    bt *nbtr = (bt *)val->ptr;
-                    card    += nbtr->numkeys;
-                } else {
-                    nbi = btGetFullRangeIterator(val, 0, 0);
-                    while ((nbe = btRangeNext(nbi, 1)) != NULL) {
-                        if (brk_fk && (uint32)w->lim == card) break;
-                        robj *key = nbe->key;
-                        robj *row = btFindVal(o, key, pktype);
-                        /* FK operation specific code comes here */
-                        if (!(*p)(g, key, row, q_fk)) goto in_op_err;
-                        card++;
-                    }
-                }
-                btReleaseRangeIterator(nbi);
-                nbi = NULL; /* explicit in case of GOTO in inner loop */
-            }
-            decrRefCount(ikey); /* from addRedisCmdToINList() */
+static long rangeOpPK(range_t *g, row_op *p) {
+    btEntry *be;
+    cswc_t  *w     = g->co.w;
+    qr_t    *q     = g->q;
+    robj    *tname = Tbl[server.dbid][w->tmatch].name;
+    robj    *btt   = lookupKeyRead(g->co.c->db, tname);
+    long     loops = -1;
+    long     card  =  0;
+    btSIter *bi = q->pk_lo ? btGetIteratorXth(btt, w->low, w->high, w->ofst, 1):
+                             btGetRangeIterator(btt, w->low, w->high, 1);
+    while ((be = btRangeNext(bi)) != NULL) {     /* iterate btree */
+        loops++;
+        if (q->pk_lim) {
+            if (!q->pk_lo && w->ofst != -1 && loops < w->ofst) continue;
+            if ((uint32)w->lim == card) break; /* ORDRBY PK LIM */
         }
+        robj *key = be->key;
+        robj *row = be->val;
+        if (!(*p)(g, key, row, q->pk)) goto range_op_err;
+        card++;
+    }
+    btReleaseRangeIterator(bi);
+    return card;
+
+range_op_err:
+    if (bi) btReleaseRangeIterator(bi);
+    return -1;
+}
+
+long rangeOp(range_t *g, row_op *p) {
+    cswc_t  *w      = g->co.w;
+    bool     virt   = Index[server.dbid][w->imatch].virt;
+    return virt ? rangeOpPK(g, p) : rangeOpFK(g,p);
+}
+    
+static long inOpPK(range_t *g, row_op *p) {
+    listNode  *ln;
+    cswc_t    *w      = g->co.w;
+    qr_t      *q      = g->q;
+    bool       pktype = Tbl[server.dbid][w->tmatch].col_type[0];
+    robj     *tname   = Tbl[server.dbid][w->tmatch].name;
+    robj      *tbl    = lookupKeyRead(g->co.c->db, tname);
+    long      card    =  0;
+    listIter *li      = listGetIterator(w->inl, AL_START_HEAD);
+    while((ln = listNext(li)) != NULL) {
+        if (q->pk_lim && (uint32)w->lim == card) break; /* ORDRBY PK LIM */
+        robj *key = convertRobj(ln->value, pktype);
+        robj *row = btFindVal(tbl, key, pktype);
+        if (row) {
+            if (!(*p)(g, key, row, q->pk)) goto in_op_pk_err;
+            card++;
+        }
+        decrRefCount(key); /* from addRedisCmdToINList() */
+    }
+    listReleaseIterator(li);
+    return card;
+
+in_op_pk_err:
+    listReleaseIterator(li);
+    return -1;
+}
+
+static long inOpFK(range_t *g, row_op *p) {
+    listNode *ln;
+    btEntry  *nbe;
+    btSIter  *nbi     = NULL; /* B4 GOTO */
+    cswc_t   *w       = g->co.w;
+    qr_t     *q       = g->q;
+    bool      pktype  = Tbl[server.dbid][w->tmatch].col_type[0];
+    robj     *tname   = Tbl[server.dbid][w->tmatch].name;
+    robj     *tbl     = lookupKeyRead(g->co.c->db, tname);
+    robj     *ind     = Index[server.dbid][w->imatch].obj;
+    robj     *ibt     = lookupKey(g->co.c->db, ind);
+    int       ind_col = (int)Index[server.dbid][w->imatch].column;
+    bool      fktype  = Tbl[server.dbid][w->tmatch].col_type[ind_col];
+    long      card    =  0;
+    listIter *li      = listGetIterator(w->inl, AL_START_HEAD);
+    while((ln = listNext(li)) != NULL) {
+        robj *ikey = convertRobj(ln->value, fktype);
+        robj *val  = btIndFindVal(ibt->ptr, ikey, fktype);
+        if (val) {
+            if (g->se.cstar) { /* FK cstar w/o filters is simple */
+                bt *nbtr  = (bt *)val->ptr;
+                card     += nbtr->numkeys;
+            } else {
+                nbi = btGetFullRangeIterator(val, 0);
+                while ((nbe = btRangeNext(nbi)) != NULL) {
+                    if (q->fk_lim && (uint32)w->lim == card) break;
+                    robj *key = nbe->key;
+                    robj *row = btFindVal(tbl, key, pktype);
+                    /* FK operation specific code comes here */
+                    if (!(*p)(g, key, row, q->fk)) goto in_op_err;
+                    card++;
+                }
+            }
+            btReleaseRangeIterator(nbi);
+            nbi = NULL; /* explicit in case of GOTO in inner loop */
+        }
+        decrRefCount(ikey); /* from addRedisCmdToINList() */
     }
     listReleaseIterator(li);
     return card;
 
 in_op_err:
+    listReleaseIterator(li);
     if (nbi)  btReleaseRangeIterator(nbi);
     return -1;
-
 }
 
+long inOp(range_t *g, row_op *p) {
+    cswc_t   *w       = g->co.w;
+    bool      virt    = Index[server.dbid][w->imatch].virt;
+    return virt ? inOpPK(g, p) : inOpFK(g, p);
+}
+
+/* SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS */
+/* SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS */
 bool select_op(range_t *g, robj *key, robj *row, bool q) {
     if (!g->se.cstar) {
         robj *r = outputRow(row, g->se.qcols, g->se.cmatchs,
@@ -211,19 +291,22 @@ void iselectAction(redisClient *c,
                    int          cmatchs[MAX_COLUMN_PER_TABLE],
                    int          qcols,
                    bool         cstar) {
+    qr_t  q;
+    setQueued(w, &q);
+    
     list *ll    = NULL;
     uchar ctype = COL_TYPE_NONE;
-    if (w->obc != -1) {
-        ll    = listCreate();
-        ctype = Tbl[server.dbid][w->tmatch].col_type[w->obc];
+    if (q.qed) {
+        ll      = listCreate();
+        ctype   = Tbl[server.dbid][w->tmatch].col_type[w->obc];
     }
 
-    LEN_OBJ
     range_t g;
-    init_range(&g, c, w, ll, ctype);
+    init_range(&g, c, w, &q, ll, ctype);
     g.se.cstar   = cstar;
     g.se.qcols   = qcols;
     g.se.cmatchs = cmatchs;
+    LEN_OBJ
     if (w->low) { /* RANGE QUERY */
         card = (ulong)rangeOp(&g, select_op);
     } else {    /* IN () QUERY */
@@ -232,7 +315,7 @@ void iselectAction(redisClient *c,
 
     int sent = 0;
     if (card) {
-        if (g.co.qed) {
+        if (q.qed) {
             obsl_t **v = sortOrderByToVector(ll, ctype, w->asc);
             for (int k = 0; k < (int)listLength(ll); k++) {
                 if (w->lim != -1 && sent == w->lim) break;
@@ -250,11 +333,12 @@ void iselectAction(redisClient *c,
             sent = card;
         }
     }
-    if (ll) listRelease(ll);
 
     if (w->lim != -1 && (uint32)sent < card) card = sent;
     if (cstar) lenobj->ptr = sdscatprintf(sdsempty(), ":%lu\r\n", card);
     else       lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
+
+    if (ll) listRelease(ll);
 }
 
 
@@ -269,20 +353,19 @@ bool build_rq_op(range_t *g, robj *key, robj *row, bool q) {
     return 1;
 }
 
-#define BUILD_RANGE_QUERY_LIST                                                \
-    list *ll    = listCreate();                                               \
-    uchar ctype = COL_TYPE_NONE;                                              \
-    if (w->obc != -1) {                                                       \
-        ctype = Tbl[server.dbid][w->tmatch].col_type[w->obc];                 \
-    }                                                                         \
-                                                                              \
-    range_t g;                                                                \
-    init_range(&g, c, w, ll, ctype);                                          \
-    ulong   card  = 0;                                                        \
-    if (w->low) { /* RANGE QUERY */                                           \
-        card = (ulong)rangeOp(&g, build_rq_op);                               \
-    } else {    /* IN () QUERY */                                             \
-        card = (ulong)inOp(&g, build_rq_op);                                  \
+#define BUILD_RANGE_QUERY_LIST                                                 \
+    qr_t  q;                                                                   \
+    setQueued(w, &q);                                                          \
+    list *ll    = listCreate();                                                \
+    uchar ctype = (w->obc == -1) ? COL_TYPE_NONE :                             \
+                                  Tbl[server.dbid][w->tmatch].col_type[w->obc];\
+    range_t g;                                                                 \
+    init_range(&g, c, w, &q, ll, ctype);                                       \
+    ulong   card  = 0;                                                         \
+    if (w->low) { /* RANGE QUERY */                                            \
+        card = (ulong)rangeOp(&g, build_rq_op);                                \
+    } else {    /* IN () QUERY */                                              \
+        card = (ulong)inOp(&g, build_rq_op);                                   \
     }
 
 
@@ -294,7 +377,7 @@ void ideleteAction(redisClient *c,
 
     int sent = 0;
     if (card) {
-        if (g.co.qed) {
+        if (q.qed) {
             obsl_t **v = sortOrderByToVector(ll, ctype, w->asc);
             for (int k = 0; k < (int)listLength(ll); k++) {
                 if (w->lim != -1 && sent == w->lim) break;
@@ -302,8 +385,8 @@ void ideleteAction(redisClient *c,
                     w->ofst--;
                 } else {
                     sent++;
-                    obsl_t *ob = v[k];
-                    robj *nkey = ob->row;
+                    obsl_t *ob   = v[k];
+                    robj   *nkey = ob->row;
                     deleteRow(c, w->tmatch, nkey, matches, indices);
                 }
             }
@@ -341,7 +424,7 @@ void iupdateAction(redisClient *c,
     int  sent   = 0;
     if (card) {
         robj *o = lookupKeyRead(c->db, Tbl[server.dbid][w->tmatch].name);
-        if (g.co.qed) {
+        if (q.qed) {
             obsl_t **v = sortOrderByToVector(ll, ctype, w->asc);
             for (int k = 0; k < (int)listLength(ll); k++) {
                 if (w->lim != -1 && sent == w->lim) break;
@@ -349,9 +432,9 @@ void iupdateAction(redisClient *c,
                     w->ofst--;
                 } else {
                     sent++;
-                    obsl_t *ob = v[k];
-                    robj *nkey = ob->row;
-                    robj *row  = btFindVal(o, nkey, pktype);
+                    obsl_t *ob   = v[k];
+                    robj   *nkey = ob->row;
+                    robj   *row  = btFindVal(o, nkey, pktype);
                     updateRow(c, o, nkey, row, w->tmatch, ncols,
                               matches, indices, vals, vlens, cmiss);
                 }

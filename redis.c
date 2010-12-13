@@ -9265,8 +9265,8 @@ static bool appendOnlyDumpTable(FILE *fp, robj *o, bt *btr, int tmatch) {
         int  qcols = get_all_cols(tmatch, cmatchs);
 
         btEntry *be;
-        btSIter *bi = btGetFullRangeIterator(o, 0, 1);
-        while ((be = btRangeNext(bi, 1)) != NULL) {
+        btSIter *bi = btGetFullRangeIterator(o, 1);
+        while ((be = btRangeNext(bi)) != NULL) {
             robj *pko = be->key;
             robj *row = be->val;
             robj *r   = outputRow(row, qcols, cmatchs, pko, tmatch, 0);

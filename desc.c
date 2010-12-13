@@ -140,8 +140,8 @@ void dumpCommand(redisClient *c) {
         }
         btEntry *be;
         int      qcols = get_all_cols(tmatch, cmatchs);
-        btSIter *bi    = btGetFullRangeIterator(o, 0, 1);
-        while ((be = btRangeNext(bi, 0)) != NULL) {      // iterate btree
+        btSIter *bi    = btGetFullRangeIterator(o, 1);
+        while ((be = btRangeNext(bi)) != NULL) {      // iterate btree
             robj *pko = be->key;
             robj *row = be->val;
             robj *r   = outputRow(row, qcols, cmatchs, pko, tmatch, to_mysql);

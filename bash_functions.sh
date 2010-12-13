@@ -1525,7 +1525,7 @@ function insert_new_joins() {
   DATE=$[${DATE}+10]
   $CLI INSERT INTO user_action VALUES \(13,5,$DATE,"searched for 'baseballs'"\)
   DATE=$[${DATE}+10]
-  $CLI INSERT INTO user_action VALUES \(14,5,$DATE,"bough a cigar"\)
+  $CLI INSERT INTO user_action VALUES \(14,5,$DATE,"bought a cigar"\)
   DATE=$[${DATE}+10]
   $CLI INSERT INTO user_action VALUES \(15,5,$DATE,"logged out"\)
 }
@@ -1554,8 +1554,11 @@ function wait_on_proc_net_tcp() {
   SLEEP_TIME=2
   PROC_TCP=99999
   while [ $PROC_TCP -gt $LIM ]; do
+    PROC_TCP=$(wc -l /proc/net/tcp | cut -f 1 -d \ )
+    if [ $PROC_TCP -lt $LIM ]; then
+        break;
+    fi
     echo $0: sleep $SLEEP_TIME - PROC_TCP=$PROC_TCP
     sleep $SLEEP_TIME
-    PROC_TCP=$(wc -l /proc/net/tcp | cut -f 1 -d \ )
   done
 }

@@ -65,6 +65,8 @@ static int col_cmp(char *a, char *b, int ctype) {
 // SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN
 // SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN SCAN
 
+//TODO merge w/ sqlSelect() when FILTERS are implemented
+
 /* TODO too many args for a func called per row on a full table scan
          -> pack into a struct */
 static void condSelectReply(redisClient   *c,
@@ -114,11 +116,12 @@ static void condSelectReply(redisClient   *c,
             uchar  pktype = Tbl[server.dbid][tmatch].col_type[0];
             robj  *row    = btFindVal(o, key, pktype);
             robj  *r      = outputRow(row, qcols, cmatchs, key, tmatch, 0);
-            if (w->obc > 0) {
-                addORowToRQList(ll, r, row, w->obc, key, tmatch, ctype);
-            } else {
+            //TODO if (qed)
+            if (w->obc == -1 || (w->obc == 0 && w->asc)) {
                 addReplyBulk(c, r);
                 decrRefCount(r);
+            } else {
+                addORowToRQList(ll, r, row, w->obc, key, tmatch, ctype);
             }
         }
         *card = *card + 1;
@@ -210,17 +213,17 @@ void tscanCommand(redisClient *c) {
         sent = card; /* for morons that do "SELECT COUNT(*) ORDER BY */
     } else {
         uchar ctype = COL_TYPE_NONE;
-        if (w.obc > 0) {
+        if (w.obc != -1) { //TODO setQueued
             ll    = listCreate();
             ctype = Tbl[server.dbid][tmatch].col_type[w.obc];
         }
 
         btEntry *be;
         long     loops = -1;
-        btSIter *bi    = btGetFullRangeIterator(o, 0, 1);
-        while ((be = btRangeNext(bi, 0)) != NULL) {      // iterate btree
+        btSIter *bi    = btGetFullRangeIterator(o, 1);
+        while ((be = btRangeNext(bi)) != NULL) {      // iterate btree
             loops++;
-            if (w.obc == 0) { /* ORDRBY PK LIM */
+            if (w.obc == 0 && w.asc) { /* ORDRBY PK LIM */
                 if (w.ofst != -1 && loops < w.ofst) continue;
                 sent++;
                 if ((uint32)w.lim == card) break;
@@ -230,7 +233,7 @@ void tscanCommand(redisClient *c) {
         }
         btReleaseRangeIterator(bi);
 
-        if (w.obc > 0 && card) {
+        if (w.obc != -1 && card) {
             obsl_t **vector = sortOrderByToVector(ll, ctype, w.asc);
             for (int k = 0; k < (int)listLength(ll); k++) {
                 if (w.lim != -1 && sent == w.lim) break;

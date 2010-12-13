@@ -495,8 +495,8 @@ void createTableAsObject(redisClient *c) {
         int      pktype = Tbl[server.dbid][tmatch].col_type[0];
         robj    *tname  = Tbl[server.dbid][tmatch].name;
         robj    *new_o  = lookupKeyWrite(c->db, tname);
-        bi              = btGetFullRangeIterator(o, 0, 1);
-        while ((be = btRangeNext(bi, 0)) != NULL) {      // iterate btree
+        bi              = btGetFullRangeIterator(o, 1);
+        while ((be = btRangeNext(bi)) != NULL) {      // iterate btree
             btAdd(new_o, be->key, be->val, pktype); /* row-to-row copy */
         }
     }

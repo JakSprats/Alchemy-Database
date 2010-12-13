@@ -46,31 +46,40 @@ typedef struct bTreeLinkedListNode { // 3ptr(24) 2int(8) -> 32 bytes
     int                         in;
 } bt_ll_n;
 
+typedef void iter_single(struct btIterator *iter);
+
+/* NOTE: btIterator is generic */
 /* using 16 as 8^16 can hold 2.8e14 elements (8 is min members in a btn)*/
 #define MAX_BTREE_DEPTH 16
-typedef struct btIterator { // 2*ptr(16) int(4) 2*char(2) long(8) float(4)
+typedef struct btIterator { // 5*ptr(40) int(4) 2*char(2) long(8) float(4)
                             // ptr(8) int(4) 16*bt_ll_n(512) -> i.e. dont malloc
-    bt            *btr;
-    bt_ll_n       *bln;
-    int            depth;
+    bt          *btr;
+    bt_ll_n     *bln;
+    int          depth;
  
-    bool           finished;
-    unsigned long  high;
-    float          highf;
-    char          *highc;
-    unsigned char  num_nodes;
-    bt_ll_n        nodes[MAX_BTREE_DEPTH];
+    iter_single *iNode; /* function to iterate on node's */
+    iter_single *iLeaf; /* function to iterate on leaf's */
+
+    void        *data;  /* iNode and iLeaf can change "data" */
+    bool         finished;
+
+    ulong         high;
+    float        highf;
+    char        *highc;
+
+    uchar        num_nodes;
+    bt_ll_n      nodes[MAX_BTREE_DEPTH];
 } btIterator;
 
 typedef struct btSIter { // btIterator(?500?) 2*char(2) int(1)
                                   // btEntry(16) 2*robj(?200?) i.e. dont malloc
-    btIterator     x;
-    unsigned char  ktype;
-    unsigned char  vtype;
-    int            which;
-    btEntry        be;  /* used to transfrom stream into key&val robj's below */
-    robj           key;
-    robj           val;
+    btIterator x;
+    uchar      ktype;
+    uchar      vtype;
+    int        which;
+    btEntry    be;  /* used to transfrom stream into key&val robj's below */
+    robj       key;
+    robj       val;
 
 } btSIter;
 
@@ -82,9 +91,11 @@ void become_child(btIterator *iter, bt_n* self);
 int init_iterator(bt *btr, bt_data_t simkey, struct btIterator *iter);
 void *btNext(btIterator *iter);
 
-btSIter *btGetRangeIterator(robj *o, void *low, void *high, bool virt);
-btSIter *btGetFullRangeIterator(robj *o, bool asc, bool virt);
-btEntry *btRangeNext(           btSIter *iter, bool asc);
+btSIter *btGetRangeIterator( robj *o, robj *low, robj *high,         bool virt);
+btSIter *btGetIteratorXth(   robj *o, robj *low, robj *high, long x, bool virt);
+btSIter *btGetFullIteratorXth(robj *o,                       long x, bool virt);
+btSIter *btGetFullRangeIterator(robj *o,                             bool virt);
+btEntry *btRangeNext(           btSIter *iter);
 void     btReleaseRangeIterator(btSIter *iter);
 
 bool assignMinKey(bt *btr, robj *key);

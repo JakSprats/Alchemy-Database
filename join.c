@@ -424,7 +424,7 @@ void joinGeneric(redisClient *c,
             robj    *bt = jc.virt ? jc.o : lookupKey(c->db, ind);
             btSIter *bi = btGetRangeIterator(bt, jb->w.low, jb->w.high,
                                              jc.virt);
-            while ((be = btRangeNext(bi, 1)) != NULL) {
+            while ((be = btRangeNext(bi)) != NULL) {
                 if (jc.virt) {
                     jc.jk  = be->key;
                     jc.val = be->val;
@@ -432,8 +432,8 @@ void joinGeneric(redisClient *c,
                 } else {
                     jc.jk                 = be->key;
                     robj             *val = be->val;
-                    btSIter *nbi = btGetFullRangeIterator(val, 0, 0);
-                    while ((nbe = btRangeNext(nbi, 1)) != NULL) {
+                    btSIter *nbi = btGetFullRangeIterator(val, 0);
+                    while ((nbe = btRangeNext(nbi)) != NULL) {
                         jc.val = nbe->key;
                         joinAddColsFromInd(&jc, rset, jb->w.obt, jb->w.obc);
                     }
@@ -461,8 +461,8 @@ void joinGeneric(redisClient *c,
                     jc.jk     = ln->value;
                     robj *val = btIndFindVal(ibt->ptr, jc.jk, fktype);
                     if (val) {
-                        nbi = btGetFullRangeIterator(val, 0, 0);
-                        while ((nbe = btRangeNext(nbi, 1)) != NULL) {
+                        nbi = btGetFullRangeIterator(val, 0);
+                        while ((nbe = btRangeNext(nbi)) != NULL) {
                             jc.val = nbe->key;
                             joinAddColsFromInd(&jc, rset, jb->w.obt, jb->w.obc);
                         }

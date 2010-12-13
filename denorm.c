@@ -74,8 +74,8 @@ void denormCommand(redisClient *c) {
     fc->argc          = 4;
     ulong        card = 0;
     robj        *o    = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
-    btSIter     *bi   = btGetFullRangeIterator(o, 0, 1);
-    while ((be = btRangeNext(bi, 0)) != NULL) {      // iterate btree
+    btSIter     *bi   = btGetFullRangeIterator(o, 1);
+    while ((be = btRangeNext(bi)) != NULL) {      // iterate btree
         robj *key = be->key;
         robj *row = be->val;
 

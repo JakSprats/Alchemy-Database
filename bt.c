@@ -37,6 +37,8 @@ ALL RIGHTS RESERVED
 #include "bt_iterator.h"
 #include "bt.h"
 
+#define FK_HEAVY
+
 /* GLOBALS */
 #define RL4 redisLog(4,
 extern char *COLON;
@@ -45,8 +47,12 @@ extern char *COLON;
 static uint32 skipToVal(uchar **stream);
 
 #define INIT_DATA_BTREE_BYTES        4096
-#define INIT_INDEX_BTREE_BYTES       1024
-#define INIT_NODE_INDEX_BTREE_BYTES   128
+#define INIT_INDEX_BTREE_BYTES       4096
+#ifdef FK_HEAVY
+  #define INIT_NODE_INDEX_BTREE_BYTES  4096
+#else
+  #define INIT_NODE_INDEX_BTREE_BYTES   128 /* 100K rows, this is TOO small */
+#endif
 bt *btCreate(uchar ktype, int num, uchar is_index) {
     bt *btr;
     if (is_index == BTREE_TABLE) {

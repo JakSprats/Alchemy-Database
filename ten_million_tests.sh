@@ -41,11 +41,15 @@ function update_pileup_40_60() {
 }
 
 function validate_pks() {
+  if [ -z "$1" ]; then
+    echo "Usage: $0 table"
+    return;
+  fi
   TBL=$1
   T=$(tempfile);
   echo DUMP $TBL TO FILE $T
   time $CLI DUMP $TBL TO FILE $T
-  MOD=1
+  MOD=0
   if [ -n "$2" ]; then
     MOD=$2
   fi

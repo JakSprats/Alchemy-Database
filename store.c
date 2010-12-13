@@ -197,11 +197,13 @@ void istoreCommit(redisClient *c,
                   cswc_t      *w,
                   int          cmatchs[MAX_COLUMN_PER_TABLE],
                   int          qcols) {
-    uchar ctype = COL_TYPE_NONE;
+    qr_t  q;
+    setQueued(w, &q);
     list *ll    = NULL;
-    if (w->obc != -1) {
-        ll    = listCreate();
-        ctype = Tbl[server.dbid][w->tmatch].col_type[w->obc];
+    uchar ctype = COL_TYPE_NONE;
+    if (q.qed) {
+        ll      = listCreate();
+        ctype   = Tbl[server.dbid][w->tmatch].col_type[w->obc];
     }
 
     long         card  = 0;    /* B4 GOTO */ 
@@ -212,7 +214,7 @@ void istoreCommit(redisClient *c,
     int          nlen;
     char        *last  = NULL;
     range_t      g;
-    init_range(&g, c, w, ll, ctype);
+    init_range(&g, c, w, &q, ll, ctype);
     if (!prepareToStoreReply(c, w, &g.st.nname, &nlen, &g.st.sub_pk,
                              &g.st.nargc, &last, qcols)) {
         err = 1;
@@ -231,7 +233,7 @@ void istoreCommit(redisClient *c,
         card = inOp(&g, istore_op);
     }
     if (card != -1) {
-        if (g.co.qed) {
+        if (q.qed) {
             obsl_t **v = sortOrderByToVector(ll, ctype, g.co.w->asc);
             sent       = sortedOrderByIstore(c, w, fc, g.se.cmatchs, qcols,
                                              g.st.nname, g.st.sub_pk,
