@@ -40,7 +40,7 @@ typedef struct r_tbl {
     uchar   col_type[MAX_COLUMN_PER_TABLE];
     /* col_flags -> current usage only AUTO_INCREMENT */
     uchar   col_flags[MAX_COLUMN_PER_TABLE];
-    int     virt_indx; /* TODO is this still used? */
+    int     virt_indx; /* TODO rename to virt_inum */
 } r_tbl_t;
 
 typedef struct dual_lists {

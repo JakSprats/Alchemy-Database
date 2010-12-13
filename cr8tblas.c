@@ -103,26 +103,26 @@ static bool addDouble(redisClient *c,
                       robj        *val,
                       long        *card,
                       bool         val_is_dbl) {
-    robj *vals  = createObject(REDIS_STRING, NULL);
+    robj *vals = createObject(REDIS_STRING, NULL);
     if (val_is_dbl) {
-        double d = *((double *)val);
-        vals->ptr   = (key->encoding == REDIS_ENCODING_RAW) ?
-            sdscatprintf(sdsempty(), "%ld,%s,%f", 
-                          *card, (char *)key->ptr, d) :
-            sdscatprintf(sdsempty(), "%ld,%ld,%f",
-                          *card, (long)  key->ptr, d);
+        double d  = *((double *)val);
+        vals->ptr = (key->encoding == REDIS_ENCODING_RAW) ?
+                        sdscatprintf(sdsempty(), "%ld,%s,%f", 
+                                                 *card, (char *)key->ptr, d) :
+                        sdscatprintf(sdsempty(), "%ld,%ld,%f",
+                                                 *card, (long)  key->ptr, d);
     } else if (val->encoding == REDIS_ENCODING_RAW) {
-        vals->ptr   = (key->encoding == REDIS_ENCODING_RAW) ?
-            sdscatprintf(sdsempty(), "%ld,%s,%s", 
-                          *card, (char *)key->ptr, (char *)val->ptr) :
-            sdscatprintf(sdsempty(), "%ld,%ld,%s",
-                          *card, (long)  key->ptr, (char *)val->ptr);
+        vals->ptr = (key->encoding == REDIS_ENCODING_RAW) ?
+                        sdscatprintf(sdsempty(), "%ld,%s,%s", 
+                                    *card, (char *)key->ptr, (char *)val->ptr) :
+                        sdscatprintf(sdsempty(), "%ld,%ld,%s",
+                                    *card, (long)  key->ptr, (char *)val->ptr);
     } else {
-        vals->ptr   = (key->encoding == REDIS_ENCODING_RAW) ?
-            sdscatprintf(sdsempty(), "%ld,%s,%ld", 
-                          *card, (char *)key->ptr, (long)val->ptr) :
-            sdscatprintf(sdsempty(), "%ld,%ld,%ld",
-                          *card, (long)  key->ptr, (long)val->ptr);
+        vals->ptr = (key->encoding == REDIS_ENCODING_RAW) ?
+                        sdscatprintf(sdsempty(), "%ld,%s,%ld", 
+                                      *card, (char *)key->ptr, (long)val->ptr) :
+                        sdscatprintf(sdsempty(), "%ld,%ld,%ld",
+                                      *card, (long)  key->ptr, (long)val->ptr);
     }
     rfc->argv[2] = vals;
 #ifdef FORCE_BUG_2
@@ -149,11 +149,11 @@ static void cpyColDef(char *cdefs,
                       bool  cname_cflix[]) {
     robj *col = Tbl[server.dbid][tmatch].col_name[cmatch];
     if (has_conflicts && cname_cflix[loop]) { // prepend tbl_name
-        robj *tbl = Tbl[server.dbid][tmatch].name;
+        robj *tbl  = Tbl[server.dbid][tmatch].name;
         memcpy(cdefs + *slot, tbl->ptr, sdslen(tbl->ptr));
-        *slot        += sdslen(tbl->ptr);        // tblname
+        *slot     += sdslen(tbl->ptr);        // tblname
         memcpy(cdefs + *slot, PERIOD, 1);
-        *slot = *slot + 1;
+        *slot      = *slot + 1;
     }
     memcpy(cdefs + *slot, col->ptr, sdslen(col->ptr));
     *slot        += sdslen(col->ptr);            // colname
@@ -249,8 +249,8 @@ static void createTableAsObjectOperation(redisClient  *c,
                                          robj        **rargv,
                                          int           rargc,
                                          bool          dmp) {
-    char               *msg = dmp ? CR8TBL_DUMP_ERR_MSG : CR8TBL_SELECT_ERR_MSG;
-    robj               *wargv[3];
+    robj        *wargv[3];
+    char        *msg  = dmp ? CR8TBL_DUMP_ERR_MSG : CR8TBL_SELECT_ERR_MSG;
     redisClient *wfc = rsql_createFakeClient(); /* client to write */
     wfc->argc        = 3;
     wfc->argv        = wargv;
@@ -268,7 +268,6 @@ static void createTableAsObjectOperation(redisClient  *c,
 
     rsql_freeFakeClient(rfc);
     rsql_freeFakeClient(wfc);
-    zfree(rargv);
     if (!err) addReplyLongLong(c, card);
 }
 
@@ -284,10 +283,10 @@ static void createTableAsSelect(redisClient *c, char *as_cmd) {
 
     if (!parseSelectReply(c, 0, NULL, &tmatch, cmatchs, &qcols, &join,
                           &cstar,  rargv[1]->ptr, rargv[2]->ptr,
-                          rargv[3]->ptr, rargv[4]->ptr)) return;
+                          rargv[3]->ptr, rargv[4]->ptr)) goto cr8_tblassel_end;
     if (cstar) {
         addReply(c, shared.create_table_as_count);
-        return;
+        goto cr8_tblassel_end;
     }
 
     robj        *argv[3];
@@ -317,8 +316,10 @@ static void createTableAsSelect(redisClient *c, char *as_cmd) {
     }
     rsql_freeFakeClient(rfc);
 
-    if (!ok) return;
-    else     createTableAsObjectOperation(c, 1, rargv, rargc, 0);
+    if (ok) createTableAsObjectOperation(c, 1, rargv, rargc, 0);
+
+cr8_tblassel_end:
+    zfree(rargv);
 }
 
 int getAccessCommNum(char *as_cmd) {
@@ -327,7 +328,7 @@ int getAccessCommNum(char *as_cmd) {
         if (!strncasecmp(as_cmd, AccessCommands[i].name,
                                  strlen(AccessCommands[i].name))) {
             char *x = as_cmd + strlen(AccessCommands[i].name);
-            if (*x == ' ') {
+            if (*x == ' ') { /* needs to be space delimited as well */
                 axs = i;
                 break;
             }
@@ -396,7 +397,7 @@ void createTableAsObject(redisClient *c) {
         3.) REDIS_OBJECT -> [LIST & SET -> one val],[ZSET & HASH -> 2 vals] */
     bool table_created = 0;
     if (axs != -1) { /* all Redis COMMANDS produce single results */
-        cdef = _createStringObject("pk=INT,value=TEXT");
+        cdef   = _createStringObject("pk=INT,value=TEXT");
         single = 1;
     } else if (o->type == REDIS_BTREE) { /* DUMP one table to another */
         bt *btr = (bt *)o->ptr;
@@ -419,16 +420,16 @@ void createTableAsObject(redisClient *c) {
         if (!ok) return;
         table_created = 1;
     } else if (o->type == REDIS_LIST) {
-        cdef = _createStringObject("pk=INT,lvalue=TEXT");
+        cdef   = _createStringObject("pk=INT,lvalue=TEXT");
         single = 1;
     } else if (o->type == REDIS_SET) {
-        cdef = _createStringObject("pk=INT,svalue=TEXT");
+        cdef   = _createStringObject("pk=INT,svalue=TEXT");
         single = 1;
     } else if (o->type == REDIS_ZSET) {
-        cdef = _createStringObject("pk=INT,zkey=TEXT,zvalue=FLOAT");
+        cdef   = _createStringObject("pk=INT,zkey=TEXT,zvalue=FLOAT");
         single = 0;
     } else if (o->type == REDIS_HASH) {
-        cdef = _createStringObject("pk=INT,hkey=TEXT,hvalue=TEXT");
+        cdef   = _createStringObject("pk=INT,hkey=TEXT,hvalue=TEXT");
         single = 0;
     } else {
         addReply(c, shared.createtable_as_on_wrong_type);
@@ -439,8 +440,10 @@ void createTableAsObject(redisClient *c) {
         int    rargc;
         robj **rargv = parseCmdToArgvReply(c, as_cmd, &rargc);
         if (!rargv) return;
-        if (!createInternalTableForCmdAndDump(c, c->argv[2], cdef)) return;
-        createTableAsObjectOperation(c, 0, rargv, rargc, 1);
+        if (createInternalTableForCmdAndDump(c, c->argv[2], cdef)) {
+            createTableAsObjectOperation(c, 0, rargv, rargc, 1);
+        }
+        zfree(rargv);
         return;
     }
 

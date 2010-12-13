@@ -28,7 +28,7 @@
  */
 
 #define REDIS_VERSION "1.3.14"
-#define REDISQL_VERSION "0.0.14"
+#define REDISQL_VERSION "0.0.15"
 
 #include "fmacros.h"
 #include "config.h"
@@ -105,6 +105,7 @@ ulong        CurrCard    = 0;
 redisClient *CurrClient  = NULL;
 char        *Luafilename = NULL;
 
+#define RL4 redisLog(4, 
 //#define SAVE_BY_DEFAULT
 #endif
 
@@ -259,32 +260,6 @@ static void _redisPanic(char *msg, char *file, int line);
 
 /* A redis object, that is a type able to hold a string / list / set */
 
-#if 0
-/* The VM object structure */
-struct redisObjectVM {
-    off_t page;         /* the page at witch the object is stored on disk */
-    off_t usedpages;    /* number of pages used on disk */
-    time_t atime;       /* Last access time */
-} vm;
-
-/* The actual Redis Object */
-typedef struct redisObject {
-    void *ptr;
-    unsigned char type;
-    unsigned char encoding;
-    unsigned char storage;  /* If this object is a key, where is the value?
-                             * REDIS_VM_MEMORY, REDIS_VM_SWAPPED, ... */
-    unsigned char vtype; /* If this object is a key, and value is swapped out,
-                          * this is the type of the swapped out object. */
-    int refcount;
-    /* VM fields, this are only allocated if VM is active, otherwise the
-     * object allocation function will just allocate
-     * sizeof(redisObjct) minus sizeof(redisObjectVM), so using
-     * Redis without VM active will not have any overhead. */
-    struct redisObjectVM vm;
-} robj;
-#endif
-
 /* Macro used to initalize a Redis object allocated on the stack.
  * Note that this macro is taken near the structure definition to make sure
  * we'll update it when the structure is changed, to avoid bugs like
@@ -297,202 +272,15 @@ typedef struct redisObject {
     if (server.vm_enabled) _var.storage = REDIS_VM_MEMORY; \
 } while(0);
 
-#if 0
-typedef struct redisDb {
-    dict *dict;                 /* The keyspace for this DB */
-    dict *expires;              /* Timeout of keys with a timeout set */
-    dict *blockingkeys;         /* Keys with clients waiting for data (BLPOP) */
-    dict *io_keys;              /* Keys with clients waiting for VM I/O */
-    int id;
-} redisDb;
-
-/* Client MULTI/EXEC state */
-typedef struct multiCmd {
-    robj **argv;
-    int argc;
-    struct redisCommand *cmd;
-} multiCmd;
-
-typedef struct multiState {
-    multiCmd *commands;     /* Array of MULTI commands */
-    int count;              /* Total number of MULTI commands */
-} multiState;
-
-/* With multiplexing we need to take per-clinet state.
- * Clients are taken in a liked list. */
-typedef struct redisClient {
-    int fd;
-    redisDb *db;
-    int dictid;
-    sds querybuf;
-    robj **argv, **mbargv;
-    int argc, mbargc;
-    int bulklen;            /* bulk read len. -1 if not in bulk read mode */
-    int multibulk;          /* multi bulk command format active */
-    list *reply;
-    int sentlen;
-    time_t lastinteraction; /* time of the last interaction, used for timeout */
-    int flags;              /* REDIS_SLAVE | REDIS_MONITOR | REDIS_MULTI ... */
-    int slaveseldb;         /* slave selected db, if this client is a slave */
-    int authenticated;      /* when requirepass is non-NULL */
-    int replstate;          /* replication state if this is a slave */
-    int repldbfd;           /* replication DB file descriptor */
-    long repldboff;         /* replication DB file offset */
-    off_t repldbsize;       /* replication DB file size */
-    multiState mstate;      /* MULTI/EXEC state */
-    robj **blockingkeys;    /* The key we are waiting to terminate a blocking
-                             * operation such as BLPOP. Otherwise NULL. */
-    int blockingkeysnum;    /* Number of blocking keys */
-    time_t blockingto;      /* Blocking operation timeout. If UNIX current time
-                             * is >= blockingto then the operation timed out. */
-    list *io_keys;          /* Keys this client is waiting to be loaded from the
-                             * swap file in order to continue. */
-    dict *pubsub_channels;  /* channels a client is interested in (SUBSCRIBE) */
-    list *pubsub_patterns;  /* patterns a client is interested in (SUBSCRIBE) */
-} redisClient;
-#endif
-
 struct saveparam {
     time_t seconds;
     int changes;
 };
 
-#if 0
-/* Global server state structure */
-struct redisServer {
-    int port;
-    int fd;
-    redisDb *db;
-    long long dirty;            /* changes to DB from the last save */
-    list *clients;
-    list *slaves, *monitors;
-    char neterr[ANET_ERR_LEN];
-    aeEventLoop *el;
-    int cronloops;              /* number of times the cron function run */
-    list *objfreelist;          /* A list of freed objects to avoid malloc() */
-    time_t lastsave;            /* Unix time of last save succeeede */
-    /* Fields used only for stats */
-    time_t stat_starttime;         /* server start time */
-    long long stat_numcommands;    /* number of processed commands */
-    long long stat_numconnections; /* number of connections received */
-    long long stat_expiredkeys;   /* number of expired keys */
-    /* Configuration */
-    int verbosity;
-    int glueoutputbuf;
-    int maxidletime;
-    int dbnum;
-    int daemonize;
-    int appendonly;
-    int appendfsync;
-    int shutdown_asap;
-    time_t lastfsync;
-    int appendfd;
-    int appendseldb;
-    char *pidfile;
-    pid_t bgsavechildpid;
-    pid_t bgrewritechildpid;
-    sds bgrewritebuf; /* buffer taken by parent during oppend only rewrite */
-    sds aofbuf;       /* AOF buffer, written before entering the event loop */
-    struct saveparam *saveparams;
-    int saveparamslen;
-    char *logfile;
-    char *bindaddr;
-    char *dbfilename;
-    char *appendfilename;
-    char *requirepass;
-    int rdbcompression;
-    int activerehashing;
-    /* Replication related */
-    int isslave;
-    char *masterauth;
-    char *masterhost;
-    int masterport;
-    redisClient *master;    /* client that is master for this slave */
-    int replstate;
-    unsigned int maxclients;
-    unsigned long long maxmemory;
-    unsigned int blpop_blocked_clients;
-    unsigned int vm_blocked_clients;
-    /* Sort parameters - qsort_r() is only available under BSD so we
-     * have to take this state global, in order to pass it to sortCompare() */
-    int sort_desc;
-    int sort_alpha;
-    int sort_bypattern;
-    /* Virtual memory configuration */
-    int vm_enabled;
-    char *vm_swap_file;
-    off_t vm_page_size;
-    off_t vm_pages;
-    unsigned long long vm_max_memory;
-    /* Hashes config */
-    size_t hash_max_zipmap_entries;
-    size_t hash_max_zipmap_value;
-    /* Virtual memory state */
-    FILE *vm_fp;
-    int vm_fd;
-    off_t vm_next_page; /* Next probably empty page */
-    off_t vm_near_pages; /* Number of pages allocated sequentially */
-    unsigned char *vm_bitmap; /* Bitmap of free/used pages */
-    time_t unixtime;    /* Unix time sampled every second. */
-    /* Virtual memory I/O threads stuff */
-    /* An I/O thread process an element taken from the io_jobs queue and
-     * put the result of the operation in the io_done list. While the
-     * job is being processed, it's put on io_processing queue. */
-    list *io_newjobs; /* List of VM I/O jobs yet to be processed */
-    list *io_processing; /* List of VM I/O jobs being processed */
-    list *io_processed; /* List of VM I/O jobs already processed */
-    list *io_ready_clients; /* Clients ready to be unblocked. All keys loaded */
-    pthread_mutex_t io_mutex; /* lock to access io_jobs/io_done/io_thread_job */
-    pthread_mutex_t obj_freelist_mutex; /* safe redis objects creation/free */
-    pthread_mutex_t io_swapfile_mutex; /* So we can lseek + write */
-    pthread_attr_t io_threads_attr; /* attributes for threads creation */
-    int io_active_threads; /* Number of running I/O threads */
-    int vm_max_threads; /* Max number of I/O threads running at the same time */
-    /* Our main thread is blocked on the event loop, locking for sockets ready
-     * to be read or written, so when a threaded I/O operation is ready to be
-     * processed by the main thread, the I/O thread will use a unix pipe to
-     * awake the main thread. The followings are the two pipe FDs. */
-    int io_ready_pipe_read;
-    int io_ready_pipe_write;
-    /* Virtual memory stats */
-    unsigned long long vm_stats_used_pages;
-    unsigned long long vm_stats_swapped_objects;
-    unsigned long long vm_stats_swapouts;
-    unsigned long long vm_stats_swapins;
-    /* Pubsub */
-    dict *pubsub_channels; /* Map channels to list of subscribed clients */
-    list *pubsub_patterns; /* A list of pubsub_patterns */
-    /* Misc */
-    FILE *devnull;
-    unsigned char big_endian;
-    unsigned char psize;
-};
-#endif
-
 typedef struct pubsubPattern {
     redisClient *client;
     robj *pattern;
 } pubsubPattern;
-
-#if 0
-typedef void redisCommandProc(redisClient *c);
-typedef void redisVmPreloadProc(redisClient *c, struct redisCommand *cmd, int argc, robj **argv);
-
-struct redisCommand {
-    char *name;
-    redisCommandProc *proc;
-    int arity;
-    int flags;
-    /* Use a function to determine which keys need to be loaded
-     * in the background prior to executing this command. Takes precedence
-     * over vm_firstkey and others, ignored when NULL */
-    redisVmPreloadProc *vm_preload_proc;
-    /* What keys should be loaded in background when calling this command? */
-    int vm_firstkey; /* The first argument that's a key (0 = no keys) */
-    int vm_lastkey;  /* THe last argument that's a key */
-    int vm_keystep;  /* The step between first and last key */
-};
-#endif
 
 struct redisFunctionSym {
     char *name;
@@ -513,44 +301,6 @@ typedef struct _redisSortOperation {
 } redisSortOperation;
 
 /* ZSETs use a specialized version of Skiplists */
-
-#if 0
-typedef struct zskiplistNode {
-    struct zskiplistNode **forward;
-    struct zskiplistNode *backward;
-    unsigned int *span;
-    double score;
-    robj *obj;
-} zskiplistNode;
-
-typedef struct zskiplist {
-    struct zskiplistNode *header, *tail;
-    unsigned long length;
-    int level;
-} zskiplist;
-
-typedef struct zset {
-    dict *dict;
-    zskiplist *zsl;
-} zset;
-#endif
-
-
-#if 0
-/* Our shared "common" objects */
-#define REDIS_SHARED_INTEGERS 10000
-struct sharedObjectsStruct {
-    robj *crlf, *ok, *err, *emptybulk, *czero, *cone, *pong, *space,
-    *colon, *nullbulk, *nullmultibulk, *queued,
-    *emptymultibulk, *wrongtypeerr, *nokeyerr, *syntaxerr, *sameobjecterr,
-    *outofrangeerr, *plus,
-    *select0, *select1, *select2, *select3, *select4,
-    *select5, *select6, *select7, *select8, *select9,
-    *messagebulk, *pmessagebulk, *subscribebulk, *unsubscribebulk, *mbulk3,
-    *mbulk4, *psubscribebulk, *punsubscribebulk,
-    *integers[REDIS_SHARED_INTEGERS];
-} shared;
-#endif
 
 /* Global vars that are actally used as constants. The following double
  * values are used for double on-disk serialization, and are initialized
@@ -1131,7 +881,6 @@ static long long memtoll(const char *p, int *err) {
     return val*mul;
 }
 
-#define RL4 redisLog(4, 
 
 /* Convert a long long into a string. Returns the number of
  * characters needed to represent the number, that can be shorter if passed
@@ -1917,7 +1666,6 @@ static void createSharedObjects(void) {
     shared.denorm_wildcard_no_star = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: NORM tablename wildcard - wildcard must have '*'\r\n"));
 #endif /* ALSOSQL END */
-
 
     shared.wrongtypeerr = createObject(REDIS_STRING,sdsnew(
         "-ERR Operation against a key holding the wrong kind of value\r\n"));
@@ -2755,7 +2503,6 @@ void call(redisClient *c, struct redisCommand *cmd) {
     server.stat_numcommands++;
 }
 
-static int doCommand(redisClient *c);
 /* If this function gets called we already read a whole
  * command, argments are in the client argv/argc fields.
  * processCommand() execute the command or prepare the
@@ -2844,10 +2591,6 @@ static int processCommand(redisClient *c) {
         return 0;
     }
 
-    return doCommand(c);
-}
-
-static int doCommand(redisClient *c) {
     /* Now lookup the command and check ASAP about trivial error conditions
      * such wrong arity, bad command name and so forth. */
     struct redisCommand *cmd = lookupCommand(c->argv[0]->ptr);
@@ -3552,12 +3295,14 @@ void decrRefCount(void *obj) {
         case REDIS_SET:        freeSetObject(o);       break;
         case REDIS_ZSET:       freeZsetObject(o);      break;
         case REDIS_HASH:       freeHashObject(o);      break;
+#ifdef ALSOSQL
         case REDIS_BTREE:      freeBtreeObject(o);     break;
         case REDIS_ROW:        freeRowObject(o);       break;
         case REDIS_JOINROW:    freeJoinRowObject(o);   break;
         case REDIS_APPEND_SET: freeAppendSetObject(o); break;
         case REDIS_VAL_SET:    freeValSetObject(o);    break;
         case REDIS_NRL_INDEX:  freeNrlIndexObject(o);  break;
+#endif
         default: redisPanic("Unknown object type");    break;
         }
         if (server.vm_enabled) pthread_mutex_lock(&server.obj_freelist_mutex);
@@ -4162,10 +3907,12 @@ static int rdbSaveObject(FILE *fp, robj *o) {
             }
             dictReleaseIterator(di);
         }
+#ifdef ALSOSQL
     } else if (o->type == REDIS_BTREE) {
         if (rdbSaveBT(fp, o) == -1) return -1;
     } else if (o->type == REDIS_NRL_INDEX) {
         if (rdbSaveNRL(fp, o) == -1) return -1;
+#endif
     } else {
         redisPanic("Unknown object type");
     }
@@ -4575,10 +4322,12 @@ static robj *rdbLoadObject(int type, FILE *fp, redisDb *db) {
                 dictAdd((dict*)o->ptr,key,val);
             }
         }
+#ifdef ALSOSQL
     } else if (type == REDIS_BTREE) {
         o = rdbLoadBT(fp, db);
     } else if (type == REDIS_NRL_INDEX) {
         o = rdbLoadNRL(fp);
+#endif
     } else {
         redisPanic("Unknown object type");
     }
@@ -4640,13 +4389,14 @@ static int rdbLoad(char *filename) {
         if ((key = rdbLoadStringObject(fp)) == NULL) goto eoferr;
         /* Read value */
         if ((val = rdbLoadObject(type,fp,db)) == NULL) goto eoferr;
-
+#ifdef ALSOSQL
         /* Check if virtual index */
         if (val->type == REDIS_BTREE && !val->ptr) {
             decrRefCount(key);
             decrRefCount(val);
             continue;
         }
+#endif
         /* Check if the key already expired */
         if (expiretime != -1 && expiretime < now) {
             decrRefCount(key);
@@ -4793,11 +4543,13 @@ void setGenericCommand(redisClient *c, int nx, robj *key, robj *val,
              * will be marked as free. */
             if (server.vm_enabled && deleteIfSwapped(c->db,key))
                 incrRefCount(key);
+#ifdef ALSOSQL
             /* JAKSPRATS: ALSOSQL: tables or indices cant get overwritten */
             if (dictReplace(c->db->dict,key,val) == DICT_ERR) {
                 addReply(c, shared.wrongtypeerr);
                 return;
             }
+#endif
             incrRefCount(val);
         } else {
             if (internal) addReply(c,shared.czero);
@@ -4844,26 +4596,6 @@ static int getGenericCommand(redisClient *c) {
 static void getCommand(redisClient *c) {
     getGenericCommand(c);
 }
-
-#if 0
-/* Structure to hold hash iteration abstration. Note that iteration over
- * hashes involves both fields and values. Because it is possible that
- * not both are required, store pointers in the iterator to avoid
- * unnecessary memory allocation for fields/values. */
-typedef struct {
-    int encoding;
-    unsigned char *zi;
-    unsigned char *zk, *zv;
-    unsigned int zklen, zvlen;
-
-    dictIterator *di;
-    dictEntry *de;
-} hashIterator;
-
-#define REDIS_HASH_KEY 1
-#define REDIS_HASH_VALUE 2
-#endif
-
 
 
 static void getsetCommand(redisClient *c) {
@@ -4923,7 +4655,13 @@ static void msetGenericCommand(redisClient *c, int nx) {
         c->argv[j+1] = tryObjectEncoding(c->argv[j+1]);
         retval = dictAdd(c->db->dict,c->argv[j],c->argv[j+1]);
         if (retval == DICT_ERR) {
-            dictReplace(c->db->dict,c->argv[j],c->argv[j+1]);
+#ifdef ALSOSQL
+            /* JAKSPRATS: ALSOSQL: tables or indices cant get overwritten */
+            if (dictReplace(c->db->dict,c->argv[j],c->argv[j+1]) == DICT_ERR) {
+                addReply(c, shared.wrongtypeerr);
+                return;
+            }
+#endif
             incrRefCount(c->argv[j+1]);
         } else {
             incrRefCount(c->argv[j]);
@@ -5213,6 +4951,7 @@ static void typeCommand(redisClient *c) {
         case REDIS_SET:       type = "+set"; break;
         case REDIS_ZSET:      type = "+zset"; break;
         case REDIS_HASH:      type = "+hash"; break;
+#ifdef ALSOSQL
         case REDIS_NRL_INDEX: type = "+non-relational-index"; break;
         case REDIS_BTREE: {
            if (!o->ptr) { /* virtual index */
@@ -5227,6 +4966,7 @@ static void typeCommand(redisClient *c) {
             }
             break;
         }
+#endif
         default: type = "+unknown"; break;
         }
     }
@@ -8132,7 +7872,6 @@ void persistCommand(redisClient *c) {
 }
 
 
-
 /* ================================ MULTI/EXEC ============================== */
 
 /* Client state initialization for MULTI/EXEC */
@@ -9013,15 +8752,6 @@ struct redisClient *createFakeClient(void) {
     return c;
 }
 
-#ifdef ALSOSQL
-//TODO this can be a static redisClient
-struct redisClient *rsql_createFakeClient(void) {
-    int                 curr_db_id = server.dbid;
-    struct redisClient *fc         = createFakeClient();
-    selectDb(fc, curr_db_id);
-    return fc;
-}
-#endif
 
 void freeFakeClient(struct redisClient *c) {
     sdsfree(c->querybuf);
@@ -9031,17 +8761,25 @@ void freeFakeClient(struct redisClient *c) {
 }
 
 #ifdef ALSOSQL
+//TODO this can be a static redisClient (make sure call is not nested)
+struct redisClient *rsql_createFakeClient(void) {
+    int                 curr_db_id = server.dbid;
+    struct redisClient *fc         = createFakeClient();
+    selectDb(fc, curr_db_id);
+    return fc;
+}
+
 void rsql_resetFakeClient(struct redisClient *c) {
     /* Discard the reply objects list from the fake client */
     while(listLength(c->reply))
         listDelNode(c->reply, listFirst(c->reply));
 }
-#endif
 
 void rsql_freeFakeClient(struct redisClient *c) {
     rsql_resetFakeClient(c);
     freeFakeClient(c);
 }
+#endif
 
 /* Replay the append log file. On error REDIS_OK is returned. On non fatal
  * error (the append only file is zero-length) REDIS_ERR is returned. On
@@ -9202,6 +8940,7 @@ static int fwriteBulkLong(FILE *fp, long l) {
     return 1;
 }
 
+#ifdef ALSOSQL
 static bool appendOnlyDumpIndices(FILE *fp, int tmatch, int dbnum) {
     sds  tname  = Tbl[server.dbid][tmatch].name->ptr;
     char cmd3[] = "*4\r\n$6r\nCREATE\r\n$5\r\nINDEX\r\n";
@@ -9236,6 +8975,7 @@ static bool appendOnlyDumpIndices(FILE *fp, int tmatch, int dbnum) {
         }
     }
     return 1;
+
 awerr:
     return 0;
 }
@@ -9247,11 +8987,12 @@ static bool appendOnlyDumpTable(FILE *fp, robj *o, bt *btr, int tmatch) {
     if (fwrite(cmd,sizeof(cmd)-1,1,fp) == 0) goto atwerr;
     if (fwriteBulkString(fp, tname, sdslen(tname)) == -1) goto atwerr;
 
+    /* create single column_def string in format [col=type,,,,] */
     sds s = sdsempty();
     for (int i = 0; i < Tbl[server.dbid][tmatch].col_count; i++) {
         if (i) s = sdscatlen(s, ",", 1);
-        s = sdscatlen(s, Tbl[server.dbid][tmatch].col_name[i]->ptr,
-                      sdslen(Tbl[server.dbid][tmatch].col_name[i]->ptr));
+        sds cname = Tbl[server.dbid][tmatch].col_name[i]->ptr;
+        s = sdscatlen(s, cname, sdslen(cname));
         s = sdscatlen(s, EQUALS, 1);
         s = sdscat(s, Col_type_defs[Tbl[server.dbid][tmatch].col_type[i]]);
     }
@@ -9278,9 +9019,11 @@ static bool appendOnlyDumpTable(FILE *fp, robj *o, bt *btr, int tmatch) {
         btReleaseRangeIterator(bi);
     }
     return 1;
+
 atwerr:
     return 0;
 }
+#endif
 
 /* Write a sequence of commands able to fully rebuild the dataset into
  * "filename". Used both by REWRITEAOF and BGREWRITEAOF. */
@@ -9435,6 +9178,7 @@ static int rewriteAppendOnlyFile(char *filename) {
                     }
                     dictReleaseIterator(di);
                 }
+#ifdef ALSOSQL
             } else if (o->type == REDIS_BTREE) {
                 bt  *btr  = (struct btree *)(o->ptr);
                 if (!btr) continue; /* virtual indices have NULLs */
@@ -9448,6 +9192,7 @@ static int rewriteAppendOnlyFile(char *filename) {
                 }
             } else if (o->type == REDIS_NRL_INDEX) {
                 continue; /* REDIS_NRL_INDEX dumped in appendOnlyDumpIndices */
+#endif
             } else {
                 redisPanic("Unknown object type");
             }
@@ -10025,6 +9770,7 @@ static double computeObjectSwappability(robj *o) {
         }
         break;
     }
+    //TODO add in Alchemy tables and Indices???
     return (double)age*log(1+asize);
 }
 
@@ -11400,7 +11146,7 @@ static void computeDatasetDigest(unsigned char *final) {
                 }
                 hashReleaseIterator(hi);
             } else {
-                //TODO add Tables and Indices
+                //TODO add Alchemy Tables and Indices???
                 redisPanic("Unknown object type");
             }
             /* If the key has an expire, add it to the mix */
@@ -11775,9 +11521,4 @@ static void setupSigSegvAction(void) {
 }
 #endif /* HAVE_BACKTRACE */
 
-
-
 /* The End */
-
-
-

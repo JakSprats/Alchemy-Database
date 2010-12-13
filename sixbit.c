@@ -55,7 +55,7 @@ void init_six_bit_strings() {
     }
 }
 
-bool six_bit_pack(char s_c, unsigned int s_i, unsigned char **dest) {
+static bool six_bit_pack(char s_c, unsigned int s_i, unsigned char **dest) {
     //unsigned char *o_dest = *dest;
     char           s_p    = to_six_bit_strings[(int)s_c];
     if (!s_p) return 0;
@@ -86,7 +86,7 @@ bool six_bit_pack(char s_c, unsigned int s_i, unsigned char **dest) {
     return 1;
 }
 
-unsigned char six_bit_unpack(unsigned int s_i, unsigned char **dest) {
+static unsigned char six_bit_unpack(unsigned int s_i, unsigned char **dest) {
     //unsigned char *o_dest = *dest;
     char           state  = s_i % 4;
     unsigned char  b1     = **dest;
@@ -153,7 +153,7 @@ unsigned char *unpackSixBitString(unsigned char *src, unsigned int *s_len) {
             len++;
         }// else printf("%d not upackable: %u\n", i, *src);
     }
-    *s_len = len;
+    *s_len       = len;
     o_fdest[len] = '\0';
     return o_fdest;
 }

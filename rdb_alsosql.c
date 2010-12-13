@@ -70,6 +70,7 @@ int rdbSaveNRL(FILE *fp, robj *o) {
         if (rdbSaveStringObject(fp, r) == -1) return -1;
         decrRefCount(r);
     }
+    listReleaseIterator(li);
 
     list  *nrlcols = nrlind->l2;
     if (rdbSaveLen(fp, listLength(nrlcols)) == -1) return -1;
@@ -78,6 +79,7 @@ int rdbSaveNRL(FILE *fp, robj *o) {
         uint32 i = (uint32)(long)ln->value;
         if (rdbSaveLen(fp, i) == -1) return -1;
     }
+    listReleaseIterator(li);
 
     return 0;
 }
@@ -85,11 +87,11 @@ int rdbSaveNRL(FILE *fp, robj *o) {
 robj *rdbLoadNRL(FILE *fp) {
     robj         *iname;
     unsigned int  u;
-    d_l_t *nrlind     = malloc(sizeof(d_l_t));
-    nrlind->l1        = listCreate();
-    list  *nrltoks    = nrlind->l1;
-    nrlind->l2        = listCreate();
-    list  *nrlcols    = nrlind->l2;
+    d_l_t *nrlind  = malloc(sizeof(d_l_t));
+    nrlind->l1     = listCreate();
+    list  *nrltoks = nrlind->l1;
+    nrlind->l2     = listCreate();
+    list  *nrlcols = nrlind->l2;
 
     if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR) return NULL;
     nrlind->num = (int)u;
@@ -125,7 +127,7 @@ robj *rdbLoadNRL(FILE *fp) {
     return createObject(REDIS_NRL_INDEX, nrlind);
 }
 
-static int rdbSaveRow(FILE *fp, bt *btr, bt_n *x) {
+static int rdbSaveAllRows(FILE *fp, bt *btr, bt_n *x) {
     for (int i = 0; i < x->n; i++) {
         uchar *stream = KEYS(btr, x)[i];
         int    ssize  = getStreamMallocSize(stream, REDIS_ROW, btr->is_index);
@@ -135,7 +137,7 @@ static int rdbSaveRow(FILE *fp, bt *btr, bt_n *x) {
 
     if (!x->leaf) {
         for (int i = 0; i <= x->n; i++) {
-            if (rdbSaveRow(fp, btr, NODES(btr, x)[i]) == -1) return -1;
+            if (rdbSaveAllRows(fp, btr, NODES(btr, x)[i]) == -1) return -1;
         }
     }
     return 0;
@@ -153,7 +155,7 @@ int rdbSaveBT(FILE *fp, robj *o) {
     if (rdbSaveLen(fp, tmatch) == -1) return -1;
 
     int dbid   = server.dbid;
-    if (btr->is_index == BTREE_TABLE) {
+    if (btr->is_index == BTREE_TABLE) { /* BTree w/ DATA */
         //RL4 "%d: saving table: %s virt_index: %d",
             //tmatch, Tbl[dbid][tmatch].name->ptr, Tbl[dbid][tmatch].virt_indx);
         if (rdbSaveLen(fp, Tbl[dbid][tmatch].virt_indx) == -1) return -1;
@@ -168,16 +170,17 @@ int rdbSaveBT(FILE *fp, robj *o) {
         if (fwrite(&(btr->ktype),    1, 1, fp) == 0) return -1;
         if (rdbSaveLen(fp, btr->numkeys)       == -1) return -1;
         if (btr->root && btr->numkeys > 0) {
-            if (rdbSaveRow(fp, btr, btr->root) == -1) return -1;
+            if (rdbSaveAllRows(fp, btr, btr->root) == -1) return -1;
         }
-    } else { //index
+    } else {                           /* INDEX */
+        int imatch = tmatch;
         //RL4 "%d: save index: %s tbl: %d col: %d type: %d",
-            //tmatch, Index[dbid][tmatch].obj->ptr, Index[dbid][tmatch].table,
-            //Index[dbid][tmatch].column, Index[dbid][tmatch].type);
-        if (rdbSaveStringObject(fp, Index[dbid][tmatch].obj) == -1) return -1;
-        if (rdbSaveLen(fp, Index[dbid][tmatch].table) == -1) return -1;
-        if (rdbSaveLen(fp, Index[dbid][tmatch].column) == -1) return -1;
-        if (rdbSaveLen(fp, (int)Index[dbid][tmatch].type) == -1) return -1;
+            //imatch, Index[dbid][imatch].obj->ptr, Index[dbid][imatch].table,
+            //Index[dbid][imatch].column, Index[dbid][imatch].type);
+        if (rdbSaveStringObject(fp, Index[dbid][imatch].obj) == -1) return -1;
+        if (rdbSaveLen(fp, Index[dbid][imatch].table) == -1) return -1;
+        if (rdbSaveLen(fp, Index[dbid][imatch].column) == -1) return -1;
+        if (rdbSaveLen(fp, (int)Index[dbid][imatch].type) == -1) return -1;
         if (fwrite(&(btr->ktype),    1, 1, fp) == 0) return -1;
     }
     return 0;
@@ -206,7 +209,7 @@ robj *rdbLoadBT(FILE *fp, redisDb *db) {
     int tmatch = (int)u;
     int dbid = server.dbid;
 
-    if (is_index == BTREE_TABLE) {
+    if (is_index == BTREE_TABLE) { /* BTree w/ DATA */
         if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR) return NULL;
         int inum                        = u;
         Tbl[dbid][tmatch].virt_indx     = inum;
@@ -224,6 +227,7 @@ robj *rdbLoadBT(FILE *fp, redisDb *db) {
             Tbl[dbid][tmatch].col_type[i] = (unsigned char)u;
         }
 
+        /* BTREE implies an index on "tbl:pk:index" -> autogenerate */
         Index[server.dbid][inum].type = Tbl[dbid][tmatch].col_type[0];
         Index[server.dbid][inum].obj =
           createStringObject(Tbl[dbid][tmatch].name->ptr,
@@ -243,16 +247,16 @@ robj *rdbLoadBT(FILE *fp, redisDb *db) {
         o = createBtreeObject(ktype, tmatch, is_index);
         struct btree *btr  = (struct btree *)(o->ptr);
 
-        unsigned int bt_num; 
-        if ((bt_num = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR) return NULL;
+        unsigned int bt_nkeys; 
+        if ((bt_nkeys = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR) return NULL;
 
-        for (int unsigned i = 0; i < bt_num; i++) {
+        for (int unsigned i = 0; i < bt_nkeys; i++) {
             if (rdbLoadRow(fp, btr) == -1) return NULL;
         }
         //RL4 "load tmatch: %d name: %s inum: %d imatch: %s", tmatch,
         //Tbl[dbid][tmatch].name->ptr, inum, Index[server.dbid][inum].obj->ptr);
         if (Num_tbls[dbid] < (tmatch + 1)) Num_tbls[dbid] = tmatch + 1;
-    } else { /* BTREE_INDEX */
+    } else {                        /* INDEX */
         int imatch = tmatch;
         Index[server.dbid][imatch].nrl = 0;
         Index[server.dbid][imatch].obj = rdbLoadStringObject(fp);
@@ -293,4 +297,3 @@ void rdbLoadFinished(redisDb *db) {
 #endif
     }
 }
-
