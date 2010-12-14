@@ -1562,3 +1562,11 @@ function wait_on_proc_net_tcp() {
     sleep $SLEEP_TIME
   done
 }
+
+function looping_sql_test() {
+  while true; do
+    $CLI flushall;
+    sql_test;
+    wait_on_proc_net_tcp 10000
+  done
+}

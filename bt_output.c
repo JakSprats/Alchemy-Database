@@ -29,12 +29,15 @@ static void dumpnode(struct btree *btr, struct btreenode *,
 int treeheight(struct btree *btr);
 
 
-void bt_dumptree(struct btree *btr, int ktype, int vtype) {
+void bt_dump_info(struct btree *btr, int ktype, int vtype) {
     RL4 "bt_dumptree: %p ktype: %d vtype: %d", btr, ktype, vtype);
     RL4 "numkeys: %d numnodes: %d", btr->numkeys, btr->numnodes);
     RL4 "keyoff: %d  nodeptroff: %d t: %d textra: %d height: %d",
          btr->keyoff, btr->nodeptroff, btr->t, btr->textra, treeheight(btr));
+}
 
+void bt_dumptree(struct btree *btr, int ktype, int vtype) {
+    bt_dump_info(btr, ktype, vtype);
     //bt_treestats(btr);
     if (btr->root && btr->numkeys > 0) dumpnode(btr, btr->root, ktype, vtype, 0);
 }

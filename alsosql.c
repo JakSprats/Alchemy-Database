@@ -419,7 +419,7 @@ void createTableCommitReply(redisClient *c,
         }
     }
 
-    // BTREE implies an index on "tbl:pk:index" -> autogenerate
+    /* BTREE implies an index on "tbl:pk:index" -> autogenerate */
     sds  iname = sdscatprintf(sdsempty(), "%s:%s:%s",
                                           tname, cnames[0], INDEX_DELIM);
     if (!newIndexReply(c, iname, Num_tbls[server.dbid], 0, 1, NULL)) {

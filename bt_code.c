@@ -78,7 +78,7 @@ static struct btreenode *allocbtreenode(bt *btr) {
     return btn;
 }
 
-void *bt_malloc_btree() {
+static void *bt_malloc_btree() {
     int  size = sizeof(struct btree);
     bt  *btr  = (bt *)malloc(size);
     assert(btr);

@@ -399,6 +399,7 @@ void ideleteAction(redisClient *c,
                 robj *nkey = ln->value;
                 deleteRow(c, w->tmatch, nkey, matches, indices);
                 decrRefCount(nkey); /* from cloneRobj in BUILD_RQ_OPERATION */
+                sent++;
             }
             listReleaseIterator(li);
         }
@@ -450,6 +451,7 @@ void iupdateAction(redisClient *c,
                 updateRow(c, o, nkey, row, w->tmatch, ncols, matches, indices,
                           vals, vlens, cmiss);
                 decrRefCount(nkey); /* from cloneRobj in BUILD_RQ_OPERATION */
+                sent++;
             }
             listReleaseIterator(li);
         }

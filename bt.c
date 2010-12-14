@@ -28,6 +28,7 @@ ALL RIGHTS RESERVED
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <strings.h>
 
 #include "redis.h"
 #include "zmalloc.h"
@@ -37,8 +38,6 @@ ALL RIGHTS RESERVED
 #include "bt_iterator.h"
 #include "bt.h"
 
-#define FK_HEAVY
-
 /* GLOBALS */
 #define RL4 redisLog(4,
 extern char *COLON;
@@ -46,26 +45,12 @@ extern char *COLON;
 /* PROTOTYPES */
 static uint32 skipToVal(uchar **stream);
 
-#define INIT_DATA_BTREE_BYTES        4096
-#define INIT_INDEX_BTREE_BYTES       4096
-#ifdef FK_HEAVY
-  #define INIT_NODE_INDEX_BTREE_BYTES  4096
-#else
-  #define INIT_NODE_INDEX_BTREE_BYTES   128 /* 100K rows, this is TOO small */
-#endif
+/* Abstract-BTREE Prototypes */
+static bt *abt_create(uchar ktype, int num, uchar is_index);
+static void abt_destroy(bt *nbtr, bt *btr);
+
 bt *btCreate(uchar ktype, int num, uchar is_index) {
-    bt *btr;
-    if (is_index == BTREE_TABLE) {
-        btr = bt_create(btStreamCmp, INIT_DATA_BTREE_BYTES);
-    } else if (is_index == BTREE_INDEX) {
-        btr = bt_create(btStreamCmp, INIT_INDEX_BTREE_BYTES);
-    } else {
-        btr = bt_create(btStreamCmp, INIT_NODE_INDEX_BTREE_BYTES);
-    }
-    btr->ktype    = ktype;
-    btr->is_index = is_index;
-    btr->num      = num;
-    return btr;
+    return abt_create(ktype, num, is_index);
 }
 
 robj *createBtreeObject(uchar ktype, int num, uchar is_index) { /*Data & Index*/
@@ -73,41 +58,14 @@ robj *createBtreeObject(uchar ktype, int num, uchar is_index) { /*Data & Index*/
     return createObject(REDIS_BTREE, btr);
 }
 robj *createEmptyBtreeObject() {                           /* Virtual indices */
-    bt *btr = NULL;
-    return createObject(REDIS_BTREE, btr);
+    return createObject(REDIS_BTREE, NULL);
 }
 bt *createIndexNode(uchar pktype) {                       /* Nodes of Indices */
     return btCreate(pktype, -1, BTREE_INDEX_NODE);
 }
 
-static void emptyBtNode(bt *btr, bt_n *n, uchar vtype) {
-    for (int i = 0; i < n->n; i++) {
-        void *be    = KEYS(btr, n)[i];
-        int   ssize = getStreamMallocSize(be, vtype, btr->is_index);
-        if (btr->is_index == BTREE_INDEX) { /* Index is BT of IndexNodeBTs */
-            uchar *stream = be;
-            skipToVal(&stream);
-            bt    **nbtr  = (bt **)stream;
-            emptyBtNode(*nbtr, (*nbtr)->root, BTREE_INDEX_NODE);
-            bt_free_btree(*nbtr, btr); /* memory management in btr(Index) */
-        }
-        bt_free(be, btr, ssize);
-    }
-    if (!n->leaf) {
-        for (int i = 0; i <= n->n; i++) {
-            emptyBtNode(btr, NODES(btr, n)[i], vtype);
-        }
-    }
-    bt_free_btreenode(n, btr); /* memory management in btr */
-}
-
 void btDestroy(bt *nbtr, bt *btr) {
-    if (nbtr->root) {
-        uchar vtype = (nbtr->is_index == BTREE_TABLE) ? REDIS_ROW : REDIS_BTREE;
-        emptyBtNode(nbtr, nbtr->root, vtype);
-        nbtr->root  = NULL;
-    }
-    bt_free_btree(nbtr, btr); /* memory management in btr */
+    abt_destroy(nbtr, btr);
 }
 
 void freeBtreeObject(robj *o) {
@@ -116,6 +74,50 @@ void freeBtreeObject(robj *o) {
     btDestroy(btr, NULL);
 }
 
+//TODO the following 3 functions should go into bt_code.c
+static void destroy_bt_node(bt *btr, bt_n *n, uchar vtype) {
+    for (int i = 0; i < n->n; i++) {
+        void *be    = KEYS(btr, n)[i];
+        int   ssize = getStreamMallocSize(be, vtype, btr->is_index);
+        if (btr->is_index == BTREE_INDEX) { /* Index is BT of IndexNodeBTs */
+            uchar *stream = be;
+            skipToVal(&stream);
+            bt    **nbtr  = (bt **)stream;
+            destroy_bt_node(*nbtr, (*nbtr)->root, BTREE_INDEX_NODE);
+            bt_free_btree(*nbtr, btr);      /* memory management in btr(Index)*/
+        }
+        bt_free(be, btr, ssize);
+    }
+    if (!n->leaf) {
+        for (int i = 0; i <= n->n; i++) {
+            destroy_bt_node(btr, NODES(btr, n)[i], vtype);
+        }
+    }
+    bt_free_btreenode(n, btr); /* memory management in btr */
+}
+
+/* bt_release means dont destroy data, just btree */
+static void bt_release(bt *btr, bt_n *n) {
+    if (!n->leaf) {
+        for (int i = 0; i <= n->n; i++) {
+            bt_release(btr, NODES(btr, n)[i]);
+        }
+    }
+    bt_free_btreenode(n, btr); /* memory management in btr */
+}
+
+static void bt_to_bt_insert(bt *nbtr, bt *obtr, bt_n *n) {
+    for (int i = 0; i < n->n; i++) {
+        char *be = KEYS(obtr, n)[i];
+        bt_insert(nbtr, be);
+    }
+    if (!n->leaf) {
+        for (int i = 0; i <= n->n; i++) {
+            bt_to_bt_insert(nbtr, obtr, NODES(obtr, n)[i]);
+        }
+    }
+}
+          
 /* STREAM STREAM STREAM STREAM STREAM STREAM STREAM STREAM STREAM STREAM */
 /* STREAM STREAM STREAM STREAM STREAM STREAM STREAM STREAM STREAM STREAM */
 
@@ -289,6 +291,7 @@ char *createSimKeyFromRaw(void    *key_ptr,
     return simkey; /* MUST be freed soon */
 }
 
+//TODO rename CreateBtreeKey()
 char *createSimKey(const robj *key,
                    int         ktype,
                    bool       *med,
@@ -312,6 +315,7 @@ void destroyAssignKeyRobj(robj *key) {
         key->ptr = NULL;
     }
 }
+//TODO rename assignKeyToRobj()
 void assignKeyRobj(uchar *stream, robj *key) {
     uint32  k, slen;
     uchar   b1     = *stream;
@@ -407,7 +411,10 @@ uint32 getStreamMallocSize(uchar *stream,
     return klen + vlen;
 }
 
-static void *_bt_access_raw_val(bt *btr, const robj *key, int ktype, bool del) {
+
+/* ABSTRACT-BTREE ABSTRACT-BTREE ABSTRACT-BTREE ABSTRACT-BTREE ABSTRACT-BTREE */
+/* ABSTRACT-BTREE ABSTRACT-BTREE ABSTRACT-BTREE ABSTRACT-BTREE ABSTRACT-BTREE */
+static void *abt_access_raw_val(bt *btr, const robj *key, int ktype, bool del) {
     bool  med; uchar sflag; uint32 ksize;
     char *simkey = createSimKey(key, ktype, &med, &sflag, &ksize); /* FREE ME */
     if (!simkey) return NULL;
@@ -416,17 +423,34 @@ static void *_bt_access_raw_val(bt *btr, const robj *key, int ktype, bool del) {
     return stream;
 }
 
+static bt *abt_create(uchar ktype, int num, uchar is_index) {
+    bt *btr         = bt_create(btStreamCmp, TRANSITION_ONE_BTREE_BYTES);
+    btr->ktype      = ktype;
+    btr->is_index   = is_index;
+    btr->num        = num;
+    return btr;
+}
+
+static void abt_destroy(bt *nbtr, bt *btr) {
+    if (nbtr->root) {
+        uchar t = (nbtr->is_index == BTREE_TABLE) ? REDIS_ROW : REDIS_BTREE;
+        destroy_bt_node(nbtr, nbtr->root, t);
+        nbtr->root  = NULL;
+    }
+    bt_free_btree(nbtr, btr); /* memory management in btr */
+}
+
 /* NOTE: this function can NOT be used in nested loops
           - it relies on a single GLOBAL variable (BtRobj[2]) */
 #define NUM_ROBJ_NESTING 2
 /* ALL ALSOSQL routines MUST copy robj's when replying */
 static robj BtRobj[NUM_ROBJ_NESTING]; /*avoid malloc()s */
-static robj* _bt_find_val(bt         *btr,
+static robj* abt_find_val(bt         *btr,
                           const robj *key,
                           int         ktype,
                           int         vtype,
                           int         nesting) {
-    uchar *stream            = _bt_access_raw_val(btr, key, ktype, 0);
+    uchar *stream            = abt_access_raw_val(btr, key, ktype, 0);
     if (!stream) return NULL;
     BtRobj[nesting].type     = ktype;
     BtRobj[nesting].encoding = REDIS_ENCODING_RAW;
@@ -435,17 +459,20 @@ static robj* _bt_find_val(bt         *btr,
     return &BtRobj[nesting];
 }
 
-static int _bt_del(bt *btr, const robj *key, int ktype, int vtype) {
-    uchar *stream = _bt_access_raw_val(btr, key, ktype, 1);
+static int abt_del(bt *btr, const robj *key, int ktype, int vtype) {
+    uchar *stream = abt_access_raw_val(btr, key, ktype, 1);
     if (!stream) return 0;
-
-    uint32 ssize  = getStreamMallocSize(stream, vtype, btr->is_index);
+    uint32  ssize = getStreamMallocSize(stream, vtype, btr->is_index);
     //RL4 "is_index: %d vtype: %d free: %p size: %u", btr->is_index, vtype, stream, ssize);
     bt_free(stream, btr, ssize); /* memory bookkeeping in btr */
     return 1;
 }
 
-static uint32 _bt_insert(bt *btr, robj *key, robj *val, int ktype, int vtype) {
+static uint32 abt_insert(bt *btr, robj *key, robj *val, int ktype, int vtype) {
+    if (btr->numkeys == TRANSITION_ONE_MAX) {
+        btr = abt_resize(btr, TRANSITION_TWO_BTREE_BYTES);
+    }
+
     bool  med; uchar sflag; uint32 ksize;
     char  *simkey  = createSimKey(key, ktype, &med, &sflag, &ksize);
     if (!simkey) return 0;
@@ -472,34 +499,51 @@ static uint32 _bt_insert(bt *btr, robj *key, robj *val, int ktype, int vtype) {
     return ssize;
 }
 
+bt *abt_resize(bt *obtr, int new_size) {
+     bt *nbtr         = bt_create(btStreamCmp, new_size);
+     nbtr->ktype      = obtr->ktype;
+     nbtr->is_index   = obtr->is_index;
+     nbtr->num        = obtr->num;
+     nbtr->data_size  = obtr->data_size;
+    if (obtr->root) {
+        /* newBT copied from old, then new's head copied over olds */
+        bt_to_bt_insert(nbtr, obtr, obtr->root); /* 1.) copy from old to new */
+        bt_release(obtr, obtr->root);            /* 2.) release old */
+        memcpy(obtr, nbtr, sizeof(bt));          /* 3.) overwrite old w/ new */
+        free(nbtr);                              /* 4.) free new */
+    }
+    //bt_dump_info(obtr, obtr->ktype, REDIS_ROW);
+    return obtr;
+}
+
 /* API API API  API API API  API API API  API API API  API API API  */
 /* API API API  API API API  API API API  API API API  API API API  */
 int btAdd(robj *o, void *key, void *val, int ktype) {
     bt   *btr = (bt *)(o->ptr);
-    robj *v   = _bt_find_val(btr, key, ktype, REDIS_ROW, 0);
+    robj *v   = abt_find_val(btr, key, ktype, REDIS_ROW, 0);
     if (v) return DICT_ERR;
-    else   return _bt_insert(btr, key, val, ktype, REDIS_ROW);
+    else   return abt_insert(btr, key, val, ktype, REDIS_ROW);
 }
 
 //TODO need a native BT bt_replace, no need to mess w/ the btree for a replace
 //                         just replace pointer
 int btReplace(robj *o, void *key, void *val, int ktype) {
     bt  *btr = (bt *)(o->ptr);
-    int  del = _bt_del(btr, key, ktype, REDIS_ROW);
+    int  del = abt_del(btr, key, ktype, REDIS_ROW);
     if (!del) return DICT_ERR;
-    _bt_insert(btr, key, val, ktype, REDIS_ROW);
+    abt_insert(btr, key, val, ktype, REDIS_ROW);
     return DICT_OK;
 }
 
 robj *btFindVal(robj *o, const void *key, int ktype) {
     if (!key) return NULL;
     bt *btr = (bt *)(o->ptr);
-    return _bt_find_val(btr, key, ktype, REDIS_ROW, 0);
+    return abt_find_val(btr, key, ktype, REDIS_ROW, 0);
 }
 
 int btDelete(robj *o, const void *key, int ktype) {
     bt *btr = (bt *)(o->ptr);
-    int del = _bt_del(btr, key, ktype, REDIS_ROW);
+    int del = abt_del(btr, key, ktype, REDIS_ROW);
     if (!del) return DICT_ERR;
     else      return DICT_OK;
 }
@@ -509,28 +553,28 @@ int btDelete(robj *o, const void *key, int ktype) {
 robj BtIndVal;
 int btIndAdd(bt *ibtr, void *key, bt *nbtr, int ktype) {
     BtIndVal.ptr = nbtr;
-    if (_bt_find_val(ibtr, key, ktype, REDIS_BTREE, 1)) return DICT_ERR;
-    _bt_insert(ibtr, key, &BtIndVal, ktype, REDIS_BTREE);
+    if (abt_find_val(ibtr, key, ktype, REDIS_BTREE, 1)) return DICT_ERR;
+    abt_insert(ibtr, key, &BtIndVal, ktype, REDIS_BTREE);
     return DICT_OK;
 }
 robj *btIndFindVal(bt *ibtr, const void *key, int ktype) {
-    return _bt_find_val(ibtr, key, ktype, REDIS_BTREE, 1);
+    return abt_find_val(ibtr, key, ktype, REDIS_BTREE, 1);
 }
 int btIndDelete(bt *ibtr, const void *key, int ktype) {
-    _bt_del(ibtr, key, ktype, REDIS_BTREE);
+    abt_del(ibtr, key, ktype, REDIS_BTREE);
     return ibtr->numkeys;
 }
 
 /* INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE */
 /* INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE */
 int btIndNodeAdd(bt *nbtr, void *key, int ktype) {
-    if (_bt_find_val(nbtr, key, ktype, REDIS_BTREE, 1)) return DICT_ERR;
-    _bt_insert(nbtr, key, NULL, ktype, REDIS_BTREE);
+    if (abt_find_val(nbtr, key, ktype, REDIS_BTREE, 1)) return DICT_ERR;
+    abt_insert(nbtr, key, NULL, ktype, REDIS_BTREE);
     return DICT_OK;
 }
 
 int btIndNodeDelete(bt *nbtr, const void *key, int ktype) {
-    _bt_del(nbtr, key, ktype, REDIS_BTREE);
+    abt_del(nbtr, key, ktype, REDIS_BTREE);
     return nbtr->numkeys;
 }
 

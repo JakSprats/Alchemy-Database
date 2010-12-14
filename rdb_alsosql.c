@@ -191,6 +191,9 @@ static int rdbLoadRow(FILE *fp, bt *btr) {
     if ((ssize = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR) return -1;
     char *bt_val = bt_malloc(ssize, btr); // mem bookkeeping done in BT
     if (fread(bt_val, ssize, 1, fp) == 0) return -1;
+    if (btr->numkeys == TRANSITION_ONE_MAX) {
+        btr = abt_resize(btr, TRANSITION_TWO_BTREE_BYTES);
+    }
     bt_insert(btr, bt_val);
     return 0;
 }

@@ -29,7 +29,13 @@
 
 #include "btree.h"
 
-// SIZE: 2ptr(16), 5shrt(10), 3uchar(3), 2LL(24) + 2int(8) -> 53bytes
+//TODO: benchmark HOW 4096 outperforms 128 as IndexNodeBT size
+//       also does 32 make sense as TRANSITION_ONE_MAX
+#define TRANSITION_ONE_MAX            31
+#define TRANSITION_ONE_BTREE_BYTES   128
+#define TRANSITION_TWO_BTREE_BYTES  4096
+
+/* SIZE: 2ptr(16), 5shrt(10), 3uchar(3), 2LL(24) + 2int(8) -> 53bytes */
 typedef struct btree {
     struct btreenode *root;
     bt_cmp_t           cmp;
@@ -41,7 +47,7 @@ typedef struct btree {
 
     unsigned char      nbits;
     unsigned char      ktype;
-    unsigned char      is_index;
+    unsigned char      is_index; /* TODO: rename to bt_type [data,index,node] */
     short              num;
 
     unsigned long long malloc_size;
@@ -51,8 +57,8 @@ typedef struct btree {
     unsigned int       numnodes;
 } __attribute__ ((packed)) bt;
 
-typedef struct btreenode { // 2 bytes
-    int    n    : 31;      //2 billion entries
+typedef struct btreenode { /* 2 bytes */
+    int    n    : 31;      /* 2 billion entries */
     int    leaf : 1;
 } bt_n;
 

@@ -32,6 +32,8 @@ ALL RIGHTS RESERVED
 #include "btreepriv.h"
 #include "common.h"
 
+bt *abt_resize(bt *obtr, int new_size);
+
 unsigned int getStreamMallocSize(uchar         *stream,
                                  int            vtype,
                                  uchar  is_index);

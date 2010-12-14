@@ -284,15 +284,19 @@ void descCommand(redisClient *c) {
             x[64] ='\0';
         }
         snprintf(buf, 255, "INFO: KEYS: [NUM: %d MIN: %s MAX: %s]"\
-                          " BYTES: [BT-DATA: %lld BT-TOTAL: %lld INDEX: %lld]",
+                          " BYTES: [BT-DATA: %lld BT-TOTAL: %lld INDEX: %lld"\
+                            " COMBINED_TOTAL: %lld]",
                 btr->numkeys, (char *)minkey.ptr, (char *)maxkey.ptr,
-                btr->data_size, btr->malloc_size, index_size);
+                btr->data_size, btr->malloc_size, index_size,
+                (btr->malloc_size + index_size));
         buf[255] = '\0';
     } else {
         snprintf(buf, 255, "INFO: KEYS: [NUM: %d MIN: %u MAX: %u]"\
-                          " BYTES: [BT-DATA: %lld BT-TOTAL: %lld INDEX: %lld]",
-            btr->numkeys, (uint32)(long)minkey.ptr, (uint32)(long)maxkey.ptr,
-            btr->data_size, btr->malloc_size, index_size);
+                          " BYTES: [BT-DATA: %lld BT-TOTAL: %lld INDEX: %lld"\
+                            " COMBINED_TOTAL: %lld]",
+               btr->numkeys, (uint32)(long)minkey.ptr, (uint32)(long)maxkey.ptr,
+               btr->data_size, btr->malloc_size, index_size,
+                (btr->malloc_size + index_size));
         buf[255] = '\0';
     }
     robj *r = _createStringObject(buf);
