@@ -74,4 +74,5 @@ ALL RIGHTS RESERVED
 //TODO make array dynamic in size
 #define MAX_COLUMN_NAME_SIZE  128
 
+#define MIN(A,B) ((A > B) ? B : A)
 #endif /* __ALSOSQL_COMMON__H */

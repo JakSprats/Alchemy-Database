@@ -69,7 +69,7 @@ static bool advance_node(btIterator *iter, bool recursed) {
     return 0;
 }
 
-static void iter_to_parent(btIterator *iter) {
+static void iter_to_parent_recurse(btIterator *iter) {
     if (!iter->bln->parent) {
         iter->finished = 1;                                        // -> exit
         return;
@@ -82,7 +82,7 @@ static void iter_to_parent(btIterator *iter) {
     int   x           = btr->cmp(child, parent);
     if (x > 0) {
         if (!advance_node(iter, 1)) {
-            iter_to_parent(iter);                            // right-most-leaf
+            iter_to_parent_recurse(iter);                     // right-most-leaf
         }
     }
 }
@@ -91,7 +91,7 @@ static void iter_leaf(btIterator *iter) {
     if ((iter->bln->ik + 1) < iter->bln->self->n) { // LEAF (n means numkeys)
         iter->bln->ik++;
     } else {
-        iter_to_parent(iter);
+        iter_to_parent_recurse(iter);
     }
 }
 
@@ -117,6 +117,7 @@ static void iter_node(btIterator *iter) {
 void *btNext(btIterator *iter) {
     if (iter->finished) return NULL;
 
+    //RL4 "btNext: leaf: %d", iter->bln->self->leaf);
     struct btree *btr  = iter->btr;
     void         *curr = KEYS(btr, iter->bln->self)[iter->bln->ik];
     if (iter->bln->self->leaf) (*iter->iLeaf)(iter);
@@ -299,19 +300,20 @@ static void iter_leaf_count(btIterator *iter) {
     long cnt  = (long)(iter->bln->self->n - iter->bln->ik);
     tl_t *tl  = (tl_t *)iter->data;
     tl->l3    = tl->l2 - tl->l1;
-    //RL4 "l1: %ld l2: %ld l3: %ld cnt: %ld", tl->l1, tl->l2, tl->l3, cnt);
+    //RL4 "LEAF: l1: %ld l2: %ld l3: %ld cn: %ld", tl->l1, tl->l2, tl->l3, cnt);
     tl->l1   += cnt; /* "count += n */
     if (tl->l1 >= tl->l2) return;
 
     iter->bln->ik = iter->bln->self->n - 1; /* move to end of block */
-    iter_to_parent(iter);
+    iter_to_parent_recurse(iter);
 }
 
 static void iter_node_count(btIterator *iter) {
     tl_t *tl = (tl_t *)iter->data;
     tl->l1++;/* "count++" */
     tl->l3    = tl->l2 - tl->l1;
-    if (tl->l1 >= tl->l2) return;
+    //RL4 "NODE: l1: %ld l2: %ld l3: %ld", tl->l1, tl->l2, tl->l3);
+    if (tl->l1 > tl->l2) return;
 
     advance_node(iter, 0);
     struct btree *btr = iter->btr;
@@ -341,6 +343,11 @@ static btSIter *XthIteratorFind(btSIter *siter, robj *low, long x, bt *btr) {
         if (tl.l1 >= tl.l2) {
             //RL4 "leftover: %ld ik: %d", tl.l3, siter->x.bln->ik);
             siter->x.bln->ik += tl.l3;
+            //RL4 "ik: %d n1: %d", siter->x.bln->ik, siter->x.bln->self->n);
+            if (siter->x.bln->ik == siter->x.bln->self->n) {
+                //RL4 "XthIteratorFind iter_to_parent_recurse");
+                iter_to_parent_recurse(&(siter->x));
+            }
             break;
         }
     }
