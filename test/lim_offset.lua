@@ -13,8 +13,9 @@ nrows=10000000
 -- PK TEST PK TEST PK TEST PK TEST PK TEST PK TEST PK TEST
 print ('PK TEST PK TEST PK TEST PK TEST PK TEST PK TEST PK TEST');
 for i= 1, nrows do
-    res = redis:scanselect('id', tbl, 'ORDER BY id LIMIT ' .. lim ..
-                                                 ' OFFSET '..i);
+    res = redis:select('id', tbl, 'id BETWEEN 1 AND 10000000 ' .. 
+                                  ' ORDER BY id LIMIT ' .. lim ..
+                                              ' OFFSET '.. i);
     for j = 1, (lim - 1) do
         one = res[j];
         two = res[j + 1];
