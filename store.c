@@ -257,6 +257,8 @@ istore_end:
 
     if (w->lim != -1 && sent < card) card = sent;
     addReplyLongLong(c, card);
+
+    if (w->ovar) incrOffsetVar(c, w, card);
 }
 
 /* JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN */

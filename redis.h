@@ -218,6 +218,10 @@ robj *lookupKey(redisDb *db, robj *key);
 robj *lookupKeyWrite(redisDb *db, robj *key);
 robj *lookupKeyReadOrReply(redisClient *c, robj *key, robj *reply);
 robj *lookupKeyRead(redisDb *db, robj *key);
+int checkType(redisClient *c, robj *o, int type);
+
+int getLongLongFromObjectOrReply(redisClient *c, robj *o, long long *target,
+                                 const char *msg);
 
 int deleteKey(redisDb *db, robj *key);
 

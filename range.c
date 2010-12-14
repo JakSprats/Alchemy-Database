@@ -338,6 +338,7 @@ void iselectAction(redisClient *c,
     if (cstar) lenobj->ptr = sdscatprintf(sdsempty(), ":%lu\r\n", card);
     else       lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
 
+    if (w->ovar) incrOffsetVar(c, w, card);
     if (ll) listRelease(ll);
 }
 
@@ -408,6 +409,7 @@ void ideleteAction(redisClient *c,
     if (w->lim != -1 && (uint32)sent < card) card = sent;
     addReplyLongLong(c, card);
 
+    if (w->ovar) incrOffsetVar(c, w, card);
     listRelease(ll);
 }
 
@@ -460,5 +462,6 @@ void iupdateAction(redisClient *c,
     if (w->lim != -1 && (uint32)sent < card) card = sent;
     addReplyLongLong(c, card);
 
+    if (w->ovar) incrOffsetVar(c, w, card);
     listRelease(ll);
 }

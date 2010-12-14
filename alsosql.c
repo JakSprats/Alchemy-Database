@@ -130,6 +130,21 @@ int get_all_cols(int tmatch, int cmatchs[]) {
     return Tbl[server.dbid][tmatch].col_count;
 }
 
+/* set "OFFSET var" for next cursor iteration */
+void incrOffsetVar(redisClient *c, cswc_t *w, long incr) {
+    robj *ovar = createStringObject(w->ovar, sdslen(w->ovar));
+    if (w->lim > incr) {
+        deleteKey(c->db, ovar);
+    } else {
+        lolo  value = (w->ofst == -1) ? (lolo)incr :
+                                        (lolo)w->ofst + (lolo)incr;
+        robj *val   = createStringObjectFromLongLong(value);
+        int   ret   = dictAdd(c->db->dict, ovar, val);
+        if (ret == DICT_ERR) dictReplace(c->db->dict, ovar, val);
+    }
+    server.dirty++;
+}
+
 /* PARSE PARSE PARSE PARSE PARSE PARSE PARSE PARSE PARSE PARSE PARSE */
 /* PARSE PARSE PARSE PARSE PARSE PARSE PARSE PARSE PARSE PARSE PARSE */
 static char *parseRowVals(char    *vals,
@@ -632,6 +647,7 @@ void init_check_sql_where_clause(cswc_t *w, int tmatch, sds token) {
     w->inl    = NULL;
     w->stor   = NULL;
     w->lvr    = NULL;
+    w->ovar   = NULL;
     w->imatch = -1;
     w->tmatch = tmatch;
     w->cmatch = -1;
@@ -649,6 +665,7 @@ void destroy_check_sql_where_clause(cswc_t *w) {
     if (w->low)  decrRefCount(w->low);
     if (w->high) decrRefCount(w->high);
     if (w->inl)  listRelease(w->inl);
+    if (w->ovar) sdsfree(w->ovar);
 }
 
 /* TODO need a single FK iterator ... built into RANGE_QUERY_LOOKUP_START */
@@ -727,6 +744,7 @@ void sqlSelectCommand(redisClient *c) {
     } else {
         robj *o = lookupKeyRead(c->db, Tbl[server.dbid][w.tmatch].name);
         selectSinglePKReply(c, o, w.key, w.tmatch, cmatchs, qcols, cstar);
+        if (w.ovar) incrOffsetVar(c, &w, 1);
     }
 
 select_cmd_end:
@@ -767,6 +785,7 @@ void deleteCommand(redisClient *c) {
         MATCH_INDICES(w.tmatch)
         bool del = deleteRow(c, w.tmatch, w.key, matches, indices);
         addReply(c, del ? shared.cone :shared.czero);
+        if (w.ovar) incrOffsetVar(c, &w, 1);
     }
 
 delete_cmd_end:
@@ -865,6 +884,7 @@ void updateCommand(redisClient *c) {
                        vals, vlens, cmiss)) goto update_cmd_end;
 
         addReply(c, shared.cone);
+        if (w.ovar) incrOffsetVar(c, &w, 1);
     }
 
 update_cmd_end:

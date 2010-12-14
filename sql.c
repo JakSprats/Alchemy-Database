@@ -165,6 +165,32 @@ parse_range_err:
     return SQL_ERR_LOOKUP;
 }
 
+/* "OFFSET M" if M is a redis variable, this is a cursor call */
+static bool setOffsetReply(redisClient *c, cswc_t *w, char *nextp) {
+    if (isalpha(*nextp)) { /* OFFSET "var" - used in cursors */
+        int   len  = get_token_len(nextp);
+        robj *ovar = createStringObject(nextp, len);
+        w->ovar    = sdsdup(ovar->ptr);
+        robj *o    = lookupKeyRead(c->db, ovar);
+        decrRefCount(ovar);
+        if (o) {
+            long long value;
+            if (!checkType(c, o, REDIS_STRING) &&
+                 getLongLongFromObjectOrReply(c, o, &value,
+                            "OFFSET variable is not an integer") == REDIS_OK) {
+                w->ofst = (int)value;
+            } else { /* possibly variable was a ZSET,LIST,etc */
+                sdsfree(w->ovar);
+                w->ovar = NULL;
+                return 0;
+            }
+        }
+    } else {
+        w->ofst = atoi(nextp); /* LIMIT N OFFSET X */
+    }
+    return 1;
+}
+
 /* SYNTAX: ORDER BY col [DESC] [LIMIT n [OFFSET m]] */
 static bool parseOrderBy(redisClient  *c,
                          char         *by,
@@ -237,7 +263,7 @@ static bool parseOrderBy(redisClient  *c,
                         addReply(c, shared.orderby_offset_needs_number);
                         return 0;
                     }
-                    w->ofst = atoi(nextp); /* LIMIT N OFFSET X */
+                    if (!setOffsetReply(c, w, nextp)) return 0;
                     nextp   = next_token(nextp);
                 }
             }

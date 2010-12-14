@@ -33,6 +33,7 @@ ALL RIGHTS RESERVED
 #define ushort unsigned short
 #define ulong  unsigned long
 #define ull    unsigned long long
+#define lolo   long long
 
 #define bool unsigned char
 #define flag unsigned char

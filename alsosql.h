@@ -73,6 +73,7 @@ typedef struct check_sql_where_clause {
     bool   asc;   
     int    lim;   
     int    ofst;
+    char  *ovar;  /* OFFSET variable name - used by cursors */
     sds    token;    
     int    sto;
 } cswc_t;
@@ -82,6 +83,7 @@ int find_table_n(char *tname, int len);
 int find_column(int tmatch, char *column);
 int find_column_n(int tmatch, char *column, int len);
 int get_all_cols(int tmatch, int cmatchs[]);
+void incrOffsetVar(redisClient *c, cswc_t *w, long incr);
 
 bool cCpyOrReply(redisClient *c, char *src, char *dest, unsigned int len);
 

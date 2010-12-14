@@ -3371,7 +3371,7 @@ static robj *lookupKeyWriteOrReply(redisClient *c, robj *key, robj *reply) {
     return o;
 }
 
-static int checkType(redisClient *c, robj *o, int type) {
+int checkType(redisClient *c, robj *o, int type) {
     if (o->type != type) {
         addReply(c,shared.wrongtypeerr);
         return 1;
@@ -3583,7 +3583,7 @@ static int getLongLongFromObject(robj *o, long long *target) {
     return REDIS_OK;
 }
 
-static int getLongLongFromObjectOrReply(redisClient *c, robj *o, long long *target, const char *msg) {
+int getLongLongFromObjectOrReply(redisClient *c, robj *o, long long *target, const char *msg) {
     long long value;
     if (getLongLongFromObject(o, &value) != REDIS_OK) {
         if (msg != NULL) {
