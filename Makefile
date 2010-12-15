@@ -15,9 +15,12 @@ PLATS= aix ansi bsd freebsd generic linux macosx mingw posix solaris
 # 1.) git clone https://github.com/tycho/luajit.git
 # 2.) cd luajit*
 # 3.) make install
+#     NOTE: for 64-bit compilation, change line 28 in luajit/src/Makefile to
+#            "CC= gcc -m64 -march=native"
 # 4.) export LD_LIBRARY_PATH=/usr/local/lib/
 # 5.) set LUAJIT= yes
 LUAJIT= no
+#LUAJIT= yes
 uname_S := $(shell sh -c 'uname -s 2>/dev/null || echo not')
 OPTIMIZATION?=-O2
 ifeq ($(uname_S),SunOS)

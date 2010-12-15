@@ -61,11 +61,12 @@ end
 -- for redis: select(db)
 -- for SQL: select(col_list, tname, where_clause)
 function select(...)
-  argCount = #arg;
+  local args = {...};
+  argCount = #args;
   if (argCount == 1) then
-    return client('select', arg[1]);
+    return client('select', args[1]);
   else
-    return client('select', arg[1], "FROM", arg[2], "WHERE", arg[3]);
+    return client('select', args[1], "FROM", args[2], "WHERE", args[3]);
   end
 end
 
@@ -75,11 +76,12 @@ function select_store(col_list, tname, where_clause, redis_command)
 end
 
 function scanselect(...)
-  argCount = #arg;
+  local args = {...};
+  argCount = #args;
   if (argCount == 2) then
-    return client('scanselect', arg[1], "FROM", arg[2]);
+    return client('scanselect', args[1], "FROM", args[2]);
   else
-    return client('scanselect', arg[1], "FROM", arg[2], "WHERE", arg[3]);
+    return client('scanselect', args[1], "FROM", args[2], "WHERE", args[3]);
   end
 end
 
