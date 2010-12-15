@@ -358,15 +358,15 @@ bool parseSelectReply(redisClient *c,
                                     0, NULL, NULL, NULL, qcols, cstar);
 }
 
-int parseUpdateColListReply(redisClient  *c,
-                            int           tmatch,
-                            char         *cname,
-                            int           cmatchs[],
-                            char         *vals   [],
-                            uint32        vlens  []) {
+static int parseUpdateColListReply(redisClient  *c,
+                                   int           tmatch,
+                                   char         *vallist,
+                                   int           cmatchs[],
+                                   char         *vals   [],
+                                   uint32        vlens  []) {
     int qcols = 0;
     while (1) {
-        char *val = strchr(cname, '='); /* cnames can not have '=' in them */
+        char *val = strchr(vallist, '=');
         if (!val) {
             addReply(c, shared.invalidupdatestring);
             return 0;
@@ -376,7 +376,7 @@ int parseUpdateColListReply(redisClient  *c,
         val++;
         while (isblank(*val)) val++;
 
-        int cmatch = find_column_n(tmatch, cname, (endval - cname + 1));
+        int cmatch = find_column_n(tmatch, vallist, (endval - vallist + 1));
         if (cmatch == -1) {
             addReply(c, shared.nonexistentcolumn);
             return 0;
@@ -392,9 +392,134 @@ int parseUpdateColListReply(redisClient  *c,
         if (!nextc) break;
         nextc++;
         while (isblank(*nextc)) nextc++;
-        cname = nextc;
+        vallist = nextc;
     }
     return qcols;
+}
+
+/* UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR */
+/* UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR */
+char PLUS   = '+';
+char MINUS  = '-';
+char MULT   = '*';
+char DIVIDE = '/';
+char MODULO = '%';
+char POWER  = '^';
+char STRCAT = '|';
+static char isExpression(char *val, uint32 vlen) {
+    for (uint32 i = 0; i < vlen; i++) {
+        char x = val[i];
+        if (x == PLUS)   return PLUS;
+        if (x == MINUS)  return MINUS;
+        if (x == MULT)   return MULT;
+        if (x == DIVIDE) return DIVIDE;
+        if (x == POWER)  return POWER;
+        if (x == MODULO) return MODULO;
+        if (x == STRCAT && i != (vlen - 1) && val[i + 1] == STRCAT)
+            return STRCAT;
+    }
+    return 0;
+}
+
+static char Up_col_buf[64];
+static uchar determineExprType(char *pred, int plen) {
+    if (*pred == '\'') {
+        if (plen < 3)                           return UETYPE_ERR;
+        if (_strnchr(pred + 1, '\'', plen - 1)) return UETYPE_STRING;
+        else                                    return UETYPE_ERR;
+    }
+    if (*pred == '"') {
+        if (plen < 3)                           return UETYPE_ERR;
+        if (_strnchr(pred + 1, '"', plen - 1))  return UETYPE_STRING;
+        else                                    return UETYPE_ERR;
+    }
+    if (plen >= 64)                             return UETYPE_ERR;
+    memcpy(Up_col_buf, pred, plen);
+    Up_col_buf[plen] = '\0';
+    if (is_int(Up_col_buf))                     return UETYPE_INT;
+    if (is_float(Up_col_buf))                   return UETYPE_FLOAT;
+    return UETYPE_ERR;
+}
+
+static bool parseExprReply(redisClient *c,
+                           char         e,
+                           int          tmatch,
+                           int          cmatch,
+                           uchar        ctype,
+                           char        *val,
+                           uint32       vlen,
+                           ue_t        *ue) {
+    char  *cname = val;
+    while (isblank(*cname)) cname++;       /* cant fail "e" already found */
+    char  *espot = _strnchr(val, e, vlen); /* cant fail - "e" already found */
+    if (((espot - val) == (vlen - 1)) ||
+        ((e == STRCAT) && ((espot - val) == (vlen - 2)))) {
+        addReply(c, shared.update_expr);
+        return 0;
+    }
+    char  *cend     = espot - 1;
+    while (isblank(*cend)) cend--;
+    int    uec1match = find_column_n(tmatch, cname, cend - cname + 1);
+    if (uec1match == -1) {
+        addReply(c, shared.update_expr_col);
+        return 0;
+    }
+    if (uec1match != cmatch) {
+        addReply(c, shared.update_expr_col_other);
+        return 0;
+    }
+    char *pred = espot + 1;
+    if (e == STRCAT) pred++;
+    while (isblank(*pred)) {        /* find predicate (after blanks) */
+        pred++;
+        if ((pred - val) == vlen) {
+            addReply(c, shared.update_expr);
+            return 0;
+        }
+    }
+    char *pend = val + vlen -1;     /* start from END */
+    while (isblank(*pend)) pend--;  /* find end of predicate */
+    int   plen  = pend - pred + 1;
+    uchar uetype = determineExprType(pred, plen);
+
+    if (uetype == UETYPE_ERR) {
+        addReply(c, shared.update_expr_col);
+        return 0;
+    }
+
+    /* RULES FOR UPDATE EXPRESSIONS */
+    if (uetype == UETYPE_STRING && ctype != COL_TYPE_STRING) {
+        addReply(c, shared.update_expr_math_str);
+        return 0;
+    }
+    if (e == MODULO && ctype != COL_TYPE_INT) {
+        addReply(c, shared.update_expr_mod);
+        return 0;
+    }
+    if (e == STRCAT && (ctype != COL_TYPE_STRING || uetype != UETYPE_STRING)) {
+        addReply(c, shared.update_expr_cat);
+        return 0;
+    }
+    if (ctype == COL_TYPE_STRING && e != STRCAT) {
+        addReply(c, shared.update_expr_str);
+        return 0;
+    }
+
+    if (uetype == UETYPE_STRING) { /* ignore string delimiters */
+        pred++;
+        plen -= 2;
+        if (plen == 0) {
+            addReply(c, shared.update_expr_empty_str);
+            return 0;
+        }
+    }
+
+    ue->c1match = uec1match;
+    ue->type    = uetype;
+    ue->pred    = pred;
+    ue->plen    = plen;
+    ue->op      = e;
+    return 1;
 }
 
 /* CREATE_TABLE CREATE_TABLE CREATE_TABLE CREATE_TABLE CREATE_TABLE */
@@ -810,11 +935,13 @@ void updateCommand(redisClient *c) {
     int      cmatchs[MAX_COLUMN_PER_TABLE];
     char    *mvals  [MAX_COLUMN_PER_TABLE];
     uint32   mvlens [MAX_COLUMN_PER_TABLE];
-    char    *nvals = c->argv[3]->ptr;
-    int      ncols = Tbl[server.dbid][tmatch].col_count;
-    int      qcols = parseUpdateColListReply(c, tmatch, nvals, cmatchs,
-                                             mvals, mvlens);
+    ue_t     ue     [MAX_COLUMN_PER_TABLE];
+    char    *vallist = c->argv[3]->ptr;
+    int      ncols   = Tbl[server.dbid][tmatch].col_count;
+    int      qcols   = parseUpdateColListReply(c, tmatch, vallist, cmatchs,
+                                               mvals, mvlens);
     if (!qcols) return;
+
     int pk_up_col = -1; /* PK UPDATEs that OVERWRITE rows disallowed */
     for (int i = 0; i < qcols; i++) {
         if (!cmatchs[i]) {
@@ -830,11 +957,19 @@ void updateCommand(redisClient *c) {
     unsigned int   vlens[MAX_COLUMN_PER_TABLE];
     for (int i = 0; i < ncols; i++) {
         unsigned char miss = 1;
+        ue[i].yes = 0;
         for (int j = 0; j < qcols; j++) {
             if (i == cmatchs[j]) {
                 miss     = 0;
                 vals[i]  = mvals[j];
                 vlens[i] = mvlens[j];
+                char e   = isExpression(vals[i], vlens[i]);
+                if (e) {
+                    uchar ctype = Tbl[server.dbid][tmatch].col_type[i];
+                    if (!parseExprReply(c, e, tmatch, cmatchs[j], ctype,
+                                        vals[i], vlens[i], &ue[i])) return;
+                    ue[i].yes = 1;
+                }
                 break;
             }
         }
@@ -843,7 +978,7 @@ void updateCommand(redisClient *c) {
 
     cswc_t w;
     uchar  sop   = SQL_UPDATE;
-    init_check_sql_where_clause(&w, tmatch, c->argv[5]->ptr);
+    init_check_sql_where_clause(&w, tmatch, c->argv[5]->ptr); /* ERR now GOTO */
     uchar  wtype = checkSQLWhereClauseReply(c, &w, sop, 0);
     if (wtype == SQL_ERR_LOOKUP)         goto update_cmd_end;
     if (!leftoverParsingReply(c, w.lvr)) goto update_cmd_end;
@@ -860,7 +995,7 @@ void updateCommand(redisClient *c) {
             goto update_cmd_end;
         }
         iupdateAction(c, &w, ncols, matches, indices,
-                      vals, vlens, cmiss);
+                      vals, vlens, cmiss, ue);
     } else {
         uchar  pktype = Tbl[server.dbid][w.tmatch].col_type[0];
         robj  *o      = lookupKeyRead(c->db, Tbl[server.dbid][w.tmatch].name);
@@ -881,7 +1016,7 @@ void updateCommand(redisClient *c) {
         }
 
         if (!updateRow(c, o, w.key, row, w.tmatch, ncols, matches, indices, 
-                       vals, vlens, cmiss)) goto update_cmd_end;
+                       vals, vlens, cmiss, ue)) goto update_cmd_end;
 
         addReply(c, shared.cone);
         if (w.ovar) incrOffsetVar(c, &w, 1);

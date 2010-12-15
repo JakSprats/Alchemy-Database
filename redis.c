@@ -1614,6 +1614,26 @@ static void createSharedObjects(void) {
         "-ERR SYNTAX: UPDATE of PK not allowed with Range Query\r\n"));
     shared.update_pk_overwrite = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: UPDATE of PK would overwrite existing row - disallowed\r\n"));
+    shared.update_expr = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: UPDATE expression: parse error\r\n"));
+    shared.update_expr_col = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: UPDATE expression: SYNTAX: 'columname OP value' - OP=[+-*/%||] value=[columname,integer,float]\r\n"));
+    shared.update_expr_div_0 = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: UPDATE expression evaluation resulted in divide by zero\r\n"));
+    shared.update_expr_mod = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: UPDATE expression: MODULO only possible on INT columns \r\n"));
+    shared.update_expr_cat = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: UPDATE expression: String Concatenation only possible on TEXT columns \r\n"));
+    shared.update_expr_str = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: UPDATE expression: TEXT columns do not support [+-*/%^] Operations\r\n"));
+    shared.update_expr_empty_str = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: UPDATE expression: Concatenating Empty String\r\n"));
+    shared.update_expr_math_str = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: UPDATE expression: INT or FLOAT columns can not be set to STRINGS\r\n"));
+    shared.update_expr_col_other = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: UPDATE expression: SYNTAX: Left Hand Side column operations not possible on other columns in table\r\n"));
+    shared.update_expr_float_overflow = createObject(REDIS_STRING,sdsnew(
+        "-ERR MATHL: UPDATE expression: Floating point arithmetic produced overflow or underflow [FLT_MIN,FLT_MAX]\r\n"));
 
     shared.whereclause_col_not_found = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: WHERE indexed_column = val - Column does not exist\r\n"));

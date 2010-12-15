@@ -28,8 +28,8 @@ ifeq ($(uname_S),SunOS)
   @exit
 else
   ifeq ($(LUAJIT),yes)
-    CFLAGS?= -std=c99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF) -I./luajit-2.0/src/
-    CCLINK?= -lm -pthread -L./luajit-2.0/src/ -lluajit -ldl
+    CFLAGS?= -std=c99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF) -I./luajit/src/
+    CCLINK?= -lm -pthread -L./luajit/src/ -lluajit -ldl
   else
     CFLAGS?= -std=c99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF) -I./lua-5.1.4/src/
     CCLINK?= -lm -pthread -L./lua-5.1.4/src/ -llua -ldl
@@ -43,7 +43,7 @@ endif
 CCOPT= $(CFLAGS) $(CCLINK) $(ARCH) $(PROF)
 DEBUG?= -g -rdynamic -ggdb 
 ifeq ($(LUAJIT),yes)
-  LUADIR=./luajit-2.0/src/
+  LUADIR=./luajit/src/
   MTYPE=
 else
   LUADIR=./lua-5.1.4/src/

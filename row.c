@@ -33,6 +33,10 @@ ALL RIGHTS RESERVED
 #include <assert.h>
 #include <ctype.h>
 #include <limits.h>
+#include <float.h>
+#include <math.h>
+#include <errno.h>
+#include <fenv.h>
 
 #include "sixbit.h"
 #include "redis.h"
@@ -49,6 +53,14 @@ extern struct redisServer server;
 extern char    *OUTPUT_DELIM;
 extern r_tbl_t  Tbl     [MAX_NUM_DB][MAX_NUM_TABLES];
 extern r_ind_t  Index   [MAX_NUM_DB][MAX_NUM_INDICES];
+
+extern char PLUS;
+extern char MINUS;
+extern char MULT;
+extern char DIVIDE;
+extern char POWER;
+extern char MODULO;
+extern char STRCAT;
 
 #define RFLAG_1BYTE_INT        1
 #define RFLAG_2BYTE_INT        2
@@ -587,6 +599,91 @@ static robj *createStringObjectFromAobj(aobj *a) {
     }
 }
 
+/* UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE */
+/* UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE */
+static bool evalExpr(redisClient *c,
+                     ue_t        *ue,
+                     aobj        *aval,
+                     uchar        ctype) {
+    if (ctype        == COL_TYPE_INT) {
+        long   m;
+        long   l    = 0;
+        double f    = 0.0;
+        bool   is_f = (ue->type == UETYPE_FLOAT);
+        if (is_f) f = atof(ue->pred);
+        else      l = atol(ue->pred);
+
+        if ((ue->op == DIVIDE || ue->op == MODULO) && 
+            ((is_f && f == 0.0) || (!is_f && l == 0))) {
+            addReply(c, shared.update_expr_div_0);
+            return 0;
+        }
+        if      (ue->op == PLUS)   m = aval->i + (is_f ? (long)f : l);
+        else if (ue->op == MINUS)  m = aval->i - (is_f ? (long)f : l);
+        else if (ue->op == MODULO) m = aval->i % (is_f ? (long)f : l);
+        else if (ue->op == DIVIDE) {
+            if (ue->type == UETYPE_FLOAT) {
+                m = (long)((double)aval->i / f);
+            } else {
+                m = aval->i / l;
+            }
+        } else if (ue->op == MULT) {
+            if (ue->type == UETYPE_FLOAT) {
+                m = (long)((double)aval->i * f);
+            } else {
+                m = aval->i * l;
+            }
+        } else if (ue->op == POWER)  {
+            if (ue->type == UETYPE_INT) f = (float)l;
+            errno    = 0;
+            double d = powf((float)aval->i, f);
+            if (errno != 0) {
+                addReply(c, shared.col_uint_too_big);
+                return 0;
+            }
+            m        = (long) d;
+        }
+        if (!checkUIntReply(c, m, 0)) return 0;
+        aval->i = m;
+    } else if (ctype == COL_TYPE_FLOAT) {
+        double m;
+        float  f = atof(ue->pred);
+
+        if (ue->op == DIVIDE && f == (float)0.0) {
+            addReply(c, shared.update_expr_div_0);
+            return 0;
+        }
+        errno = 0; /* overflow detection initialisation */
+        if      (ue->op == PLUS)   m = aval->f + f;
+        else if (ue->op == MINUS)  m = aval->f - f;
+        else if (ue->op == MULT)   m = aval->f * f;
+        else if (ue->op == DIVIDE) m = aval->f / f;
+        else if (ue->op == POWER)  m = powf(aval->f, f);
+        if (errno != 0) {
+            addReply(c, shared.update_expr_float_overflow);
+            return 0;
+        }
+        double d = m;
+        if (d < 0.0) d *= -1;
+        if (d < FLT_MIN || d > FLT_MAX) {
+            addReply(c, shared.update_expr_float_overflow);
+            return 0;
+        }
+        aval->f = (float)m;
+    } else {         /* COL_TYPE_STRING*/
+        int len      = aval->len + ue->plen;
+        char *s      = malloc(len + 1);
+        memcpy(s,             aval->s,  aval->len);
+        memcpy(s + aval->len, ue->pred, ue->plen);
+        s[len]       = '\0';
+        free(aval->s);
+        aval->sixbit = 0;
+        aval->s      = s;
+        aval->len    = len;
+    }
+    return 1;
+}
+
 //TODO simultaneous PK and normal update
 bool updateRow(redisClient *c,
                robj        *o,
@@ -596,33 +693,38 @@ bool updateRow(redisClient *c,
                int          ncols,
                int          matches,
                int          indices[],
-               char        *vals[],
-               uint32       vlens[],
-               uchar        cmiss[]) {
+               char        *vals   [],
+               uint32       vlens  [],
+               uchar        cmiss  [],
+               ue_t         ue     []) {
     uint32 col_ofsts[MAX_COLUMN_PER_TABLE];
     aobj   avals    [MAX_COLUMN_PER_TABLE];
     flag   sflags   [MAX_COLUMN_PER_TABLE];
     uint32 rlen = 0;
     for (int i = 0; i < ncols; i++) {
+        uchar ctype = Tbl[server.dbid][tmatch].col_type[i];
         avals[i].len = 0;
-        if (cmiss[i]) {
-            avals[i] = getRawCol(orow, i, okey, tmatch, &sflags[i], 
-                                 Tbl[server.dbid][tmatch].col_type[i], 0);
+        if (cmiss[i] || ue[i].yes) {
+            avals[i] = getRawCol(orow, i, okey, tmatch, &sflags[i], ctype, 0);
+            if (ue[i].yes) { /* Update value is Expression */
+                if (!evalExpr(c, &ue[i], &avals[i], ctype))
+                    goto update_row_err;
+            }
         } else {
             avals[i].sixbit = 0;
-            if (Tbl[server.dbid][tmatch].col_type[i]        == COL_TYPE_INT) {
+            if (ctype        == COL_TYPE_INT) {
                 long l        = atol(vals[i]);
-                if (!checkUIntReply(c, l, !i)) return 0;
+                if (!checkUIntReply(c, l, !i)) goto update_row_err;
                 avals[i].i    = l;
                 avals[i].type = COL_TYPE_INT;
                 avals[i].enc  = COL_TYPE_INT;
-            } else if (Tbl[server.dbid][tmatch].col_type[i] == COL_TYPE_FLOAT) {
+            } else if (ctype == COL_TYPE_FLOAT) {
                 float f  = atof(vals[i]);
                 avals[i].f    = f;
                 avals[i].len  = sizeof(float);
                 avals[i].type = COL_TYPE_FLOAT;
                 avals[i].enc  = COL_TYPE_FLOAT;
-            } else {                                        /* COL_TYPE_STRING*/
+            } else {         /* COL_TYPE_STRING*/
                 avals[i].s    = vals[i];
                 avals[i].len  = vlens[i];
                 avals[i].type = COL_TYPE_STRING;
@@ -662,8 +764,10 @@ bool updateRow(redisClient *c,
                     sixbitlen[n_6b_s] = s_len;
                     n_6b_s++;
                 }
-                /* free SixBitStr from getRawCol() */
-                if (avals[i].sixbit) free(avals[i].s);
+                if (avals[i].sixbit) { /* free SixBitStr from getRawCol() */
+                    free(avals[i].s);
+                    avals[i].sixbit = 0;
+                }
             }
         }
     }
@@ -741,6 +845,14 @@ bool updateRow(redisClient *c,
     decrRefCount(r);
     server.dirty++;
     return 1;
+
+update_row_err:
+    for (int i = 1; i < ncols; i++) {  /* check can_six, create sixbitstr */
+        if (avals[i].sixbit) {
+            free(avals[i].s);
+        }
+    }
+    return 0;
 }
 
 void freeRowObject(robj *o) {

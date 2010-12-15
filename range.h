@@ -101,8 +101,9 @@ void iupdateAction(redisClient *c,
                    int          ncols,
                    int          matches,
                    int          indices[],
-                   char        *vals[],
-                   uint32       vlens[],
-                   uchar        cmiss[]);
+                   char        *vals   [],
+                   uint32       vlens  [],
+                   uchar        cmiss  [],
+                   ue_t         ue     []);
 
 #endif /* __RANGE__H */ 

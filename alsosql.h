@@ -58,6 +58,19 @@ typedef struct r_ind {
     bool   nrl;  /* non relational index - i.e. redis command */
 } r_ind_t;
 
+#define UETYPE_ERR    0
+#define UETYPE_INT    1
+#define UETYPE_FLOAT  2
+#define UETYPE_STRING 3
+typedef struct update_expression {
+    bool  yes;
+    char  op;
+    int   c1match;
+    int   type;
+    char *pred;
+    int   plen;
+} ue_t;
+
 typedef struct check_sql_where_clause {
     robj  *key;  
     robj  *low;  

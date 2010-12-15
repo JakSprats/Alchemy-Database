@@ -31,6 +31,8 @@ ALL RIGHTS RESERVED
 
 char *_strdup(char *s);
 char *_strnchr(char *s, int c, int len);
+bool is_int(char *s);
+bool is_float(char *s);
 robj *_createStringObject(char *s);
 robj *cloneRobj(robj *r);
 robj **copyArgv(robj **argv, int argc);

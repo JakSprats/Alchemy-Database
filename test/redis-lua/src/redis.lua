@@ -872,12 +872,12 @@ commands = {
                 table.insert(arguments, args[1]);
                 table.insert(arguments, 'FROM');
                 table.insert(arguments, args[2]);
-                local arg3_up = args[3]:upper();
-                local store   = string.match (args[3], "^STORE");
-                --if store then print ('store: ' .. store); end
-                local ordby   = string.match (args[3], "^ORDER");
-                --if ordby then print ('ordby: ' .. ordby); end
                 if #args > 2 then
+                    local arg3_up = args[3]:upper();
+                    local store   = string.match (args[3], "^STORE");
+                    --if store then print ('store: ' .. store); end
+                    local ordby   = string.match (args[3], "^ORDER");
+                    --if ordby then print ('ordby: ' .. ordby); end
                     if (not store and not ordby) then
                         table.insert(arguments, 'WHERE');
                     end

@@ -1,7 +1,6 @@
 #!/bin/bash 
 
 CLI="./redisql-cli"
-. ./no_good_calls.sh
 
 T2P="tr \, \| "
 
@@ -1569,4 +1568,24 @@ function looping_sql_test() {
     sql_test;
     wait_on_proc_net_tcp 10000
   done
+}
+
+function large_update() {
+  if [ -z "$4" ]; then
+    echo "Usage: large_update statement limit variable sleep_throttle"
+    return;
+  fi
+  STMT="$1"
+  LIMIT="$2"
+  VAR="$3"
+  THRTL="$4"
+
+  MOD_STMT="$STMT LIMIT $LIMIT OFFSET $VAR"
+  time (
+    while true; do
+      RES=$($CLI $MOD_STMT | cut -f 2 -d \ )
+      if [ "$RES" != "$LIMIT" ]; then echo "BREAK"; break; fi
+      sleep $THRTL
+    done
+  )
 }

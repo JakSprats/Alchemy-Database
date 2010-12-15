@@ -50,16 +50,6 @@ extern char *COMMA;
 
 extern char *Col_type_defs[];
 
-// HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS
-// HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS
-static bool is_int(robj *pko) {
-    char *endptr;
-    long val = strtol(pko->ptr, &endptr, 10);
-    val = 0; /* compiler warning */
-    if (endptr[0] != '\0') return 0;
-    else                   return 1;
-}
-
 /* this is a complicated failure scenario as NORM can fail
    AFTER creating several tables ... so it has succeeded and then FAILED */
 #define NORM_MIDWAY_ERR_MSG "-ERR NORM command failed in the middle, error: "
@@ -128,7 +118,7 @@ static void assignPkAndColToRow(robj *pko,
     void *enc    = (void *)(long)valobj->encoding;
     /* If a string is an INT, we will store it as an INT */
     if (valobj->encoding == REDIS_ENCODING_RAW) {
-        if (is_int(valobj)) enc = (void *)REDIS_ENCODING_INT;
+        if (is_int(valobj->ptr)) enc = (void *)REDIS_ENCODING_INT;
     }
 
     robj      *col   = createStringObject(cname, strlen(cname));
@@ -219,7 +209,7 @@ void normCommand(redisClient *c) {
                 int   pklen  = end_pk ? end_pk - pk : (int)strlen(pk);
                 robj *pko    = createStringObject(pk, pklen);
                 /* a single STRING means the PK is TEXT */
-                if (!is_int(pko)) pk_type[i] = COL_TYPE_STRING;
+                if (!is_int(pko->ptr)) pk_type[i] = COL_TYPE_STRING;
 
                 if (val->type == REDIS_HASH) { /* each hash key is a colname */
                     hashIterator *hi = hashInitIterator(val);

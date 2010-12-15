@@ -28,6 +28,8 @@ ALL RIGHTS RESERVED
 #define __ALSOSQL_ROW__H
 
 #include "redis.h"
+
+#include "alsosql.h"
 #include "common.h"
 
 typedef struct AlsoSqlObject {
@@ -81,8 +83,9 @@ bool updateRow(redisClient *c,
                int          ncols, 
                int          matches,
                int          indices[],
-               char        *vals[],
-               uint32       vlens[],
-               uchar        cmisses[]);
+               char        *vals   [],
+               uint32       vlens  [],
+               uchar        cmisses[],
+               ue_t         ue     []);
 
 #endif /* __ALSOSQL_ROW__H */

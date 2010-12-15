@@ -51,6 +51,22 @@ inline char *_strnchr(char *s, int c, int len) {
     return NULL;
 }
 
+bool is_int(char *s) {
+    char *endptr;
+    long val = strtol(s, &endptr, 10);
+    val = 0; /* compiler warning */
+    if (endptr[0] != '\0') return 0;
+    else                   return 1;
+}
+
+bool is_float(char *s) {
+    char *endptr;
+    long val = strtod(s, &endptr);
+    val = 0; /* compiler warning */
+    if (endptr[0] != '\0') return 0;
+    else                   return 1;
+}
+
 robj *_createStringObject(char *s) {
     return createStringObject(s, strlen(s));
 }

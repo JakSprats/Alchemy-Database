@@ -418,9 +418,10 @@ void iupdateAction(redisClient *c,
                    int          ncols,
                    int          matches,
                    int          indices[],
-                   char        *vals[],
-                   uint32       vlens[],
-                   uchar        cmiss[]) {
+                   char        *vals   [],
+                   uint32       vlens  [],
+                   uchar        cmiss  [],
+                   ue_t         ue     []) {
     BUILD_RANGE_QUERY_LIST
 
     bool pktype = Tbl[server.dbid][w->tmatch].col_type[0];
@@ -439,7 +440,7 @@ void iupdateAction(redisClient *c,
                     robj   *nkey = ob->row;
                     robj   *row  = btFindVal(o, nkey, pktype);
                     updateRow(c, o, nkey, row, w->tmatch, ncols,
-                              matches, indices, vals, vlens, cmiss);
+                              matches, indices, vals, vlens, cmiss, ue);
                 }
             }
             sortedOrderByCleanup(v, listLength(ll), ctype, 1);
@@ -451,7 +452,7 @@ void iupdateAction(redisClient *c,
                 robj *nkey = ln->value;
                 robj *row  = btFindVal(o, nkey, pktype);
                 updateRow(c, o, nkey, row, w->tmatch, ncols, matches, indices,
-                          vals, vlens, cmiss);
+                          vals, vlens, cmiss, ue);
                 decrRefCount(nkey); /* from cloneRobj in BUILD_RQ_OPERATION */
                 sent++;
             }
