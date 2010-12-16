@@ -637,7 +637,7 @@ static void repl() {
                     continue;
                 } else {
                     argc = 2;
-                    argv = malloc(2 * sizeof(char *));
+                    argv = zmalloc(2 * sizeof(char *));
                     argv[0] = sdsnewlen("LUA", 3);
                     argv[1] = sdsnewlen(line, strlen(line));
                 }
