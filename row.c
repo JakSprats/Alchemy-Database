@@ -701,6 +701,9 @@ bool updateRow(redisClient *c,
     aobj   avals    [MAX_COLUMN_PER_TABLE];
     flag   sflags   [MAX_COLUMN_PER_TABLE];
     uint32 rlen = 0;
+    for (int i = 1; i < ncols; i++) {  /* necessary in case of update_row_err */
+            avals[i].sixbit = 0;
+    }
     for (int i = 0; i < ncols; i++) {
         uchar ctype = Tbl[server.dbid][tmatch].col_type[i];
         avals[i].len = 0;
