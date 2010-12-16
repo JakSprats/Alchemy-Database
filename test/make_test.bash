@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # FIRST get Alchemy's Lua Client
-git clone https://JakSprats@github.com/JakSprats/redis-lua.git
+git clone https://github.com/JakSprats/redis-lua.git
 
 # then MAKE INSTALL lua
 (cd ../lua-5.1.4/; make install)
