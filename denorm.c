@@ -32,6 +32,7 @@ ALL RIGHTS RESERVED
 #include "redis.h"
 
 #include "bt_iterator.h"
+#include "rpipe.h"
 #include "parser.h"
 #include "alsosql.h"
 

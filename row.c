@@ -677,7 +677,7 @@ static bool evalExpr(redisClient *c,
         memcpy(s + aval->len, ue->pred, ue->plen);
         s[len]       = '\0';
         free(aval->s);
-        aval->sixbit = 0;
+        aval->sixbit = 1; /* this new string must be freed later */
         aval->s      = s;
         aval->len    = len;
     }

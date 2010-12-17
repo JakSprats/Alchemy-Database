@@ -38,6 +38,7 @@ ALL RIGHTS RESERVED
 #include "index.h"
 #include "store.h"
 #include "orderby.h"
+#include "rpipe.h"
 #include "parser.h"
 #include "alsosql.h"
 #include "common.h"

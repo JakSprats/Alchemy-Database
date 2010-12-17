@@ -225,6 +225,8 @@ int getLongLongFromObjectOrReply(redisClient *c, robj *o, long long *target,
 
 int deleteKey(redisDb *db, robj *key);
 
+int selectDb(redisClient *c, int id);
+
 void addReply(redisClient *c, robj *obj);
 void addReplySds(redisClient *c, sds s);
 void addReplyBulk(redisClient *c, robj *obj);
@@ -545,17 +547,12 @@ typedef struct redisCommand {
 void hsetCommand(redisClient *c);
 void selectCommand(redisClient *c);
 
-/* ALSOSQL */
+#ifdef ALSOSQL
 typedef struct storage_command {
     void (*func)(redisClient *c);
     char *name;
     int   argc;
 } stor_cmd;
-
-#ifdef ALSOSQL
-struct redisClient *rsql_createFakeClient(void);
-void rsql_resetFakeClient(struct redisClient *c);
-void rsql_freeFakeClient(struct redisClient *c);
 #endif
 
 #endif

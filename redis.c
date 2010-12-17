@@ -2951,7 +2951,7 @@ static void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mas
     processInputBuffer(c);
 }
 
-static int selectDb(redisClient *c, int id) {
+int selectDb(redisClient *c, int id) {
     if (id < 0 || id > server.dbnum) return REDIS_ERR;
     c->db       = &server.db[id];
     c->dictid   = id;
@@ -8780,27 +8780,6 @@ void freeFakeClient(struct redisClient *c) {
     zfree(c);
 }
 
-#ifdef ALSOSQL
-//TODO this can be a static redisClient (make sure call is not nested)
-struct redisClient *rsql_createFakeClient(void) {
-    int                 curr_db_id = server.dbid;
-    struct redisClient *fc         = createFakeClient();
-    selectDb(fc, curr_db_id);
-    return fc;
-}
-
-void rsql_resetFakeClient(struct redisClient *c) {
-    /* Discard the reply objects list from the fake client */
-    while(listLength(c->reply))
-        listDelNode(c->reply, listFirst(c->reply));
-}
-
-void rsql_freeFakeClient(struct redisClient *c) {
-    rsql_resetFakeClient(c);
-    freeFakeClient(c);
-}
-#endif
-
 /* Replay the append log file. On error REDIS_OK is returned. On non fatal
  * error (the append only file is zero-length) REDIS_ERR is returned. On
  * fatal error an error message is logged and the program exists. */
@@ -10727,7 +10706,7 @@ static void configCommand(redisClient *c) {
         addReply(c,shared.ok);
     } else {
         addReplySds(c,sdscatprintf(sdsempty(),
-            "-ERR CONFIG subcommand must be one of GET, SET, RESETSTAT\r\n"));
+         "-ERR CONFIG subcommand must be one of GET, SET, ADD, RESETSTAT\r\n"));
     }
     return;
 

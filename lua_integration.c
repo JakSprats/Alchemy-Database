@@ -62,8 +62,8 @@ void luaCommand(redisClient *c) {
         return;
     }
 
-    //RL4 "LuaFlag: %d", LuaFlag);
     int lret = lua_gettop(Lua);
+    //RL4 "LuaFlag: %d lret: %d", LuaFlag, lret);
     if (lua_istable(Lua, -1)) {
         const int len = lua_objlen(Lua, -1 );
         addReplySds(c, sdscatprintf(sdsempty(), "*%d\r\n", len));
@@ -87,7 +87,10 @@ void luaCommand(redisClient *c) {
         if (!x) {
             addReply(c, shared.nullbulk);
         } else { 
-            if (LuaFlag == PIPE_ONE_LINER_FLAG) {
+            /* NOTE: if "client() is called in a lua func and the lua func
+                     then returns "+OK" it will 'correctly' returned */
+            if (LuaFlag == PIPE_ONE_LINER_FLAG &&
+                (*x == '-' || *x == '+' || *x == ':')) {
                 addReplySds(c, sdscatprintf(sdsempty(), "%s\r\n", x));
             } else {
                 robj *r = _createStringObject(x);
@@ -97,6 +100,7 @@ void luaCommand(redisClient *c) {
         }
         lua_pop(Lua, 1);
     }
+    lua_gc(Lua, LUA_GCCOLLECT, 0);
 }
 
 /* This function stores the results from the
@@ -111,17 +115,25 @@ static bool luaLine(redisClient *c,
                     long        *card,
                     int          i,
                     int          n) {
-    c = NULL; i = 0; /* compiler warning */
+    c = NULL; i = 0; n = 0; /* compiler warning */
+    char *kp = key->ptr;
     //RL4 "luaLine: %s", key->ptr);
     lua_State *L = (lua_State *)x;
-    if (n > 1) {
-        if (*card == 1) lua_newtable(L);
-        lua_pushnumber(L, *card);
-        lua_pushstring(L, key->ptr);
-        lua_settable(L, -3);
+    if (*card == 1) {
+        if (*kp == '-' || *kp == '+' || *kp == ':') { /* single line response */
+            lua_pushstring(L, kp);
+        } else {
+            lua_newtable(L);
+            lua_pushnumber(L, *card);
+            lua_pushstring(L, kp);
+            lua_settable(L, -3);
+        }
     } else {
-        lua_pushstring(L, key->ptr);
+        lua_pushnumber(L, *card);
+        lua_pushstring(L, kp);
+        lua_settable(L, -3);
     }
+    decrRefCount(key);
     *card = *card + 1;
     return 1;
 }
@@ -167,28 +179,28 @@ int redisLua(lua_State *L) {
     if (server.vm_enabled && server.vm_max_threads > 0 &&
         blockClientOnSwappedKeys(LuaClient, cmd)) return 1;
 
-    long         ok  = 0; /* must come before first GOTO */
-    redisClient *rfc = rsql_createFakeClient();
-    robj **rargv     = zmalloc(sizeof(robj *) * argc);
-    rfc->argv        = rargv;
-    rfc->argc        = argc;
+    long          ok    = 0; /* must come before first GOTO */
+    redisClient  *rfc   = rsql_createFakeClient();
+    robj        **rargv = zmalloc(sizeof(robj *) * argc);
     for (int i = 0; i < argc; i++) {
-        char *arg    = (char *)lua_tostring(L, i + 1);
+        char *arg = (char *)lua_tostring(L, i + 1);
         if (!arg) {
             char *lbuf = "args must be strings";
             luaL_argerror (L, i, lbuf);
             LuaFlag    = PIPE_ONE_LINER_FLAG;
             ok         = 1;
-            goto redis_lua_err;
+            goto redis_lua_end;
         }
-        rfc->argv[i] = _createStringObject(arg);
+        rargv[i] = _createStringObject(arg);
     }
+    rfc->argv = rargv;
+    rfc->argc = argc;
 
     ok = fakeClientPipe(LuaClient, rfc, L, 0, &LuaFlag, luaLine, emptyNoop);
 
-redis_lua_err:
+redis_lua_end:
     for (int i = 0; i < argc; i++) decrRefCount(rargv[i]);
     zfree(rargv);
     rsql_freeFakeClient(rfc);
-    return ok ? 1 : 0;
+    return (ok > 0) ? 1 : 0;
 }

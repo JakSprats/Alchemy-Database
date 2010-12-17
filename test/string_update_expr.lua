@@ -1,38 +1,45 @@
-package.path = package.path .. ";redis-lua/src/?.lua;src/?.lua"
+package.path = package.path .. ";;test/?.lua"
+require "is_external"
+
 require "socket"
-
-require "redis"
-
-function print_diff_time(msg, x) 
-    print(string.format("%s elapsed time: %.2f(s)\n",
-                         msg, (socket.gettime()*1000 - x) / 1000))
+function diff_time(msg, x) 
+    return string.format("%s elapsed time: %.2f(s)\n",
+                         msg, (socket.gettime()*1000 - x) / 1000);
 end
 
-local redis = Redis.connect('127.0.0.1', 6379);
-
-tbl="updateme";
-redis:drop_table(tbl);
-redis:create_table(tbl, "id INT, i INT, f FLOAT, t TEXT");
-redis:insert(tbl, "1,10,1.111,ONE");
-redis:insert(tbl, "2,20,2.222,xTWOx");
-redis:insert(tbl, "3,30,3.333,three");
-redis:insert(tbl, "4,40,4.444,...FOUR...");
+function init_string_appendone_test()
+    local tbl = "updateme";
+    drop_table(tbl);
+    create_table(tbl, "id INT, i INT, f FLOAT, t TEXT");
+    insert(tbl, "1,10,1.111,ONE");
+    insert(tbl, "2,20,2.222,xTWOx");
+    insert(tbl, "3,30,3.333,three");
+    insert(tbl, "4,40,4.444,...FOUR...");
+    return "+OK";
+end
 
 function string_appendone_test() 
-    local x = socket.gettime()*1000;
-    redis:update(tbl, "t = three", "id = 3");
-    s       = "three"
-    loops   = 0;
-    while loops < 100000 do
+    if is_external.yes == 0 then
+        is_external.output = '';
+    end
+    local tbl   = "updateme";
+    local s     = "three"
+    update(tbl, "t = " .. s, "id = 3");
+    local x     = socket.gettime()*1000;
+    local loops = 0;
+    while loops < 30000 do
       s   = s .. ".";
-      redis:update(tbl, "t = t || '.'", "id = 3");
-      res = redis:select("t", tbl, "id = 3");
+      update(tbl, "t = t || '.'", "id = 3");
+      local res = select("t", tbl, "id = 3");
       if (s ~= res[1]) then
-          error('TEST: stringappendone: expected: ' .. s .. ' got: ' .. res[1]);
+          error('TEST: stringappendone: expected: ' .. s .. ' got: ' .. res);
       end
       loops = loops + 1;
     end
-    print_diff_time('TEST: stringappendone:', x);
+    return diff_time('TEST: stringappendone:', x);
 end
 
-string_appendone_test();
+if is_external.yes == 1 then
+    print (init_string_appendone_test());
+    print (string_appendone_test());
+end

@@ -35,8 +35,30 @@ ALL RIGHTS RESERVED
 #include "parser.h"
 #include "rpipe.h"
 
+extern struct redisServer server;
+
 // FROM redis.c
 #define RL4 redisLog(4,
+
+//TODO this can be a static redisClient (make sure call is not nested)
+struct redisClient *rsql_createFakeClient(void) {
+    int                 curr_db_id = server.dbid;
+    struct redisClient *fc         = createFakeClient();
+    selectDb(fc, curr_db_id);
+    return fc;
+}
+
+void rsql_resetFakeClient(struct redisClient *c) {
+    /* Discard the reply objects list from the fake client */
+    while(listLength(c->reply))
+        listDelNode(c->reply, listFirst(c->reply));
+
+}
+
+void rsql_freeFakeClient(struct redisClient *c) {
+    rsql_resetFakeClient(c);
+    freeFakeClient(c);
+}
 
 bool emptyNoop(redisClient *c) {
     c = NULL; /* compiler warning */
@@ -74,16 +96,22 @@ bool replyIfNestedErr(redisClient *c, redisClient *rfc, char *msg) {
     return 1;
 }
 
+/* NOTE: this function depends on the implementation of addReply of
+         various *Command()s ... if they change, this function must follow */
 static robj *parseUpToR(listIter     *li,
                         listNode    **ln,
                         char         *x) {
     char *y = strchr(x, '\r'); /* ignore the final \r\n */
-    if (!y) { /* colon is coming in next ln->value [incrCommand] */
-        if (!(*ln = listNext(li))) return NULL;
-        robj *o = (*ln)->value;
-        x       = o->ptr;
-        y       = strchr(x, '\r'); /* ignore the final \r\n */
-        if (!y) y = x + sdslen(x);
+    if (!y) {
+        if (strlen(x)) { /* typeCommand, substrCommand */
+            y = x + sdslen(x);
+        } else { /* colon is coming in next ln->value [incrCommand] */
+            if (!(*ln = listNext(li))) return NULL;
+            robj *o = (*ln)->value;
+            x       = o->ptr;
+            y       = strchr(x, '\r'); /* ignore the final \r\n */
+            if (!y) y = x + sdslen(x);
+        }
     }
     return createStringObject(x, y - x);
 }
@@ -103,11 +131,12 @@ long fakeClientPipe(redisClient *c,
 
     listNode *ln;
     *flg               = PIPE_NONE_FLAG;
+    robj     *r        = NULL;
     int       nlines   = 0;
     long      card     = 1; /* ZER0 as pk can cause problems */
     bool      fline    = 1;
-    bool      ldef = 0;
-    listIter  *li = listGetIterator(rfc->reply, AL_START_HEAD);
+    bool      ldef     = 0;
+    listIter *li       = listGetIterator(rfc->reply, AL_START_HEAD);
     while((ln = listNext(li)) != NULL) {
         robj *o    = ln->value;
         sds   s    = o->ptr;
@@ -116,22 +145,22 @@ long fakeClientPipe(redisClient *c,
         //RL4 "PIPE: %s", s);
         if (o_fl) {
             if (*s == '-') {
-                *flg    = PIPE_ONE_LINER_FLAG;
-                robj *r = parseUpToR(li, &ln, s);
-                if (!r) return -1;
-                if (!(*adder)(c, wfc, o, &card, is_ins, nlines)) return -1;
+                *flg = PIPE_ONE_LINER_FLAG;
+                r    = parseUpToR(li, &ln, s);
+                if (!r) goto p_err;
+                if (!(*adder)(c, wfc, r, &card, is_ins, nlines)) goto p_err;
                 break; /* error */
             } else if (*s == '+') {
-                *flg    = PIPE_ONE_LINER_FLAG;
-                robj *r = parseUpToR(li, &ln, s);
-                if (!r) return -1;
-                if (!(*adder)(c, wfc, r, &card, is_ins, nlines)) return -1;
+                *flg = PIPE_ONE_LINER_FLAG;
+                r    = parseUpToR(li, &ln, s);
+                if (!r) goto p_err;
+                if (!(*adder)(c, wfc, r, &card, is_ins, nlines)) goto p_err;
                 break; /* OK */
             } else if (*s == ':') {
-                *flg    = PIPE_ONE_LINER_FLAG;
-                robj *r = parseUpToR(li, &ln, s);
-                if (!r) return -1;
-                if (!(*adder)(c, wfc, r, &card, is_ins, nlines)) return -1;
+                *flg = PIPE_ONE_LINER_FLAG;
+                r    = parseUpToR(li, &ln, s);
+                if (!r) goto p_err;
+                if (!(*adder)(c, wfc, r, &card, is_ins, nlines)) goto p_err;
                 break; /* single integer reply */
             } else if (*s == '*') {
                 nlines = atoi(s + 1); /* some pipes need to know num_lines */
@@ -145,36 +174,40 @@ long fakeClientPipe(redisClient *c,
         /* not first line -> 2+ */
         if (*s == '$') { /* parse length [and element] */
             if (*(s + 1) == '-') { /* $-1 -> nil */
-                *flg    = PIPE_EMPTY_SET_FLAG;
+                *flg = PIPE_EMPTY_SET_FLAG;
                 /* NOTE: "-1" must be "adder()"d for Multi-NonRelIndxs */
-                robj *r = createStringObject("-1", 2);
-                if (!(*adder)(c, wfc, r, &card, is_ins, nlines)) return -1;
+                r    = createStringObject("-1", 2);
+                if (!(*adder)(c, wfc, r, &card, is_ins, nlines)) goto p_err;
                 continue;
             }
             ldef         = 1;
             char   *x    = strchr(s, '\r');
-            if (!x) return -1;
+            if (!x) goto p_err;
             uint32  llen = x - s;
             if (llen + 2 < sdslen(s)) { /* more on next line (past "\r\n") */
-                x       += 2; /* move past \r\n */
-                robj *r  = parseUpToR(li, &ln, x);
-                if (!r) return -1;
-                if (!(*adder)(c, wfc, r, &card, is_ins, nlines)) return -1;
-                ldef     = 0;
+                x     += 2; /* move past \r\n */
+                r     = parseUpToR(li, &ln, x);
+                if (!r) goto p_err;
+                if (!(*adder)(c, wfc, r, &card, is_ins, nlines)) goto p_err;
+                ldef  = 0;
             }
             continue;
         }
         /* ignore empty protocol lines */
         if (!ldef && sdslen(s) == 2 && *s == '\r' && *(s + 1) == '\n') continue;
 
-        robj *r = createStringObject(s, sdslen(s));
-        if (!(*adder)(c, wfc, r, &card, is_ins, nlines)) return -1;
+        r    = createStringObject(s, sdslen(s));
+        if (!(*adder)(c, wfc, r, &card, is_ins, nlines)) goto p_err;
         ldef = 0;
     }
     listReleaseIterator(li);
 
     if (card == 1) { /* rfc never got called, call empty handler */
-        if (!(*emptyer)(c)) return -1;
+        if (!(*emptyer)(c)) goto p_err;
     }
     return card - 1; /* started at 1 */
+
+p_err:
+    if (r) decrRefCount(r);
+    return -1;
 }

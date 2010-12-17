@@ -403,10 +403,11 @@ static d_l_t *init_d_l_t() {
 
 static void destroy_d_l_t(d_l_t *nrlind) {
     listNode *ln;
-    listIter *li     = listGetIterator(nrlind->l1, AL_START_HEAD);
+    listIter *li = listGetIterator(nrlind->l1, AL_START_HEAD);
     while((ln = listNext(li)) != NULL) {
         sdsfree(ln->value); /* free sds* from parseNRLcmd() */
     }
+    listReleaseIterator(li);
     listRelease(nrlind->l1);
     listRelease(nrlind->l2);
     free(nrlind);

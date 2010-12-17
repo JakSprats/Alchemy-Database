@@ -30,6 +30,10 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "redis.h"
 
+struct redisClient *rsql_createFakeClient(void);
+void rsql_resetFakeClient(struct redisClient *c);
+void rsql_freeFakeClient(struct redisClient *c);
+
 bool emptyNoop(redisClient *c);
 
 #define PIPE_NONE_FLAG      0
