@@ -81,8 +81,8 @@ static void iter_to_parent_recurse(btIterator *iter) {
     void *parent      = KEYS(btr, iter->bln->self)[iter->bln->ik];
     int   x           = btr->cmp(child, parent);
     if (x > 0) {
-        if (!advance_node(iter, 1)) {
-            iter_to_parent_recurse(iter);                     // right-most-leaf
+        if (!advance_node(iter, 1)) {                        // right-most-leaf
+            iter_to_parent_recurse(iter);
         }
     }
 }
@@ -192,6 +192,7 @@ static void setHigh(btSIter *siter, robj *high, uchar ktype, bool robjed) {
 //NOTE: can not NEST this function
 btSIter *btGetRangeIterator(robj *o, robj *low, robj *high, bool virt) {
     struct btree     *btr  = (struct btree *)(o->ptr);
+    if (!btr->root || !btr->numkeys) return NULL;
     //bt_dumptree(btr, btr->ktype, (virt ? REDIS_ROW : REDIS_BTREE));
     btSIter *siter = createIterator(btr, virt, 0, iter_leaf, iter_node);
     setHigh(siter, high, btr->ktype, 0);
@@ -257,7 +258,7 @@ bool assignMaxKey(bt *btr, robj *key) {
 //NOTE: can not NEST this function
 btSIter *btGetFullRangeIterator(robj *o, bool virt) {
     struct btree *btr  = (struct btree *)(o->ptr);
-    if (!btr->root) return NULL;
+    if (!btr->root || !btr->numkeys) return NULL;
     if (!assignMinKey(btr, &BtL)) return NULL;
     if (!assignMaxKey(btr, &BtH)) return NULL;
 
@@ -304,7 +305,8 @@ static void iter_leaf_count(btIterator *iter) {
     tl->l1   += cnt; /* "count += n */
     if (tl->l1 >= tl->l2) return;
 
-    iter->bln->ik = iter->bln->self->n - 1; /* move to end of block */
+    /* move to end of block */
+    iter->bln->ik = iter->bln->self->n ? iter->bln->self->n - 1 : 0;
     iter_to_parent_recurse(iter);
 }
 
@@ -360,7 +362,7 @@ static btSIter *XthIteratorFind(btSIter *siter, robj *low, long x, bt *btr) {
 
 btSIter *btGetIteratorXth(robj *o, robj *low, robj *high, long x, bool virt) {
     bt *btr  = (struct btree *)(o->ptr);
-    if (!btr->root) return NULL;
+    if (!btr->root || !btr->numkeys) return NULL;
     btSIter *siter = createIterator(btr, virt, 1,
                                     iter_leaf_count, iter_node_count);
     setHigh(siter, high, btr->ktype, 0);
@@ -370,7 +372,7 @@ btSIter *btGetIteratorXth(robj *o, robj *low, robj *high, long x, bool virt) {
 //NOTE: can not NEST this function
 btSIter *btGetFullIteratorXth(robj *o, long x, bool virt) {
     bt *btr  = (struct btree *)(o->ptr);
-    if (!btr->root) return NULL;
+    if (!btr->root || !btr->numkeys) return NULL;
     if (!assignMinKey(btr, &BtL)) return NULL;
     if (!assignMaxKey(btr, &BtH)) return NULL;
 
@@ -413,6 +415,7 @@ static btIterator *btGetJoinRangeIterator(bt           *btr,
 }
 
 btIterator *btGetJoinFullRangeIterator(bt *btr, int ktype) {
+    if (!btr->root || !btr->numkeys) return NULL;
     joinRowEntry *low  = bt_min(btr);
     joinRowEntry *high = bt_max(btr);
     return btGetJoinRangeIterator(btr, low, high, ktype);

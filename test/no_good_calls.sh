@@ -234,3 +234,24 @@ function bad_tests() {
   echo
   bad_normer
 }
+
+function do_bad_sql_queries() {
+  bad_select_where_clause
+  echo
+  bad_scanselect_where_clause
+  echo
+  bad_inserter
+  echo
+  bad_insert_return_size
+  echo
+  bad_join_syntax
+  echo
+}
+
+function bad_sql_tests() {
+  $CLI FLUSHALL
+  populate
+  populate_new_join
+
+  do_bad_sql_queries
+}

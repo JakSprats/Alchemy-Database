@@ -364,7 +364,10 @@ void createIndex(redisClient *c) {
 void emptyIndex(redisDb *db, int inum) {
     robj *ind                       = Index[server.dbid][inum].obj;
     if (!ind) return;
-    deleteKey(db, ind);
+    //TODO there is a bug in redis' dictDelete (need to update redis code)
+    //int retval = 
+    dictDelete(db->dict, ind);
+    //assert(retval == DICT_OK);
     Index[server.dbid][inum].obj    = NULL;
     Index[server.dbid][inum].table  = -1;
     Index[server.dbid][inum].column = -1;

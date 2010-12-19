@@ -129,7 +129,6 @@ int dictExpand(dict *d, unsigned long size);
 int dictAdd(dict *d, void *key, void *val);
 int dictReplace(dict *d, void *key, void *val);
 int dictDelete(dict *d, const void *key);
-int dictDeleteNoFree(dict *d, const void *key);
 void dictRelease(dict *d);
 void dictReleaseKeepData(dict *d);
 dictEntry * dictFind(dict *d, const void *key);

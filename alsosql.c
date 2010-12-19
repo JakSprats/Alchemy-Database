@@ -1041,7 +1041,10 @@ unsigned long emptyTable(redisDb *db, int tmatch) {
         //TODO shuffle indices to make space for deleted indices
     }
 
-    deleteKey(db, Tbl[server.dbid][tmatch].name);
+    //TODO there is a bug in redis' dictDelete (need to update redis code)
+    //int retval = 
+    dictDelete(db->dict,Tbl[server.dbid][tmatch].name);
+    //assert(retval == DICT_OK);
     Tbl[server.dbid][tmatch].name      = NULL;
     for (int j = 0; j < Tbl[server.dbid][tmatch].col_count; j++) {
         decrRefCount(Tbl[server.dbid][tmatch].col_name[j]);

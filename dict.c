@@ -332,7 +332,7 @@ int dictReplace(dict *d, void *key, void *val)
 }
 
 /* Search and remove an element */
-static int dictGenericDelete(dict *d, const void *key, int nofree)
+static int dictGenericDelete(dict *d, const void *key)
 {
     unsigned int h, idx;
     dictEntry *he, *prevHe;
@@ -353,10 +353,8 @@ static int dictGenericDelete(dict *d, const void *key, int nofree)
                     prevHe->next = he->next;
                 else
                     d->ht[table].table[idx] = he->next;
-                if (!nofree) {
-                    dictFreeEntryVal(d, he);
-                    dictFreeEntryKey(d, he);
-                }
+                dictFreeEntryVal(d, he);
+                dictFreeEntryKey(d, he);
                 _dictFree(he);
                 d->ht[table].used--;
                 return DICT_OK;
@@ -370,12 +368,9 @@ static int dictGenericDelete(dict *d, const void *key, int nofree)
 }
 
 int dictDelete(dict *ht, const void *key) {
-    return dictGenericDelete(ht,key,0);
+    return dictGenericDelete(ht,key);
 }
 
-int dictDeleteNoFree(dict *ht, const void *key) {
-    return dictGenericDelete(ht,key,1);
-}
 
 /* Destroy an entire dictionary */
 int _dictClear(dict *d, dictht *ht, unsigned char keep_data)

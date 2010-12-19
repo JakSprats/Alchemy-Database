@@ -1072,6 +1072,7 @@ function all_tests() {
   create_table_as_tester
 
   non_rel_index_test
+ieturn 0;
 
   test_fk_joins
 

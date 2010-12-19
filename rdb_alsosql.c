@@ -232,13 +232,13 @@ robj *rdbLoadBT(FILE *fp, redisDb *db) {
 
         /* BTREE implies an index on "tbl:pk:index" -> autogenerate */
         Index[server.dbid][inum].type = Tbl[dbid][tmatch].col_type[0];
-        Index[server.dbid][inum].obj =
-          createStringObject(Tbl[dbid][tmatch].name->ptr,
-                             sdslen(Tbl[dbid][tmatch].name->ptr));
-        Index[server.dbid][inum].obj->ptr =
-           sdscatprintf(Index[server.dbid][inum].obj->ptr, "%s%s%s%s", COLON, 
-                         (char *)Tbl[dbid][tmatch].col_name[0]->ptr,
-                         COLON, INDEX_DELIM);
+
+        sds s = sdscatprintf(sdsempty(), "%s:%s:%s",
+                              (char *)Tbl[dbid][tmatch].name->ptr, 
+                              (char *)Tbl[dbid][tmatch].col_name[0]->ptr,
+                              INDEX_DELIM);
+        Index[server.dbid][inum].obj = createStringObject(s, sdslen(s));
+
         dictAdd(db->dict, Index[server.dbid][inum].obj, NULL);
         if (Num_indx[dbid] < (inum + 1)) {
             Num_indx[dbid] = inum + 1;

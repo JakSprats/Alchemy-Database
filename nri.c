@@ -122,6 +122,7 @@ static bool nonRelIndRespHandler(redisClient *c,
         key    = r;
     }
     addReplyBulk(c, key);
+    decrRefCount(key);
     *card   = *card + 1;
     CurrCard++;
     return 1;
