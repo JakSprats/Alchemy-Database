@@ -2014,7 +2014,9 @@ static long long emptyDb() {
     int j;
     long long removed = 0;
 
+#ifdef ALSOSQL
     int dbid = server.dbid;
+#endif
     for (j = 0; j < server.dbnum; j++) {
         removed += dictSize(server.db[j].dict);
 #ifdef ALSOSQL
@@ -2030,8 +2032,8 @@ static long long emptyDb() {
     }
 #ifdef ALSOSQL
     init_Tbl_and_Index();
-#endif
     server.dbid = dbid;
+#endif
     return removed;
 }
 
@@ -2955,7 +2957,9 @@ int selectDb(redisClient *c, int id) {
     if (id < 0 || id > server.dbnum) return REDIS_ERR;
     c->db       = &server.db[id];
     c->dictid   = id;
+#ifdef ALSOSQL
     server.dbid = id;
+#endif
     return REDIS_OK;
 }
 
@@ -4415,7 +4419,9 @@ static int rdbLoad(char *filename) {
                 exit(1);
             }
             db = server.db+dbid;
+#ifdef ALSOSQL
             server.dbid = dbid;
+#endif
             d = db->dict;
             continue;
         }
@@ -5529,9 +5535,9 @@ static int sremGeneric(redisClient *c,
 static void sremCommand(redisClient *c) {
     int ret = sremGeneric(c, c->argv[1], c->argv[2]);
     if (!ret) {
-        addReply(c,shared.cone);
-    } else {
         addReply(c,shared.czero);
+    } else {
+        addReply(c,shared.cone);
     }
 }
 
@@ -7209,8 +7215,8 @@ static void convertToRealHash(robj *o) {
 
 static void flushdbCommand(redisClient *c) {
     server.dirty += dictSize(c->db->dict);
-    server.dbid   = c->db->id;
 #ifdef ALSOSQL
+    server.dbid   = c->db->id;
     for (int k = 0; k < Num_tbls[server.dbid]; k++) {
         emptyTable(&server.db[server.dbid], k); /* deletes indices also */
     }
