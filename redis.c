@@ -3967,6 +3967,9 @@ static int rdbSave(char *filename) {
     int j;
     time_t now = time(NULL);
     void (*funcReleaseIterator)(dictIterator *iter) = dictReleaseIterator;
+#ifdef ALSOSQL
+    int dbid = server.dbid;
+#endif
 
     /* Wait for I/O therads to terminate, just in case this is a
      * foreground-saving, to avoid seeking the swap file descriptor at the
@@ -3984,7 +3987,9 @@ static int rdbSave(char *filename) {
     for (j = 0; j < server.dbnum; j++) {
         redisDb *db = server.db+j;
         dict *d = db->dict;
+#ifdef ALSOSQL
         server.dbid = j;
+#endif
 
         dictEntry *(*funcNext)(dictIterator *iter) = dictNext;
         dictIterator *(*funcGetIterator)(dict *d)  = dictGetIterator;
@@ -3995,6 +4000,9 @@ static int rdbSave(char *filename) {
         di = funcGetIterator(d);
         if (!di) {
             fclose(fp);
+#ifdef ALSOSQL
+            server.dbid = dbid;
+#endif
             return REDIS_ERR;
         }
 
@@ -4040,6 +4048,9 @@ static int rdbSave(char *filename) {
         }
         funcReleaseIterator(di);
     }
+#ifdef ALSOSQL
+    server.dbid = dbid;
+#endif
     /* EOF opcode */
     if (rdbSaveType(fp,REDIS_EOF) == -1) goto werr;
 
@@ -4061,6 +4072,9 @@ static int rdbSave(char *filename) {
     return REDIS_OK;
 
 werr:
+#ifdef ALSOSQL
+    server.dbid = dbid;
+#endif
     fclose(fp);
     unlink(tmpfile);
     redisLog(REDIS_WARNING,"Write error saving DB on disk: %s", strerror(errno));
@@ -9034,6 +9048,9 @@ static int rewriteAppendOnlyFile(char *filename) {
     int j;
     time_t now = time(NULL);
     void (*funcReleaseIterator)(dictIterator *iter) = dictReleaseIterator;
+#ifdef ALSOSQL
+    int dbid = server.dbid;
+#endif
 
     /* Note that we have to use a different temp name here compared to the
      * one used by rewriteAppendOnlyFileBackground() function. */
@@ -9051,7 +9068,9 @@ static int rewriteAppendOnlyFile(char *filename) {
 #endif
         redisDb *db = server.db+j;
         dict *d = db->dict;
+#ifdef ALSOSQL
         server.dbid = j;
+#endif
 
         dictEntry *(*funcNext)(dictIterator *iter) = dictNext;
         dictIterator *(*funcGetIterator)(dict *d)  = dictGetIterator;
@@ -9061,6 +9080,9 @@ static int rewriteAppendOnlyFile(char *filename) {
 
         di = funcGetIterator(d);
         if (!di) {
+#ifdef ALSOSQL
+            server.dbid = dbid;
+#endif
             fclose(fp);
             return REDIS_ERR;
         }
@@ -9208,6 +9230,9 @@ static int rewriteAppendOnlyFile(char *filename) {
         }
         funcReleaseIterator(di);
     }
+#ifdef ALSOSQL
+    server.dbid = dbid;
+#endif
 
     /* Make sure data will not remain on the OS's output buffers */
     fflush(fp);
@@ -9225,6 +9250,9 @@ static int rewriteAppendOnlyFile(char *filename) {
     return REDIS_OK;
 
 werr:
+#ifdef ALSOSQL
+    server.dbid = dbid;
+#endif
     fclose(fp);
     unlink(tmpfile);
     redisLog(REDIS_WARNING,"Write error writing append only file on disk: %s", strerror(errno));
