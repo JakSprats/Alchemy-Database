@@ -61,6 +61,7 @@ r_ind_t Index   [MAX_NUM_DB][MAX_NUM_INDICES];
 #define FILE_DUMP_SUCCESS "SUCCESS: DUMPED: %llu bytes in %lu rows to file: %s"
 #define FILE_DUMP_FAILURE "FAILURE: DUMPED: %llu bytes in %lu rows to file: %s"
 #define SINGLE_LINE       "*1\r\n$%lu\r\n%s\r\n"
+#define EMPTY_DUMP2FILE   "-ERR: table is empty\r\n"
 
 /* SYNTAX:
      1.) DUMP table
@@ -180,10 +181,15 @@ void dumpCommand(redisClient *c) {
         ADD_REPLY_BULK(r, buf2)
     }
     if (to_file) {
-        sds s = sdscatprintf(sdsempty(), FILE_DUMP_SUCCESS, bytes, card, fname);
-        lenobj->ptr = sdscatprintf(sdsempty(), SINGLE_LINE, sdslen(s), s);
-        sdsfree(s);
-        fclose(fp);
+        if (fp) {
+            sds s = sdscatprintf(sdsempty(), FILE_DUMP_SUCCESS,
+                                             bytes, card, fname);
+            lenobj->ptr = sdscatprintf(sdsempty(), SINGLE_LINE, sdslen(s), s);
+            sdsfree(s);
+            fclose(fp);
+        } else {
+            lenobj->ptr = sdsnewlen(EMPTY_DUMP2FILE, strlen(EMPTY_DUMP2FILE));
+        }
     } else {
         lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
     }
