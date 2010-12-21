@@ -2506,9 +2506,11 @@ void call(redisClient *c, struct redisCommand *cmd) {
     long long dirty;
 
 #ifdef ALSOSQL
-    CurrCard   = 0;
-    CurrClient = c;
+    CurrCard    = 0;
+    CurrClient  = c;
+    server.dbid = c->dictid;
 #endif
+
     dirty = server.dirty;
     cmd->proc(c);
     dirty = server.dirty-dirty;
