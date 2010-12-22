@@ -37,8 +37,9 @@ ALL RIGHTS RESERVED
 #include "bt_iterator.h"
 #include "row.h"
 #include "sql.h"
-#include "alsosql.h"
 #include "orderby.h"
+#include "range.h"
+#include "alsosql.h"
 #include "index.h"
 
 // FROM redis.c
@@ -71,7 +72,8 @@ static int col_cmp(char *a, char *b, int ctype) {
          -> pack into a struct */
 static void condSelectReply(redisClient   *c,
                             cswc_t        *w,
-                            robj          *o,
+                            qr_t          *q,
+                            robj          *btt,
                             robj          *key,
                             robj          *row,
                             int            tmatch,
@@ -86,7 +88,7 @@ static void condSelectReply(redisClient   *c,
     robj  *cr  = NULL;
     uchar  hit = 0;
     if (no_wc) {
-        s = key->ptr;
+        s   = key->ptr;
         hit = 1;
     } else {
         cr       = createColObjFromRow(row, w->cmatch, NULL, tmatch); // freeME
@@ -97,8 +99,8 @@ static void condSelectReply(redisClient   *c,
                 col_cmp(s, w->high->ptr, type) <= 0) {
                 hit = 1;
             }
-        } else {    /* IN () QUERY */
-            listNode  *ln;
+        } else {      /* IN () QUERY */
+            listNode *ln;
             listIter *li  = listGetIterator(w->inl, AL_START_HEAD);
             while((ln = listNext(li)) != NULL) {
                 robj *ink = ln->value;     
@@ -114,19 +116,18 @@ static void condSelectReply(redisClient   *c,
     if (hit) {
         if (!cstar) {
             uchar  pktype = Tbl[server.dbid][tmatch].col_type[0];
-            robj  *row    = btFindVal(o, key, pktype);
+            robj  *row    = btFindVal(btt, key, pktype);
             robj  *r      = outputRow(row, qcols, cmatchs, key, tmatch, 0);
-            //TODO if (qed)
-            if (w->obc == -1 || (w->obc == 0 && w->asc)) {
+            if (q->qed) {
+                addORowToRQList(ll, r, row, w->obc, key, tmatch, ctype);
+            } else {
                 addReplyBulk(c, r);
                 decrRefCount(r);
-            } else {
-                addORowToRQList(ll, r, row, w->obc, key, tmatch, ctype);
             }
         }
         *card = *card + 1;
     }
-    if (cr) decrRefCount(cr);
+    if (cr) decrRefCount(cr);                                       // freeD
 }
 
 /* SYNTAX
@@ -205,35 +206,39 @@ void tscanCommand(redisClient *c) {
 
     LEN_OBJ
     int   sent = 0;
-    robj *o    = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
+    robj *btt  = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
 
     if (cstar && no_wc) {
-        bt *btr = (bt *)o->ptr;
-        card = btr->numkeys;
-        sent = card; /* for morons that do "SELECT COUNT(*) ORDER BY */
+        bt *btr = (bt *)btt->ptr;
+        card    = btr->numkeys;
+        sent    = card; /* TODO disallow "SELECT COUNT(*) ORDER BY" */
     } else {
+        qr_t  q;
+        setQueued(&w, &q);
+
         uchar ctype = COL_TYPE_NONE;
-        if (w.obc != -1) { //TODO setQueued
+        if (q.qed) {
             ll    = listCreate();
             ctype = Tbl[server.dbid][tmatch].col_type[w.obc];
         }
 
         btEntry *be;
         long     loops = -1;
-        btSIter *bi    = btGetFullRangeIterator(o, 1);
+        btSIter *bi    = q.pk_lo ? btGetFullIteratorXth(btt, w.ofst, 1):
+                                   btGetFullRangeIterator(btt, 1);
         while ((be = btRangeNext(bi)) != NULL) {      // iterate btree
             loops++;
-            if (w.obc == 0 && w.asc) { /* ORDRBY PK LIM */
-                if (w.ofst != -1 && loops < w.ofst) continue;
+            if (q.pk_lim) {
+                if (!q.pk_lo && w.ofst != -1 && loops < w.ofst) continue;
                 sent++;
-                if ((uint32)w.lim == card) break;
+                if ((uint32)w.lim == card) break; /* ORDRBY PK LIM */
             }
-            condSelectReply(c, &w, o, be->key, be->val, tmatch, qcols, cmatchs,
-                            &card, no_wc, ctype, ll, cstar);
+            condSelectReply(c, &w, &q, btt, be->key, be->val, tmatch, qcols,
+                            cmatchs, &card, no_wc, ctype, ll, cstar);
         }
         btReleaseRangeIterator(bi);
 
-        if (w.obc != -1 && card) {
+        if (q.qed && card) {
             obsl_t **vector = sortOrderByToVector(ll, ctype, w.asc);
             for (int k = 0; k < (int)listLength(ll); k++) {
                 if (w.lim != -1 && sent == w.lim) break;
@@ -254,6 +259,7 @@ void tscanCommand(redisClient *c) {
     if (cstar) lenobj->ptr = sdscatprintf(sdsempty(), ":%lu\r\n", card);
     else       lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
 
+    if (w.ovar) incrOffsetVar(c, &w, card);
 tscan_cmd_err:
     if (!rq) {
         w.low  = NULL;

@@ -19,9 +19,9 @@ function large_upate_test()
     _print ('nrows: TOTAL: (WHERE fk=1): ' .. nrows .. "\n");
     
     local x = socket.gettime()*1000;
-    _print ('set count=4 WHERE fk = 1');
+    _print ('SINGLE UPDATE: set count=4 WHERE fk = 1');
     updated_rows = update(tbl, "count = 4", update_where_clause);
-    is_external.print_diff_time('set count=4 WHERE fk = 1', x);
+    is_external.print_diff_time('SINGLE UPDATE: set count=4 WHERE fk = 1', x);
     
     nrows = scanselect("COUNT(*)", tbl, "count = 4"); 
     _print ('nrows: (WHERE fk=1) count = 4: ' .. nrows);

@@ -2870,6 +2870,7 @@ again:
             /* Now we can split the query in arguments */
 
             int len = sdslen(query);
+            //RL4 "query: %s", query);
             argv = sdssplitlen(query, len, " ", 1, &argc);
             sdsfree(query);
 
@@ -2879,6 +2880,7 @@ again:
             for (j = 0; j < argc; j++) {
                 if (sdslen(argv[j])) {
                     c->argv[c->argc] = createObject(REDIS_STRING,argv[j]);
+                    //RL4 "argv[%d]: %s", c->argc, argv[j]);
                     c->argc++;
                 } else {
                     sdsfree(argv[j]);

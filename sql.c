@@ -468,6 +468,26 @@ static bool parseInumCol(redisClient *c,
     return 1;
 }
 
+char CLT = '<';
+char CGT = '>';
+char CEQ = '=';
+enum OPERATION { NONE, EQ, GT, GE, LT, LE };
+static enum OPERATION findOperator(char *val, uint32 vlen) {
+    for (uint32 i = 0; i < vlen; i++) {
+        char x = val[i];
+        if (x == CEQ) return EQ;
+        if (x == CGT) {
+            if (i != (vlen - 1) && val[i + 1] == EQ) return GE;
+            else                                     return GT;
+        }
+        if (x == CLT) {
+            if (i != (vlen - 1) && val[i + 1] == EQ) return LE;
+            else                                     return GT;
+        }
+    }
+    return NONE;
+}
+
 /* SYNTAX Where Relation
      1.) "col = 4" ... can be "col=4", "col= 4", "col =4", "col = 4"
      2.) "col BETWEEN x AND y"

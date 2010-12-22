@@ -54,13 +54,15 @@ extern r_ind_t  Index[MAX_NUM_DB][MAX_NUM_INDICES];
 
 static void setRangeQueued(cswc_t *w, qr_t *q) {
     bzero(q, sizeof(qr_t));
-    bool virt    = Index[server.dbid][w->imatch].virt;
-    int  ind_col = (int)Index[server.dbid][w->imatch].column;
+    r_ind_t *ri     = (w->imatch == -1) ? NULL : &Index[server.dbid][w->imatch];
+    bool     virt   = (w->imatch == -1) ? 0    : ri->virt;
+    int      indcol = (w->imatch == -1) ? -1   : ri->column;
+    //RL4 "asc: %d obc: %d lim: %d ofst: %d indcol: %d", w->asc, w->obc, w->lim, w->ofst, indcol);
     q->pk        = (!w->asc || (w->obc > 0));
     q->pk_lim    = (w->asc && w->obc == 0);
     q->pk_lo     = (!q->pk && (w->lim != -1) && (w->ofst != -1));
 
-    q->fk        = (w->obc > 0 && w->obc != ind_col);
+    q->fk        = (w->obc > 0 && w->obc != indcol);
     q->fk_lim    = (w->asc && !q->fk);
     q->fk_lo     = (!q->fk && (w->lim != -1) && (w->ofst != -1));
 
@@ -69,22 +71,23 @@ static void setRangeQueued(cswc_t *w, qr_t *q) {
 
 static void setInQueued(cswc_t *w, qr_t *q) {
     bzero(q, sizeof(qr_t));
-    bool virt = Index[server.dbid][w->imatch].virt;
+    bool virt = (w->imatch == -1) ? 0 : Index[server.dbid][w->imatch].virt;
     if (virt) {
         q->pk         = (!w->asc || (w->obc != -1 && w->obc != 0));
         q->pk_lim     = (w->asc && w->obc == 0);
         q->qed        = q->pk;
     } else {
-        int   ind_col = (int)Index[server.dbid][w->imatch].column;
+        int indcol  = (w->imatch == -1) ? -1 :
+                                      (int)Index[server.dbid][w->imatch].column;
         q->fk         = (w->obc != -1);
-        q->fk_lim     = (w->asc  && w->obc != -1 && w->obc == ind_col);
+        q->fk_lim     = (w->asc  && w->obc != -1 && w->obc == indcol);
         q->qed        = q->fk;
     }
 }
 
 void setQueued(cswc_t *w, qr_t *q) {
-    if (w->low) setRangeQueued(w, q);
-    else        setInQueued(w, q);
+    if (w->inl) setInQueued(w, q);
+    else        setRangeQueued(w, q);
 }
 
 void init_range(range_t     *g,
@@ -230,8 +233,8 @@ static long inOpFK(range_t *g, row_op *p) {
     robj     *tbl     = lookupKeyRead(g->co.c->db, tname);
     robj     *ind     = Index[server.dbid][w->imatch].obj;
     robj     *ibt     = lookupKey(g->co.c->db, ind);
-    int       ind_col = (int)Index[server.dbid][w->imatch].column;
-    bool      fktype  = Tbl[server.dbid][w->tmatch].col_type[ind_col];
+    int       indcol = (int)Index[server.dbid][w->imatch].column;
+    bool      fktype  = Tbl[server.dbid][w->tmatch].col_type[indcol];
     long      card    =  0;
     listIter *li      = listGetIterator(w->inl, AL_START_HEAD);
     while((ln = listNext(li)) != NULL) {
