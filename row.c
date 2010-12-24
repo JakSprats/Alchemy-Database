@@ -74,9 +74,8 @@ extern char STRCAT;
 #define COL_5BYTE_INT 8
 
 
-// ROW_COMMANDS ROW_COMMANDS ROW_COMMANDS ROW_COMMANDS ROW_COMMANDS ROW_COMMANDS
-// ROW_COMMANDS ROW_COMMANDS ROW_COMMANDS ROW_COMMANDS ROW_COMMANDS ROW_COMMANDS
-
+/* ROW_COMMANDS ROW_COMMANDS ROW_COMMANDS ROW_COMMANDS ROW_COMMANDS */
+/* ROW_COMMANDS ROW_COMMANDS ROW_COMMANDS ROW_COMMANDS ROW_COMMANDS */
 bool checkUIntReply(redisClient *c, long l, bool ispk) {
     if (l >= TWO_POW_32) {
         if (ispk) addReply(c, shared.uint_pk_too_big);
@@ -108,11 +107,7 @@ static uint32 _createICol(uint32 i, flag *sflag, uint32 *col) {
         return 5;
     }
 }
-static uint32 createICol(redisClient *c,
-                         char        *start,
-                         uint32       len,
-                         flag        *sflag,
-                         uint32      *col) {
+uint32 strToInt(redisClient *c, char *start, uint32 len, uint32 *i) {
     char buf[32];
     if (len >= 31) {
         addReply(c, shared.col_uint_string_too_long);
@@ -121,14 +116,20 @@ static uint32 createICol(redisClient *c,
     memcpy(buf, start, len);
     buf[len] = '\0';
     long l   = atol(buf);
-
     if (!checkUIntReply(c, l, 0)) return 0;
-    return _createICol(l, sflag, col);
+    *i       = (int)l;
+    return 4;
 }
-static uint32 createFCol(redisClient *c,
+static uint32 createICol(redisClient *c,
                          char        *start,
                          uint32       len,
-                         float       *col) {
+                         flag        *sflag,
+                         uint32      *col) {
+    if (!strToInt(c, start, len, col)) return 0; /* sets col twice, but ok */
+    return _createICol(*col, sflag, col);        /* resets col from *col */
+}
+
+uint32 strToFloat(redisClient *c, char *start, uint32 len, float *f) {
     char buf[32];
     if (len >= 31) {
         addReply(c, shared.col_float_string_too_long);
@@ -136,8 +137,14 @@ static uint32 createFCol(redisClient *c,
     }
     memcpy(buf, start, len);
     buf[len] = '\0';
-    *col     = (float)atof(buf);
+    *f       = (float)atof(buf);
     return 4;
+}
+static uint32 createFCol(redisClient *c,
+                         char        *start,
+                         uint32       len,
+                         float       *col) {
+    return strToFloat(c, start, len, col);
 }
 
 static void writeUIntCol(uchar **row, flag sflag, uint32 icol) {
@@ -377,13 +384,21 @@ uint32 getRowMallocSize(uchar *stream) {
     return rlen;
 }
 
+void initAobj(aobj *a) {
+    bzero(a, sizeof(aobj));
+}
+void destroyAobj(void *v) {
+    aobj *a = (aobj *)v;
+    if (a->sixbit) { /* free SixBitStr from getRawCol() */
+        free(a->s);
+        a->sixbit = 0;
+    }
+}
+
 char RawColPKIntBuf[32];
 static aobj getPk(robj *okey, uchar ctype, bool force_string) {
     aobj a;
-    a.s   = NULL; /* compiler warning */
-    a.len = 0;    /* compiler warning */
-    a.i   = 0;    /* compiler warning */
-    a.s_i = 0;    /* compiler warning */
+    initAobj(&a);
     if (okey->encoding == REDIS_ENCODING_INT) {
         a.type = COL_TYPE_INT;
         if (!force_string && ctype == COL_TYPE_INT) {
@@ -516,7 +531,7 @@ aobj getColStr(robj *r, int cmatch, robj *okey, int tmatch) {
 robj *createColObjFromRow(robj *r, int cmatch, robj *okey, int tmatch) {
     aobj  rcol = getColStr(r, cmatch, okey, tmatch);
     robj *o    = createStringObject(rcol.s, rcol.len); // copies data
-    if (rcol.sixbit) free(rcol.s);
+    destroyAobj(&rcol);
     return o;
 }
 
@@ -556,7 +571,7 @@ robj *outputRow(robj *row,
             memcpy(s + slot, OUTPUT_DELIM, 1);
             slot++;
         }
-        if (cols[i].sixbit) free(cols[i].s);
+        destroyAobj(&cols[i]);
     }
     robj *r = createStringObject(s, totlen);
     if (totlen >= OUPUT_BUFFER_SIZE) free(s); /* freeD */
@@ -597,6 +612,38 @@ static robj *createStringObjectFromAobj(aobj *a) {
         r->encoding = REDIS_ENCODING_INT;
         return r;
     }
+}
+
+/* IN_List objects need to be converted from string to Aobj */
+aobj *copyRobjToAobj(robj *r, uchar ctype) {
+    aobj *a = (aobj *)malloc(sizeof(aobj));
+    initAobj(a);
+    if (ctype == COL_TYPE_STRING) {
+        a->enc    = COL_TYPE_STRING;
+        a->type   = COL_TYPE_STRING;
+        a->sixbit = 1; /* this means to be freed */
+        if (r->encoding == REDIS_ENCODING_RAW) {
+            a->s   = _strdup(r->ptr);
+            a->len = sdslen(r->ptr);
+        } else {        /* REDIS_ENCODING_INT */
+            char buf[32];
+            snprintf(buf, 32, "%d", (int)(long)r->ptr);
+            buf[31] = '\0'; /* paranoia */
+            a->s     = _strdup(buf);
+            a->len   = strlen(buf);
+        }
+    } else if (ctype == COL_TYPE_INT) {
+        a->enc  = COL_TYPE_INT;
+        a->type = COL_TYPE_INT;
+        if (r->encoding == REDIS_ENCODING_RAW)   a->i = atoi(r->ptr);
+        else            /* REDIS_ENCODING_INT */ a->i = (uint32)(long)r->ptr;
+    } else if (ctype == COL_TYPE_FLOAT) {
+        a->enc  = COL_TYPE_FLOAT;
+        a->type = COL_TYPE_FLOAT;
+        if (r->encoding == REDIS_ENCODING_RAW)   a->f = atof(r->ptr);
+        else            /* REDIS_ENCODING_INT */ a->f = (float)(long)r->ptr;
+    } //else assert(!"copyRobjToAobj ctype unknown");
+    return a;
 }
 
 /* UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE */
@@ -767,10 +814,7 @@ bool updateRow(redisClient *c,
                     sixbitlen[n_6b_s] = s_len;
                     n_6b_s++;
                 }
-                if (avals[i].sixbit) { /* free SixBitStr from getRawCol() */
-                    free(avals[i].s);
-                    avals[i].sixbit = 0;
-                }
+                destroyAobj(&avals[i]); /* free SixBitStr from getRawCol() */
             }
         }
     }
@@ -850,10 +894,8 @@ bool updateRow(redisClient *c,
     return 1;
 
 update_row_err:
-    for (int i = 1; i < ncols; i++) {  /* check can_six, create sixbitstr */
-        if (avals[i].sixbit) {
-            free(avals[i].s);
-        }
+    for (int i = 1; i < ncols; i++) {
+        destroyAobj(&avals[i]); /* free SixBitStr from getRawCol() */
     }
     return 0;
 }

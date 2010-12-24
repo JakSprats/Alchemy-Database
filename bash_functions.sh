@@ -1072,7 +1072,6 @@ function all_tests() {
   create_table_as_tester
 
   non_rel_index_test
-ieturn 0;
 
   test_fk_joins
 
@@ -1082,10 +1081,10 @@ ieturn 0;
   secondary_range_query_scan_field
   secondary_many_range_query_test
 
-  ./test/pop_denorm.sh
-  ./test/pop_denorm.sh 1
-  ./test/pop_H_denorm.sh
-  ./test/pop_H_denorm.sh 1
+  ./test/bash/pop_denorm.sh
+  ./test/bash/pop_denorm.sh 1
+  ./test/bash/pop_H_denorm.sh
+  ./test/bash/pop_H_denorm.sh 1
 }
 
 function all_tests_and_benchmarks() {

@@ -846,6 +846,10 @@ void sqlSelectCommand(redisClient *c) {
 
     if (wtype == SQL_SINGLE_FK_LOOKUP) singleFKHack(&w, &wtype);
 
+    if (cstar && w.obc != -1) { /* SELECT COUNT(*) ORDER BY -> stupid */
+        addReply(c, shared.orderby_count);
+        goto select_cmd_end;
+    }
     if (w.stor) { /* DENORM e.g.: STORE LPUSH list */
         if (!w.low && !w.inl) {
             addReply(c, shared.selectsyntax_store_norange);
@@ -865,6 +869,7 @@ void sqlSelectCommand(redisClient *c) {
             addReply(c, shared.rangequery_index_not_found);
             goto select_cmd_end;
         }
+
         iselectAction(c, &w, cmatchs, qcols, cstar);
     } else {
         robj *o = lookupKeyRead(c->db, Tbl[server.dbid][w.tmatch].name);

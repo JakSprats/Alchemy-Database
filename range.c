@@ -57,16 +57,16 @@ static void setRangeQueued(cswc_t *w, qr_t *q) {
     r_ind_t *ri     = (w->imatch == -1) ? NULL : &Index[server.dbid][w->imatch];
     bool     virt   = (w->imatch == -1) ? 0    : ri->virt;
     int      indcol = (w->imatch == -1) ? -1   : ri->column;
-    //RL4 "asc: %d obc: %d lim: %d ofst: %d indcol: %d", w->asc, w->obc, w->lim, w->ofst, indcol);
-    q->pk        = (!w->asc || (w->obc > 0));
-    q->pk_lim    = (w->asc && w->obc == 0);
-    q->pk_lo     = (!q->pk && (w->lim != -1) && (w->ofst != -1));
+    //RL4 "asc: %d obc: %d lim: %d ofst: %d", w->asc, w->obc, w->lim, w->ofst);
+    q->pk           = (!w->asc || (w->obc > 0));
+    q->pk_lim       = (w->asc && w->obc == 0);
+    q->pk_lo        = (!q->pk && (w->lim != -1) && (w->ofst != -1));
 
-    q->fk        = (w->obc > 0 && w->obc != indcol);
-    q->fk_lim    = (w->asc && !q->fk);
-    q->fk_lo     = (!q->fk && (w->lim != -1) && (w->ofst != -1));
+    q->fk           = (w->obc > 0 && w->obc != indcol);
+    q->fk_lim       = (w->asc && !q->fk);
+    q->fk_lo        = (!q->fk && (w->lim != -1) && (w->ofst != -1));
 
-    q->qed       = virt ? q->pk : q->fk;
+    q->qed          = virt ? q->pk : q->fk;
 }
 
 static void setInQueued(cswc_t *w, qr_t *q) {
@@ -86,7 +86,7 @@ static void setInQueued(cswc_t *w, qr_t *q) {
 }
 
 void setQueued(cswc_t *w, qr_t *q) {
-    if (w->inl) setInQueued(w, q);
+    if (w->inl) setInQueued(   w, q);
     else        setRangeQueued(w, q);
 }
 
@@ -310,9 +310,9 @@ void iselectAction(redisClient *c,
     g.se.qcols   = qcols;
     g.se.cmatchs = cmatchs;
     LEN_OBJ
-    if (w->low) { /* RANGE QUERY */
+    if (w->low) { /* RANGE_QUERY */
         card = (ulong)rangeOp(&g, select_op);
-    } else {    /* IN () QUERY */
+    } else {      /* IN_QUERY */
         card = (ulong)inOp(&g, select_op);
     }
 
@@ -366,9 +366,9 @@ bool build_rq_op(range_t *g, robj *key, robj *row, bool q) {
     range_t g;                                                                 \
     init_range(&g, c, w, &q, ll, ctype);                                       \
     ulong   card  = 0;                                                         \
-    if (w->low) { /* RANGE QUERY */                                            \
+    if (w->low) { /* RANGE_QUERY */                                            \
         card = (ulong)rangeOp(&g, build_rq_op);                                \
-    } else {    /* IN () QUERY */                                              \
+    } else {      /* IN_QUERY */                                               \
         card = (ulong)inOp(&g, build_rq_op);                                   \
     }
 

@@ -90,6 +90,7 @@ robj **copyArgv(robj **argv, int argc) {
 }
 
 /* used in "SELECT ... WHERE IN (list)" */
+/* conversion OK, "IN LIST"s are short */
 robj *convertRobj(robj *r, int type) {
     if ((r->encoding == REDIS_ENCODING_RAW && type == COL_TYPE_STRING) ||
         (r->encoding == REDIS_ENCODING_INT && type == COL_TYPE_INT)    ||
@@ -104,6 +105,7 @@ robj *convertRobj(robj *r, int type) {
     } else {                                /* int    -> want string */
         char buf[32];
         snprintf(buf, 32, "%d", (int)(long)r->ptr);
+        buf[31] = '\0'; /* paranoia */
         n = createStringObject(buf, strlen(buf));
     }
     decrRefCount(r);

@@ -44,6 +44,8 @@ typedef struct AlsoSqlObject {
 } aobj;
 
 bool checkUIntReply(redisClient *c, long l, bool ispk);
+uint32 strToFloat(redisClient *c, char *start, uint32 len, float *f);
+uint32 strToInt(redisClient *c, char *start, uint32 len, uint32 *i);
 
 robj *createRow(redisClient *c,
                 int          tmatch,
@@ -55,6 +57,7 @@ void freeRowObject(robj *o);
 uint32 getRowMallocSize(uchar *stream);
 
 void sprintfOutputFloat(char *buf, int len, float f);
+void destroyAobj(void *a);
 
 aobj getRawCol(robj *r, int cmatch, robj *okey, int  tmatch, flag *cflag,
                uchar ctype, bool force_string);
@@ -74,6 +77,8 @@ int deleteRow(redisClient *c,
               robj        *pko,
               int          matches,
               int          indices[]);
+
+aobj *copyRobjToAobj(robj *a, uchar ctype);
 
 bool updateRow(redisClient *c,
                robj        *o,    

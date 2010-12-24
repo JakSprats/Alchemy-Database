@@ -209,6 +209,10 @@ btSIter *btGetRangeIterator(robj *o, robj *low, robj *high, bool virt) {
     return siter;
 }
 
+//TODO the "atof" comparing FLOATS should not be necessary
+//     as value in BT is float
+//     change here btRangeNext() and in assignValRobj()
+//     after comparison, change to string (or introduce ENCODING_FLOAT
 btEntry *btRangeNext(btSIter *siter) {
     if (!siter) return NULL;
     destroyAssignKeyRobj(&(siter->key)); /* previous assignKeyRobj */

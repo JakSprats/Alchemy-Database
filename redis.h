@@ -309,6 +309,7 @@ struct sharedObjectsStruct {
     *whereclause_orderby_no_by,  *whereclause_orderby_err,
     *order_by_col_not_found,
     *orderby_limit_needs_number, *orderby_offset_needs_number,
+    *orderby_count,
 
     *selectsyntax,           *selectsyntax_nofrom,   *selectsyntax_nowhere,
     *deletesyntax,           *deletesyntax_nowhere,

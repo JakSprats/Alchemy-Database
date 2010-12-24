@@ -1591,6 +1591,8 @@ static void createSharedObjects(void) {
         "-ERR SYNTAX: WHERE ... ORDER BY col [DESC] LIMIT N = \"N\" MISSING\r\n"));
     shared.orderby_offset_needs_number = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: WHERE ... ORDER BY col [DESC] LIMIT N OFFSET M = \"M\" MISSING\r\n"));
+    shared.orderby_count = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: SELECT COUNT(*) ... WHERE ... ORDER BY col - \"ORDER BY\" and \"COUNT(*)\" dont mix, drop the \"ORDER BY\"\r\n"));
 
     shared.selectsyntax = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: SELECT col,,,, FROM tablename WHERE [indexed_column = val]|| [indexed_column BETWEEN x AND y] [ORDER BY col LIMIT num offset] [STORE redis_cmd redis_args]\r\n"));

@@ -2,28 +2,38 @@
 
 CLI="../redisql-cli"
 
-# BASIC
-echo "external basic_test.lua"
-luajit basic_test.lua
-echo sleep 5
-sleep 5
-
-echo "INTERNAL basic_test.lua"
-$CLI CONFIG SET luafilename test/basic_test.lua
-echo -ne "$($CLI LUA 'return basic_test();')\n"
-echo sleep 5
-sleep 5
-
 # STRING
-echo "external string_update_expr.lua"
-time luajit string_update_expr.lua
+echo "external TEST_string_update_expr.lua"
+time luajit TEST_string_update_expr.lua
 echo sleep 5
 sleep 5
 
-echo "INTERNAL string_update_expr.lua"
-$CLI CONFIG SET luafilename test/string_update_expr.lua
+echo "INTERNAL TEST_string_update_expr.lua"
+$CLI CONFIG SET luafilename test/TEST_string_update_expr.lua
 $CLI LUA "return init_string_appendone_test();"
 $CLI LUA "return string_appendone_test();"
+echo sleep 5
+sleep 5
+
+# FLOAT
+echo "external TEST_float_update_expr.lua"
+time luajit TEST_float_update_expr.lua
+echo sleep 5
+sleep 5
+
+echo "INTERNAL TEST_float_update_expr.lua"
+$CLI CONFIG SET luafilename test/TEST_float_update_expr.lua 
+echo -ne "$($CLI LUA "return all_float_tests();")\n"
+
+# INT
+echo "external TEST_int_update_expr.lua"
+time luajit TEST_int_update_expr.lua
+echo sleep 5
+sleep 5
+
+echo "INTERNAL TEST_int_update_expr.lua"
+$CLI CONFIG SET luafilename test/TEST_int_update_expr.lua
+echo -ne "$($CLI LUA "return all_int_tests();")\n"
 echo sleep 5
 sleep 5
 
@@ -39,25 +49,15 @@ $CLI LUA "return err_updates_test();"
 echo sleep 5
 sleep 5
 
-# FLOAT
-echo "external float_update_expr.lua"
-time luajit float_update_expr.lua
+# BASIC
+echo "external basic.lua"
+luajit basic.lua
 echo sleep 5
 sleep 5
 
-echo "INTERNAL float_update_expr.lua"
-$CLI CONFIG SET luafilename test/float_update_expr.lua 
-echo -ne "$($CLI LUA "return all_float_tests();")\n"
-
-# INT
-echo "external int_update_expr.lua"
-time luajit int_update_expr.lua
-echo sleep 5
-sleep 5
-
-echo "INTERNAL int_update_expr.lua"
-$CLI CONFIG SET luafilename test/int_update_expr.lua
-echo -ne "$($CLI LUA "return all_int_tests();")\n"
+echo "INTERNAL basic.lua"
+$CLI CONFIG SET luafilename test/basic.lua
+echo -ne "$($CLI LUA 'return basic_test();')\n"
 echo sleep 5
 sleep 5
 
