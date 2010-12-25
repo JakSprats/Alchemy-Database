@@ -351,7 +351,7 @@ bool build_rq_op(range_t *g, robj *key, robj *row, bool q) {
         addORowToRQList(g->co.ll, key, row, g->co.w->obc,
                         key, g->co.w->tmatch, g->co.ctype);
     } else {
-        robj *cln  = cloneRobj(key); /* clone orig is BtRobj */
+        robj *cln  = cloneRobj(key); /* clone -> orig is BtRobj */
         listAddNodeTail(g->co.ll, cln);
     }
     return 1;
@@ -402,7 +402,7 @@ void ideleteAction(redisClient *c,
             while((ln = listNext(li)) != NULL) {
                 robj *nkey = ln->value;
                 deleteRow(c, w->tmatch, nkey, matches, indices);
-                decrRefCount(nkey); /* from cloneRobj in BUILD_RQ_OPERATION */
+                decrRefCount(nkey); /* from cloneRobj in build_rq_op() */
                 sent++;
             }
             listReleaseIterator(li);

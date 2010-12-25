@@ -45,8 +45,8 @@ function bad_inner() {
 }
 
 function bad_normer() {
-  echo TEST: ./test/pop_BAD_NORM.sh
-  ./test/pop_BAD_NORM.sh
+  echo TEST: ./test/bash/pop_BAD_NORM.sh
+  ./test/bash/pop_BAD_NORM.sh
 }
 
 function bad_create_tables_as_selecter() {

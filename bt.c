@@ -32,11 +32,13 @@ ALL RIGHTS RESERVED
 
 #include "redis.h"
 #include "zmalloc.h"
-#include "btree.h"
+
 #include "row.h"
-#include "common.h"
+#include "parser.h"
+#include "btree.h"
 #include "bt_iterator.h"
 #include "bt.h"
+#include "common.h"
 
 /* GLOBALS */
 #define RL4 redisLog(4,
@@ -257,25 +259,25 @@ char *createSimKeyFromRaw(void    *key_ptr,
             memcpy(simkey + 5, key_ptr, sdslen(key_ptr));
         }
     } else if (ktype == COL_TYPE_INT) {
-        ulong i = (ulong)key_ptr;
+        ulong l = (ulong)key_ptr;
         simkey  = SimKeyBuffer;
-        if (i >= TWO_POW_32) {
+        if (l >= TWO_POW_32) {
             //redisLog(REDIS_WARNING, "column value > UINT_MAX");
             return NULL;
         }
-        if (i < TWO_POW_14) {        // 14bit INT
-            ushort m = (ushort)(i * 4 + 2);
+        if (l < TWO_POW_14) {        // 14bit INT
+            ushort m = (ushort)(l * 4 + 2);
             memcpy(simkey, &m, 2);
             *sflag    = 2;
             *ksize    = 2;
-        } else if (i < TWO_POW_28) { // 28bit INT
-            data      = (i * 16 + 8);
+        } else if (l < TWO_POW_28) { // 28bit INT
+            data      = (l * 16 + 8);
             memcpy(simkey, &data, 4);
             *sflag    = 8;
             *ksize    = 4;
         } else {                     // INT
             *simkey   = 16;
-            data      = i;
+            data      = l;
             memcpy(simkey + 1, &data, 4);
             *sflag    = 16;
             *ksize    = 5;
@@ -315,6 +317,7 @@ void destroyAssignKeyRobj(robj *key) {
         key->ptr = NULL;
     }
 }
+
 //TODO rename assignKeyToRobj()
 void assignKeyRobj(uchar *stream, robj *key) {
     uint32  k, slen;
@@ -450,13 +453,14 @@ static robj* abt_find_val(bt         *btr,
                           int         ktype,
                           int         vtype,
                           int         nesting) {
-    uchar *stream            = abt_access_raw_val(btr, key, ktype, 0);
+    uchar *stream = abt_access_raw_val(btr, key, ktype, 0);
     if (!stream) return NULL;
-    BtRobj[nesting].type     = ktype;
-    BtRobj[nesting].encoding = REDIS_ENCODING_RAW;
-    BtRobj[nesting].refcount = 1;
-    assignValRobj(stream, vtype, &BtRobj[nesting], btr->is_index);
-    return &BtRobj[nesting];
+    robj  *r      = &BtRobj[nesting];
+    r->type       = ktype;
+    r->encoding   = REDIS_ENCODING_RAW;
+    r->refcount   = 1;
+    assignValRobj(stream, vtype, r, btr->is_index);
+    return r;
 }
 
 static int abt_del(bt *btr, const robj *key, int ktype, int vtype) {

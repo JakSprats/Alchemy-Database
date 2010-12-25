@@ -6,11 +6,17 @@ require "socket"
 local c   = 200;
 local req = 10000000;
 local mod = 100;
+local tbl = "ten_mill_mod100";
 
---local req = 1000000;
+--req = 1000000; -- for quick testing
+
+require "socket"
+function diff_time(msg, x)
+    return string.format("%s elapsed time: %.2f(s)\n",
+                         msg, (socket.gettime()*1000 - x) / 1000);
+end
 
 function init_ten_mill_mod100()
-    local tbl  = "ten_mill_mod100";
     local indx = "ind_ten_mill_mod100_fk";
     drop_table(tbl);
     drop_index(indx);
@@ -20,14 +26,21 @@ function init_ten_mill_mod100()
                  ' -s -m ' .. mod .. ' -A OK ' .. 
                  ' -Q INSERT INTO ten_mill_mod100 VALUES ' .. 
                  '"(000000000001,000000000001,1)" > /dev/null';
+    local x   = socket.gettime()*1000;
+    print ('executing: (' .. icmd .. ')');
     os.execute(icmd);
+    print (diff_time('time: (' .. icmd .. ')', x));
+    local x   = socket.gettime()*1000;
+    --print ('save()');
+    --print (diff_time('time: save()', x));
+    --save();
     return "+OK";
 end
 
-function widdle_pk()
-    local tbl  = "ten_mill_mod100";
+function widdle_delete_pk()
+    print ('RUNNING TEST: widdle_delete_pk');
     local cnt = scanselect("COUNT(*)", tbl);
-    --print ('initial count: ' .. cnt);
+    print ('initial count: ' .. cnt);
     while (cnt > 0) do
         math.randomseed(socket.gettime()*10000)
         local res = scanselect("id", tbl, "ORDER BY id LIMIT 1");
@@ -35,8 +48,8 @@ function widdle_pk()
         local r   = math.floor(math.random() * cnt);
         local pke = pks + r;
         local wc  = 'id BETWEEN ' .. pks .. ' AND ' .. pke;
-        --print ('cnt: ' .. cnt .. ' r: ' .. r .. ' pks: ' .. pks ..
-               --' pke: ' .. pke .. ' wc: ' .. wc);
+        print ('cnt: ' .. cnt .. ' r: ' .. r .. ' pks: ' .. pks ..
+               ' pke: ' .. pke .. ' wc: ' .. wc);
         delete(tbl, wc);
         local new_cnt = cnt - (pke - pks) - 1;
         cnt = scanselect("COUNT(*)", tbl);
@@ -46,38 +59,78 @@ function widdle_pk()
     end
 end
 
-function widdle_FK()
-    local tbl        = "ten_mill_mod100";
+function widdle_update_FK()
+    print ('RUNNING TEST: widdle_update_FK');
+    local cnt        = scanselect("COUNT(*)", tbl);
+    print ('table cnt: ' .. cnt);
+    local val_list   = "i = 1";
+    local wc         = "id BETWEEN 1 AND " .. cnt; -- ENTIRE TABLE
+    local x          = socket.gettime()*1000;
+    update(tbl, val_list, wc);                     -- set ENTIRE TABLE to "i=1"
+    print (diff_time('update: ENTIRE TABLE', x));
+    val_list         = "i = 99";
+    local cnt_per_fk = math.floor(cnt / mod);
+    -- cnt never == req, Btree not 100% balanced, some FKs have more PKs
+    local variance   = (cnt - req) / 10;
+    local fks        = 0;
+    while (fks < mod) do
+        local r    = math.floor(math.random() * 10);
+        local fke  = fks + r;
+        if (fke > mod) then fke = mod; end
+        wc         = 'fk BETWEEN ' .. fks .. ' AND ' .. fke;
+        print ('cnt: ' .. cnt .. ' r: ' .. r .. ' fks: ' .. fks ..
+               ' fke: ' .. fke .. ' val_list: ' .. val_list .. ' wc: ' .. wc);
+        x          = socket.gettime()*1000;
+        update(tbl, val_list, wc);
+        print (diff_time('update: (' .. wc .. ')', x));
+
+        local ncnt = cnt - (((fke - fks) + 1) * cnt_per_fk);
+        x          = socket.gettime()*1000;
+        cnt        = scanselect("COUNT(*)", tbl, "i = 1");  -- not-UPDATEd rows
+        print (diff_time('SCANSELECT: (i = 99)', x));
+        if ((ncnt - cnt) > variance) then
+            print ('expected: ' .. ncnt .. ' got: ' .. cnt);
+        end
+
+        fks = fke + 1; -- increment FK start
+    end
+end
+
+function widdle_delete_FK()
+    print ('RUNNING TEST: widdle_delete_FK');
     local cnt        = scanselect("COUNT(*)", tbl);
     local cnt_per_fk = math.floor(cnt / mod);
     -- cnt never == req, Btree not 100% balanced, some FKs have more PKs
     local variance   = (cnt - req) / 10;
-    --print ('cnt_per_fk: ' .. cnt_per_fk .. ' variance: ' .. variance);
+    local fks        = 0;
+    print ('cnt_per_fk: ' .. cnt_per_fk .. ' variance: ' .. variance);
     while (cnt > 0) do
-        local res = scanselect("fk", tbl, "ORDER BY fk LIMIT 1");
-        local fks = res[1];
         local r   = math.floor(math.random() * 10);
         local fke = fks + r;
         if (fke > mod) then
             fke = mod;
         end
         local wc  = 'fk BETWEEN ' .. fks .. ' AND ' .. fke;
-        --print ('cnt: ' .. cnt .. ' r: ' .. r .. ' fks: ' .. fks ..
-               --' fke: ' .. fke .. ' wc: ' .. wc);
+        print ('cnt: ' .. cnt .. ' r: ' .. r .. ' fks: ' .. fks ..
+               ' fke: ' .. fke .. ' wc: ' .. wc);
+        local x   = socket.gettime()*1000;
         delete(tbl, wc);
+        print (diff_time('delete: (' .. wc .. ')', x));
         local new_cnt = cnt - (((fke - fks) + 1) * cnt_per_fk);
         cnt = scanselect("COUNT(*)", tbl);
         if ((new_cnt - cnt) > variance) then
             print ('expected: ' .. new_cnt .. ' got: ' .. cnt);
         end
+        fks = fke + 1; -- increment FK start
     end
 end
 
 function run_widdler_test()
     init_ten_mill_mod100();
-    widdle_pk();
+    widdle_delete_pk();
     init_ten_mill_mod100();
-    widdle_FK();
+    widdle_update_FK();
+    widdle_delete_FK();
     return "+OK";
 end
 

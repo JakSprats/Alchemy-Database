@@ -3314,6 +3314,7 @@ void decrRefCount(void *obj) {
 
     //RL4 "%p: decr o:%p ref: %d", o, o->ptr, o->refcount);
     //if (o->type == REDIS_STRING) RL4 "S: %s", o->ptr);
+
     /* Object is in memory, or in the process of being swapped out. */
     if (--(o->refcount) == 0) {
         if (server.vm_enabled && o->storage == REDIS_VM_SWAPPING)
@@ -3336,6 +3337,8 @@ void decrRefCount(void *obj) {
         default: redisPanic("Unknown object type");    break;
         }
         if (server.vm_enabled) pthread_mutex_lock(&server.obj_freelist_mutex);
+        //RL4 "decrRefCount: ll_objfreelist: %d MAX: %d",
+        //      listLength(server.objfreelist), REDIS_OBJFREELIST_MAX);
         if (listLength(server.objfreelist) > REDIS_OBJFREELIST_MAX ||
             !listAddNodeHead(server.objfreelist,o)) {
             zfree(o);

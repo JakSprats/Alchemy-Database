@@ -55,8 +55,6 @@ void createIndex(redisClient *c);
 int buildIndex(bt *btr, bt_n *x, bt *ibtr, int icol, int itbl, bool nrl);
 
 
-void iAdd(bt *btr, robj *i_key, robj *i_val, uchar pktype);
-
 void addToIndex(redisDb *db, robj *pko, char *vals, uint32 cofsts[], int inum);
 void delFromIndex(redisDb *db, robj *old_pk, robj *row, int inum, int tmatch);
 void updateIndex( redisDb *db,

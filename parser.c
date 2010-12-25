@@ -74,7 +74,7 @@ robj *_createStringObject(char *s) {
 robj *cloneRobj(robj *r) { // must be decrRefCount()ed
     if (r->encoding == REDIS_ENCODING_RAW) {
         return createStringObject(r->ptr, sdslen(r->ptr));
-    } else {
+    } else {        /* REDIS_ENCODING_INT */
         robj *n     = createObject(REDIS_STRING, r->ptr);
         n->encoding = REDIS_ENCODING_INT;
         return n;
@@ -110,6 +110,12 @@ robj *convertRobj(robj *r, int type) {
     }
     decrRefCount(r);
     return n;
+}
+
+void StaticRobjInit(robj *r, int type) {
+    r->type     = type;
+    r->encoding = REDIS_ENCODING_RAW; 
+    r->refcount = 1; 
 }
 
 char *rem_backticks(char *token, int *len) {

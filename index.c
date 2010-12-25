@@ -103,37 +103,39 @@ int match_index_name(char *iname) {
 
 /* INDEX_MAINTENANCE INDEX_MAINTENANCE INDEX_MAINTENANCE INDEX_MAINTENANCE */
 /* INDEX_MAINTENANCE INDEX_MAINTENANCE INDEX_MAINTENANCE INDEX_MAINTENANCE */
-void iAdd(bt *ibtr, robj *i_key, robj *i_val, uchar pktype) {
+static void iAdd(bt *ibtr, robj *ikey, robj *ival, uchar pktype) {
     bt   *nbtr;
-    robj *nbt = btIndFindVal(ibtr, i_key, ibtr->ktype);
+    robj *nbt = btIndFindVal(ibtr, ikey, ibtr->ktype);
     if (!nbt) {
         nbtr               = createIndexNode(pktype);
-        btIndAdd(ibtr, i_key, nbtr, ibtr->ktype);
+        btIndAdd(ibtr, ikey, nbtr, ibtr->ktype);
         ibtr->malloc_size += nbtr->malloc_size; /* ibtr inherits nbtr */
     } else {
         nbtr = (bt *)(nbt->ptr);
     }
     /* NOTE "nbt" is no longer valid, only "nbtr" */
     ull pre_size  = nbtr->malloc_size;
-    btIndNodeAdd(nbtr, i_val, pktype);
+    btIndNodeAdd(nbtr, ival, pktype);
     ull post_size = nbtr->malloc_size;
     ibtr->malloc_size += (post_size - pre_size); /* ibtr inherits nbtr */
 }
 
-static void iRem(bt *ibtr, robj *i_key, robj *i_val, int pktype) {
-    robj *nbt          = btIndFindVal(ibtr, i_key, ibtr->ktype);
+static void iRem(bt *ibtr, robj *ikey, robj *ival, int pktype) {
+    robj *nbt          = btIndFindVal(ibtr, ikey, ibtr->ktype);
     bt   *nbtr         = (bt *)(nbt->ptr);
     ull   pre_size     = nbtr->malloc_size;
-    int   n_size       = btIndNodeDelete(nbtr, i_val, pktype);
+    int   n_size       = btIndNodeDelete(nbtr, ival, pktype);
     ull   post_size    = nbtr->malloc_size;
     ibtr->malloc_size += (post_size - pre_size); /* inherits nbtr */
     if (!n_size) {
-        btIndDelete(ibtr, i_key, ibtr->ktype); /* remove Ind ref to NodeBT */
+        btIndDelete(ibtr, ikey, ibtr->ktype); /* remove Ind ref to NodeBT */
         btDestroy(nbtr, ibtr); /* must come after btIndDelete() */
     }
 }
 
+static robj AddInd;
 void addToIndex(redisDb *db, robj *pko, char *vals, uint32 cofsts[], int inum) {
+    INIT_ROBJ(AddInd, REDIS_STRING)
     if (Index[server.dbid][inum].virt) return;
     bool  nrl     = Index[server.dbid][inum].nrl;
     robj *ind     = Index[server.dbid][inum].obj;
@@ -149,18 +151,19 @@ void addToIndex(redisDb *db, robj *pko, char *vals, uint32 cofsts[], int inum) {
     int   j       = i - 1;
     int   end     = cofsts[j];
     int   len     = cofsts[i] - end - 1;
-    robj *col_key = createStringObject(vals + end, len); /* freeME */
-
-    iAdd(ibtr, col_key, pko, pktype);
-    decrRefCount(col_key);
+    sds   col_key = sdsnewlen(vals + end, len); /* freeME */
+    AddInd.ptr    = col_key;
+    iAdd(ibtr, &AddInd, pko, pktype);
+    sdsfree(col_key);                                        //TODO w/o str_conv
 }
 
+static robj DelInd;
 void delFromIndex(redisDb *db, robj *old_pk, robj *row, int inum, int tmatch) {
+    INIT_ROBJ(DelInd, REDIS_STRING)
     if (Index[server.dbid][inum].virt) return;
     bool  nrl     = Index[server.dbid][inum].nrl;
     if (nrl) {
-        RL4 "NRL delFromIndex");
-        /* TODO add in nrldel */
+        RL4 "NRL delFromIndex"); /* TODO add in nrldel */
         return;
     }
     robj *ind     = Index[server.dbid][inum].obj;
@@ -169,12 +172,15 @@ void delFromIndex(redisDb *db, robj *old_pk, robj *row, int inum, int tmatch) {
     int   pktype  = Tbl[server.dbid][itm].col_type[0];
     robj *ibt     = lookupKey(db, ind);
     bt   *ibtr    = (bt *)(ibt->ptr);
-    robj *old_val = createColObjFromRow(row, cmatch, old_pk, tmatch); /*freeME*/
 
-    iRem(ibtr, old_val, old_pk, pktype);
-    decrRefCount(old_val);
+    aobj  rcol    = getColStr(row, cmatch, old_pk, tmatch); //TODO w/o str_conv
+    DelInd.ptr    = sdsnewlen(rcol.s, rcol.len);            //TODO w/o str_conv
+    iRem(ibtr, &DelInd, old_pk, pktype);
+    sdsfree(DelInd.ptr);                                    //TODO w/o str_conv
+    destroyAobj(&rcol);
 }
 
+static robj UpdateInd;
 void updateIndex(redisDb *db,
                  robj    *old_pk,
                  robj    *new_pk,
@@ -186,8 +192,7 @@ void updateIndex(redisDb *db,
     if (Index[server.dbid][inum].virt) return;
     bool  nrl     = Index[server.dbid][inum].nrl;
     if (nrl) {
-        RL4 "NRL updateIndex");
-        /* TODO add in nrldel(OLD), then nrlIndexAdd(NEW) */
+        RL4 "NRL updateIndex"); /* TODO add nrldel(OLD),then nrlIndexAdd(NEW) */
         return;
     }
     int   cmatch  = Index[server.dbid][inum].column;
@@ -196,12 +201,15 @@ void updateIndex(redisDb *db,
     int   pktype  = Tbl[server.dbid][itm].col_type[0];
     robj *ibt     = lookupKey(db, ind);
     bt   *ibtr    = (bt *)(ibt->ptr);
-    robj *old_val = createColObjFromRow(row, cmatch, old_pk, tmatch); //freeME
 
-    iRem(ibtr, old_val, old_pk, pktype);
-    if (pk_update) iAdd(ibtr, old_val, new_pk, pktype);
+    aobj  rcol    = getColStr(row, cmatch, old_pk, tmatch); //TODO w/o str_conv
+    UpdateInd.ptr = sdsnewlen(rcol.s, rcol.len);            //TODO w/o str_conv
+
+    iRem(ibtr, &UpdateInd, old_pk, pktype);
+    if (pk_update) iAdd(ibtr, &UpdateInd, new_pk, pktype);
     else           iAdd(ibtr, new_val, new_pk, pktype);
-    decrRefCount(old_val);
+    sdsfree(UpdateInd.ptr);                                 //TODO w/o str_conv
+    destroyAobj(&rcol);
 }
 
 /* CREATE_INDEX  CREATE_INDEX  CREATE_INDEX  CREATE_INDEX  CREATE_INDEX */
@@ -245,17 +253,21 @@ bool newIndexReply(redisClient *c,
     return 1;
 }
 
+static robj MakeInd;
 static void makeIndexFromStream(uchar *stream,
                                 bt    *ibtr,
                                 int    icol,
                                 int    itbl) {
+    INIT_ROBJ(MakeInd, REDIS_STRING)
     robj  key, val;
     assignKeyRobj(stream,            &key);
     assignValRobj(stream, REDIS_ROW, &val, ibtr->is_index);
     /* get the pk and the fk and then call iAdd() */
-    robj *fk = createColObjFromRow(&val, icol, &key, itbl); /* freeME */
-    iAdd(ibtr, fk, &key, Tbl[server.dbid][itbl].col_type[0]);
-    decrRefCount(fk);
+    aobj  rcol  = getColStr(&val, icol, &key, itbl); //TODO w/o string_conv
+    MakeInd.ptr = sdsnewlen(rcol.s, rcol.len);;      //TODO w/o string_conv
+    iAdd(ibtr, &MakeInd, &key, Tbl[server.dbid][itbl].col_type[0]);
+    sdsfree(MakeInd.ptr);                            //TODO w/o string_conv
+    destroyAobj(&rcol);
     destroyAssignKeyRobj(&key);
 }
 

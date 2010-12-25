@@ -38,6 +38,16 @@ robj *cloneRobj(robj *r);
 robj **copyArgv(robj **argv, int argc);
 robj *convertRobj(robj *r, int type);
 
+void StaticRobjInit(robj *r, int type);
+#define INIT_ROBJ(X, T) \
+    { \
+        static bool X ## _inited = 0; \
+        if (! X ## _inited ) { \
+            StaticRobjInit( & X , T); \
+            X ## _inited  = 1; \
+        } \
+    }
+
 char *rem_backticks(char *token, int *len);
 char *str_next_unescaped_chr(char *beg, char *s, int x);
 char *strn_next_unescaped_chr(char *beg, char *s, int x, int len);

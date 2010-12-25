@@ -165,6 +165,7 @@ static void condSelectReply(fr_t *fr, robj *key, robj *row, ulong *card) {
         if (fr->q->qed) {
             addORowToRQList(fr->ll, r, row, fr->w->obc, key,
                             fr->tmatch, fr->ctype);
+            decrRefCount(r);
         } else {
             addReplyBulk(fr->c, r);
             decrRefCount(r);
@@ -271,9 +272,12 @@ void tscanCommand(redisClient *c) {
         goto tscan_end;
     }
 
+    // TODO on "fk_lim" iterate on FK (not PK)
+    //if (w.obc != -1) w.imatch = find_index(tmatch, w.obc);
+
     qr_t  q;
     setQueued(&w, &q);
-
+    
     uchar ctype = COL_TYPE_NONE;
     if (q.qed) {
         ll    = listCreate();

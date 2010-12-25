@@ -527,7 +527,7 @@ aobj getColStr(robj *r, int cmatch, robj *okey, int tmatch) {
     return getRawCol(r, cmatch, okey, tmatch, NULL, ctype, 1);
 }
 
-// creates robj (write-able)
+/* creates robj (write-able) */
 robj *createColObjFromRow(robj *r, int cmatch, robj *okey, int tmatch) {
     aobj  rcol = getColStr(r, cmatch, okey, tmatch);
     robj *o    = createStringObject(rcol.s, rcol.len); // copies data
@@ -583,15 +583,15 @@ int deleteRow(redisClient *c,
               robj        *pko,
               int          matches,
               int          indices[]) {
-    robj *o   = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
-    robj *row = btFindVal(o, pko, Tbl[server.dbid][tmatch].col_type[0]);
+    robj *btt = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
+    robj *row = btFindVal(btt, pko, Tbl[server.dbid][tmatch].col_type[0]);
     if (!row) return 0;
     if (matches) { // indices
         for (int i = 0; i < matches; i++) {         // delete indices
             delFromIndex(c->db, pko, row, indices[i], tmatch);
         }
     }
-    btDelete(o, pko, Tbl[server.dbid][tmatch].col_type[0]);
+    btDelete(btt, pko, Tbl[server.dbid][tmatch].col_type[0]);
     server.dirty++;
     return 1;
 }
