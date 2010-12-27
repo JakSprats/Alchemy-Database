@@ -40,7 +40,9 @@ ALL RIGHTS RESERVED
 #include "bt_iterator.h"
 #include "orderby.h"
 #include "index.h"
+#include "colparse.h"
 #include "alsosql.h"
+#include "aobj.h"
 #include "common.h"
 #include "range.h"
 
@@ -104,24 +106,53 @@ void init_range(range_t     *g,
     g->co.ctype = ctype;
 }
 
+static long rangeOpPK(range_t *g, row_op *p) {
+    btEntry *be;
+    cswc_t  *w     = g->co.w;
+    qr_t    *q     = g->q;
+    robj    *tname = Tbl[server.dbid][w->tmatch].name;
+    robj    *btt   = lookupKeyRead(g->co.c->db, tname);
+    bt      *btr   = (bt *)btt->ptr;
+    long     loops = -1;
+    long     card  =  0;
+    btSIter *bi = q->pk_lo ? btGetIteratorXth(btr, w->low, w->high, w->ofst):
+                             btGetRangeIterator(btr, w->low, w->high);
+    while ((be = btRangeNext(bi)) != NULL) {     /* iterate btree */
+        loops++;
+        if (q->pk_lim) {
+            if (!q->pk_lo && w->ofst != -1 && loops < w->ofst) continue;
+            if ((uint32)w->lim == card) break; /* ORDRBY PK LIM */
+        }
+        if (!(*p)(g, be->key, be->val, q->pk)) goto range_op_err;
+        card++;
+    }
+    btReleaseRangeIterator(bi);
+    return card;
+
+range_op_err:
+    if (bi) btReleaseRangeIterator(bi);
+    return -1;
+}
+
 static long rangeOpFK(range_t *g, row_op *p) {
     btEntry *be, *nbe;
     cswc_t  *w      = g->co.w;
     qr_t    *q      = g->q;
     btSIter *nbi    = NULL; /* B4 GOTO */
-    robj    *ind    = Index[server.dbid][w->imatch].obj;
     bool     pktype = Tbl[server.dbid][w->tmatch].col_type[0];
     robj    *tname  = Tbl[server.dbid][w->tmatch].name;
-    robj    *tbl    = lookupKeyRead(g->co.c->db, tname);
-    robj    *btt    = lookupKey(g->co.c->db, ind);
+    robj    *btt    = lookupKeyRead(g->co.c->db, tname);
+    bt      *btr    = (bt *)btt->ptr;
+    robj    *ind    = Index[server.dbid][w->imatch].obj;
+    robj    *ibtt   = lookupKey(g->co.c->db, ind);
+    bt      *ibtr   = (bt *)ibtt->ptr;
     long     ofst   = (long)w->ofst;
     long     loops  = -1;
     long     card   =  0;
-    btSIter *bi = q->pk_lo ? btGetIteratorXth(btt, w->low, w->high, ofst, 0) :
-                             btGetRangeIterator(btt, w->low, w->high, 0);
-    while ((be = btRangeNext(bi)) != NULL) {     /* iterate btree */
-        robj *val  = be->val;
-        bt   *nbtr = (bt *)val->ptr;
+    btSIter *bi     = q->pk_lo ? btGetIteratorXth(ibtr, w->low, w->high, ofst) :
+                                 btGetRangeIterator(ibtr, w->low, w->high);
+    while ((be = btRangeNext(bi)) != NULL) {
+        bt *nbtr = be->val;
         if (g->se.cstar) { /* FK cstar w/o filters is simple */
             card += nbtr->numkeys;
         } else {
@@ -131,17 +162,16 @@ static long rangeOpFK(range_t *g, row_op *p) {
                     continue;
                 }
             }
-            nbi = (q->fk_lo && ofst) ? btGetFullIteratorXth(val, ofst, 0) :
-                                       btGetFullRangeIterator(val, 0);
+            nbi = (q->fk_lo && ofst) ? btGetFullIteratorXth(nbtr, ofst) :
+                                       btGetFullRangeIterator(nbtr);
             while ((nbe = btRangeNext(nbi)) != NULL) {  /* NodeBT */
                 loops++;
                 if (q->fk_lim) {
                     if (!q->fk_lo && ofst != -1 && loops < ofst) continue;
                     if ((uint32)w->lim == card) break; /* ORDRBY FK LIM */
                 }
-                robj *key = nbe->key;
-                robj *row = btFindVal(tbl, key, pktype);
-                if (!(*p)(g, key, row, q->fk)) goto range_op_err;
+                void *rrow = btFindVal(btr, nbe->key, pktype);
+                if (!(*p)(g, nbe->key, rrow, q->fk)) goto range_op_err;
                 card++;
             }
             if (q->fk_lo) ofst = 0; /* OFFSET fulfilled */
@@ -160,38 +190,9 @@ range_op_err:
     return -1;
 }
 
-static long rangeOpPK(range_t *g, row_op *p) {
-    btEntry *be;
-    cswc_t  *w     = g->co.w;
-    qr_t    *q     = g->q;
-    robj    *tname = Tbl[server.dbid][w->tmatch].name;
-    robj    *btt   = lookupKeyRead(g->co.c->db, tname);
-    long     loops = -1;
-    long     card  =  0;
-    btSIter *bi = q->pk_lo ? btGetIteratorXth(btt, w->low, w->high, w->ofst, 1):
-                             btGetRangeIterator(btt, w->low, w->high, 1);
-    while ((be = btRangeNext(bi)) != NULL) {     /* iterate btree */
-        loops++;
-        if (q->pk_lim) {
-            if (!q->pk_lo && w->ofst != -1 && loops < w->ofst) continue;
-            if ((uint32)w->lim == card) break; /* ORDRBY PK LIM */
-        }
-        robj *key = be->key;
-        robj *row = be->val;
-        if (!(*p)(g, key, row, q->pk)) goto range_op_err;
-        card++;
-    }
-    btReleaseRangeIterator(bi);
-    return card;
-
-range_op_err:
-    if (bi) btReleaseRangeIterator(bi);
-    return -1;
-}
-
 long rangeOp(range_t *g, row_op *p) {
-    cswc_t  *w      = g->co.w;
-    bool     virt   = Index[server.dbid][w->imatch].virt;
+    cswc_t *w    = g->co.w;
+    bool    virt = Index[server.dbid][w->imatch].virt;
     return virt ? rangeOpPK(g, p) : rangeOpFK(g,p);
 }
     
@@ -201,18 +202,18 @@ static long inOpPK(range_t *g, row_op *p) {
     qr_t      *q      = g->q;
     bool       pktype = Tbl[server.dbid][w->tmatch].col_type[0];
     robj     *tname   = Tbl[server.dbid][w->tmatch].name;
-    robj      *tbl    = lookupKeyRead(g->co.c->db, tname);
+    robj      *btt    = lookupKeyRead(g->co.c->db, tname);
+    bt        *btr    = (bt *)btt->ptr;
     long      card    =  0;
     listIter *li      = listGetIterator(w->inl, AL_START_HEAD);
     while((ln = listNext(li)) != NULL) {
         if (q->pk_lim && (uint32)w->lim == card) break; /* ORDRBY PK LIM */
-        robj *key = convertRobj(ln->value, pktype);
-        robj *row = btFindVal(tbl, key, pktype);
-        if (row) {
-            if (!(*p)(g, key, row, q->pk)) goto in_op_pk_err;
+        aobj *apk  = ln->value;
+        void *rrow = btFindVal(btr, apk, pktype);
+        if (rrow) {
+            if (!(*p)(g, apk, rrow, q->pk)) goto in_op_pk_err;
             card++;
         }
-        decrRefCount(key); /* from addRedisCmdToINList() */
     }
     listReleaseIterator(li);
     return card;
@@ -230,35 +231,34 @@ static long inOpFK(range_t *g, row_op *p) {
     qr_t     *q       = g->q;
     bool      pktype  = Tbl[server.dbid][w->tmatch].col_type[0];
     robj     *tname   = Tbl[server.dbid][w->tmatch].name;
-    robj     *tbl     = lookupKeyRead(g->co.c->db, tname);
+    robj     *btt     = lookupKeyRead(g->co.c->db, tname);
+    bt       *btr     = (bt *)btt->ptr;
     robj     *ind     = Index[server.dbid][w->imatch].obj;
-    robj     *ibt     = lookupKey(g->co.c->db, ind);
+    robj     *ibtt    = lookupKey(g->co.c->db, ind);
+    bt       *ibtr    = (bt *)ibtt->ptr;
     int       indcol = (int)Index[server.dbid][w->imatch].column;
     bool      fktype  = Tbl[server.dbid][w->tmatch].col_type[indcol];
     long      card    =  0;
     listIter *li      = listGetIterator(w->inl, AL_START_HEAD);
     while((ln = listNext(li)) != NULL) {
-        robj *ikey = convertRobj(ln->value, fktype);
-        robj *val  = btIndFindVal(ibt->ptr, ikey, fktype);
-        if (val) {
+        aobj *afk  = ln->value;
+        bt   *nbtr = btIndFindVal(ibtr, afk, fktype);
+        if (nbtr) {
             if (g->se.cstar) { /* FK cstar w/o filters is simple */
-                bt *nbtr  = (bt *)val->ptr;
-                card     += nbtr->numkeys;
+                card += nbtr->numkeys;
             } else {
-                nbi = btGetFullRangeIterator(val, 0);
+                nbi = btGetFullRangeIterator(nbtr);
                 while ((nbe = btRangeNext(nbi)) != NULL) {
                     if (q->fk_lim && (uint32)w->lim == card) break;
-                    robj *key = nbe->key;
-                    robj *row = btFindVal(tbl, key, pktype);
+                    void *rrow  = btFindVal(btr, nbe->key, pktype);
                     /* FK operation specific code comes here */
-                    if (!(*p)(g, key, row, q->fk)) goto in_op_err;
+                    if (!(*p)(g, nbe->key, rrow, q->fk)) goto in_op_err;
                     card++;
                 }
             }
             btReleaseRangeIterator(nbi);
             nbi = NULL; /* explicit in case of GOTO in inner loop */
         }
-        decrRefCount(ikey); /* from addRedisCmdToINList() */
     }
     listReleaseIterator(li);
     return card;
@@ -270,19 +270,19 @@ in_op_err:
 }
 
 long inOp(range_t *g, row_op *p) {
-    cswc_t   *w       = g->co.w;
-    bool      virt    = Index[server.dbid][w->imatch].virt;
+    cswc_t *w    = g->co.w;
+    bool    virt = Index[server.dbid][w->imatch].virt;
     return virt ? inOpPK(g, p) : inOpFK(g, p);
 }
 
 /* SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS */
 /* SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS */
-bool select_op(range_t *g, robj *key, robj *row, bool q) {
+bool select_op(range_t *g, aobj *akey, void *rrow, bool q) {
     if (!g->se.cstar) {
-        robj *r = outputRow(row, g->se.qcols, g->se.cmatchs,
-                            key, g->co.w->tmatch, 0);
-        if (q) addORowToRQList(g->co.ll, r, row, g->co.w->obc,
-                               key, g->co.w->tmatch, g->co.ctype);
+        robj *r = outputRow(rrow, g->se.qcols, g->se.cmatchs,
+                            akey, g->co.w->tmatch, 0);
+        if (q) addORowToRQList(g->co.ll, r, rrow, g->co.w->obc,
+                               akey, g->co.w->tmatch, g->co.ctype);
         else   addReplyBulk(g->co.c, r);
         decrRefCount(r);
     }
@@ -346,12 +346,12 @@ void iselectAction(redisClient *c,
 }
 
 
-bool build_rq_op(range_t *g, robj *key, robj *row, bool q) {
+bool build_rq_op(range_t *g, aobj *akey, void *rrow, bool q) {
     if (q) {
-        addORowToRQList(g->co.ll, key, row, g->co.w->obc,
-                        key, g->co.w->tmatch, g->co.ctype);
+        addORowToRQList(g->co.ll, akey, rrow, g->co.w->obc,
+                        akey, g->co.w->tmatch, g->co.ctype);
     } else {
-        robj *cln  = cloneRobj(key); /* clone -> orig is BtRobj */
+        aobj *cln  = cloneAobj(akey);
         listAddNodeTail(g->co.ll, cln);
     }
     return 1;
@@ -389,9 +389,9 @@ void ideleteAction(redisClient *c,
                     w->ofst--;
                 } else {
                     sent++;
-                    obsl_t *ob   = v[k];
-                    robj   *nkey = ob->row;
-                    deleteRow(c, w->tmatch, nkey, matches, indices);
+                    obsl_t *ob  = v[k];
+                    aobj   *apk = ob->row;
+                    deleteRow(c, w->tmatch, apk, matches, indices);
                 }
             }
             sortedOrderByCleanup(v, listLength(ll), ctype, 1);
@@ -400,9 +400,8 @@ void ideleteAction(redisClient *c,
             listNode  *ln;
             listIter  *li = listGetIterator(ll, AL_START_HEAD);
             while((ln = listNext(li)) != NULL) {
-                robj *nkey = ln->value;
-                deleteRow(c, w->tmatch, nkey, matches, indices);
-                decrRefCount(nkey); /* from cloneRobj in build_rq_op() */
+                aobj *apk = ln->value;
+                deleteRow(c, w->tmatch, apk, matches, indices);
                 sent++;
             }
             listReleaseIterator(li);
@@ -416,6 +415,7 @@ void ideleteAction(redisClient *c,
     listRelease(ll);
 }
 
+//TODO once btReplace does IN-PLACE replaces, update does NOT need a LIST
 void iupdateAction(redisClient *c,
                    cswc_t      *w,
                    int          ncols,
@@ -430,7 +430,8 @@ void iupdateAction(redisClient *c,
     bool pktype = Tbl[server.dbid][w->tmatch].col_type[0];
     int  sent   = 0;
     if (card) {
-        robj *o = lookupKeyRead(c->db, Tbl[server.dbid][w->tmatch].name);
+        robj *btt = lookupKeyRead(c->db, Tbl[server.dbid][w->tmatch].name);
+        bt   *btr = (bt *)btt->ptr;
         if (q.qed) {
             obsl_t **v = sortOrderByToVector(ll, ctype, w->asc);
             for (int k = 0; k < (int)listLength(ll); k++) {
@@ -440,9 +441,9 @@ void iupdateAction(redisClient *c,
                 } else {
                     sent++;
                     obsl_t *ob   = v[k];
-                    robj   *nkey = ob->row;
-                    robj   *row  = btFindVal(o, nkey, pktype);
-                    updateRow(c, o, nkey, row, w->tmatch, ncols,
+                    aobj   *apk  = ob->row;
+                    void   *rrow = btFindVal(btr, apk, pktype);
+                    updateRow(c, btr, apk, rrow, w->tmatch, ncols,
                               matches, indices, vals, vlens, cmiss, ue);
                 }
             }
@@ -452,11 +453,10 @@ void iupdateAction(redisClient *c,
             listNode  *ln;
             listIter  *li = listGetIterator(ll, AL_START_HEAD);
             while((ln = listNext(li)) != NULL) {
-                robj *nkey = ln->value;
-                robj *row  = btFindVal(o, nkey, pktype);
-                updateRow(c, o, nkey, row, w->tmatch, ncols, matches, indices,
+                aobj *apk  = ln->value;
+                void *rrow = btFindVal(btr, apk, pktype);
+                updateRow(c, btr, apk, rrow, w->tmatch, ncols, matches, indices,
                           vals, vlens, cmiss, ue);
-                decrRefCount(nkey); /* from cloneRobj in BUILD_RQ_OPERATION */
                 sent++;
             }
             listReleaseIterator(li);

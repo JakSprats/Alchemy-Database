@@ -85,16 +85,18 @@
 
 #include "bt.h"              /* ALSOSQL B-trees */
 #include "bt_iterator.h"     /* ALSOSQL B-tree Iterators */
-#include "alsosql.h"         /* ALSOSQL */
-#include "sixbit.h"          /* ALSOSQL six-bit-string packing */
+#include "sixbit.h"          /* sixbit string compression */
 #include "rdb_alsosql.h"     /* save ALSOSQL datastructures to rdb */
 #include "join.h"            /* relational join in ALSOSQL */
-#include "row.h"             /* ALSOSQL's bit-packed rows */
 #include "index.h"           /* ALSOSQL's indices */
 #include "rpipe.h"           /* PIPE flags */
-#include "common.h"          /* ALSOSQL's common definitions */
 #include "nri.h"             /* ALSOSQL's NonRelationIndexes */
+#include "row.h"             /* ALSOSQL's bit-packed rows */
+#include "colparse.h"        /* parses columns in SQL SELECTs and UPDATEs */
 #include "lua_integration.h" /* Lua c bindings for lua function "client */
+#include "alsosql.h"         /* ALSOSQL */
+#include "aobj.h"            /* ALSOSQL's ROW object called AOBJ */
+#include "common.h"          /* ALSOSQL's common definitions */
 
 #define ALSOSQL
 #ifdef ALSOSQL
@@ -536,7 +538,7 @@ void updateCommand(redisClient *c);
 void deleteCommand(redisClient *c);
 
 void tscanCommand(redisClient *c);
-void normCommand(redisClient *c);
+//void normCommand(redisClient *c); // DEPRECATED
 void denormCommand(redisClient *c);
 
 void legacyTableCommand(redisClient *c);
@@ -681,7 +683,7 @@ static struct redisCommand cmdTable[] = {
     {"delete",       deleteCommand,       5,REDIS_CMD_INLINE,NULL,1,1,1,1},
 
     {"scanselect",   tscanCommand,       -4,REDIS_CMD_INLINE,NULL,1,1,1,1},
-    {"norm",         normCommand,        -2,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
+    //{"norm",         normCommand,        -2,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1}, // DEPRECATED
     {"denorm",       denormCommand,       3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
 
     {"legacytable",  legacyTableCommand,  3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
@@ -700,8 +702,6 @@ extern r_ind_t   Index   [MAX_NUM_DB][MAX_NUM_INDICES];
 
 extern stor_cmd  StorageCommands[];
 extern stor_cmd  AccessCommands[];
-extern char     *EQUALS;
-extern char     *PERIOD;
 extern char     *Col_type_defs[];
 #endif /* ALSOSQL END */
 
@@ -3328,7 +3328,6 @@ void decrRefCount(void *obj) {
         case REDIS_HASH:       freeHashObject(o);      break;
 #ifdef ALSOSQL
         case REDIS_BTREE:      freeBtreeObject(o);     break;
-        case REDIS_ROW:        freeRowObject(o);       break;
         case REDIS_JOINROW:    freeJoinRowObject(o);   break;
         case REDIS_APPEND_SET: freeAppendSetObject(o); break;
         case REDIS_VAL_SET:    freeValSetObject(o);    break;
@@ -5007,7 +5006,7 @@ static void typeCommand(redisClient *c) {
                type = "+index";
             } else {
                 bt *btr = o->ptr;
-                if (btr->is_index == BTREE_TABLE) {
+                if (btr->btype == BTREE_TABLE) {
                     type = "+table";
                 } else {
                     type = "+index";
@@ -9008,7 +9007,7 @@ awerr:
     return 0;
 }
 
-static bool appendOnlyDumpTable(FILE *fp, robj *o, bt *btr, int tmatch) {
+static bool appendOnlyDumpTable(FILE *fp, bt *btr, int tmatch) {
     sds tname  = Tbl[server.dbid][tmatch].name->ptr;
     /* Dump Table definition */
     char cmd[]="*3\r\n$11\r\nLEGACYTABLE\r\n";
@@ -9021,7 +9020,7 @@ static bool appendOnlyDumpTable(FILE *fp, robj *o, bt *btr, int tmatch) {
         if (i) s = sdscatlen(s, ",", 1);
         sds cname = Tbl[server.dbid][tmatch].col_name[i]->ptr;
         s = sdscatlen(s, cname, sdslen(cname));
-        s = sdscatlen(s, EQUALS, 1);
+        s = sdscatlen(s, "=", 1);
         s = sdscat(s, Col_type_defs[Tbl[server.dbid][tmatch].col_type[i]]);
     }
     if (fwriteBulkString(fp, s, sdslen(s)) == -1) goto atwerr;
@@ -9034,11 +9033,11 @@ static bool appendOnlyDumpTable(FILE *fp, robj *o, bt *btr, int tmatch) {
         int  qcols = get_all_cols(tmatch, cmatchs);
 
         btEntry *be;
-        btSIter *bi = btGetFullRangeIterator(o, 1);
+        btSIter *bi = btGetFullRangeIterator(btr);
         while ((be = btRangeNext(bi)) != NULL) {
-            robj *pko = be->key;
-            robj *row = be->val;
-            robj *r   = outputRow(row, qcols, cmatchs, pko, tmatch, 0);
+            aobj *apk  = be->key;
+            void *rrow = be->val;
+            robj *r    = outputRow(rrow, qcols, cmatchs, apk, tmatch, 0);
             if (!fwrite(cmd2, sizeof(cmd2) - 1, 1, fp)) goto atwerr;
             if (fwriteBulkString(fp, tname, sdslen(tname)) == -1) goto atwerr;
             if (fwriteBulkString(fp, r->ptr, sdslen(r->ptr)) == -1) goto atwerr;
@@ -9216,12 +9215,12 @@ static int rewriteAppendOnlyFile(char *filename) {
                 }
 #ifdef ALSOSQL
             } else if (o->type == REDIS_BTREE) {
-                bt  *btr  = (struct btree *)(o->ptr);
+                bt  *btr  = (bt *)(o->ptr);
                 if (!btr) continue; /* virtual indices have NULLs */
-                if (btr->is_index == BTREE_TABLE) {
+                if (btr->btype == BTREE_TABLE) {
                     int tmatch = btr->num;
                     /* First dump table definition and ALL rows */
-                    if (!appendOnlyDumpTable(fp, o, btr, tmatch)) goto werr;
+                    if (!appendOnlyDumpTable(fp, btr, tmatch)) goto werr;
     
                     /* then dump Table's Index definitions */
                     if (!appendOnlyDumpIndices(fp, tmatch, j)) goto werr;

@@ -35,7 +35,7 @@ struct btree;
 #define	BT_SIZEDEF	128
 
 typedef void * bt_data_t;
-typedef int (*bt_cmp_t)(bt_data_t, bt_data_t);
+typedef int (*bt_cmp_t)(bt_data_t k1, bt_data_t k2);
 
 struct btree *bt_create(bt_cmp_t, int nodesize);
 void *bt_malloc(       int,    struct btree *);
@@ -43,20 +43,20 @@ void  bt_free(         void *, struct btree *, int);
 void bt_free_btreenode(void *, struct btree *);
 void bt_free_btree(    void *, struct btree *);
 
-void  bt_insert(struct btree *, bt_data_t);
-void *bt_delete(struct btree *, bt_data_t);
+void  bt_insert(struct btree *, bt_data_t k);
+void *bt_delete(struct btree *, bt_data_t k);
 
-void  bt_dumptree(struct btree *, int, int);
-void  bt_treestats(struct btree *);
-int   bt_checktree(struct btree *, bt_data_t, bt_data_t );
+void  bt_dumptree(struct btree *btr, int ktype);
+void  bt_treestats(struct btree *btr);
+int   bt_checktree(struct btree *btr, bt_data_t kmin, bt_data_t kmax);
 
-void *bt_max(struct btree *);
-void *bt_min(struct btree *);
-void *bt_find(struct btree *, bt_data_t);
+void *bt_max(struct btree *btr);
+void *bt_min(struct btree *btr);
+void *bt_find(struct btree *btr, bt_data_t k);
 
 struct btIterator;
 struct btreenode;
-int  bt_init_iterator(struct btree *, bt_data_t, struct btIterator *);
-int  bt_find_closest_slot(struct btree *, struct btreenode *, bt_data_t );
+int  bt_init_iterator(struct btree *bre, bt_data_t k, struct btIterator *iter);
+int  bt_find_closest_slot(struct btree *btr, struct btreenode *x, bt_data_t k);
 
 #endif /* _BTREE_H_ */

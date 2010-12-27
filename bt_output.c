@@ -14,39 +14,36 @@
  *
  */
 
-#include "btreepriv.h"
-#include "redis.h"
-#include "bt.h"
 
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "redis.h"
+
+#include "btreepriv.h"
+#include "bt.h"
+#include "stream.h"
+
 #define RL4 redisLog(4,
 
-static void dumpnode(struct btree *btr, struct btreenode *,
-                     int ktype, int vtype, int depth);
+static void dumpnode(bt *btr, bt_n *n, int ktype, int depth);
 int treeheight(struct btree *btr);
 
-
-void bt_dump_info(struct btree *btr, int ktype, int vtype) {
-    RL4 "bt_dumptree: %p ktype: %d vtype: %d", btr, ktype, vtype);
+void bt_dump_info(struct btree *btr, int ktype) {
+    RL4 "bt_dumptree: %p ktype: %d", btr, ktype);
     RL4 "numkeys: %d numnodes: %d", btr->numkeys, btr->numnodes);
     RL4 "keyoff: %d  nodeptroff: %d t: %d textra: %d height: %d",
          btr->keyoff, btr->nodeptroff, btr->t, btr->textra, treeheight(btr));
 }
 
-void bt_dumptree(struct btree *btr, int ktype, int vtype) {
-    bt_dump_info(btr, ktype, vtype);
+void bt_dumptree(struct btree *btr, int ktype) {
+    bt_dump_info(btr, ktype);
     //bt_treestats(btr);
-    if (btr->root && btr->numkeys > 0) dumpnode(btr, btr->root, ktype, vtype, 0);
+    if (btr->root && btr->numkeys > 0) dumpnode(btr, btr->root, ktype, 0);
 }
 
-static void dumpnode(struct btree     *btr,
-                     struct btreenode *x,
-                     int               ktype,
-                     int               vtype,
-                     int               depth) {
+static void dumpnode(bt *btr, bt_n *x, int ktype, int depth) {
     int i;
 
     //RL4 "type: %d ptr: %p: leaf: %d, n: %d", ktype, (void *)x, x->leaf, x->n);
@@ -59,28 +56,27 @@ static void dumpnode(struct btree     *btr,
     for (i = 0; i < x->n; i++) {
         //RL4 "key_n: %d: %p", i, KEYS(btr, x)[i]);
         void *be = KEYS(btr, x)[i];
-        robj key, val;
-        robj      *rk = (robj *)(&key);
-        robj      *rv = (robj *)(&val);
-        assignKeyRobj(be, rk);
-        assignValRobj(be, vtype, rv, btr->is_index);
+        aobj  key;
+        void *rrow;
+        convertStream2Key(be, &key);
+        rrow = parseStream(be, btr->btype);
 
-        char      *c  = (char *)(rk->ptr);
-        char      *s  = (char *)(rv->ptr);
+        //TODO (GARBAGE) needs to understand key & val have different types
         if (ktype == COL_TYPE_STRING) {
-            RL4 "  S: key: %s: val: %p slot: %d - %p", c, s, i, be);
+            sds k = sdsnewlen(key.s, key.len);
+            RL4 "  S: key: %s: val: %p slot: %d - %p", k, rrow, i, be);
+            sdsfree(k);
         } else if (ktype == COL_TYPE_INT) {
-            RL4 "  I: key: %u: val: %u slot: %d - %p", c, s, i, be);
+            RL4 "  I: key: %u: val: %p slot: %d - %p", key.i, rrow, i, be);
         } else {
-            RL4 "  F: key: %s: val: %f slot: %d - %p", c, s, i, be);
+            RL4 "  F: key: %f: val: %p slot: %d - %p", key.f, rrow, i, be);
         }
-        destroyAssignKeyRobj(rk);
     }
 
     if (!x->leaf) {
         depth++;
         for (i = 0; i <= x->n; i++) {
-            dumpnode(btr, NODES(btr, x)[i], ktype, vtype, depth);
+            dumpnode(btr, NODES(btr, x)[i], ktype, depth);
         }
     }
 }
@@ -103,41 +99,32 @@ static int checkbtreenode(struct btree     *btr,
 
     if (x == NULL)
         /* check that the two keys are in order */
-        if (btr->cmp(kmin, kmax) >= 0)
-            return 0;
-        else
-            return 1;
+        if (btr->cmp(kmin, kmax) >= 0) return 0;
+        else                           return 1;
     else {
         if (!isroot && (x->n < btr->t - 1 || x->n > 2 * btr->t - 1)) {
             redisLog(REDIS_NOTICE,"node, to few or to many: %d\n", x->n);
-            bt_dumptree(btr, 0, 0);
+            bt_dumptree(btr, 0);
             exit(1);
         }
         /* check subnodes */
         if (x->n == 0 && !x->leaf)
-            if (!checkbtreenode(btr, NODES(btr, x)[0], kmin, kmax,
-                0))
-                return 0;
-            else
-                return 1;
+            if (!checkbtreenode(btr, NODES(btr, x)[0], kmin, kmax, 0)) return 0;
+            else                                                       return 1;
         else if (x->n == 0 && x->leaf && !isroot) {
             redisLog(REDIS_NOTICE,"leaf with no keys!!\n");
-            bt_dumptree(btr, 0, 0);
-            if (!checkbtreenode(btr, NULL, kmin, kmax, 0))
-                return 0;
-            else
-                return 1;
+            bt_dumptree(btr, 0);
+            if (!checkbtreenode(btr, NULL, kmin, kmax, 0)) return 0;
+            else                                           return 1;
         }
-        if (!checkbtreenode(btr, NODES(btr, x)[0], kmin,
-            KEYS(btr, x)[0], 0))
+        if (!checkbtreenode(btr, NODES(btr, x)[0], kmin, KEYS(btr, x)[0], 0))
             return 0;
         for (i = 1; i < x->n; i++)
             if (!checkbtreenode(btr, NODES(btr, x)[i],
-                KEYS(btr, x)[i - 1], KEYS(btr, x)[i], 0))
-                return 0;
+                                KEYS(btr, x)[i - 1], KEYS(btr, x)[i], 0))
+                                    return 0;
         if (!checkbtreenode(btr, NODES(btr, x)[i], KEYS(btr, x)[i - 1],
-            kmax, 0))
-            return 0;
+                            kmax, 0)) return 0;
     }
     return 1;
 }

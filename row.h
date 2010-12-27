@@ -29,61 +29,53 @@ ALL RIGHTS RESERVED
 
 #include "redis.h"
 
+#include "btreepriv.h"
+#include "colparse.h"
 #include "alsosql.h"
+#include "aobj.h"
 #include "common.h"
-
-typedef struct AlsoSqlObject {
-    char   *s;
-    uint32  len;
-    uint32  i;
-    float   f;
-    uint32  s_i;
-    flag    type;
-    flag    enc;
-    flag    sixbit;
-} aobj;
 
 bool checkUIntReply(redisClient *c, long l, bool ispk);
 uint32 strToFloat(redisClient *c, char *start, uint32 len, float *f);
 uint32 strToInt(redisClient *c, char *start, uint32 len, uint32 *i);
 
-robj *createRow(redisClient *c,
+
+void *createRow(redisClient *c,
                 int          tmatch,
                 int          ncols,
                 char        *vals,
-                uint32       col_ofsts[]);
+                uint32       cofsts[]);
 void freeRowObject(robj *o);
 
 uint32 getRowMallocSize(uchar *stream);
 
 void sprintfOutputFloat(char *buf, int len, float f);
-void destroyAobj(void *a);
 
-aobj getRawCol(robj *r, int cmatch, robj *okey, int  tmatch, flag *cflag,
-               uchar ctype, bool force_string);
-aobj getColStr(robj *r, int cmatch, robj *okey, int tmatch);
+aobj getRawCol(void *orow,
+               int   cmatch,
+               aobj *aopk,
+               int   tmatch,
+               flag *cflag,
+               bool  force_string);
 
-robj *createColObjFromRow(robj *r, int cmatch, robj *okey, int tmatch);
-
-robj *outputRow(robj *row,
+robj *outputRow(void *row,
                 int   qcols,
                 int   cmatchs[],
-                robj *okey,
+                aobj *aopk,
                 int   tmatch,
                 bool  quote_text_cols);
 
-int deleteRow(redisClient *c,
-              int          tmatch,
-              robj        *pko,
-              int          matches,
-              int          indices[]);
+bool deleteRow(redisClient *c,
+               int          tmatch,
+               aobj        *apk,
+               int          matches,
+               int          indices[]);
 
-aobj *copyRobjToAobj(robj *a, uchar ctype);
 
 bool updateRow(redisClient *c,
-               robj        *o,    
-               robj        *okey, 
-               robj        *orow, 
+               bt          *btr,  
+               aobj        *aopk, 
+               void        *orow, 
                int          tmatch,
                int          ncols, 
                int          matches,

@@ -28,9 +28,11 @@ ALL RIGHTS RESERVED
 
 #include "redis.h"
 
-#include "alsosql.h"
 #include "btreepriv.h"
+#include "row.h"
 #include "parser.h"
+#include "alsosql.h"
+#include "aobj.h"
 #include "common.h"
 
 typedef struct queue_range_results {
@@ -83,7 +85,7 @@ void init_range(range_t     *g,
                 list        *ll,
                 uchar        ctype);
 
-typedef bool row_op(range_t *g, robj *key, robj *row, bool q);
+typedef bool row_op(range_t *g, aobj *akey, void *rrow, bool q);
 long rangeOp(range_t *g, row_op *p); /* RangeQuery */
 long inOp(range_t *g, row_op *p);    /* InQuery */
 

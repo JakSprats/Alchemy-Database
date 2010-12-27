@@ -24,8 +24,8 @@ ALL RIGHTS RESERVED
 
  */
 
-#ifndef __REDISQL_SQL__H
-#define __REDISQL_SQL__H
+#ifndef __REDISQL_WHERECLAUSE__H
+#define __REDISQL_WHERECLAUSE__H
 
 #include "redis.h"
 #include "adlist.h"
@@ -77,4 +77,4 @@ bool parseJoinReply(redisClient *c,
                     char        *tlist);
 void joinReply(redisClient *c);
 
-#endif /*__REDISQL_SQL__H */ 
+#endif /* __REDISQL_WHERECLAUSE__H */

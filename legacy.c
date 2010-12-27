@@ -33,6 +33,7 @@ ALL RIGHTS RESERVED
 #include "redis.h"
 
 #include "index.h"
+#include "colparse.h"
 #include "alsosql.h"
 #include "common.h"
 #include "legacy.h"

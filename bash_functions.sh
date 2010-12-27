@@ -844,18 +844,6 @@ function protocol_example_lua() {
   $CLI CONFIG SET luafilename helper.lua
   $CLI LUA "return select('*','foo','id = 1');"
 }
-function protocol_example_norm() {
-  $CLI SET user:1:name bill
-  $CLI SET user:1:age 33
-  $CLI SET user:1:address:city "capitol city"
-
-  $CLI SET user:2:age 22
-  $CLI SET user:2:name jane
-  $CLI SET user:2:address:city "houston"
-
-  $CLI NORM user address
-  $CLI denorm user "user:*"
-}
 alias TCPDUMP_ALCHEMY="sudo tcpdump -l -q -A -s 1500 -i lo 'tcp port 6379'"
 alias FREE_LINUX_BUFFS="sudo sync && echo 3 | sudo tee /proc/sys/vm/drop_caches"
 
@@ -1063,6 +1051,7 @@ function all_tests() {
 
   float_tests
   populate
+  $CLI DEBUG RELOAD
   scanner
   in_tester
   orderbyer
@@ -1081,11 +1070,6 @@ function all_tests() {
   secondary_range_query_scan_name
   secondary_range_query_scan_field
   secondary_many_range_query_test
-
-  ./test/bash/pop_denorm.sh
-  ./test/bash/pop_denorm.sh 1
-  ./test/bash/pop_H_denorm.sh
-  ./test/bash/pop_H_denorm.sh 1
 }
 
 function all_tests_and_benchmarks() {

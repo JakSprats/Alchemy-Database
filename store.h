@@ -31,7 +31,9 @@ ALL RIGHTS RESERVED
 #include "adlist.h"
 
 #include "join.h"
+#include "row.h"
 #include "alsosql.h"
+#include "aobj.h"
 #include "common.h"
 
 #define NUM_STORAGE_TYPES 10
@@ -47,8 +49,8 @@ bool istoreAction(redisClient *c,
                   int          cmatchs[],
                   int          qcols, 
                   int          sto,   
-                  robj        *pko,  
-                  robj        *row,
+                  aobj        *apk,  
+                  void        *rrow,
                   char        *nname,
                   bool         sub_pk,
                   uint32       nargc);

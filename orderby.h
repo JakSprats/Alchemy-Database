@@ -27,9 +27,10 @@ ALL RIGHTS RESERVED
 #define __ORDER_BY__H
 
 #include "join.h"
+#include "aobj.h"
 
 typedef struct order_by_sort_element {
-    void *val;
+    void *key;
     void *row;
 } obsl_t;
 
@@ -41,10 +42,10 @@ int stringOrderBySort(   const void *s1, const void *s2);
 int stringOrderByRevSort(const void *s1, const void *s2);
 
 void addORowToRQList(list  *ll,
-                     robj  *r,
-                     robj  *row,
+                     void  *r,
+                     void  *rrow,
                      int    obc,
-                     robj  *pko,
+                     aobj  *apk,
                      int    tmatch,
                      uchar  ctype);
 

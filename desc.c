@@ -36,7 +36,9 @@ ALL RIGHTS RESERVED
 #include "bt_iterator.h"
 #include "index.h"
 #include "nri.h"
+#include "colparse.h"
 #include "alsosql.h"
+#include "aobj.h"
 #include "common.h"
 #include "desc.h"
 
@@ -87,13 +89,13 @@ void dumpCommand(redisClient *c) {
         return;
     }
 
-    robj *o     = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
-    bt   *btr   = (bt *)o->ptr;
+    robj *btt   = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
+    bt   *btr   = (bt *)btt->ptr;
     char *tname = Tbl[server.dbid][tmatch].name->ptr;
 
     LEN_OBJ
 
-    bool  to_mysql = 0;
+    bool  tomysql = 0;
     bool  to_file  = 0;
     char *m_tname  = NULL;
     char *fname    = NULL;
@@ -102,7 +104,7 @@ void dumpCommand(redisClient *c) {
         fname   = c->argv[4]->ptr;
     } else if (c->argc > 3 && !strcasecmp(c->argv[3]->ptr, "MYSQL")) {
         robj *r;
-        to_mysql = 1;
+        tomysql = 1;
         if (c->argc > 4) m_tname = c->argv[4]->ptr;
         else             m_tname = tname;
         snprintf(buf, 191, "DROP TABLE IF EXISTS `%s`;", m_tname);
@@ -141,12 +143,12 @@ void dumpCommand(redisClient *c) {
         }
         btEntry *be;
         int      qcols = get_all_cols(tmatch, cmatchs);
-        btSIter *bi    = btGetFullRangeIterator(o, 1);
+        btSIter *bi    = btGetFullRangeIterator(btr);
         while ((be = btRangeNext(bi)) != NULL) {      // iterate btree
-            robj *pko = be->key;
-            robj *row = be->val;
-            robj *r   = outputRow(row, qcols, cmatchs, pko, tmatch, to_mysql);
-            if (to_mysql) {
+            aobj *apk  = be->key;
+            void *rrow = be->val;
+            robj *r    = outputRow(rrow, qcols, cmatchs, apk, tmatch, tomysql);
+            if (tomysql) {
                 snprintf(buf, 191, "INSERT INTO `%s` VALUES (", m_tname);
                 buf[191] = '\0';
                 robj *ins = _createStringObject(buf);
@@ -175,7 +177,7 @@ void dumpCommand(redisClient *c) {
         btReleaseRangeIterator(bi);
     }
 
-    if (to_mysql) {
+    if (tomysql) {
         robj *r;
         char *buf2 = "UNLOCK TABLES;";
         ADD_REPLY_BULK(r, buf2)
@@ -201,8 +203,8 @@ ull get_sum_all_index_size_for_table(redisClient *c, int tmatch) {
         if (!Index[server.dbid][i].virt && !Index[server.dbid][i].nrl &&
              Index[server.dbid][i].table == tmatch) {
             robj *ind   = Index[server.dbid][i].obj;
-            robj *ibt   = lookupKey(c->db, ind);
-            bt   *ibtr  = (bt *)(ibt->ptr);
+            robj *ibtt  = lookupKey(c->db, ind);
+            bt   *ibtr  = (bt *)(ibtt->ptr);
             isize      += ibtr->malloc_size;
         }
     }
@@ -229,14 +231,9 @@ static void outputNonRelIndexInfo(redisClient *c, int tmatch, ulong *card) {
     }
 }
 
-static void zero_robj(robj *r) {
-    r->encoding = REDIS_ENCODING_RAW;
-    r->ptr      = 0;
-}
 
 void descCommand(redisClient *c) {
     TABLE_CHECK_OR_REPLY( c->argv[1]->ptr,)
-    robj *o = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
 
     LEN_OBJ;
     for (int j = 0; j < Tbl[server.dbid][tmatch].col_count; j++) {
@@ -251,8 +248,8 @@ void descCommand(redisClient *c) {
             ull   isize = 0;
             if (!Index[server.dbid][imatch].virt &&
                 !Index[server.dbid][imatch].nrl) {
-                robj *ibt  = lookupKey(c->db, ind);
-                bt   *ibtr = (bt *)(ibt->ptr);
+                robj *ibtt = lookupKey(c->db, ind);
+                bt   *ibtr = (bt *)(ibtt->ptr);
                 isize      = ibtr->malloc_size;
             }
             r->ptr = sdscatprintf(sdsempty(),
@@ -268,41 +265,36 @@ void descCommand(redisClient *c) {
 
     outputNonRelIndexInfo(c, tmatch, &card);
 
-    robj minkey, maxkey;
-    ull  index_size = get_sum_all_index_size_for_table(c, tmatch);
-    bt  *btr        = (bt *)o->ptr;
+    aobj minkey, maxkey;
+    ull   index_size = get_sum_all_index_size_for_table(c, tmatch);
+    robj *btt        = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
+    bt   *btr        = (bt *)btt->ptr;
     if (btr->numkeys) {
         assignMinKey(btr, &minkey);
         assignMaxKey(btr, &maxkey);
     } else {
-        zero_robj(&minkey);
-        zero_robj(&maxkey);
+        initAobj(&minkey);
+        initAobj(&maxkey);
     }
 
     char buf[256];
-    if (minkey.encoding == REDIS_ENCODING_RAW) {
-        if (minkey.ptr && sdslen(minkey.ptr) > 64) { /* abbreviated min */
-            char *x = (char *)(minkey.ptr);
-            x[64] ='\0';
-        }
-        if (maxkey.ptr && sdslen(maxkey.ptr) > 64) { /* abbreviated max */
-            char *x = (char *)(maxkey.ptr);
-            x[64] ='\0';
-        }
+    if (minkey.type == COL_TYPE_STRING) {
+        sds mins = sdsnewlen(minkey.s, (minkey.len > 64) ? 64 : minkey.len);
+        sds maxs = sdsnewlen(maxkey.s, (minkey.len > 64) ? 64 : minkey.len);
         snprintf(buf, 255, "INFO: KEYS: [NUM: %d MIN: %s MAX: %s]"\
                           " BYTES: [BT-DATA: %lld BT-TOTAL: %lld INDEX: %lld"\
                             " COMBINED_TOTAL: %lld]",
-                btr->numkeys, (char *)minkey.ptr, (char *)maxkey.ptr,
-                btr->data_size, btr->malloc_size, index_size,
-                (btr->malloc_size + index_size));
+                btr->numkeys, mins, maxs, btr->data_size, btr->malloc_size,
+                index_size, (btr->malloc_size + index_size));
         buf[255] = '\0';
+        sdsfree(mins);
+        sdsfree(maxs);
     } else {
         snprintf(buf, 255, "INFO: KEYS: [NUM: %d MIN: %u MAX: %u]"\
                           " BYTES: [BT-DATA: %lld BT-TOTAL: %lld INDEX: %lld"\
                             " COMBINED_TOTAL: %lld]",
-               btr->numkeys, (uint32)(long)minkey.ptr, (uint32)(long)maxkey.ptr,
-               btr->data_size, btr->malloc_size, index_size,
-                (btr->malloc_size + index_size));
+               btr->numkeys, minkey.i, maxkey.i, btr->data_size,
+               btr->malloc_size, index_size, (btr->malloc_size + index_size));
         buf[255] = '\0';
     }
     robj *r = _createStringObject(buf);

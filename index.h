@@ -28,10 +28,21 @@ ALL RIGHTS RESERVED
 
 #include "redis.h"
 
-#include "alsosql.h"
 #include "btreepriv.h"
 #include "parser.h"
+#include "row.h"
+#include "alsosql.h"
+#include "aobj.h"
 #include "common.h"
+
+typedef struct r_ind {
+    robj  *obj;
+    int    table;
+    int    column;
+    uchar  type;
+    bool   virt; /* virtual - i.e. on primary key */
+    bool   nrl;  /* non relational index - i.e. redis command */
+} r_ind_t;
 
 int find_index( int tmatch, int cmatch);
 int match_index(int tmatch, int indices[]);
@@ -55,16 +66,21 @@ void createIndex(redisClient *c);
 int buildIndex(bt *btr, bt_n *x, bt *ibtr, int icol, int itbl, bool nrl);
 
 
-void addToIndex(redisDb *db, robj *pko, char *vals, uint32 cofsts[], int inum);
-void delFromIndex(redisDb *db, robj *old_pk, robj *row, int inum, int tmatch);
-void updateIndex( redisDb *db,
-                  robj    *old_pk,
-                  robj    *new_pk,
-                  robj    *new_val,
-                  robj    *row,
-                  int      inum,
-                  uchar    pk_update,
-                  int      tmatch);
+void addToIndex(redisDb *db, aobj *apk, char *vals, uint32 cofsts[], int inum);
+void delFromIndex(redisDb *db, aobj *aopk, void *rrow, int inum, int tmatch);
+void updateIndex(redisDb *db,
+                 aobj    *aopk,
+                 aobj    *anpk,
+                 aobj    *newval,
+                 void    *rrow,
+                 int      inum,
+                 int      tmatch);
+void updatePKIndex(redisDb *db,
+                   aobj    *aopk,
+                   aobj    *anpk,
+                   void    *rrow,
+                   int      inum,
+                   int      tmatch);
 
 void emptyIndex(redisDb *db, int inum);
 void dropIndex(redisClient *c);

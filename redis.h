@@ -140,11 +140,10 @@ void dictRedisObjectDestructor(void *privdata, void *val);
 #define REDIS_HASH       4
 #ifdef ALSOSQL
   #define REDIS_BTREE           5
-  #define REDIS_ROW             6
-  #define REDIS_JOINROW         7
-  #define REDIS_APPEND_SET      8
-  #define REDIS_VAL_SET         9
-  #define REDIS_NRL_INDEX      10
+  #define REDIS_JOINROW         6
+  #define REDIS_APPEND_SET      7
+  #define REDIS_VAL_SET         8
+  #define REDIS_NRL_INDEX       9
 #endif
 
 typedef struct redisDb {

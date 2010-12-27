@@ -1,5 +1,6 @@
 /*
- * This file implements the NonReleationIndex logic in AlchemyDB
+ *
+ * This file implements stream parsing for Rows
  *
 
 GPL License
@@ -21,27 +22,30 @@ ALL RIGHTS RESERVED
 
     You should have received a copy of the GNU General Public License
     along with AlchemyDatabase.  If not, see <http://www.gnu.org/licenses/>.
+
  */
 
-#ifndef __NRI__H
-#define __NRI__H
+#ifndef __ALSOSQL_STREAM_H
+#define __ALSOSQL_STREAM_H
 
-#include "redis.h"
-
-#include "btreepriv.h"
-#include "row.h"
-#include "parser.h"
-#include "alsosql.h"
 #include "aobj.h"
 #include "common.h"
 
-void freeNrlIndexObject(robj *o);
 
-void nrlIndexAdd(robj *o, aobj *apk, char *vals, uint32 cofsts[]);
+uint32 skipToVal(uchar **stream);
 
-bool parseNRLcmd(char *o_s, list *nrltoks, list *nrlcols, int tmatch);
-sds rebuildOrigNRLcmd(robj *o);
+uint32 getStreamMallocSize(uchar *stream, uchar btype);
 
-void runNrlIndexFromStream(uchar *stream, d_l_t *nrlind, int itbl);
+int btStreamCmp(void *a, void *b);
 
-#endif /* __NRI__H */ 
+char *createBTKey(const aobj *key,
+                   int        ktype,
+                   bool      *med,
+                   uchar     *sflag,
+                   uint32    *ksize);
+void  destroyBTKey(char *simkey, bool  med);
+
+void convertStream2Key(uchar *stream, aobj *key);
+uchar *parseStream(uchar *stream, uchar btype);
+
+#endif /* __ALSOSQL_STREAM_H */

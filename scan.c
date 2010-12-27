@@ -31,16 +31,18 @@ ALL RIGHTS RESERVED
 #include <unistd.h>
 #include <float.h>
 
-#include "adlist.h"
 #include "redis.h"
+#include "adlist.h"
 
 #include "bt_iterator.h"
 #include "row.h"
-#include "sql.h"
+#include "wc.h"
 #include "orderby.h"
+#include "index.h"
+#include "colparse.h"
 #include "range.h"
 #include "alsosql.h"
-#include "index.h"
+#include "aobj.h"
 
 // FROM redis.c
 #define RL4 redisLog(4,
@@ -53,7 +55,6 @@ typedef struct filter_row {
     redisClient   *c;
     cswc_t        *w;
     qr_t          *q;
-    robj          *btt;
     int            tmatch;
     int            qcols;
     int           *cmatchs;
@@ -62,7 +63,6 @@ typedef struct filter_row {
     list          *ll;
     bool           cstar;
     uchar          ftype;
-    uchar          pktype;
     uint32         lowi;
     uint32         highi;
     float          lowf;
@@ -72,13 +72,11 @@ typedef struct filter_row {
 } fr_t;
 
 static bool init_filter_row(fr_t *fr, redisClient *c, cswc_t *w, qr_t *q,
-                            robj *btt, int tmatch, int qcols, int *cmatchs,
-                            bool nowc, uchar ctype, list *ll, bool cstar,
-                            uchar ftype, uchar pktype) {
+                            int tmatch, int qcols, int *cmatchs, bool nowc,
+                            uchar ctype, list *ll, bool cstar, uchar ftype) {
     fr->c       = c;
     fr->w       = w;
     fr->q       = q;
-    fr->btt     = btt;
     fr->tmatch  = tmatch;
     fr->qcols   = qcols;
     fr->cmatchs = cmatchs;
@@ -87,7 +85,6 @@ static bool init_filter_row(fr_t *fr, redisClient *c, cswc_t *w, qr_t *q,
     fr->ll      = ll;
     fr->cstar   = cstar;
     fr->ftype   = ftype;
-    fr->pktype  = pktype;
     fr->lowi    = -1;
     fr->highi   = -1;
     fr->lowf    = FLT_MAX;
@@ -135,35 +132,34 @@ static bool is_match(aobj *la, aobj *a, uchar ftype) {
 }
 
 //TODO merge w/ ALL RangeOps and InOps when FILTERS are implemented
-static void condSelectReply(fr_t *fr, robj *key, robj *row, ulong *card) {
+static void condSelectReply(fr_t *fr, aobj *akey, void *rrow, ulong *card) {
     uchar hit = 0;
     if (fr->nowc) {
         hit = 1;
     } else {
-        aobj a = getRawCol(row, fr->w->cmatch, NULL, fr->tmatch,
-                           NULL, fr->ftype, 0);
+        aobj acol = getRawCol(rrow, fr->w->cmatch, NULL, fr->tmatch, NULL, 0);
         if (fr->w->low) { /* RANGE_QUERY */
-            hit = is_hit(fr, &a);
+            hit = is_hit(fr, &acol);
         } else {          /* IN_QUERY */
             listNode *ln;
             listIter *li = listGetIterator(fr->w->inl, AL_START_HEAD);
             while((ln = listNext(li)) != NULL) {
                 aobj *la = ln->value;
-                hit      = is_match(la, &a, fr->ftype);
+                hit      = is_match(la, &acol, fr->ftype);
                 if (hit) break;
             }
             listReleaseIterator(li);
         }
-        destroyAobj(&a); /* free SixBitStr from getRawCol() */
+        releaseAobj(&acol);
     }
 
     if (hit) {
         *card = *card + 1;
         if (fr->cstar) return; /* just counting */
-        robj *row = btFindVal(fr->btt, key, fr->pktype);
-        robj *r   = outputRow(row, fr->qcols, fr->cmatchs, key, fr->tmatch, 0);
+        robj *r = outputRow(rrow, fr->qcols, fr->cmatchs,
+                            akey, fr->tmatch, 0);
         if (fr->q->qed) {
-            addORowToRQList(fr->ll, r, row, fr->w->obc, key,
+            addORowToRQList(fr->ll, r, rrow, fr->w->obc, akey,
                             fr->tmatch, fr->ctype);
             decrRefCount(r);
         } else {
@@ -173,20 +169,6 @@ static void condSelectReply(fr_t *fr, robj *key, robj *row, ulong *card) {
     }
 }
 
-/* walk IN_List and copyRobjToAobj() */
-static void convertINLtoAobj(cswc_t *w, uchar ftype) {
-    listNode *ln;
-    list     *nl = listCreate();
-    listIter *li = listGetIterator(w->inl, AL_START_HEAD);
-    while((ln = listNext(li)) != NULL) {
-        robj *ink = ln->value;     
-        aobj *a   = copyRobjToAobj(ink, ftype);
-        listAddNodeTail(nl, a);
-    }
-    listRelease(w->inl);
-    w->inl       = nl;
-    w->inl->free = destroyAobj;
-}
 
 /* SYNTAX
    1.) SCANSELECT * FROM tbl
@@ -266,8 +248,8 @@ void tscanCommand(redisClient *c) {
     }
 
     robj *btt  = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
+    bt   *btr = (bt *)btt->ptr;
     if (cstar && nowc) { /* SCANSELECT COUNT(*) FROM tbl */
-        bt *btr = (bt *)btt->ptr;
         addReplyLongLong(c, (long long)btr->numkeys);
         goto tscan_end;
     }
@@ -288,18 +270,15 @@ void tscanCommand(redisClient *c) {
     uchar    pktype = rt->col_type[0];
     uchar    ftype  = (w.cmatch == -1) ? pktype : rt->col_type[w.cmatch];
     fr_t fr;
-    if (!init_filter_row(&fr, c, &w, &q, btt, tmatch, qcols, cmatchs, nowc,
-                         ctype, ll, cstar, ftype, pktype)) goto tscan_end;
-
-    //TODO: push convertINLtoAobj() into init_filter_row()
-    if (w.inl) convertINLtoAobj(&w, ftype);
+    if (!init_filter_row(&fr, c, &w, &q, tmatch, qcols, cmatchs, nowc,
+                         ctype, ll, cstar, ftype)) goto tscan_end;
 
     LEN_OBJ
     btEntry *be;
     int      sent  =  0;
     long     loops = -1;
-    btSIter *bi    = q.pk_lo ? btGetFullIteratorXth(btt, w.ofst, 1):
-                               btGetFullRangeIterator(btt, 1);
+    btSIter *bi    = q.pk_lo ? btGetFullIteratorXth(btr, w.ofst):
+                               btGetFullRangeIterator(btr);
     while ((be = btRangeNext(bi)) != NULL) {
         loops++;
         if (q.pk_lim) {

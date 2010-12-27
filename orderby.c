@@ -34,10 +34,11 @@ ALL RIGHTS RESERVED
 #include "adlist.h"
 
 #include "row.h"
-#include "alsosql.h"
 #include "store.h"
 #include "rpipe.h"
 #include "parser.h"
+#include "alsosql.h"
+#include "aobj.h"
 #include "common.h"
 #include "orderby.h"
 
@@ -53,31 +54,31 @@ extern char  *Order_by_col_val;
 int intOrderBySort(const void *s1, const void *s2) {
     obsl_t *o1 = (obsl_t *)s1;
     obsl_t *o2 = (obsl_t *)s2;
-    int    *i1 = (int *)(o1->val);
-    int    *i2 = (int *)(o2->val);
+    int    *i1 = (int *)(o1->key);
+    int    *i2 = (int *)(o2->key);
     return *i1 - *i2;
 }
 int intOrderByRevSort(const void *s1, const void *s2) {
     obsl_t *o1 = (obsl_t *)s1;
     obsl_t *o2 = (obsl_t *)s2;
-    int    *i1 = (int *)(o1->val);
-    int    *i2 = (int *)(o2->val);
+    int    *i1 = (int *)(o1->key);
+    int    *i2 = (int *)(o2->key);
     return *i2 - *i1;
 }
 
 int floatOrderBySort(const void *s1, const void *s2) {
     obsl_t *o1 = (obsl_t *)s1;
     obsl_t *o2 = (obsl_t *)s2;
-    float  *i1 = (float *)(o1->val);
-    float  *i2 = (float *)(o2->val);
+    float  *i1 = (float *)(o1->key);
+    float  *i2 = (float *)(o2->key);
     float   f  = *i1 - *i2;
     return (f == 0.0) ? 0 : ((f > 0.0) ? 1: -1);
 }
 int floatOrderByRevSort(const void *s1, const void *s2) {
     obsl_t *o1 = (obsl_t *)s1;
     obsl_t *o2 = (obsl_t *)s2;
-    float  *i1 = (float *)(o1->val);
-    float  *i2 = (float *)(o2->val);
+    float  *i1 = (float *)(o1->key);
+    float  *i2 = (float *)(o2->key);
     float   f  = *i1 - *i2;
     return (f == 0.0) ? 0 : ((f > 0.0) ? -1: 1);
 }
@@ -85,8 +86,8 @@ int floatOrderByRevSort(const void *s1, const void *s2) {
 int stringOrderBySort(const void *s1, const void *s2) {
     obsl_t  *o1 = (obsl_t *)s1;
     obsl_t  *o2 = (obsl_t *)s2;
-    char   **c1 = (char **)(o1->val);
-    char   **c2 = (char **)(o2->val);
+    char   **c1 = (char **)(o1->key);
+    char   **c2 = (char **)(o2->key);
     char    *x1 = *c1;
     char    *x2 = *c2;
     return (x1 && x2) ? strcmp(x1, x2) : x1 - x2; /* strcmp() not ok w/ NULLs */
@@ -94,40 +95,41 @@ int stringOrderBySort(const void *s1, const void *s2) {
 int stringOrderByRevSort(const void *s1, const void *s2) {
     obsl_t  *o1 = (obsl_t *)s1;
     obsl_t  *o2 = (obsl_t *)s2;
-    char   **c1 = (char **)(o1->val);
-    char   **c2 = (char **)(o2->val);
+    char   **c1 = (char **)(o1->key);
+    char   **c2 = (char **)(o2->key);
     char    *x1 = *c1;
     char    *x2 = *c2;
     return (x1 && x2) ? strcmp(x2, x1) : x2 - x1; /* strcmp() not ok w/ NULLs */
 }
 
 void addORowToRQList(list  *ll,
-                     robj  *r,
-                     robj  *row,
+                     void  *r,
+                     void  *rrow,
                      int    obc,
-                     robj  *pko,
+                     aobj  *apk,
                      int    tmatch,
                      uchar  ctype) {
     flag cflag;
     obsl_t *ob  = (obsl_t *)malloc(sizeof(obsl_t));/*freed sortedOrdrByCleanup*/
     if (r) {
-        ob->row = cloneRobj(r); /*decrRefCount()d N sortedOrderByCleanup() */
+        /*decrRefCount()d N sortedOrderByCleanup() */
+        ob->row = cloneRobj((robj *)r);
     } else {
         /* ONLY in istoreCommit SELECT PK ORDER BY notPK (to preserve pk) */
-        ob->row = row->ptr;
+        ob->row = rrow; //TODO DANGER ... TEST THIS
     }
-    aobj    ao  = getRawCol(row, obc, pko, tmatch, &cflag, ctype, 0);
+    aobj ao = getRawCol(rrow, obc, apk, tmatch, &cflag, 0);
     if (ctype == COL_TYPE_INT) {
-        ob->val   = (void *)(long)ao.i;
+        ob->key   = (void *)(long)ao.i;
     } else if (ctype == COL_TYPE_FLOAT) {
-        memcpy(&(ob->val), &ao.f, sizeof(float));
+        memcpy(&(ob->key), &ao.f, sizeof(float));
     } else {
         char *s   = malloc(ao.len + 1); /*free()d in sortedOrderByCleanup() */
         memcpy(s, ao.s, ao.len);
         s[ao.len] = '\0';
-        ob->val   = s;
-        if (ao.sixbit) free(ao.s); /* getRawCol() malloc()s sixbit strings */
+        ob->key   = s;
     }
+    releaseAobj(&ao);
     listAddNodeTail(ll, ob);
 }
 
@@ -162,40 +164,13 @@ void sortedOrderByCleanup(obsl_t **vector,
     for (int k = 0; k < vlen; k++) {
         obsl_t *ob = vector[k];
         if (decr_row)                 decrRefCount(ob->row);
-        if (ctype == COL_TYPE_STRING) free(        ob->val);
+        if (ctype == COL_TYPE_STRING) free(        ob->key);
         free(ob);
     }
 }
 
 /* ISTORE ISTORE ISTORE ISTORE ISTORE ISTORE ISTORE ISTORE ISTORE ISTORE */
 /* ISTORE ISTORE ISTORE ISTORE ISTORE ISTORE ISTORE ISTORE ISTORE ISTORE */
-static robj IstoreOrderByRobj;
-static void init_IstoreOrderByRobj() { /* NOTE: only needs to be called once */
-    IstoreOrderByRobj.type     = REDIS_ROW;
-    IstoreOrderByRobj.encoding = REDIS_ENCODING_RAW;
-    IstoreOrderByRobj.refcount = 1;
-}
-
-/* istoreAction only understands robj's */
-static robj *createObjFromCol(void *col, uchar ctype) {
-    robj *r;
-    if (ctype == COL_TYPE_INT) {
-        r           = createObject(REDIS_STRING, NULL);
-        r->encoding = REDIS_ENCODING_INT;
-        r->ptr      = col;
-    } else if (ctype == COL_TYPE_FLOAT) {
-        float f;
-        memcpy(&f, col, sizeof(float));
-        char buf[32];
-        snprintf(buf, 31, "%10.10g", f);
-        buf[31] = '\0';
-        r = _createStringObject(buf);
-    } else {
-        r = _createStringObject(col);
-    }
-    return r;
-}
-
 int sortedOrderByIstore(redisClient  *c,
                         cswc_t       *w,
                         redisClient  *fc,
@@ -207,11 +182,8 @@ int sortedOrderByIstore(redisClient  *c,
                         uchar         ctype,
                         obsl_t      **vector,
                         int           vlen) {
-    static bool inited_IstoreOrderByRobj = 0;
-    if (!inited_IstoreOrderByRobj) {
-        init_IstoreOrderByRobj();
-        inited_IstoreOrderByRobj = 1;
-    }
+    aobj akey;
+    initAobj(&akey);
 
     int sent = 0;
     for (int k = 0; k < vlen; k++) {
@@ -220,13 +192,13 @@ int sortedOrderByIstore(redisClient  *c,
             w->ofst--;
         } else {
             sent++;
-            obsl_t *ob            = vector[k];
-            IstoreOrderByRobj.ptr = ob->row;
-            robj *key             = createObjFromCol(ob->val, ctype);
-            robj *row             = &IstoreOrderByRobj;
-            if (!istoreAction(c, fc, w->tmatch, cmatchs, qcols, w->sto,
-                              key, row, nname, sub_pk, nargc))
-                                  return -1;
+            obsl_t *ob = vector[k];
+            if (!initAobjFromVoid(&akey, c, ob->key, ctype)) return -1;
+            aobj *row  = ob->row;
+            bool  ret  = istoreAction(c, fc, w->tmatch, cmatchs, qcols, w->sto,
+                                      &akey, row, nname, sub_pk, nargc);
+            releaseAobj(&akey);
+            if (!ret) return -1;
         }
     }
     return sent;
@@ -240,13 +212,13 @@ void addJoinOutputRowToList(jrow_reply_t *r, void *resp) {
     obsl_t *ob = (obsl_t *)malloc(sizeof(obsl_t));
     ob->row    = resp;
     if (r->ctype == COL_TYPE_INT) {
-        ob->val = Order_by_col_val ? (void *)(long)atoi(Order_by_col_val) :
+        ob->key = Order_by_col_val ? (void *)(long)atoi(Order_by_col_val) :
                                      (void *)-1; /* -1 for UINT */
     } else if (r->ctype == COL_TYPE_FLOAT) {
         float f = Order_by_col_val ? atof(Order_by_col_val) : FLT_MIN;
-        memcpy(&(ob->val), &f, sizeof(float));
+        memcpy(&(ob->key), &f, sizeof(float));
     } else if (r->ctype == COL_TYPE_STRING) {
-        ob->val = Order_by_col_val;
+        ob->key = Order_by_col_val;
     }
     listAddNodeTail(r->ll, ob);
 }

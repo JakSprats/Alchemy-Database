@@ -32,119 +32,33 @@ ALL RIGHTS RESERVED
 
 #include "common.h"
 
-
-typedef struct r_tbl {
-    robj   *name;
-    int     col_count;
-    robj   *col_name[MAX_COLUMN_PER_TABLE];
-    uchar   col_type[MAX_COLUMN_PER_TABLE];
-    /* col_flags -> current usage only AUTO_INCREMENT */
-    uchar   col_flags[MAX_COLUMN_PER_TABLE];
-    int     virt_indx; /* TODO rename to virt_inum */
-} r_tbl_t;
-
 typedef struct dual_lists {
     list *l1;
     list *l2;
     short num;
 } d_l_t;
 
-typedef struct r_ind {
-    robj  *obj;
-    int    table;
-    int    column;
-    uchar  type;
-    bool   virt; /* virtual - i.e. on primary key */
-    bool   nrl;  /* non relational index - i.e. redis command */
-} r_ind_t;
-
-#define UETYPE_ERR    0
-#define UETYPE_INT    1
-#define UETYPE_FLOAT  2
-#define UETYPE_STRING 3
-typedef struct update_expression {
-    bool  yes;
-    char  op;
-    int   c1match;
-    int   type;
-    char *pred;
-    int   plen;
-} ue_t;
+bool cCpyOrReply(redisClient *c, char *src, char *dest, unsigned int len);
 
 typedef struct check_sql_where_clause {
-    robj  *key;  
-    robj  *low;  
-    robj  *high; 
-    list  *inl;  
-    char  *stor; 
-    char  *lvr;  
+    robj  *key;
+    robj  *low;
+    robj  *high;
+    list  *inl;
+    char  *stor;
+    char  *lvr;
     int    imatch;
     int    tmatch;
     int    cmatch;
     int    obc;    /* ORDER BY col */
     int    obt;    /* ORDER BY tbl -> JOINS */
-    bool   asc;   
-    int    lim;   
+    bool   asc;
+    int    lim;
     int    ofst;
     char  *ovar;  /* OFFSET variable name - used by cursors */
-    sds    token;    
+    sds    token;
     int    sto;
 } cswc_t;
-
-int find_table(char *tname);
-int find_table_n(char *tname, int len);
-int find_column(int tmatch, char *column);
-int find_column_n(int tmatch, char *column, int len);
-int get_all_cols(int tmatch, int cmatchs[]);
-void incrOffsetVar(redisClient *c, cswc_t *w, long incr);
-
-bool cCpyOrReply(redisClient *c, char *src, char *dest, unsigned int len);
-
-/* TABLE_CHECK_OR_REPLY(char *TBL, RET) -
-     creates (int tmatch) */
-#define TABLE_CHECK_OR_REPLY(TBL, RET)        \
-    int tmatch = find_table(TBL);             \
-    if (tmatch == -1) {                       \
-        addReply(c, shared.nonexistenttable); \
-        return RET;                           \
-    }
-
-/* COLUMN_CHECK_OR_REPLY(char *cargv2ptr) -
-     creates (char *cname, int cmatch)    */
-#define COLUMN_CHECK_OR_REPLY(cargv2ptr, retval)   \
-    char *cname  = cargv2ptr;                      \
-    int   cmatch = find_column(tmatch, cname);     \
-    if (cmatch == -1) {                            \
-        addReply(c,shared.nonexistentcolumn);      \
-        return retval;                             \
-    }
-
-bool parseCommaSpaceListReply(redisClient *c,
-                              char        *y,
-                              bool         col_check,
-                              bool         tbl_check,
-                              bool         join_check,
-                              int          tmatch,    /* COL or TBL */
-                              int          cmatchs[], /* COL or TBL */
-                              int         *numt,      /* JOIN */
-                              int          tmatchs[], /* JOIN */
-                              int          j_tbls[],  /* JOIN */
-                              int          j_cols[],  /* JOIN */
-                              int         *qcols,
-                              bool        *cstar);
-
-bool parseSelectReply(redisClient *c,
-                      bool         is_scan,
-                      bool        *no_wc,
-                      int         *tmatch,
-                      int          cmatchs[MAX_COLUMN_PER_TABLE],
-                      int         *qcols,
-                      bool        *join,
-                      bool        *cstar,
-                      char        *clist,
-                      char        *from,
-                      char        *tlist,
-                      char        *where);
 
 void init_check_sql_where_clause(cswc_t *w, int tmatch, sds token);
 void destroy_check_sql_where_clause(cswc_t *w);

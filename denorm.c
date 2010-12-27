@@ -34,6 +34,7 @@ ALL RIGHTS RESERVED
 #include "bt_iterator.h"
 #include "rpipe.h"
 #include "parser.h"
+#include "aobj.h"
 #include "alsosql.h"
 
 // FROM redis.c
@@ -74,28 +75,29 @@ void denormCommand(redisClient *c) {
     fc->argv          = argv;
     fc->argc          = 4;
     ulong        card = 0;
-    robj        *o    = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
-    btSIter     *bi   = btGetFullRangeIterator(o, 1);
+    robj        *btt  = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
+    bt          *btr  = (bt *)btt->ptr;
+    btSIter     *bi   = btGetFullRangeIterator(btr);
     while ((be = btRangeNext(bi)) != NULL) {      // iterate btree
-        robj *key = be->key;
-        robj *row = be->val;
+        aobj *apk  = be->key;
+        void *rrow = be->val;
 
         sds hname = sdsempty();
-        if (key->encoding == REDIS_ENCODING_RAW) {
-            hname = sdscatprintf(hname, s_wldcrd, key->ptr);
+        if (apk->type == COL_TYPE_STRING) {
+            hname = sdscatprintf(hname, s_wldcrd, apk->s);
         } else {
-            hname = sdscatprintf(hname, d_wldcrd, key->ptr);
+            hname = sdscatprintf(hname, d_wldcrd, apk->i);
         }
         fc->argv[1] = createStringObject(hname, sdslen(hname));
         sdsfree(hname);
 
         /* PK is in name */
         for (int i = 1; i < Tbl[server.dbid][tmatch].col_count; i++) {
-            robj *r     = createColObjFromRow(row, i, key, tmatch);
-            sds tname   = Tbl[server.dbid][tmatch].col_name[i]->ptr;
+            sds  tname  = Tbl[server.dbid][tmatch].col_name[i]->ptr;
             fc->argv[2] = createStringObject(tname, sdslen(tname));
-            sds cname   = r->ptr;
-            fc->argv[3] = createStringObject(cname, sdslen(cname));
+            aobj rcol   = getRawCol(rrow, i, apk, tmatch, NULL, 1);
+            fc->argv[3] = _createStringObject(rcol.s);
+            releaseAobj(&rcol);
             rsql_resetFakeClient(fc);
             hsetCommand(fc); /* does this free argv[*}? possible MEM_LEAK */
         }

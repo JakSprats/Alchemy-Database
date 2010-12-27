@@ -50,8 +50,8 @@ function large_update_test()
                                       wc_oby .. 
                                       ' LIMIT ' .. lim ..
                                       ' OFFSET '.. unique_cursor_name);
-        socket.sleep(1);
-         _print ('updated_rows: ' .. updated_rows);
+        --socket.sleep(1);
+        --_print ('updated_rows: ' .. updated_rows);
     end
     is_external.print_diff_time('BATCH UPDATE: set i=99 WHERE fk = 1', x);
     
@@ -70,21 +70,19 @@ function large_delete_test()
     end
 
     local deleted_rows = lim;
-    unique_cursor_name = "delete_cursor_for_ten_mill_modTEN_fk";
     
     _print ('\nBATCH DELETE: WHERE fk = 1');
     local x = socket.gettime()*1000;
     while deleted_rows == lim do
         deleted_rows = delete(tbl, wc_oby .. 
-                                   ' LIMIT ' .. lim ..
-                                   ' OFFSET '.. unique_cursor_name);
-        socket.sleep(1);
-         _print ('deleted_rows: ' .. deleted_rows);
+                                   ' LIMIT ' .. lim); 
+        --socket.sleep(1);
+        --_print ('deleted_rows: ' .. deleted_rows);
     end
     is_external.print_diff_time('BATCH DELETE: WHERE fk = 1', x);
 end
 
 if is_external.yes == 1 then
-    large_update_test();
+    --large_update_test();
     large_delete_test();
 end

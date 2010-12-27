@@ -29,7 +29,7 @@ ALL RIGHTS RESERVED
 #include "adlist.h"
 #include "redis.h"
 
-#include "sql.h"
+#include "wc.h"
 #include "common.h"
 
 typedef struct jqo {

@@ -36,7 +36,11 @@ ALL RIGHTS RESERVED
 #include "bt.h"
 #include "row.h"
 #include "rpipe.h"
+#include "colparse.h"
+#include "stream.h"
+#include "index.h"
 #include "alsosql.h"
+#include "aobj.h"
 #include "common.h"
 #include "nri.h"
 
@@ -51,11 +55,10 @@ extern r_ind_t Index[MAX_NUM_DB][MAX_NUM_INDICES];
 
 /* creates text for trigger's command */
 static sds genNRL_Cmd(d_l_t  *nrlind,
-                      robj   *pko,
+                      aobj   *apk,
                       char   *vals,
                       uint32  cofsts[],
-                      bool    from_insert,
-                      robj   *row,
+                      void   *rrow,
                       int     tmatch) {
     sds       cmd     = sdsempty();
     list     *nrltoks = nrlind->l1;
@@ -78,22 +81,21 @@ static sds genNRL_Cmd(d_l_t  *nrlind,
         if (cmatch != -1) {
             char *x;
             int   xlen;
-            robj *col = NULL;
-            if (from_insert) {
-                if (!cmatch) { /* PK not in ROW */
-                    x    = pko->ptr;
-                    xlen = sdslen(x);
+            if (vals) { /* from INSERT */
+                if (!cmatch) { /* PK not stored in ROW */
+                    x    = strFromAobj(apk, &xlen);
                 } else {       /* get COL from cofsts */
                     x    = vals + cofsts[cmatch - 1];
                     xlen = cofsts[cmatch] - cofsts[cmatch - 1] - 1;
                 }
+                cmd = sdscatlen(cmd, x, xlen);
             } else { /* not from INSERT -> fetch row */
-                col  = createColObjFromRow(row, cmatch, pko, tmatch);
-                x    = col->ptr;
-                xlen = sdslen(col->ptr);
+                aobj rcol = getRawCol(rrow, cmatch, apk, tmatch, NULL, 1);
+                x         = rcol.s;
+                xlen      = rcol.len;
+                cmd = sdscatlen(cmd, x, xlen);
+                releaseAobj(&rcol);
             }
-            cmd = sdscatlen(cmd, x, xlen);
-            if (col) decrRefCount(col);
         }
     }
     listReleaseIterator(li1);
@@ -178,22 +180,23 @@ run_cmd_end:
     }
 }
 
-void nrlIndexAdd(robj *o, robj *pko, char *vals, uint32 cofsts[]) {
-    sds cmd = genNRL_Cmd(o->ptr, pko, vals, cofsts, 1, NULL, -1);
+void nrlIndexAdd(robj *o, aobj *apk, char *vals, uint32 cofsts[]) {
+    sds cmd = genNRL_Cmd((d_l_t *)o->ptr, apk, vals, cofsts, NULL, -1);
     runCmdInFakeClient(cmd);
     sdsfree(cmd);
     return;
 }
 
-void runNrlIndexFromStream(uchar *stream, d_l_t *nrlind, int itbl) {
-    robj  key, val;
-    assignKeyRobj(stream,            &key);
-    assignValRobj(stream, REDIS_ROW, &val, BTREE_TABLE);
+void runNrlIndexFromStream(uchar *stream,
+                           d_l_t *nrlind,
+                           int    itbl) {
+    aobj key;
+    convertStream2Key(stream, &key);
+    void *rrow = parseStream(stream, BTREE_TABLE);
     /* create command and run it */
-    sds cmd = genNRL_Cmd(nrlind, &key, NULL, NULL, 0, &val, itbl);
+    sds cmd    = genNRL_Cmd(nrlind, &key, NULL, NULL, rrow, itbl);
     runCmdInFakeClient(cmd);
     sdsfree(cmd);
-    destroyAssignKeyRobj(&key);
 }
 
 /* CREATE NON-RELATIONAL-INDEX */

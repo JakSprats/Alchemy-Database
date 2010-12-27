@@ -39,8 +39,10 @@ ALL RIGHTS RESERVED
 #include "store.h"
 #include "orderby.h"
 #include "rpipe.h"
+#include "colparse.h"
 #include "parser.h"
 #include "alsosql.h"
+#include "aobj.h"
 #include "common.h"
 #include "join.h"
 
@@ -192,7 +194,7 @@ static bool buildJRowReply(build_jrow_reply_t  *b,
         robj *item = sde->key;
         if (b->j.obt == Index[server.dbid][b->j_indxs[lvl]].table) {
             obsl_t *ob       = (obsl_t *)item->ptr;
-            Order_by_col_val = (char *)ob->val;
+            Order_by_col_val = (char *)ob->key;
             first_entry      = (char *)ob->row;
         } else {
             first_entry      = (char *)item->ptr;
@@ -215,15 +217,15 @@ static bool buildJRowReply(build_jrow_reply_t  *b,
 }
 
 typedef struct join_add_cols {
-    robj *o;
+    bt   *btr;
     int   qcols;
     int  *j_tbls;
     int   itable;
     int  *j_cols;
     int   index;
     int  *jind_ncols;
-    robj *jk;
-    robj *val;
+    aobj *ajk;
+    void *rrow;
     int  *j_ind_len;
     bool  virt;
     bt   *jbtr;
@@ -237,18 +239,18 @@ static void m_strcpy_len(char *src, int len, char **dest) {
 }
 
 /* makes Copy - must be freeD */
-char *getCopyColStr(robj   *row,
-                    int     cmatch,
-                    robj   *okey,
-                    int     tmatch,
-                    uint32 *len) {
+static char *getCopyColStr(void   *rrow,
+                           int     cmatch,
+                           aobj   *aopk,
+                           int     tmatch,
+                           uint32 *len) {
     char   *dest;
-    aobj    ao  = getColStr(row, cmatch, okey, tmatch);
+    aobj    ao  = getRawCol(rrow, cmatch, aopk, tmatch, NULL, 1);
     // force_string(INT) comes from a buffer, must be copied here
     char   *src = ao.s;
     m_strcpy_len(src, ao.len, &dest); /* freeD in freeIndRowEntries */
-    if (ao.sixbit) free(src);
     *len        = ao.len;
+    releaseAobj(&ao);
     return dest;
 }
 
@@ -270,17 +272,12 @@ static void joinAddColsFromInd(join_add_cols_t *a,
     cu32_t  cresp[MAX_JOIN_INDXS];
     int     row_len = 0;
     int     nresp   = 0;
-    uchar   pktype  = Tbl[server.dbid][a->itable].col_type[0];
-    robj   *row     = a->virt ? a->val : btFindVal(a->o, a->val, pktype);
-    robj   *key     = a->virt ? a->jk  : a->val;
-
-    // Redisql understands INT encoding where redis doesnt(dict.c)
-    a->jk = cloneRobj(a->jk); // copies BtRobj global in bt.c - NOT MEM_LEAK
+    aobj   *akey    = a->ajk;
 
     for (int i = 0; i < a->qcols; i++) {
         int tmatch = a->j_tbls[i];
         if (tmatch == a->itable) {
-            cresp[nresp].s  = getCopyColStr(row, a->j_cols[i], key, tmatch,
+            cresp[nresp].s  = getCopyColStr(a->rrow, a->j_cols[i], akey, tmatch,
                                             &cresp[nresp].len);
             row_len        += cresp[nresp].len + 1; // +1 for OUTPUT_DELIM
             nresp++;
@@ -304,19 +301,19 @@ static void joinAddColsFromInd(join_add_cols_t *a,
     if (obt == a->itable) {
         uint32  vlen;
         obsl_t *ob = (obsl_t *)malloc(sizeof(obsl_t)); /*freed N freeIndRow */
-        ob->val    = getCopyColStr(row, obc, key, obt, &vlen);
+        ob->key    = getCopyColStr(a->rrow, obc, akey, obt, &vlen);
         ob->row    = list_val;
         list_val   = (char *)ob; /* in ORDER BY list_val -> obsl_t */
     }
 
     // TODO unify, refactor, etc..
     //
-    // NOTE: (clarification of clusterfuct implementation)
+    // NOTE: (clarification of clusterFUcT implementation)
     //       1st index: BT         of Lists
     //       2nd index: ValSetDict of AppendSets (should be List)
     if (a->index == 0) { // first joined index needs BTREE (i.e. sorted)
         joinRowEntry  k;
-        k.key           = a->jk;
+        k.key           = createStringRobjFromAobj(a->ajk);
         joinRowEntry *x = btJoinFindVal(a->jbtr, &k);
 
         if (x) {
@@ -325,7 +322,7 @@ static void joinAddColsFromInd(join_add_cols_t *a,
         } else {
             joinRowEntry *jre = (joinRowEntry *)malloc(sizeof(joinRowEntry));
             list         *ll  = listCreate(); /* listRelease freeListOfIndRow*/
-            jre->key          = a->jk;
+            jre->key          = k.key;
             jre->val          = (void *)ll;
             listAddNodeHead(ll, list_val);
             btJoinAddRow(a->jbtr, jre);
@@ -333,14 +330,15 @@ static void joinAddColsFromInd(join_add_cols_t *a,
     } else { // rest of the joined indices are redis DICTs for speed
         robj      *res_setobj;
         robj      *ind_row_obj = createObject(REDIS_JOINROW, list_val);
-        dictEntry *rde         = dictFind(rset[a->index]->ptr, a->jk);
+        robj      *key         = createStringRobjFromAobj(a->ajk);
+        dictEntry *rde         = dictFind(rset[a->index]->ptr, key);
         if (!rde) {
             // create AppendSet "list"
             res_setobj = createAppendSetObject();
-            dictAdd(rset[a->index]->ptr, a->jk, res_setobj);
+            dictAdd(rset[a->index]->ptr, key, res_setobj);
         } else {
             res_setobj = dictGetEntryVal(rde);
-            decrRefCount(a->jk);
+            decrRefCount(key);
         }
         dictAdd(res_setobj->ptr, ind_row_obj, NULL); // push to (list per jk)
     }
@@ -381,21 +379,21 @@ void joinGeneric(redisClient *c,
         }
     }
 
+    cswc_t  *w  = &jb->w; /* makes coding more compact */
     list *ll    = NULL;
     uchar ctype = COL_TYPE_NONE;
     if (Order_by) { /* ORDER BY logic */
         ll    = listCreate();
-        ctype = Tbl[server.dbid][jb->w.obt].col_type[jb->w.obc];
+        ctype = Tbl[server.dbid][w->obt].col_type[w->obc];
     }
 
     EMPTY_LEN_OBJ
-    if (jb->w.sto == -1) { INIT_LEN_OBJ } /* JoinStore can throw nested errs */
+    if (w->sto == -1) { INIT_LEN_OBJ } /* JoinStore can throw nested errs */
 
     int    j_ind_len [MAX_JOIN_INDXS];
     int    jind_ncols[MAX_JOIN_INDXS];
 
-    uchar  pk1type = jb->w.inl? COL_TYPE_STRING :
-                       Tbl[server.dbid]
+    uchar  pk1type = Tbl[server.dbid]
                          [Index[server.dbid][jb->j_indxs[0]].table].col_type[0];
     bt    *jbtr    = createJoinResultSet(pk1type);
 
@@ -414,58 +412,64 @@ void joinGeneric(redisClient *c,
     
     for (int i = 0; i < jb->n_ind; i++) { /* iterate join indices */
         btEntry    *be, *nbe;
-        j_ind_len[i]  = 0;
-        jc.index      = i;
-        jc.itable     = Index[server.dbid][jb->j_indxs[i]].table;
-        jc.o          = lookupKeyRead(c->db, Tbl[server.dbid][jc.itable].name);
-        jc.virt       = Index[server.dbid][jb->j_indxs[i]].virt;
-        robj *ind     = Index[server.dbid][jb->j_indxs[i]].obj;
+        j_ind_len[i] = 0;
+        jc.index     = i;
+        jc.itable    = Index[server.dbid][jb->j_indxs[i]].table;
+        robj *btt    = lookupKeyRead(c->db, Tbl[server.dbid][jc.itable].name);
+        jc.btr       = (bt *)btt->ptr;
+        jc.virt      = Index[server.dbid][jb->j_indxs[i]].virt;
+        uchar pktype = jc.btr->ktype;
      
-        if (jb->w.low) {     /* RANGE QUERY */
-            robj    *bt = jc.virt ? jc.o : lookupKey(c->db, ind);
-            btSIter *bi = btGetRangeIterator(bt, jb->w.low, jb->w.high,
-                                             jc.virt);
-            while ((be = btRangeNext(bi)) != NULL) {
-                if (jc.virt) {
-                    jc.jk  = be->key;
-                    jc.val = be->val;
-                    joinAddColsFromInd(&jc, rset, jb->w.obt, jb->w.obc);
-                } else {
-                    jc.jk                 = be->key;
-                    robj             *val = be->val;
-                    btSIter *nbi = btGetFullRangeIterator(val, 0);
+        if (w->low) { /* RANGE QUERY */
+            if (jc.virt) { /* PK */
+                btSIter *bi = btGetRangeIterator(jc.btr, w->low, w->high);
+                while ((be = btRangeNext(bi)) != NULL) {
+                    jc.ajk    = be->key;
+                    jc.rrow   = be->val;
+                    joinAddColsFromInd(&jc, rset, w->obt, w->obc);
+                }
+                btReleaseRangeIterator(bi);
+            } else {       /* FK */
+                robj    *ind  = Index[server.dbid][jb->j_indxs[i]].obj;
+                robj    *ibtt = lookupKey(c->db, ind);
+                bt      *ibtr = (bt *)ibtt->ptr;
+                btSIter *bi   = btGetRangeIterator(ibtr, w->low, w->high);
+                while ((be = btRangeNext(bi)) != NULL) {
+                    jc.ajk        = be->key;
+                    bt      *nbtr = be->val;
+                    btSIter *nbi  = btGetFullRangeIterator(nbtr);
                     while ((nbe = btRangeNext(nbi)) != NULL) {
-                        jc.val = nbe->key;
-                        joinAddColsFromInd(&jc, rset, jb->w.obt, jb->w.obc);
+                        jc.rrow = btFindVal(jc.btr, nbe->key, pktype);
+                        joinAddColsFromInd(&jc, rset, w->obt, w->obc);
                     }
                     btReleaseRangeIterator(nbi);
                 }
+                btReleaseRangeIterator(bi);
             }
-            btReleaseRangeIterator(bi);
-        } else {             /* IN() QUERY */
+        } else {      /* IN() QUERY */
             listNode *ln;
-            listIter *li  = listGetIterator(jb->w.inl, AL_START_HEAD);
+            listIter *li  = listGetIterator(w->inl, AL_START_HEAD);
             if (jc.virt) {
-                uchar pktype = Tbl[server.dbid][jc.itable].col_type[0];
                 while((ln = listNext(li)) != NULL) {
-                    jc.jk  = ln->value;
-                    jc.val = btFindVal(jc.o, jc.jk, pktype);
-                    if (jc.val) joinAddColsFromInd(&jc, rset,
-                                                  jb->w.obt, jb->w.obc);
+                    jc.ajk  = ln->value;
+                    jc.rrow = btFindVal(jc.btr, jc.ajk, pktype);
+                    if (jc.rrow) joinAddColsFromInd(&jc, rset, w->obt, w->obc);
                 }
             } else {
                 btSIter *nbi;
-                int   ind_col = (int)Index[server.dbid][jb->j_indxs[i]].column;
-                bool  fktype  = Tbl[server.dbid][jc.itable].col_type[ind_col];
-                robj *ibt     = lookupKey(c->db, ind);   
+                robj *ind    = Index[server.dbid][jb->j_indxs[i]].obj;
+                int   indcol = (int)Index[server.dbid][jb->j_indxs[i]].column;
+                bool  fktype = Tbl[server.dbid][jc.itable].col_type[indcol];
+                robj *ibtt   = lookupKey(c->db, ind);   
+                bt   *ibtr   = (bt *)ibtt->ptr;
                 while((ln = listNext(li)) != NULL) {
-                    jc.jk     = ln->value;
-                    robj *val = btIndFindVal(ibt->ptr, jc.jk, fktype);
-                    if (val) {
-                        nbi = btGetFullRangeIterator(val, 0);
+                    jc.ajk   = ln->value;
+                    bt *nbtr = btIndFindVal(ibtr, jc.ajk, fktype);
+                    if (nbtr) {
+                        nbi  = btGetFullRangeIterator(nbtr);
                         while ((nbe = btRangeNext(nbi)) != NULL) {
-                            jc.val = nbe->key;
-                            joinAddColsFromInd(&jc, rset, jb->w.obt, jb->w.obc);
+                            jc.rrow = btFindVal(jc.btr, nbe->key, pktype);
+                            joinAddColsFromInd(&jc, rset, w->obt, w->obc);
                         }
                         btReleaseRangeIterator(nbi);
                     }
@@ -504,7 +508,7 @@ void joinGeneric(redisClient *c,
         bjr.j.fc          = fc;
         bjr.j.jind_ncols  = jind_ncols;
         bjr.j.reply       = reply;
-        bjr.j.sto         = jb->w.sto;
+        bjr.j.sto         = w->sto;
         bjr.j.sub_pk      = sub_pk;
         bjr.j.nargc       = nargc; 
         bjr.j.nname       = jb->nname;
@@ -513,8 +517,8 @@ void joinGeneric(redisClient *c,
         bjr.j.qcols       = jb->qcols;
         bjr.n_ind         = jb->n_ind;
         bjr.card          = &card;
-        bjr.j.obt         = jb->w.obt;
-        bjr.j.obc         = jb->w.obc;
+        bjr.j.obt         = w->obt;
+        bjr.j.obc         = w->obc;
         bjr.j_indxs       = jb->j_indxs;
         bjr.j.ll          = ll;
         bjr.j.ctype       = ctype;
@@ -532,7 +536,7 @@ void joinGeneric(redisClient *c,
                 char *item = ln->value;
                 if (bjr.j.obt == Index[server.dbid][bjr.j_indxs[0]].table) {
                     obsl_t *ob       = (obsl_t *)item;
-                    Order_by_col_val = (char *)ob->val;
+                    Order_by_col_val = (char *)ob->key;
                     first_entry      = (char *)ob->row;
                 } else {
                     first_entry      = item;
@@ -553,7 +557,7 @@ void joinGeneric(redisClient *c,
         }
 
         if (Order_by) {
-            sent = sortJoinOrderByAndReply(c, &bjr, &jb->w);
+            sent = sortJoinOrderByAndReply(c, &bjr, w);
             if (sent == -1) err = 1;
             listRelease(ll);
         }
@@ -564,16 +568,15 @@ join_end:
     if (reply) free(reply);
 
     /* free joinRowEntry malloc from joinAddColsFromInd() */
-    bool  is_ob = (jb->w.obt == Index[server.dbid][jb->j_indxs[0]].table);
+    bool  is_ob = (w->obt == Index[server.dbid][jb->j_indxs[0]].table);
     btJoinRelease(jbtr, jind_ncols[0], is_ob, freeListOfIndRow);
 
     /* free joinRowEntry malloc from joinAddColsFromInd() */
     dictEntry *de;
     for (int i = 1; i < jb->n_ind; i++) {
-        dict         *set   = rset[i]->ptr;
-        bool          is_ob = (jb->w.obt ==
-                               Index[server.dbid][jb->j_indxs[i]].table);
-        dictIterator *di    = dictGetIterator(set);
+        dict      *set   = rset[i]->ptr;
+        bool       is_ob = (w->obt == Index[server.dbid][jb->j_indxs[i]].table);
+        dictIterator *di = dictGetIterator(set);
         while((de = dictNext(di)) != NULL) {
             robj *val  = dictGetEntryVal(de);
             dict *iset = val->ptr;
@@ -587,15 +590,15 @@ join_end:
     }
 
     if (err) return;
-    if (jb->w.lim != -1 && (uint32)sent < card) card = sent;
-    if (jb->w.sto != -1) {
+    if (w->lim != -1 && (uint32)sent < card) card = sent;
+    if (w->sto != -1) {
         addReplyLongLong(c, card);
-        if (jb->w.ovar) incrOffsetVar(c, &jb->w, card);
+        if (w->ovar) incrOffsetVar(c, w, card);
     } else if (jb->cstar) {
         lenobj->ptr = sdscatprintf(sdsempty(), ":%lu\r\n", card);
     } else {
         lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
-        if (jb->w.ovar) incrOffsetVar(c, &jb->w, card);
+        if (w->ovar) incrOffsetVar(c, w, card);
     }
 }
 
@@ -636,7 +639,7 @@ static void freeIndRow(void *s, int num_cols, bool is_ob, bool free_ptr) {
         obsl_t *ob = (obsl_t *)s;
         freeIndRowEntries(ob->row, num_cols);
         free(ob->row);          /* free ind_row */
-        free(ob->val);          /* free getCopyColStr */
+        free(ob->key);          /* free getCopyColStr */
         if (free_ptr) free(ob); /* free malloc */
     } else {
         freeIndRowEntries(s, num_cols);

@@ -30,10 +30,11 @@ ALL RIGHTS RESERVED
 #include "dict.h"
 
 #include "bt.h"
-#include "common.h"
-#include "alsosql.h"
 #include "index.h"
 #include "nri.h"
+#include "stream.h"
+#include "alsosql.h"
+#include "common.h"
 #include "rdb_alsosql.h"
 
 // FROM redis.c
@@ -130,7 +131,7 @@ robj *rdbLoadNRL(FILE *fp) {
 static int rdbSaveAllRows(FILE *fp, bt *btr, bt_n *x) {
     for (int i = 0; i < x->n; i++) {
         uchar *stream = KEYS(btr, x)[i];
-        int    ssize  = getStreamMallocSize(stream, REDIS_ROW, btr->is_index);
+        int    ssize  = getStreamMallocSize(stream, btr->btype);
         if (rdbSaveLen(fp, ssize)        == -1) return -1;
         if (fwrite(stream, ssize, 1, fp) == 0) return -1;
     }
@@ -150,12 +151,12 @@ int rdbSaveBT(FILE *fp, robj *o) {
         return 0;
     }
 
-    if (fwrite(&(btr->is_index), 1, 1, fp) == 0) return -1;
+    if (fwrite(&(btr->btype), 1, 1, fp) == 0) return -1;
     int tmatch = btr->num;
     if (rdbSaveLen(fp, tmatch) == -1) return -1;
 
     int dbid   = server.dbid;
-    if (btr->is_index == BTREE_TABLE) { /* BTree w/ DATA */
+    if (btr->btype == BTREE_TABLE) { /* BTree w/ DATA */
         //RL4 "%d: saving table: %s virt_index: %d",
             //tmatch, Tbl[dbid][tmatch].name->ptr, Tbl[dbid][tmatch].virt_indx);
         if (rdbSaveLen(fp, Tbl[dbid][tmatch].virt_indx) == -1) return -1;
@@ -201,10 +202,10 @@ static int rdbLoadRow(FILE *fp, bt *btr) {
 //TODO minimize malloc defragmentation HERE as we know the size of each row
 robj *rdbLoadBT(FILE *fp, redisDb *db) {
     unsigned int   u;
-    unsigned char  is_index;
+    unsigned char  btype;
     robj          *o = NULL;
-    if (fread(&is_index, 1, 1, fp) == 0) return NULL;
-    if (is_index == VIRTUAL_INDEX_TYPE) {
+    if (fread(&btype, 1, 1, fp) == 0) return NULL;
+    if (btype == VIRTUAL_INDEX_TYPE) {
         return createEmptyBtreeObject();
     }
 
@@ -212,7 +213,7 @@ robj *rdbLoadBT(FILE *fp, redisDb *db) {
     int tmatch = (int)u;
     int dbid = server.dbid;
 
-    if (is_index == BTREE_TABLE) { /* BTree w/ DATA */
+    if (btype == BTREE_TABLE) { /* BTree w/ DATA */
         if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR) return NULL;
         int inum                        = u;
         Tbl[dbid][tmatch].virt_indx     = inum;
@@ -247,7 +248,7 @@ robj *rdbLoadBT(FILE *fp, redisDb *db) {
         unsigned char ktype;
         if (fread(&ktype,    1, 1, fp) == 0) return NULL;
 
-        o = createBtreeObject(ktype, tmatch, is_index);
+        o = createBtreeObject(ktype, tmatch, btype);
         struct btree *btr  = (struct btree *)(o->ptr);
 
         unsigned int bt_nkeys; 
@@ -272,7 +273,7 @@ robj *rdbLoadBT(FILE *fp, redisDb *db) {
         Index[server.dbid][imatch].type = (unsigned char)u;
         unsigned char ktype;
         if (fread(&ktype,    1, 1, fp) == 0) return NULL;
-        o = createBtreeObject(ktype, imatch, is_index);
+        o = createBtreeObject(ktype, imatch, btype);
         Index[server.dbid][imatch].virt = 0;
         if (Num_indx[dbid] < (imatch + 1)) Num_indx[dbid] = imatch + 1;
     }

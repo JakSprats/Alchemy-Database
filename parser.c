@@ -89,35 +89,6 @@ robj **copyArgv(robj **argv, int argc) {
     return cargv;
 }
 
-/* used in "SELECT ... WHERE IN (list)" */
-/* conversion OK, "IN LIST"s are short */
-robj *convertRobj(robj *r, int type) {
-    if ((r->encoding == REDIS_ENCODING_RAW && type == COL_TYPE_STRING) ||
-        (r->encoding == REDIS_ENCODING_INT && type == COL_TYPE_INT)    ||
-        (r->encoding == REDIS_ENCODING_RAW && type == COL_TYPE_FLOAT))    {
-        return r;
-    }
-    robj *n = NULL;
-    if (r->encoding == REDIS_ENCODING_RAW) { /* string -> want int */
-        int i = atoi(r->ptr);
-        n           = createObject(REDIS_STRING, (void *)(long)i);
-        n->encoding = REDIS_ENCODING_INT;
-    } else {                                /* int    -> want string */
-        char buf[32];
-        snprintf(buf, 32, "%d", (int)(long)r->ptr);
-        buf[31] = '\0'; /* paranoia */
-        n = createStringObject(buf, strlen(buf));
-    }
-    decrRefCount(r);
-    return n;
-}
-
-void StaticRobjInit(robj *r, int type) {
-    r->type     = type;
-    r->encoding = REDIS_ENCODING_RAW; 
-    r->refcount = 1; 
-}
-
 char *rem_backticks(char *token, int *len) {
     char *otoken = token;
     int   olen   = *len;

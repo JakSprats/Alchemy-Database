@@ -33,7 +33,6 @@ ALL RIGHTS RESERVED
 #include "zmalloc.h"
 #include "redis.h"
 
-#include "alsosql.h"
 #include "bt.h"
 #include "bt_iterator.h"
 #include "row.h"
@@ -41,8 +40,12 @@ ALL RIGHTS RESERVED
 #include "orderby.h"
 #include "join.h"
 #include "rpipe.h"
+#include "index.h"
 #include "legacy.h"
+#include "colparse.h"
 #include "parser.h"
+#include "alsosql.h"
+#include "aobj.h"
 #include "common.h"
 #include "store.h"
 
@@ -145,15 +148,15 @@ bool istoreAction(redisClient *c,
                   int          cmatchs[],
                   int          qcols,
                   int          sto,
-                  robj        *pko,
-                  robj        *row,
+                  aobj        *apk,
+                  void        *rrow,
                   char        *nname,
                   bool         sub_pk,
                   uint32       nargc) {
     aobj  cols[MAX_COLUMN_PER_TABLE];
     int   totlen = 0;
     for (int i = 0; i < qcols; i++) {
-        cols[i]  = getColStr(row, cmatchs[i], pko, tmatch);
+        cols[i]  = getRawCol(rrow, cmatchs[i], apk, tmatch, NULL, 1);
         totlen  += cols[i].len;
     }
 
@@ -173,20 +176,20 @@ bool istoreAction(redisClient *c,
         argv[3]  = createStringObject(cols[n].s, cols[n].len);
     }
     for (int i = 0; i < qcols; i++) {
-        if (cols[i].sixbit) free(cols[i].s);
+        releaseAobj(&cols[i]);
     }
 
     rsql_resetFakeClient(fc);
     return performStoreCmdOrReply(c, fc, sto, 0);
 }
 
-bool istore_op(range_t *g, robj *key, robj *row, bool q) {
+bool istore_op(range_t *g, aobj *apk, void *rrow, bool q) {
     if (q) {
-        addORowToRQList(g->co.ll, NULL, row, g->co.w->obc,
-                        key, g->co.w->tmatch, g->co.ctype);
+        addORowToRQList(g->co.ll, NULL, rrow, g->co.w->obc,
+                        apk, g->co.w->tmatch, g->co.ctype);
     } else {
         if (!istoreAction(g->co.c, g->st.fc, g->co.w->tmatch, g->se.cmatchs,
-                          g->se.qcols, g->co.w->sto, key, row, g->st.nname,
+                          g->se.qcols, g->co.w->sto, apk, rrow, g->st.nname,
                           g->st.sub_pk, g->st.nargc))
                               return 0;
     }

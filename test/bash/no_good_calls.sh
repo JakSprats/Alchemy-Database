@@ -44,10 +44,6 @@ function bad_inner() {
   $CLI SELECT "division.id,division.name,division.location,external.name,external.salary" FROM "division,external" WHERE "division.id=external.division AND division.id IN (\$LRANGE L_IND_div_i)"
 }
 
-function bad_normer() {
-  echo TEST: ./test/bash/pop_BAD_NORM.sh
-  ./test/bash/pop_BAD_NORM.sh
-}
 
 function bad_create_tables_as_selecter() {
   echo TEST: bad_create_tables_as_selecter
@@ -231,8 +227,6 @@ function bad_tests() {
   bad_insert_return_size
   echo
   bad_join_syntax
-  echo
-  bad_normer
 }
 
 function do_bad_sql_queries() {

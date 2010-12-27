@@ -44,10 +44,10 @@ typedef struct btree {
     unsigned short     nodeptroff;
     unsigned short     t;
     unsigned short     textra;
-
     unsigned char      nbits;
-    unsigned char      ktype;
-    unsigned char      is_index; /* TODO: rename to bt_type [data,index,node] */
+
+    unsigned char      ktype; /* [STRING,INT,FLOAT] */
+    unsigned char      btype; /* [data,index,node] */
     short              num;
 
     unsigned long long malloc_size;

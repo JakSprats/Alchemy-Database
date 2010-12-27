@@ -32,7 +32,7 @@ ALL RIGHTS RESERVED
 #include "redis.h"
 #include "zmalloc.h"
 
-#include "sql.h"
+#include "wc.h"
 #include "join.h"
 #include "bt_iterator.h"
 #include "row.h"
@@ -40,7 +40,9 @@ ALL RIGHTS RESERVED
 #include "rpipe.h"
 #include "parser.h"
 #include "legacy.h"
+#include "colparse.h"
 #include "alsosql.h"
+#include "aobj.h"
 #include "cr8tblas.h"
 
 // FROM redis.c
@@ -50,9 +52,6 @@ extern struct redisServer server;
 
 extern int      Num_tbls       [MAX_NUM_TABLES];
 extern r_tbl_t  Tbl[MAX_NUM_DB][MAX_NUM_TABLES];
-
-extern char *EQUALS;
-extern char *PERIOD;
 
 extern char *Col_type_defs[];
 
@@ -152,12 +151,12 @@ static void cpyColDef(char *cdefs,
         robj *tbl  = Tbl[server.dbid][tmatch].name;
         memcpy(cdefs + *slot, tbl->ptr, sdslen(tbl->ptr));
         *slot     += sdslen(tbl->ptr);        // tblname
-        memcpy(cdefs + *slot, PERIOD, 1);
+        memcpy(cdefs + *slot, ".", 1);
         *slot      = *slot + 1;
     }
     memcpy(cdefs + *slot, col->ptr, sdslen(col->ptr));
     *slot        += sdslen(col->ptr);            // colname
-    memcpy(cdefs + *slot, EQUALS, 1);
+    memcpy(cdefs + *slot, "=", 1);
     *slot = *slot + 1;
     char *ctype   = Col_type_defs[Tbl[server.dbid][tmatch].col_type[cmatch]];
     int   ctlen   = strlen(ctype);               // [INT,STRING]
@@ -401,7 +400,7 @@ void createTableAsObject(redisClient *c) {
         single = 1;
     } else if (o->type == REDIS_BTREE) { /* DUMP one table to another */
         bt *btr = (bt *)o->ptr;
-        if (btr->is_index != BTREE_TABLE) {
+        if (btr->btype != BTREE_TABLE) {
             addReply(c, shared.createtable_as_index);
             return;
         }
@@ -494,13 +493,15 @@ void createTableAsObject(redisClient *c) {
     } else if (o->type == REDIS_BTREE) {
         btEntry *be;
         /* table created above */
-        int      tmatch = Num_tbls[server.dbid] - 1;
-        int      pktype = Tbl[server.dbid][tmatch].col_type[0];
-        robj    *tname  = Tbl[server.dbid][tmatch].name;
-        robj    *new_o  = lookupKeyWrite(c->db, tname);
-        bi              = btGetFullRangeIterator(o, 1);
+        int      tmatch  = Num_tbls[server.dbid] - 1;
+        int      pktype  = Tbl[server.dbid][tmatch].col_type[0];
+        robj    *tname   = Tbl[server.dbid][tmatch].name;
+        robj    *new_btt = lookupKeyWrite(c->db, tname);
+        bt      *new_btr = (bt *)new_btt->ptr;
+        bt      *btr     = (bt *)o->ptr;
+        bi               = btGetFullRangeIterator(btr);
         while ((be = btRangeNext(bi)) != NULL) {      // iterate btree
-            btAdd(new_o, be->key, be->val, pktype); /* row-to-row copy */
+            btAdd(new_btr, be->key, be->val, pktype); /* row-to-row copy */
         }
     }
     addReplyLongLong(c, (card -1));

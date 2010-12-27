@@ -34,15 +34,16 @@ char *strcasestr(const char *haystack, const char *needle); /*compiler warning*/
 #include "zmalloc.h"
 #include "redis.h"
 
-#include "common.h"
 #include "join.h"
 #include "store.h"
-#include "alsosql.h"
 #include "index.h"
 #include "cr8tblas.h"
+#include "colparse.h"
 #include "rpipe.h"
 #include "parser.h"
-#include "sql.h"
+#include "alsosql.h"
+#include "common.h"
+#include "wc.h"
 
 // FROM redis.c
 #define RL4 redisLog(4,
@@ -324,6 +325,7 @@ static bool addRCmdToINList(redisClient *c,
 static uchar parseWC_IN(redisClient  *c,
                         char         *token,
                         list        **inl,
+                        uchar         ctype,
                         char        **finish) {
     char *end = str_next_unescaped_chr(token, token, ')');
     if (!end || (*token != '(')) {
@@ -397,6 +399,8 @@ static uchar parseWC_IN(redisClient  *c,
         robj *r = createStringObject(s, end - s);
         listAddNodeTail(*inl, r);
     }
+
+    convertINLtoAobj(inl, ctype); /* convert from STRING to ctype */
 
     end++;
     if (*end) {
@@ -542,7 +546,8 @@ static uchar parseWCTokenRelation(redisClient  *c,
         if (!strncasecmp(nextp, "IN ", 3)) {
             nextp = next_token(nextp);
             if (!nextp) goto sql_tok_rel_err;
-            wtype = parseWC_IN(c, nextp, &w->inl, finish);
+            uchar ctype = Tbl[server.dbid][w->tmatch].col_type[w->cmatch];
+            wtype = parseWC_IN(c, nextp, &w->inl, ctype, finish);
         } else if (!strncasecmp(nextp, "BETWEEN ", 8)) { /* RANGE QUERY */
             nextp = next_token(nextp);
             if (!nextp) goto sql_tok_rel_err;
