@@ -553,6 +553,29 @@ void rewriteCommand(redisClient *c);
 /* Global vars */
 struct redisServer server; /* server global state */
 static struct redisCommand cmdTable[] = {
+#ifdef ALSOSQL
+    {"create",       createCommand,      -4,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
+    {"drop",         dropCommand,         3,REDIS_CMD_INLINE,NULL,1,1,1,1},
+    {"desc",         descCommand,         2,REDIS_CMD_INLINE,NULL,1,1,1,1},
+    {"dump",         dumpCommand,        -2,REDIS_CMD_INLINE,NULL,1,1,1,1},
+
+    {"insert",       insertCommand,      -5,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
+    //TODO deprecate the following when 
+    //      ./gen-benchmark is mature enough to deprecate redis-benchmark
+    /* sqlSelectCommand is CMD_BULK for simplicity in redis-benchmark.s */
+    {"select",       sqlSelectCommand,   -2,REDIS_CMD_BULK,NULL,1,1,1,1},
+    {"update",       updateCommand,       6,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
+    {"delete",       deleteCommand,       5,REDIS_CMD_INLINE,NULL,1,1,1,1},
+
+    {"scanselect",   tscanCommand,       -4,REDIS_CMD_INLINE,NULL,1,1,1,1},
+    //{"norm",         normCommand,        -2,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1}, // DEPRECATED
+    {"denorm",       denormCommand,       3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
+
+    {"legacytable",  legacyTableCommand,  3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
+    {"legacyinsert", legacyInsertCommand, 3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
+
+    {"lua",          luaCommand,          2,REDIS_CMD_INLINE,NULL,1,1,1,1},
+#endif /* ALSOSQL END */
     {"rewriteaof",rewriteCommand,2,REDIS_CMD_INLINE,NULL,1,1,1,0},
     {"get",getCommand,2,REDIS_CMD_INLINE,NULL,1,1,1,0},
     {"set",setCommand,3,REDIS_CMD_BULK|REDIS_CMD_DENYOOM,NULL,0,0,0,0},
@@ -668,29 +691,6 @@ static struct redisCommand cmdTable[] = {
     {"psubscribe",psubscribeCommand,-2,REDIS_CMD_INLINE,NULL,0,0,0,0},
     {"punsubscribe",punsubscribeCommand,-1,REDIS_CMD_INLINE,NULL,0,0,0,0},
     {"publish",publishCommand,3,REDIS_CMD_BULK|REDIS_CMD_FORCE_REPLICATION,NULL,0,0,0,0},
-#ifdef ALSOSQL
-    {"create",       createCommand,      -4,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
-    {"drop",         dropCommand,         3,REDIS_CMD_INLINE,NULL,1,1,1,1},
-    {"desc",         descCommand,         2,REDIS_CMD_INLINE,NULL,1,1,1,1},
-    {"dump",         dumpCommand,        -2,REDIS_CMD_INLINE,NULL,1,1,1,1},
-
-    {"insert",       insertCommand,      -5,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
-    //TODO deprecate the following when 
-    //      ./gen-benchmark is mature enough to deprecate redis-benchmark
-    /* sqlSelectCommand is CMD_BULK for simplicity in redis-benchmark.s */
-    {"select",       sqlSelectCommand,   -2,REDIS_CMD_BULK,NULL,1,1,1,1},
-    {"update",       updateCommand,       6,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
-    {"delete",       deleteCommand,       5,REDIS_CMD_INLINE,NULL,1,1,1,1},
-
-    {"scanselect",   tscanCommand,       -4,REDIS_CMD_INLINE,NULL,1,1,1,1},
-    //{"norm",         normCommand,        -2,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1}, // DEPRECATED
-    {"denorm",       denormCommand,       3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
-
-    {"legacytable",  legacyTableCommand,  3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
-    {"legacyinsert", legacyInsertCommand, 3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
-
-    {"lua",          luaCommand,          2,REDIS_CMD_INLINE,NULL,1,1,1,1},
-#endif /* ALSOSQL END */
     {NULL,NULL,0,0,NULL,0,0,0,0}
 };
 
