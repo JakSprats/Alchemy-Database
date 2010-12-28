@@ -61,6 +61,17 @@ typedef struct range_select {
     int  *cmatchs; /*cmatchs[MAX_COLUMN_PER_TABLE] */
 } rsel_t;
 
+typedef struct range_update {
+    bt      *btr;
+    int      ncols;
+    int      matches;
+    int     *indices;
+    char   **vals;
+    uint32  *vlens;
+    uchar   *cmiss;
+    ue_t    *ue;
+} rup_t;
+
 typedef struct range_common {
     uchar        ctype;
     bool         qed;
@@ -73,6 +84,7 @@ typedef struct range {
     rcomm_t co;
     rsel_t  se;
     rs_t    st;
+    rup_t   up;
     qr_t    *q;
 } range_t;
 

@@ -234,7 +234,7 @@ uchar *parseStream(uchar *stream, uchar btype) {
     skipToVal(&stream);
     if (     btype == BTREE_TABLE)      return stream;
     else if (btype == BTREE_INDEX_NODE) return NULL;
-    else           /* BTREE_INDEX */    return *((char **)stream);
+    else           /* BTREE_INDEX */    return *((uchar **)stream);
 }
 
 void convertStream2Key(uchar *stream, aobj *key) {
@@ -280,4 +280,31 @@ uint32 getStreamMallocSize(uchar *stream, uchar btype) {
         vlen    += (uint32)btr->malloc_size;
     }
     return klen + vlen;
+}
+
+void *createStream(bt *btr, void *val, char *btkey,
+                   uint32 ksize, uint32 *ssize) {
+    uint32   vlen  = 0;;
+    *ssize         = ksize;
+    if (btr->btype == BTREE_TABLE) vlen = getRowMallocSize(val);
+    else if (val)  /* ptr2Index*/  vlen = sizeof(void *);
+    *ssize = *ssize + vlen;
+
+    char *bt_val   = bt_malloc(*ssize, btr); /* mem bookkeeping done in BT */
+    char *o_bt_val = bt_val;
+
+    memcpy(bt_val, btkey, ksize);
+    bt_val += ksize;
+
+    if (btr->btype == BTREE_TABLE) memcpy(bt_val, val, vlen);
+    else if (val)  /* ptr2Index*/  memcpy(bt_val, &val, sizeof(void *));
+    //bt_val += vlen; // only needed if stream is further modified
+    return o_bt_val;
+}
+
+bool destroyStream(bt *btr, uchar *ostream) {
+    if (!ostream) return 0;
+    uint32 ssize  = getStreamMallocSize(ostream, btr->btype);
+    bt_free(ostream, btr, ssize); /* memory bookkeeping in btr */
+    return 1;
 }

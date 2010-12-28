@@ -1568,7 +1568,7 @@ function large_update() {
   MOD_STMT="$STMT LIMIT $LIMIT OFFSET $VAR"
   time (
     while true; do
-      RES=$($CLI $MOD_STMT | cut -f 2 -d \ )
+      RES=$(taskset -c 1 $CLI $MOD_STMT | cut -f 2 -d \ )
       if [ "$RES" != "$LIMIT" ]; then echo "BREAK"; break; fi
       sleep $THRTL
     done

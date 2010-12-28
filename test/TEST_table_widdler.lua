@@ -40,7 +40,7 @@ end
 function widdle_delete_pk()
     print ('RUNNING TEST: widdle_delete_pk');
     local cnt = scanselect("COUNT(*)", tbl);
-    print ('initial count: ' .. cnt);
+    print ('table cnt: ' .. cnt);
     while (cnt > 0) do
         math.randomseed(socket.gettime()*10000)
         local res = scanselect("id", tbl, "ORDER BY id LIMIT 1");
@@ -48,9 +48,11 @@ function widdle_delete_pk()
         local r   = math.floor(math.random() * cnt);
         local pke = pks + r;
         local wc  = 'id BETWEEN ' .. pks .. ' AND ' .. pke;
-        print ('cnt: ' .. cnt .. ' r: ' .. r .. ' pks: ' .. pks ..
-               ' pke: ' .. pke .. ' wc: ' .. wc);
+        --print ('cnt: ' .. cnt .. ' r: ' .. r .. ' pks: ' .. pks ..
+               --' pke: ' .. pke .. ' wc: ' .. wc);
+        x          = socket.gettime()*1000;
         delete(tbl, wc);
+        print (diff_time('delete: (' .. wc .. ')', x));
         local new_cnt = cnt - (pke - pks) - 1;
         cnt = scanselect("COUNT(*)", tbl);
         if (cnt ~= new_cnt) then
@@ -99,11 +101,12 @@ end
 function widdle_delete_FK()
     print ('RUNNING TEST: widdle_delete_FK');
     local cnt        = scanselect("COUNT(*)", tbl);
+    print ('table cnt: ' .. cnt);
     local cnt_per_fk = math.floor(cnt / mod);
     -- cnt never == req, Btree not 100% balanced, some FKs have more PKs
     local variance   = (cnt - req) / 10;
     local fks        = 0;
-    print ('cnt_per_fk: ' .. cnt_per_fk .. ' variance: ' .. variance);
+    --print ('cnt_per_fk: ' .. cnt_per_fk .. ' variance: ' .. variance);
     while (cnt > 0) do
         local r   = math.floor(math.random() * 10);
         local fke = fks + r;
@@ -111,8 +114,8 @@ function widdle_delete_FK()
             fke = mod;
         end
         local wc  = 'fk BETWEEN ' .. fks .. ' AND ' .. fke;
-        print ('cnt: ' .. cnt .. ' r: ' .. r .. ' fks: ' .. fks ..
-               ' fke: ' .. fke .. ' wc: ' .. wc);
+        --print ('cnt: ' .. cnt .. ' r: ' .. r .. ' fks: ' .. fks ..
+               --' fke: ' .. fke .. ' wc: ' .. wc);
         local x   = socket.gettime()*1000;
         delete(tbl, wc);
         print (diff_time('delete: (' .. wc .. ')', x));
@@ -126,10 +129,10 @@ function widdle_delete_FK()
 end
 
 function run_widdler_test()
-    init_ten_mill_mod100();
-    widdle_delete_pk();
-    init_ten_mill_mod100();
-    widdle_update_FK();
+    --init_ten_mill_mod100();
+    --widdle_delete_pk();
+    --init_ten_mill_mod100();
+    --widdle_update_FK();
     widdle_delete_FK();
     return "+OK";
 end

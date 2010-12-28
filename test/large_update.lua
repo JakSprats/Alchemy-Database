@@ -83,6 +83,6 @@ function large_delete_test()
 end
 
 if is_external.yes == 1 then
-    --large_update_test();
+    large_update_test();
     large_delete_test();
 end

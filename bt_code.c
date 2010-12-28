@@ -593,9 +593,7 @@ bt_data_t bt_find(struct btree *btr, bt_data_t k) {
 /* copy of findnodekey */
 int bt_init_iterator(struct btree *btr, bt_data_t k, struct btIterator *iter) {
     if (!btr->root) return -1;
-
-    int i = 0;
-    int r = 0;
+    int i; int r;
 
     struct btreenode *x          = btr->root;
     unsigned char     only_right = 1;
@@ -616,3 +614,26 @@ int bt_init_iterator(struct btree *btr, bt_data_t k, struct btIterator *iter) {
     }
     return -1;
 }
+
+static bt_data_t findnodekeyreplace(bt *btr, bt_n *x,
+                                    bt_data_t k, bt_data_t val) {
+    if (!btr->root) return NULL;
+    int i; int r;
+
+    while (x != NULL) {
+        i = findkindex(btr, x, k, &r, NULL);
+        if (i >= 0 && r == 0) {
+            bt_data_t b     = KEYS(btr, x)[i];
+            KEYS(btr, x)[i] = val;
+            return b;
+        }
+        if (x->leaf) return NULL;
+        x = NODES(btr, x)[i + 1];
+    }
+    return NULL;
+}
+
+bt_data_t bt_replace(struct btree *btr, bt_data_t k, bt_data_t val) {
+    return findnodekeyreplace(btr, btr->root, k, val);
+}
+

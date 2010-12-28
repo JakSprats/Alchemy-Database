@@ -137,54 +137,43 @@ static void abt_destroy(bt *nbtr, bt *btr) {
     bt_free_btree(nbtr, btr); /* memory management in btr */
 }
 
-static void *abt_raw(bt *btr, const aobj *akey, int ktype, bool del) {
-    bool  med; uchar sflag; uint32 ksize;
-    char *simkey = createBTKey(akey, ktype, &med, &sflag, &ksize); /* FREEME */
-    if (!simkey) return NULL;
-    uchar *stream = del ? bt_delete(btr, simkey) : bt_find(btr, simkey);
-    destroyBTKey(simkey, med);                                     /* FREED */
-    return stream;
+#define DECLARE_BT_KEY \
+    bool  med; uchar sflag; uint32 ksize;                                     \
+    char *btkey    = createBTKey(akey, ktype, &med, &sflag, &ksize);/*FREEME*/\
+    if (!btkey) return 0;
+    
+static bool abt_replace(bt *btr, const aobj *akey, void *val, int ktype) {
+    uint32 ssize;
+    DECLARE_BT_KEY
+    char  *nstream = createStream(btr, val, btkey, ksize, &ssize);
+    uchar *ostream = bt_replace(btr, btkey, nstream);
+    destroyBTKey(btkey, med);                                       /* FREED */
+    return destroyStream(btr, ostream);
 }
 
 static void *abt_find_val(bt *btr, const aobj *akey, int ktype) {
-    uchar *stream = abt_raw(btr, akey, ktype, 0);
+    DECLARE_BT_KEY
+    uchar *stream = bt_find(btr, btkey);
+    destroyBTKey(btkey, med);                                       /* FREED */
     return parseStream(stream, btr->btype);
 }
 
-static int abt_del(bt *btr, const aobj *akey, int ktype) {
-    uchar *stream = abt_raw(btr, akey, ktype, 1);
-    if (!stream) return 0;
-    uint32  ssize = getStreamMallocSize(stream, btr->btype);
-    bt_free(stream, btr, ssize); /* memory bookkeeping in btr */
-    return 1;
+static bool abt_del(bt *btr, const aobj *akey, int ktype) {
+    DECLARE_BT_KEY
+    uchar *stream = bt_delete(btr, btkey);
+    destroyBTKey(btkey, med);                                       /* FREED */
+    return destroyStream(btr, stream);
 }
 
 static uint32 abt_insert(bt *btr, aobj *akey, void *val, int ktype) {
     if (btr->numkeys == TRANSITION_ONE_MAX) {
         btr = abt_resize(btr, TRANSITION_TWO_BTREE_BYTES);
     }
-
-    bool  med; uchar sflag; uint32 ksize;
-    char  *simkey  = createBTKey(akey, ktype, &med, &sflag, &ksize); /* FREEME*/
-    if (!simkey) return 0;
-    uint32   ssize = ksize;
-    uint32   vlen  = 0;;
-    if (btr->btype == BTREE_TABLE) vlen = getRowMallocSize(val);
-    else if (val)  /* ptr2Index*/  vlen = sizeof(void *);
-    ssize += vlen;
-
-    char *bt_val   = bt_malloc(ssize, btr); /* mem bookkeeping done in BT */
-    char *o_bt_val = bt_val;
-
-    memcpy(bt_val, simkey, ksize);
-    bt_val += ksize;
-    destroyBTKey(simkey, med);                                      /* FREED */
-
-    if (btr->btype == BTREE_TABLE) memcpy(bt_val, val, vlen);
-    else if (val)  /* ptr2Index*/  memcpy(bt_val, &val, sizeof(void *));
-    bt_val += vlen;
-
-    bt_insert(btr, o_bt_val);
+    uint32 ssize;
+    DECLARE_BT_KEY
+    char *stream = createStream(btr, val, btkey, ksize, &ssize);
+    destroyBTKey(btkey, med);                                       /* FREED */
+    bt_insert(btr, stream);
     return ssize;
 }
 
@@ -210,12 +199,8 @@ int btAdd(bt *btr, aobj *apk, void *val, int ktype) {
     return abt_insert(btr, apk, val, ktype);
 }
 
-//TODO need a native BT bt_replace, no need to mess w/ the btree for a replace
-//                         just replace pointer
 int btReplace(bt *btr, aobj *apk, void *val, int ktype) {
-    int  del = abt_del(btr, apk, ktype);
-    if (!del) return DICT_ERR;
-    abt_insert(btr, apk, val, ktype);
+    abt_replace(btr, apk, val, ktype);
     return DICT_OK;
 }
 void *btFindVal(bt *btr, const aobj *apk, int ktype) {

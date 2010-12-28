@@ -28,6 +28,7 @@ ALL RIGHTS RESERVED
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <float.h>
 #include <assert.h>
 
 #include "redis.h"
@@ -46,8 +47,8 @@ ALL RIGHTS RESERVED
 bt_ll_n *get_new_iter_child(btIterator *iter) {
     assert(iter->num_nodes < MAX_BTREE_DEPTH);
     bt_ll_n *nn = &(iter->nodes[iter->num_nodes]);
+    bzero(nn, sizeof(bt_ll_n));
     iter->num_nodes++;
-    nn->child   = NULL;
     return nn;
 }
 
@@ -71,7 +72,6 @@ static bool advance_node(btIterator *iter, bool recursed) {
     }
     return 0;
 }
-
 static void iter_to_parent_recurse(btIterator *iter) {
     if (!iter->bln->parent) {
         iter->finished = 1;                                        // -> exit
@@ -89,7 +89,6 @@ static void iter_to_parent_recurse(btIterator *iter) {
         }
     }
 }
-
 static void iter_leaf(btIterator *iter) {
     if ((iter->bln->ik + 1) < iter->bln->self->n) { // LEAF (n means numkeys)
         iter->bln->ik++;
@@ -97,7 +96,6 @@ static void iter_leaf(btIterator *iter) {
         iter_to_parent_recurse(iter);
     }
 }
-
 static void become_child_recurse(btIterator *iter, bt_n* self) {
     become_child(iter, self);
     if (!iter->bln->self->leaf) { // depth-first
@@ -106,7 +104,6 @@ static void become_child_recurse(btIterator *iter, bt_n* self) {
         become_child_recurse(iter, NODES(btr, iter->bln->self)[iter->bln->in]);
     }
 }
-
 static void iter_node(btIterator *iter) {
     advance_node(iter, 0);
     struct btree *btr = iter->btr;
@@ -116,7 +113,6 @@ static void iter_node(btIterator *iter) {
     }
     become_child_recurse(iter, NODES(btr, iter->bln->self)[iter->bln->in]);
 }
-
 void *btNext(btIterator *iter) {
     if (iter->finished) return NULL;
     //RL4 "btNext: leaf: %d", iter->bln->self->leaf);
@@ -142,15 +138,14 @@ static int btIterInit(bt *btr, bt_data_t bkey, struct btIterator *iter) {
     return 1;
 }
 
-/* Currently: BT_Iterators[2] would work UNTIL parallel joining is done, then MAX_NUM_INDICES is needed */
-static btSIter BT_Iterators[MAX_NUM_INDICES]; /* avoid malloc()s */
-
 static void init_iter(btIterator  *iter,
                       bt          *btr,
                       iter_single *itl,
                       iter_single *itn) {
     iter->btr         = btr;
     iter->highs       = NULL;
+    iter->high        = 0;
+    iter->highf       = FLT_MIN;
     iter->iLeaf       = itl;
     iter->iNode       = itn;
     iter->finished    = 0;
@@ -163,6 +158,9 @@ static void init_iter(btIterator  *iter,
     iter->depth       = 0;
 }
 
+/* Currently: BT_Iterators[2] would work UNTIL parallel joining is done,
+     then MAX_NUM_INDICES is needed */
+static btSIter BT_Iterators[MAX_NUM_INDICES]; /* avoid malloc()s */
 static btSIter *createIterator(bt          *btr,
                                int          which,
                                iter_single *itl,
@@ -189,13 +187,12 @@ btSIter *btGetRangeIterator(bt *btr, robj *low, robj *high) {
     bool med; uchar sflag; uint32 ksize;
     //bt_dumptree(btr, btr->ktype);
     btSIter *siter = createIterator(btr, 0, iter_leaf, iter_node);
-
-    aobj *alow   = copyRobjToAobj(low, btr->ktype);  //TODO LAME
-    aobj *ahigh  = copyRobjToAobj(high, btr->ktype); //TODO LAME
+    aobj    *alow  = copyRobjToAobj(low, btr->ktype);  //TODO LAME
+    aobj    *ahigh = copyRobjToAobj(high, btr->ktype); //TODO LAME
     setHigh(siter, ahigh, btr->ktype);
     char *bkey = createBTKey(alow, btr->ktype, &med, &sflag, &ksize);/*FREE*/
-    destroyAobj(ahigh);                              //TODO LAME
-    destroyAobj(alow);                               //TODO LAME
+    destroyAobj(ahigh);                                //TODO LAME
+    destroyAobj(alow);                                 //TODO LAME
 
     if (!bkey) return NULL;
     if (!btIterInit(btr, bkey, &(siter->x))) {
@@ -249,7 +246,7 @@ btSIter *btGetFullRangeIterator(bt *btr) {
 
     btSIter *siter = createIterator(btr, 1, iter_leaf, iter_node);
     setHigh(siter, &aH, btr->ktype);
-    char *bkey = createBTKey(&aL, btr->ktype, &med, &sflag, &ksize);/*FREE*/
+    char    *bkey  = createBTKey(&aL, btr->ktype, &med, &sflag, &ksize);/*FREE*/
     if (!bkey) return NULL;
     if (!btIterInit(btr, bkey, &(siter->x))) {
         btReleaseRangeIterator(siter);

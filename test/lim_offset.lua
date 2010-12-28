@@ -7,12 +7,13 @@ else
     _print = is_external._print;
 end
 
+local tbl = "ten_mill_mod100";
+
 function test_pk_lim_offset_ten_mill_modTEN_fk()
     if is_external.yes == 0 then
         is_external.output = '';
     end
 
-    tbl         = "ten_mill_modTEN_fk";
     debug_every = 50000
     lim         = 10
     nrows       = 10000000
@@ -47,20 +48,19 @@ function test_FK_lim_offset_ten_mill_modTEN_fk()
         is_external.output = '';
     end
 
-    tbl         = "ten_mill_modTEN_fk";
     lim         = 10
     debug_every = 10000
-    nrows       = 1000000
+    nrows       = 100000
     -- FK_TEST FK_TEST FK_TEST FK_TEST FK_TEST FK_TEST FK_TEST
     local x = socket.gettime()*1000;
     local y = x;
-    for i= 1, nrows do
+    for i= 1, nrows - lim do
         res = select('id', tbl, 'fk=1 ORDER BY fk LIMIT ' .. lim ..
                                                 ' OFFSET '..i);
         for j = 1, (lim - 1) do
             one = res[j];
             two = res[j + 1];
-            if (two - one ~= 10) then
+            if (two - one ~= 100) then
                 _print ('ERROR: one: ' .. one .. ' two: ' .. two);
             end
         end

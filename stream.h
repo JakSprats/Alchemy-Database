@@ -48,4 +48,11 @@ void  destroyBTKey(char *simkey, bool  med);
 void convertStream2Key(uchar *stream, aobj *key);
 uchar *parseStream(uchar *stream, uchar btype);
 
+void *createStream(bt *btr,
+                   void *val,
+                   char   *btkey,
+                   uint32  ksize,
+                   uint32 *ssize);
+bool destroyStream(bt *btr, uchar *ostream);
+
 #endif /* __ALSOSQL_STREAM_H */

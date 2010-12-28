@@ -296,14 +296,12 @@ void iselectAction(redisClient *c,
                    bool         cstar) {
     qr_t  q;
     setQueued(w, &q);
-    
     list *ll    = NULL;
     uchar ctype = COL_TYPE_NONE;
     if (q.qed) {
         ll      = listCreate();
         ctype   = Tbl[server.dbid][w->tmatch].col_type[w->obc];
     }
-
     range_t g;
     init_range(&g, c, w, &q, ll, ctype);
     g.se.cstar   = cstar;
@@ -345,37 +343,32 @@ void iselectAction(redisClient *c,
     if (ll) listRelease(ll);
 }
 
-
-bool build_rq_op(range_t *g, aobj *akey, void *rrow, bool q) {
+bool build_del_list_op(range_t *g, aobj *akey, void *rrow, bool q) {
     if (q) {
         addORowToRQList(g->co.ll, akey, rrow, g->co.w->obc,
                         akey, g->co.w->tmatch, g->co.ctype);
     } else {
         aobj *cln  = cloneAobj(akey);
-        listAddNodeTail(g->co.ll, cln);
+        listAddNodeTail(g->co.ll, cln); /* UGLY: build list of PKs to delete */
     }
     return 1;
 }
 
-#define BUILD_RANGE_QUERY_LIST                                                 \
-    qr_t  q;                                                                   \
-    setQueued(w, &q);                                                          \
-    list *ll    = listCreate();                                                \
-    uchar ctype = (w->obc == -1) ? COL_TYPE_NONE :                             \
-                                  Tbl[server.dbid][w->tmatch].col_type[w->obc];\
-    range_t g;                                                                 \
-    init_range(&g, c, w, &q, ll, ctype);                                       \
-    ulong   card  = 0;                                                         \
-    if (w->low) { /* RANGE_QUERY */                                            \
-        card = (ulong)rangeOp(&g, build_rq_op);                                \
-    } else {      /* IN_QUERY */                                               \
-        card = (ulong)inOp(&g, build_rq_op);                                   \
-    }
-
-
 void ideleteAction(redisClient *c,
                    cswc_t      *w) {
-    BUILD_RANGE_QUERY_LIST
+    qr_t  q;
+    setQueued(w, &q);
+    list *ll    = listCreate();
+    uchar ctype = (w->obc == -1) ? COL_TYPE_NONE :
+                                  Tbl[server.dbid][w->tmatch].col_type[w->obc];
+    range_t g;
+    init_range(&g, c, w, &q, ll, ctype);
+    ulong   card  = 0;
+    if (w->low) { /* RANGE_QUERY */
+        card = (ulong)rangeOp(&g, build_del_list_op);
+    } else {      /* IN_QUERY */
+        card = (ulong)inOp(&g, build_del_list_op);
+    }
 
     MATCH_INDICES(w->tmatch)
 
@@ -415,7 +408,18 @@ void ideleteAction(redisClient *c,
     listRelease(ll);
 }
 
-//TODO once btReplace does IN-PLACE replaces, update does NOT need a LIST
+bool update_op(range_t *g, aobj *akey, void *rrow, bool q) {
+    if (q) {
+        addORowToRQList(g->co.ll, akey, rrow, g->co.w->obc,
+                        akey, g->co.w->tmatch, g->co.ctype);
+    } else {
+        updateRow(g->co.c, g->up.btr, akey, rrow, g->co.w->tmatch, g->up.ncols,
+                  g->up.matches, g->up.indices, g->up.vals, g->up.vlens,
+                  g->up.cmiss, g->up.ue);
+    }
+    return 1;
+}
+
 void iupdateAction(redisClient *c,
                    cswc_t      *w,
                    int          ncols,
@@ -425,14 +429,39 @@ void iupdateAction(redisClient *c,
                    uint32       vlens  [],
                    uchar        cmiss  [],
                    ue_t         ue     []) {
-    BUILD_RANGE_QUERY_LIST
+    qr_t  q;
+    setQueued(w, &q);
+    list *ll     = NULL;
+    uchar ctype  = COL_TYPE_NONE;
+    if (q.qed) {
+        ll       = listCreate();
+        ctype    = Tbl[server.dbid][w->tmatch].col_type[w->obc];
+    }
+    robj *tname  = Tbl[server.dbid][w->tmatch].name;
+    robj *btt    = lookupKeyRead(c->db, tname);
+    bt   *btr    = (bt *)btt->ptr;
 
-    bool pktype = Tbl[server.dbid][w->tmatch].col_type[0];
+    range_t g;
+    init_range(&g, c, w, &q, ll, ctype);
+    g.up.btr     = btr;
+    g.up.ncols   = ncols;
+    g.up.matches = matches;
+    g.up.indices = indices;
+    g.up.vals    = vals;
+    g.up.vlens   = vlens;
+    g.up.cmiss   = cmiss;
+    g.up.ue      = ue;
+    ulong   card  = 0;
+    if (w->low) { /* RANGE_QUERY */
+        card = (ulong)rangeOp(&g, update_op);
+    } else {      /* IN_QUERY */
+        card = (ulong)inOp(&g, update_op);
+    }
+
     int  sent   = 0;
     if (card) {
-        robj *btt = lookupKeyRead(c->db, Tbl[server.dbid][w->tmatch].name);
-        bt   *btr = (bt *)btt->ptr;
         if (q.qed) {
+            bool  pktype = Tbl[server.dbid][w->tmatch].col_type[0];
             obsl_t **v = sortOrderByToVector(ll, ctype, w->asc);
             for (int k = 0; k < (int)listLength(ll); k++) {
                 if (w->lim != -1 && sent == w->lim) break;
@@ -450,16 +479,7 @@ void iupdateAction(redisClient *c,
             sortedOrderByCleanup(v, listLength(ll), ctype, 1);
             free(v);
         } else {
-            listNode  *ln;
-            listIter  *li = listGetIterator(ll, AL_START_HEAD);
-            while((ln = listNext(li)) != NULL) {
-                aobj *apk  = ln->value;
-                void *rrow = btFindVal(btr, apk, pktype);
-                updateRow(c, btr, apk, rrow, w->tmatch, ncols, matches, indices,
-                          vals, vlens, cmiss, ue);
-                sent++;
-            }
-            listReleaseIterator(li);
+            sent = card;
         }
     }
 
@@ -467,5 +487,5 @@ void iupdateAction(redisClient *c,
     addReplyLongLong(c, card);
 
     if (w->ovar) incrOffsetVar(c, w, card);
-    listRelease(ll);
+    if (ll) listRelease(ll);
 }
