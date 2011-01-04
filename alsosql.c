@@ -60,6 +60,7 @@ extern ulong              CurrCard;
 // GLOBALS
 extern int     Num_tbls[MAX_NUM_DB];
 extern r_tbl_t Tbl     [MAX_NUM_DB][MAX_NUM_TABLES];
+extern r_ind_t Index   [MAX_NUM_DB][MAX_NUM_INDICES];
 
 char *EMPTY_STRING = "";
 char *OUTPUT_DELIM = ",";
@@ -67,7 +68,9 @@ char *COLON        = ":";
 
 char *Col_type_defs[] = {"TEXT", "INT", "FLOAT" };
 
-extern r_ind_t Index   [MAX_NUM_DB][MAX_NUM_INDICES];
+uchar OP_len[7] = {0,1,2,1,2,1,2};
+aobj_cmp *OP_CMP[7] = {NULL, aobjEQ, aobjNE, aobjLT, aobjLE, aobjGT, aobjGE};
+
 
 /* CREATE_TABLE CREATE_TABLE CREATE_TABLE CREATE_TABLE CREATE_TABLE */
 /* CREATE_TABLE CREATE_TABLE CREATE_TABLE CREATE_TABLE CREATE_TABLE */
@@ -331,41 +334,82 @@ static void selectOnePKReply(redisClient  *c,
 }
 
 void init_check_sql_where_clause(cswc_t *w, int tmatch, sds token) {
-    w->key    = NULL; //TODO -> aobj
-    w->low    = NULL; //TODO -> aobj
-    w->high   = NULL; //TODO -> aobj
-    w->inl    = NULL;
-    w->stor   = NULL;
-    w->lvr    = NULL;
-    w->ovar   = NULL;
-    w->imatch = -1;
-    w->tmatch = tmatch;
-    w->cmatch = -1;
-    w->obc    = -1;
-    w->obt    = -1;
-    w->lim    = -1;
-    w->ofst   = -1;
-    w->sto    = -1;
-    w->asc    = 1;
-    w->token  = token;
+    w->wtype    = SQL_ERR_LOOKUP;
+    w->key      = NULL; //TODO -> aobj
+    w->low      = NULL; //TODO -> aobj
+    w->high     = NULL; //TODO -> aobj
+    w->inl      = NULL;
+    w->stor     = NULL;
+    w->lvr      = NULL;
+    w->ovar     = NULL;
+    w->flist    = NULL;
+    w->imatch   = -1;
+    w->tmatch   = tmatch;
+    w->cmatch   = -1;
+    w->obc      = -1;
+    w->obt      = -1;
+    w->lim      = -1;
+    w->ofst     = -1;
+    w->sto      = -1;
+    w->asc      = 1;
+    w->token    = token;
 }
 
 void destroy_check_sql_where_clause(cswc_t *w) {
-    if (w->key)  decrRefCount(w->key);
-    if (w->low)  decrRefCount(w->low);
-    if (w->high) decrRefCount(w->high);
-    if (w->inl)  listRelease(w->inl);
-    if (w->ovar) sdsfree(w->ovar);
+    if (w->key)   decrRefCount(w->key);
+    if (w->low)   decrRefCount(w->low);
+    if (w->high)  decrRefCount(w->high);
+    if (w->inl)   listRelease(w->inl);
+    if (w->stor)  sdsfree(w->stor);
+    if (w->lvr)   sdsfree(w->lvr);
+    if (w->ovar)  sdsfree(w->ovar);
+    if (w->flist) listRelease(w->flist);
 }
 
-/* TODO need a single FK iterator ... built into RANGE_QUERY_LOOKUP_START */
-void singleFKHack(cswc_t *w, uchar *wtype) {
-    *wtype  = SQL_RANGE_QUERY;
-    w->low  = cloneRobj(w->key);
-    w->high = cloneRobj(w->key);
+static void dumpRobj(robj *r, char *smsg, char *dmsg) {
+    if (!r) return;
+    if (r->encoding == REDIS_ENCODING_RAW) {
+        printf(smsg, r->ptr);
+    } else {
+        printf(dmsg, r->ptr);
+    }
+}
+static void dumpSds(sds s, char *smsg) {
+    if (!s) return;
+    printf(smsg, s);
+}
+void dumpW(cswc_t *w) {
+    printf("START dumpW: %d\n", w->wtype);
+    printf("\timatch: %d\n", w->imatch);
+    printf("\t\tcmatch: %d\n", w->cmatch);
+    dumpRobj(w->key,  "\tkey: %s\n",  "\tkey: %d\n");
+    dumpRobj(w->low,  "\tlow: %s\n",  "\tlow: %d\n");
+    dumpRobj(w->high, "\thigh: %s\n", "\thigh: %d\n");
+    if (w->inl) {
+        printf("\tIN list: len: %d\n", listLength(w->inl));
+        listNode *ln;
+        listIter *li = listGetIterator(w->inl, AL_START_HEAD);
+        while((ln = listNext(li)) != NULL) {
+            aobj *apk  = ln->value;
+            dumpAobj(apk);
+        }
+    }
+    dumpSds(w->stor,  "\tstor: %s\n");
+    dumpSds(w->ovar,  "\tovar: %s\n");
+    if (w->flist) {
+        printf("\tFlist: len: %d\n", listLength(w->flist));
+        listNode *ln;
+        listIter *li = listGetIterator(w->flist, AL_START_HEAD);
+        while((ln = listNext(li)) != NULL) {
+            f_t *flt = ln->value;
+            dumpFilter(flt);
+        }
+    }
+    printf("END dumpW\n");
 }
 
 bool leftoverParsingReply(redisClient *c, char *x) {
+    //printf("leftoverParsingReply: x: %s\n", x);
     if (x) {
         while (isblank(*x)) x++;
         if (*x) {
@@ -375,6 +419,85 @@ bool leftoverParsingReply(redisClient *c, char *x) {
         }
     }
     return 1;
+}
+
+//TODO break out into filter.c
+void initFilter(f_t *flt) {
+    bzero(flt, sizeof(f_t));
+    initAobj(&flt->rhsv);
+}
+void releaseFilter(f_t *flt) {
+    if (flt->rhs) {
+        sdsfree(flt->rhs);
+        flt->rhs = NULL;
+    }
+    if (flt->inl) {
+        listRelease(flt->inl);
+        flt->inl = NULL;
+    }
+    releaseAobj(&flt->rhsv);
+}
+void destroyFilter(void *v) {
+    f_t *flt = (f_t *)v;
+    releaseFilter(flt);
+    free(flt);
+}
+f_t *cloneFilt(f_t *flt) { /* must be FREED */
+    f_t *f2    = malloc(sizeof(f_t));
+    initFilter(f2);
+    f2->cmatch = flt->cmatch;
+    f2->op     = flt->op;
+    aobjClone(&f2->rhsv, &flt->rhsv);
+    if (flt->rhs) f2->rhs = sdsdup(flt->rhs);        /* sdsdup rhs */
+    if (flt->inl) f2->inl = cloneAobjList(flt->inl); /* copy inl list */
+    return f2;
+}
+f_t *createFilter(robj *key, int cmatch, uchar ctype) {
+    f_t *f2    = malloc(sizeof(f_t));
+    initFilter(f2);
+    f2->cmatch = cmatch;
+    f2->op     = EQ;
+    initAobjFromString(&f2->rhsv, key->ptr, sdslen(key->ptr), ctype);
+    return f2;
+}
+f_t *createINLFilter(list *inl, int cmatch) {
+    f_t *f2    = malloc(sizeof(f_t));
+    initFilter(f2);
+    f2->cmatch = cmatch;
+    f2->op     = EQ;
+    f2->inl    = cloneAobjList(inl);
+    return f2;
+}
+void dumpFilter(f_t *flt) {
+    printf("\tfilter.cmatch: %d\n", flt->cmatch);
+    printf("\tfilter.op:     %d\n", flt->op);
+    printf("\tfilter.rhs:    %s\n", flt->rhs);
+    dumpAobj(&flt->rhsv);
+    if (flt->inl) {
+        printf("\tfilter.inl\n");
+        listNode *ln;
+        listIter *li = listGetIterator(flt->inl, AL_START_HEAD);
+        while((ln = listNext(li)) != NULL) {
+            aobj *a = ln->value;
+            dumpAobj(a);
+        }
+        listReleaseIterator(li);
+    }
+}
+
+void convertFilterListToAobj(list *flist, int tmatch) {
+    if (!flist) return;
+    listNode *ln;
+    flist->free  = destroyFilter;
+    listIter *li = listGetIterator(flist, AL_START_HEAD);
+    while((ln = listNext(li)) != NULL) {
+        f_t *flt   = ln->value;
+        int  ctype = Tbl[server.dbid][tmatch].col_type[flt->cmatch];
+        if (!flt->inl) {
+            initAobjFromString(&flt->rhsv, flt->rhs, sdslen(flt->rhs), ctype);
+        }
+    }
+    listReleaseIterator(li);
 }
 
 /* SELECT cols,,,,, FROM tbls,,,, WHERE clause - (6 args) */
@@ -403,23 +526,19 @@ void sqlSelectCommand(redisClient *c) {
     }
 
     cswc_t w;
-    uchar  sop   = SQL_SELECT;
     init_check_sql_where_clause(&w, tmatch, c->argv[5]->ptr);
-    uchar  wtype = checkSQLWhereClauseReply(c, &w, sop, 0);
-    if (wtype == SQL_ERR_LOOKUP)         goto select_cmd_end;
+    parseWCReply(c, &w, SQL_SELECT, 0);
+    if (w.wtype == SQL_ERR_LOOKUP)       goto select_cmd_end;
     if (!leftoverParsingReply(c, w.lvr)) goto select_cmd_end;
-
-    if (wtype == SQL_SINGLE_FK_LOOKUP) singleFKHack(&w, &wtype);
-
     if (cstar && w.obc != -1) { /* SELECT COUNT(*) ORDER BY -> stupid */
         addReply(c, shared.orderby_count);
         goto select_cmd_end;
     }
-    if (w.stor) { /* DENORM e.g.: STORE LPUSH list */
-        if (!w.low && !w.inl) {
-            addReply(c, shared.selectsyntax_store_norange);
-            goto select_cmd_end;
-        } else if (cstar) {
+
+    //dumpW(&w);
+    if (w.wtype > SQL_STORE_LOOKUP_MASK) { /* SELECT STORE LPUSH redislist */
+        w.wtype -= SQL_STORE_LOOKUP_MASK;
+        if (cstar) {
             addReply(c, shared.select_store_count);
             goto select_cmd_end;
         }
@@ -429,14 +548,14 @@ void sqlSelectCommand(redisClient *c) {
             goto select_cmd_end;
         }
         istoreCommit(c, &w, cmatchs, qcols);
-    } else if (wtype == SQL_RANGE_QUERY || wtype == SQL_IN_LOOKUP) { /* RQ */
+    } else if (w.wtype != SQL_SINGLE_LOOKUP) { /* FK, RQ, IN */
         if (w.imatch == -1) {
             addReply(c, shared.rangequery_index_not_found);
             goto select_cmd_end;
         }
 
         iselectAction(c, &w, cmatchs, qcols, cstar);
-    } else {
+    } else {  /* SQL_SINGLE_LOOKUP */
         uchar pktype = Tbl[server.dbid][tmatch].col_type[0];
         robj *btt    = lookupKeyRead(c->db, Tbl[server.dbid][w.tmatch].name);
         bt   *btr    = (bt *)btt->ptr;
@@ -466,21 +585,18 @@ void deleteCommand(redisClient *c) {
     }
 
     cswc_t w;
-    uchar  sop   = SQL_DELETE;
     init_check_sql_where_clause(&w, tmatch, c->argv[4]->ptr);
-    uchar  wtype = checkSQLWhereClauseReply(c, &w, sop, 0);
-    if (wtype == SQL_ERR_LOOKUP)         goto delete_cmd_end;
+    parseWCReply(c, &w, SQL_DELETE, 0);
+    if (w.wtype == SQL_ERR_LOOKUP)       goto delete_cmd_end;
     if (!leftoverParsingReply(c, w.lvr)) goto delete_cmd_end;
 
-    if (wtype == SQL_SINGLE_FK_LOOKUP) singleFKHack(&w, &wtype);
-
-    if (wtype == SQL_RANGE_QUERY || wtype == SQL_IN_LOOKUP) {
+    if (w.wtype != SQL_SINGLE_LOOKUP) { /* FK, RQ, IN */
         if (w.imatch == -1) {
             addReply(c, shared.rangequery_index_not_found);
             goto delete_cmd_end;
         }
         ideleteAction(c, &w);
-    } else {
+    } else {  /* SQL_SINGLE_DELETE */
         MATCH_INDICES(w.tmatch)
         uchar  pktype = Tbl[server.dbid][tmatch].col_type[0];
         aobj  *apk    = copyRobjToAobj(w.key, pktype); //TODO LAME
@@ -588,15 +704,12 @@ void updateCommand(redisClient *c) {
 
     cswc_t w;
     aobj  *akey  = NULL; /* B4 GOTO */
-    uchar  sop   = SQL_UPDATE;
     init_check_sql_where_clause(&w, tmatch, c->argv[5]->ptr); /* ERR now GOTO */
-    uchar  wtype = checkSQLWhereClauseReply(c, &w, sop, 0);
-    if (wtype == SQL_ERR_LOOKUP)         goto update_cmd_end;
+    parseWCReply(c, &w, SQL_UPDATE, 0);
+    if (w.wtype == SQL_ERR_LOOKUP)       goto update_cmd_end;
     if (!leftoverParsingReply(c, w.lvr)) goto update_cmd_end;
 
-    if (wtype == SQL_SINGLE_FK_LOOKUP) singleFKHack(&w, &wtype);
-
-    if (wtype == SQL_RANGE_QUERY || wtype == SQL_IN_LOOKUP) {
+    if (w.wtype != SQL_SINGLE_LOOKUP) { /* FK, RQ, IN */
         if (pkupc != -1) {
             addReply(c, shared.update_pk_range_query);
             goto update_cmd_end;
@@ -607,7 +720,7 @@ void updateCommand(redisClient *c) {
         }
         iupdateAction(c, &w, ncols, matches, indices,
                       vals, vlens, cmiss, ue);
-    } else {
+    } else {  /* SQL_SINGLE_UPDATE */
         uchar  pktype = Tbl[server.dbid][w.tmatch].col_type[0];
         robj  *btt    = lookupKeyRead(c->db, Tbl[server.dbid][w.tmatch].name);
         bt    *btr    = (bt *)btt->ptr;

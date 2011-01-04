@@ -28,9 +28,12 @@ function _print(t,x)
 end
 
 require "socket"
+function diff_time(msg, x)
+    return string.format("%s elapsed time: %.2f(s)\n",
+                         msg, (socket.gettime()*1000 - x) / 1000);
+end
 function print_diff_time(msg, x)
-    x =string.format("%s elapsed time: %.2f(s)\n",
-                      msg, (socket.gettime()*1000 - x) / 1000);
+    x = diff_time(msg, x);
     if yes == 1 then
         print(x);
     else

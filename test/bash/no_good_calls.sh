@@ -143,8 +143,11 @@ function bad_scanselect_where_clause() {
   $CLI SCANSELECT \* FROM customer WHERE ""
   $CLI SCANSELECT \* FROM customer WHERE 
   $CLI SCANSELECT \* FROM customer WHER
+  echo SCANSELECT \* FROM customer
   $CLI SCANSELECT \* FROM customer
+  echo SCANSELECT \* FROM customer "ORDER BY hobby DESC LIMIT 3 OFFSET 2"
   $CLI SCANSELECT \* FROM customer "ORDER BY hobby DESC LIMIT 3 OFFSET 2"
+  echo SCANSELECT \* FROM customer "ORDER BY hobby DESC LIMIT 3 OFFSET "
   $CLI SCANSELECT \* FROM customer "ORDER BY hobby DESC LIMIT 3 OFFSET "
   $CLI SCANSELECT \* FROM customer "ORDER BY hobby DESC LIMIT 3 OFFSE"
   $CLI SCANSELECT \* FROM customer "ORDER BY hobby DESC LIMIT 3 "

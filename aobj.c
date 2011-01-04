@@ -31,6 +31,7 @@ ALL RIGHTS RESERVED
 #include <unistd.h>
 #include <ctype.h>
 
+#include "adlist.h"
 #include "redis.h"
 
 #include "row.h"
@@ -63,11 +64,13 @@ void dumpAobj(aobj *a) {
         int len      = MIN(a->len, 1023);
         memcpy(DumpBuf, a->s, len);
         DumpBuf[len] = '\0';
-        printf("STRING aobj: len: %d -> (%s)\n", a->len, DumpBuf);
+        printf("\tSTRING aobj: len: %d -> (%s)\n", a->len, DumpBuf);
     } else if (a->type == COL_TYPE_INT) {
-        printf("INT aobj: val: %d\n", a->i);
-    } else {           /* COL_TYPE_FLOAT) */
-        printf("FLOAT aobj: val: %f\n", a->f);
+        printf("\tINT aobj: val: %d\n", a->i);
+    } else if (a->type == COL_TYPE_FLOAT) {
+        printf("\tFLOAT aobj: val: %f\n", a->f);
+    } else {
+        printf("\tEMPTY aobj\n");
     }
 }
 
@@ -114,11 +117,19 @@ void initAobjFromString(aobj *a, char *s, int len, bool ctype) {
     }
 }
 
+void aobjClone(aobj *dest, aobj *src) {
+    memcpy(dest, src, sizeof(aobj));
+    if (src->type == COL_TYPE_STRING) {
+        dest->s = malloc(src->len);
+        memcpy(dest->s, src->s, src->len);
+    }
+}
 aobj *cloneAobj(aobj *a) {
     aobj *na = (aobj *)malloc(sizeof(aobj));
-    memcpy(na, a, sizeof(aobj));
+    aobjClone(na, a);
     return na;
 }
+
 /* IN_List objects need to be converted from string to Aobj */
 aobj *copyRobjToAobj(robj *r, uchar ctype) {
     aobj *a = (aobj *)malloc(sizeof(aobj));
@@ -172,6 +183,18 @@ void convertINLtoAobj(list **inl, uchar ctype) {
     (*inl)->free = destroyAobj;
 }
 
+list *cloneAobjList(list *ll) {
+    listNode *ln;
+    list *l2     = listCreate();
+    listIter *li = listGetIterator(ll, AL_START_HEAD);
+    while((ln = listNext(li)) != NULL) {
+        aobj *a = ln->value;
+        listAddNodeTail(l2, cloneAobj(a));
+    }
+    listReleaseIterator(li);
+    return l2;
+}
+
 static char SFA_buf[32];
 char *strFromAobj(aobj *a, int *len) {
     char *s = NULL; /* compiler warning */
@@ -217,13 +240,13 @@ aobj *createStringAobjFromAobj(aobj *a) {
 }
 
 robj *createStringRobjFromAobj(aobj *a) {
-    if (a->type == COL_TYPE_STRING) {
+    if (       a->type == COL_TYPE_STRING) {
         return createStringObject(a->s, a->len);
     } else if (a->type == COL_TYPE_FLOAT) {
         char buf[32];
         sprintfOutputFloat(buf, 32, a->f);
         return createStringObject(buf, strlen(buf));
-    } else {                                        /* COL_TYPE_INT */
+    } else {           /* COL_TYPE_INT */
         robj *r     = createObject(REDIS_STRING, NULL);
         int   i;
         if (a->enc == COL_TYPE_STRING) i = atoi(a->s);
@@ -232,4 +255,33 @@ robj *createStringRobjFromAobj(aobj *a) {
         r->encoding = REDIS_ENCODING_INT;
         return r;
     }
+}
+
+static int aobjCmp(aobj *a, aobj *b) {
+    if (      a->type == COL_TYPE_STRING) {
+        return strncmp(a->s, b->s, a->len);
+    } else if (a->type == COL_TYPE_FLOAT) {
+        float f    = a->f - b->f;
+        return (f == 0.0) ? 0 : ((f > 0.0) ? 1: -1);
+    } else {           /* COL_TYPE_INT */
+        return a->i - b->i;
+    }
+}
+bool aobjEQ(aobj *a, aobj *b) {
+    return !aobjCmp(a, b);
+}
+bool aobjNE(aobj *a, aobj *b) {
+    return aobjCmp(a, b);
+}
+bool aobjLT(aobj *a, aobj *b) {
+    return (aobjCmp(a, b) < 0);
+}
+bool aobjLE(aobj *a, aobj *b) {
+    return (aobjCmp(a, b) <= 0);
+}
+bool aobjGT(aobj *a, aobj *b) {
+    return (aobjCmp(a, b) > 0);
+}
+bool aobjGE(aobj *a, aobj *b) {
+    return (aobjCmp(a, b) >= 0);
 }

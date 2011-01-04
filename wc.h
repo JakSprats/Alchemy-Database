@@ -49,11 +49,12 @@ bool parseCreateTable(redisClient *c,
                       int          *ccount,
                       sds           as_line);
 
-#define SQL_ERR_LOOKUP       0 
-#define SQL_SINGLE_LOOKUP    1
-#define SQL_RANGE_QUERY      2
-#define SQL_IN_LOOKUP        3
-#define SQL_SINGLE_FK_LOOKUP 4
+#define SQL_ERR_LOOKUP         0 
+#define SQL_SINGLE_LOOKUP      1
+#define SQL_RANGE_QUERY        2
+#define SQL_IN_LOOKUP          3
+#define SQL_SINGLE_FK_LOOKUP   4
+#define SQL_STORE_LOOKUP_MASK  127
 
 #define SQL_SELECT     0
 #define SQL_DELETE     1
@@ -64,10 +65,7 @@ bool parseWCAddtlSQL(redisClient *c,
                      char        *token,
                      cswc_t      *w);
 
-uchar checkSQLWhereClauseReply(redisClient *c,
-                               cswc_t      *w,
-                               uchar        sop,
-                               bool         is_scan);
+void parseWCReply(redisClient *c, cswc_t *w, uchar sop, bool is_scan);
 
 void init_join_block(jb_t *jb, char *wc);
 void destroy_join_block(jb_t *jb);

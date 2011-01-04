@@ -30,6 +30,7 @@ ALL RIGHTS RESERVED
 #include "adlist.h"
 #include "redis.h"
 
+#include "aobj.h"
 #include "common.h"
 
 typedef struct dual_lists {
@@ -40,13 +41,33 @@ typedef struct dual_lists {
 
 bool cCpyOrReply(redisClient *c, char *src, char *dest, unsigned int len);
 
+//TODO break out into filter.h
+enum OP {NONE, EQ, NE, GT, GE, LT, LE};
+typedef struct filter {
+    int       cmatch; /* column filter runs on                           */
+    enum OP   op;     /* operation filter applies [,=,!=]                */
+    sds       rhs;    /* right hand side of filter (e.g. x < 7 .. rhs=7) */
+    aobj      rhsv;   /* value of rhs [sds="7",int=7,float=7.0]          */
+    list     *inl;    /* WHERE ..... AND x IN (1,2,3)                    */
+} f_t;
+    /* WHERE fk BETWEEN 1 AND 10 AND x = 4 AND y != 5   */
+    /* |-> range_query(fk, 1, 10) + list(f_t)->([x,=,4],[y,!,5]) */
+void initFilter(f_t *filt);
+void releaseFilter(f_t *flt);
+f_t *cloneFilt(f_t *filt);
+f_t *createFilter(robj *key, int cmatch, uchar ctype);
+f_t *createINLFilter(list *inl, int cmatch);
+void dumpFilter(f_t *filt);
+void convertFilterListToAobj(list *flist, int tmatch);
+
 typedef struct check_sql_where_clause {
+    uchar  wtype;
     robj  *key;
     robj  *low;
     robj  *high;
     list  *inl;
-    char  *stor;
-    char  *lvr;
+    sds    stor;
+    sds    lvr;
     int    imatch;
     int    tmatch;
     int    cmatch;
@@ -55,15 +76,15 @@ typedef struct check_sql_where_clause {
     bool   asc;
     int    lim;
     int    ofst;
-    char  *ovar;  /* OFFSET variable name - used by cursors */
+    sds    ovar;  /* OFFSET variable name - used by cursors */
     sds    token;
     int    sto;
+    list  *flist;
 } cswc_t;
 
 void init_check_sql_where_clause(cswc_t *w, int tmatch, sds token);
 void destroy_check_sql_where_clause(cswc_t *w);
 
-void singleFKHack(cswc_t *w, uchar *wtype);
 
 bool leftoverParsingReply(redisClient *c, char *x);
 

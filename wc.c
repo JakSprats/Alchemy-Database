@@ -54,10 +54,12 @@ extern int      Num_tbls[MAX_NUM_DB];
 extern r_tbl_t  Tbl     [MAX_NUM_DB][MAX_NUM_TABLES];
 extern r_ind_t  Index   [MAX_NUM_DB][MAX_NUM_INDICES];
 extern stor_cmd AccessCommands[];
+extern uchar    OP_len[7];
 
 char   *Ignore_keywords[]   = {"PRIMARY", "CONSTRAINT", "UNIQUE", "KEY",
                                "FOREIGN" };
 uint32  Num_ignore_keywords = 5;
+
 
 /* CREATE_TABLE_HELPERS CREATE_TABLE_HELPERS CREATE_TABLE_HELPERS */
 bool ignore_cname(char *tkn) {
@@ -281,12 +283,16 @@ bool parseWCAddtlSQL(redisClient *c, char *token, cswc_t *w) {
     if (!strncasecmp(token, "ORDER ", 6)) {
         char *by      = next_token(token);
         if (!by) {
+            w->lvr = NULL;
             addReply(c, shared.whereclause_orderby_no_by);
             return 0;
         }
 
         char *lfin    = NULL;
-        if (!parseOrderBy(c, by, w->tmatch, w, &lfin)) return 0;
+        if (!parseOrderBy(c, by, w->tmatch, w, &lfin)) {
+            w->lvr = NULL;
+            return 0;
+        }
         if (lfin) {
             check_sto = 1;
             token     = lfin;
@@ -390,6 +396,7 @@ static uchar parseWC_IN(redisClient  *c,
         while (1) {
             char *nextc = str_next_unescaped_chr(beg, s, ',');
             if (!nextc) break;
+            while (isblank(*s)) s++;
             robj *r     = createStringObject(s, nextc - s);
             listAddNodeTail(*inl, r);
             nextc++;
@@ -458,37 +465,57 @@ static bool parseInumCol(redisClient *c,
                         int          tlen,
                         int         *cmatch,
                         int         *imatch,
-                        bool         is_scan) {
+                        bool         needi) {
     *cmatch = find_column_n(*tmatch, token, tlen);
     if (*cmatch == -1) {
         addReply(c, shared.whereclause_col_not_found);
         return 0;
     }
     *imatch = (*cmatch == -1) ? -1 : find_index(*tmatch, *cmatch); 
-    if (!is_scan && *imatch == -1) { /* non-indexed column */
+    if (needi && *imatch == -1) { /* non-indexed column */
         addReply(c, shared.whereclause_col_not_indxd);
         return 0;
     }
     return 1;
 }
 
-char CLT = '<';
-char CGT = '>';
-char CEQ = '=';
-enum OPERATION { NONE, EQ, GT, GE, LT, LE };
-static enum OPERATION findOperator(char *val, uint32 vlen) {
+static char CLT = '<';
+static char CGT = '>';
+static char CEQ = '=';
+static char CNE = '!';
+static enum OP findOperator(char *val, uint32 vlen, char **spot) {
     for (uint32 i = 0; i < vlen; i++) {
         char x = val[i];
-        if (x == CEQ) return EQ;
-        if (x == CGT) {
-            if (i != (vlen - 1) && val[i + 1] == EQ) return GE;
-            else                                     return GT;
+        if (x == CEQ) {
+            *spot  = val + i;
+            return EQ;
         }
         if (x == CLT) {
-            if (i != (vlen - 1) && val[i + 1] == EQ) return LE;
-            else                                     return GT;
+            if (i != (vlen - 1) && val[i + 1] == CEQ) {
+                *spot  = val + i + 1;
+                return LE;
+            } else {
+                *spot  = val + i;
+                return LT;
+            }
+        }
+        if (x == CGT) {
+            if (i != (vlen - 1) && val[i + 1] == CEQ) {
+                *spot  = val + i + 1;
+                return GE;
+            } else {
+                *spot  = val + i;
+                return GT;
+            }
+        }
+        if (x == CNE) {
+            if (i != (vlen - 1) && val[i + 1] == CEQ) {
+                *spot  = val + i + 1;
+                return NE;
+            }
         }
     }
+    *spot = NULL;
     return NONE;
 }
 
@@ -502,11 +529,14 @@ static uchar parseWCTokenRelation(redisClient  *c,
                                   char         *token,
                                   char        **finish,
                                   bool          is_scan,
-                                  bool          is_j) {
+                                  f_t          *flt,
+                                  bool          ifound,
+                                  bool          is_join) {
+    int              idum;
     parse_inum_func *pif;
     int              two_tok_len;
     uchar            wtype = SQL_ERR_LOOKUP;
-    if (is_j) {
+    if (is_join) {
         pif         = parseInumTblCol;
         char *tok2  = next_token(token);
         if (!tok2) two_tok_len = strlen(token);
@@ -516,42 +546,78 @@ static uchar parseWCTokenRelation(redisClient  *c,
         two_tok_len = strlen(token);
     }
 
-    char *eq = _strnchr(token, '=', two_tok_len);
-    if (eq) { /* "col = X" */
-        char *end = eq - 1;
+    char    *spot = NULL;
+    enum OP  op   = findOperator(token, two_tok_len, &spot);
+    if (op != NONE) { /* "col=X", "col!=X" */
+        char *end = spot - OP_len[op];;
         while (isblank(*end)) end--; /* find end of PK */
-        if (!(*pif)(c, &w->tmatch, token, end - token + 1,
-                    &w->cmatch, &w->imatch, is_scan)) return SQL_ERR_LOOKUP;
-
+        if (ifound) { /* set filter.[cmatch,op] */
+            if (!(*pif)(c, &w->tmatch, token, end - token + 1, &flt->cmatch,
+                        &idum, 0)) return SQL_ERR_LOOKUP;
+            if (flt->cmatch == 0) { /* NO filters on PK */
+                addReply(c, shared.pk_filter);
+                return SQL_ERR_LOOKUP;
+            }
+            flt->op = op;
+        } else {      /* set w->[t/c/imatch] */
+            if (op != EQ) {
+                addReply(c, shared.pk_query_mustbe_eq);
+                return SQL_ERR_LOOKUP;
+            }
+            if (!(*pif)(c, &w->tmatch, token, end - token + 1, &w->cmatch,
+                        &w->imatch, !is_scan)) return SQL_ERR_LOOKUP;
+        }
         wtype        = w->cmatch ? SQL_SINGLE_FK_LOOKUP : SQL_SINGLE_LOOKUP;
-        char *start  = eq + 1;
+        char *start  = spot + 1;
         while (isblank(*start)) start++; /* find start of value */
         if (!*start) goto sql_tok_rel_err;
         char *tokfin = strchr(start, ' ');
         int   len    = tokfin ? tokfin - start : (uint32)strlen(start);
-        w->key       = createStringObject(start, len);
+        if (ifound) { /* set filter.rhs */
+            flt->rhs = sdsnewlen(start, len);
+        } else {      /* set w.key */
+            w->key   = createStringObject(start, len); //TODO -> aobj
+        }
 
         if (tokfin) while (isblank(*tokfin)) tokfin++;
         *finish = tokfin;
+        //TODO is the PK=X check needed
         if (!w->cmatch || !tokfin) { /* PK=X(single row) OR nutn 2 parse */
             w->lvr = tokfin;
             return wtype;
         }
-    } else { /* Range_Query  or IN_Query */
+    } else { /* RANGE_QUERY or IN_QUERY */
         char *nextp = strchr(token, ' ');
         if (!nextp) goto sql_tok_rel_err;
+        int imatch = -1;
+        int cmatch = -1;
         if (!(*pif)(c, &w->tmatch, token, nextp - token,
-                    &w->cmatch, &w->imatch, is_scan)) return SQL_ERR_LOOKUP;
+                    &cmatch, &imatch, !is_scan)) return SQL_ERR_LOOKUP;
         while (isblank(*nextp)) nextp++; /* find start of next token */
         if (!strncasecmp(nextp, "IN ", 3)) {
             nextp = next_token(nextp);
             if (!nextp) goto sql_tok_rel_err;
-            uchar ctype = Tbl[server.dbid][w->tmatch].col_type[w->cmatch];
-            wtype = parseWC_IN(c, nextp, &w->inl, ctype, finish);
+            if (!ifound) w->imatch = imatch;
+            uchar ctype = Tbl[server.dbid][w->tmatch].col_type[cmatch];
+            list *inl   = NULL;
+            wtype       = parseWC_IN(c, nextp, &inl, ctype, finish);
+            if (ifound) {
+                flt->op     = EQ;
+                flt->inl    = inl;
+                flt->cmatch = cmatch;
+            } else {
+                w->inl      = inl;
+                w->cmatch   = cmatch; /* scan uses cmatch */
+            }
         } else if (!strncasecmp(nextp, "BETWEEN ", 8)) { /* RANGE QUERY */
             nextp = next_token(nextp);
             if (!nextp) goto sql_tok_rel_err;
-            wtype = parseRangeReply(c, nextp, w, finish);
+            if (ifound || is_scan) { /* BETWEEN only for IndexRangeQuery */
+                addReply(c, shared.filter_between_filter);
+                return SQL_ERR_LOOKUP;
+            }
+            if (!ifound) w->imatch = imatch;
+            wtype      = parseRangeReply(c, nextp, w, finish);
         } else {
             goto sql_tok_rel_err;
         }
@@ -562,22 +628,66 @@ sql_tok_rel_err:
     if      (sop == SQL_SELECT) addReply(c, shared.selectsyntax);
     else if (sop == SQL_DELETE) addReply(c, shared.deletesyntax);
     else if (sop == SQL_UPDATE) addReply(c, shared.updatesyntax);
-    else                        addReply(c, shared.scanselectsyntax);
+    else       /* SCANSELECT */ addReply(c, shared.scanselectsyntax);
     return SQL_ERR_LOOKUP;
 }
 
+/* FILTER_PARSING FILTER_PARSING FILTER_PARSING FILTER_PARSING */
+void parseWCReply(redisClient *c, cswc_t *w, uchar sop, bool is_scan) {
+    uchar   wtype  = SQL_ERR_LOOKUP;
+    bool    rwtype = SQL_ERR_LOOKUP;
+    char   *finish = w->token;
+    sds     token  = NULL;
+    bool    ifound = 0;
 
-uchar checkSQLWhereClauseReply(redisClient *c,
-                               cswc_t      *w,
-                               uchar        sop,
-                               bool         is_scan) {
-    char  *finish = NULL;
-    char  *token  = w->token;
-    while (isblank(*token)) token++; /* find start of next token */
-    uchar  wtype  = parseWCTokenRelation(c, w, sop, token,
-                                         &finish, is_scan, 0);
-    if (finish && !parseWCAddtlSQL(c, finish, w)) return SQL_ERR_LOOKUP;
-    return wtype;
+    while (1) {
+        f_t   flt;
+        initFilter(&flt);
+        //TODO needs to be str_case_unescaped_quotes_str(" AND ")
+        char *tokfin = NULL;
+        char *and    = strcasestr(finish, " AND ");
+        char *btwn   = strcasestr(finish, " BETWEEN ");
+        if (and && btwn && btwn < and) and = strcasestr(and + 5, " AND ");
+        int   tlen   = and ? and - finish : (int)strlen(finish);
+        if (token) sdsfree(token);
+        token        = sdsnewlen(finish, tlen);
+        uchar twtype = parseWCTokenRelation(c, w, sop, token, &tokfin,
+                                            is_scan, &flt, ifound, 0);
+        if (twtype == SQL_ERR_LOOKUP) goto p_wd_end;
+
+        if (ifound && flt.op != NONE) { /* index first token, then filters  */
+            //printf("new filter:\n"); dumpFilter(&flt);
+            if (!w->flist) w->flist = listCreate();
+            listAddNodeTail(w->flist, cloneFilt(&flt));
+            releaseFilter(&flt);
+        } else if (!ifound) {
+            wtype  = twtype;
+            ifound = 1;
+        }
+
+        if (and) {
+            finish = and + 5; /* go past " AND " */
+            while (isblank(*finish)) finish++;
+            if (!*finish) break;
+        } else {
+            if (!tokfin) break;
+            finish = tokfin;
+            while (isblank(*finish)) finish++;
+            if (!*finish) break;
+            if (!parseWCAddtlSQL(c, finish, w)) goto p_wd_end;
+            if (w->stor) {
+                wtype += SQL_STORE_LOOKUP_MASK;
+                w->stor = sdsnewlen(w->stor, strlen(w->stor));
+            }
+            break;
+        }
+    }
+    rwtype = wtype;
+    convertFilterListToAobj(w->flist, w->tmatch);
+p_wd_end:
+    if (w->lvr) w->lvr = sdsnewlen(w->lvr, strlen(w->lvr));
+    if (token) sdsfree(token);
+    w->wtype = wtype;
 }
 
 /* JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN */
@@ -598,6 +708,11 @@ static bool addInd2Join(redisClient *c,
     return 1;
 }
 
+static void singleFKHack(cswc_t *w, uchar *wtype) {
+    *wtype = SQL_RANGE_QUERY;
+    w->low = cloneRobj(w->key);
+    w->high = cloneRobj(w->key);
+}
 /* SYNTAX: The join clause is parse into tokens delimited by "AND"
             the special case of "BETWEEN x AND y" overrides the "AND" delimter
            These tokens are then parses as "relations"
@@ -613,6 +728,8 @@ static bool joinParseWCReply(redisClient  *c, jb_t *jb) {
     bool    ret    = 0;
 
     while (1) {
+        f_t   flt;
+        initFilter(&flt);
         //TODO needs to be str_case_unescaped_quotes_str(" AND ")
         char *tokfin = NULL;
         char *and    = strcasestr(finish, " AND ");
@@ -620,7 +737,8 @@ static bool joinParseWCReply(redisClient  *c, jb_t *jb) {
         if (and && btwn && btwn < and) and = strcasestr(and + 5, " AND ");
         int   tlen   = and ? and - finish : (int)strlen(finish);
         token        = sdsnewlen(finish, tlen);
-        wtype        = parseWCTokenRelation(c, w, sop, token, &tokfin, 0, 1);
+        wtype        = parseWCTokenRelation(c, w, sop, token, &tokfin,
+                                            0, &flt, 0, 1);
         if (wtype == SQL_ERR_LOOKUP) goto j_pcw_end;
 
         if (!addInd2Join(c, w->imatch, &jb->n_ind, jb->j_indxs)) goto j_pcw_end;
@@ -629,7 +747,7 @@ static bool joinParseWCReply(redisClient  *c, jb_t *jb) {
         if (key) { /* parsed key may be "tablename.columnname" i.e. join_indx */
             if (isalpha(*key) && strchr(key, '.')) {
                 if (!parseInumTblCol(c, &w->tmatch, key, sdslen(key),
-                                    &w->cmatch, &w->imatch, 0))  goto j_pcw_end;
+                                    &w->cmatch, &w->imatch, 0)) goto j_pcw_end;
                 if (!addInd2Join(c, w->imatch,
                                  &jb->n_ind, jb->j_indxs))       goto j_pcw_end;
                 decrRefCount(w->key);
@@ -650,6 +768,7 @@ static bool joinParseWCReply(redisClient  *c, jb_t *jb) {
             while (isblank(*finish)) finish++;
             if (!*finish) break;
             if (!parseWCAddtlSQL(c, finish, w)) goto j_pcw_end;
+            if (w->stor) wtype += SQL_STORE_LOOKUP_MASK;
             break;
         }
     }
@@ -690,11 +809,10 @@ static bool joinParseWCReply(redisClient  *c, jb_t *jb) {
 
     ret = 1;
 j_pcw_end:
-    //TODO w->stor and w->lvr are INVALID outside of this func
-    //     they ref "token" which gets freed below -> HACK
-    if (w->stor) w->stor = _strdup(w->stor);
-    if (w->lvr)  w->lvr  = _strdup(w->lvr);
+    if (w->stor) w->stor = sdsnewlen(w->stor, strlen(w->stor));
+    if (w->lvr)  w->lvr  = sdsnewlen(w->lvr, strlen(w->lvr));
     if (token) sdsfree(token);
+    w->wtype = wtype;
     return ret;
 }
 
@@ -765,7 +883,5 @@ void joinReply(redisClient *c) {
     }
 
 j_end:
-    if (jb.w.stor) free(jb.w.stor); /* HACK from joinParseWCReply */
-    if (jb.w.lvr)  free(jb.w.lvr);  /* HACK from joinParseWCReply */
     destroy_join_block(&jb);
 }

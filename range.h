@@ -97,9 +97,11 @@ void init_range(range_t     *g,
                 list        *ll,
                 uchar        ctype);
 
-typedef bool row_op(range_t *g, aobj *akey, void *rrow, bool q);
+typedef bool row_op(range_t *g, aobj *akey, void *rrow, bool q, long *card);
 long rangeOp(range_t *g, row_op *p); /* RangeQuery */
 long inOp(range_t *g, row_op *p);    /* InQuery */
+
+bool passFilters(void *rrow, list *flist, int tmatch);
 
 void iselectAction(redisClient *c,
                    cswc_t      *w,

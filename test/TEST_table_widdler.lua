@@ -3,18 +3,12 @@ require "is_external"
 
 require "socket"
 
-local c   = 200;
-local req = 10000000;
-local mod = 100;
-local tbl = "ten_mill_mod100";
+local c    = 200;
+local req  = 10000000;
+local mod  = 100;
+local tbl  = "ten_mill_mod100";
 
 --req = 1000000; -- for quick testing
-
-require "socket"
-function diff_time(msg, x)
-    return string.format("%s elapsed time: %.2f(s)\n",
-                         msg, (socket.gettime()*1000 - x) / 1000);
-end
 
 function init_ten_mill_mod100()
     local indx = "ind_ten_mill_mod100_fk";
@@ -29,10 +23,10 @@ function init_ten_mill_mod100()
     local x   = socket.gettime()*1000;
     print ('executing: (' .. icmd .. ')');
     os.execute(icmd);
-    print (diff_time('time: (' .. icmd .. ')', x));
+    is_external.print_diff_time('time: (' .. icmd .. ')', x);
     local x   = socket.gettime()*1000;
     --print ('save()');
-    --print (diff_time('time: save()', x));
+    --is_external.print_diff_time('time: save()', x);
     --save();
     return "+OK";
 end
@@ -52,7 +46,7 @@ function widdle_delete_pk()
                --' pke: ' .. pke .. ' wc: ' .. wc);
         x          = socket.gettime()*1000;
         delete(tbl, wc);
-        print (diff_time('delete: (' .. wc .. ')', x));
+        is_external.print_diff_time('delete: (' .. wc .. ')', x);
         local new_cnt = cnt - (pke - pks) - 1;
         cnt = scanselect("COUNT(*)", tbl);
         if (cnt ~= new_cnt) then
@@ -69,7 +63,7 @@ function widdle_update_FK()
     local wc         = "id BETWEEN 1 AND " .. cnt; -- ENTIRE TABLE
     local x          = socket.gettime()*1000;
     update(tbl, val_list, wc);                     -- set ENTIRE TABLE to "i=1"
-    print (diff_time('update: ENTIRE TABLE', x));
+    is_external.print_diff_time('update: ENTIRE TABLE', x);
     val_list         = "i = 99";
     local cnt_per_fk = math.floor(cnt / mod);
     -- cnt never == req, Btree not 100% balanced, some FKs have more PKs
@@ -84,12 +78,12 @@ function widdle_update_FK()
                ' fke: ' .. fke .. ' val_list: ' .. val_list .. ' wc: ' .. wc);
         x          = socket.gettime()*1000;
         update(tbl, val_list, wc);
-        print (diff_time('update: (' .. wc .. ')', x));
+        is_external.print_diff_time('update: (' .. wc .. ')', x);
 
         local ncnt = cnt - (((fke - fks) + 1) * cnt_per_fk);
         x          = socket.gettime()*1000;
         cnt        = scanselect("COUNT(*)", tbl, "i = 1");  -- not-UPDATEd rows
-        print (diff_time('SCANSELECT: (i = 99)', x));
+        is_external.print_diff_time('SCANSELECT: (i = 99)', x);
         if ((ncnt - cnt) > variance) then
             print ('expected: ' .. ncnt .. ' got: ' .. cnt);
         end
@@ -118,7 +112,7 @@ function widdle_delete_FK()
                --' fke: ' .. fke .. ' wc: ' .. wc);
         local x   = socket.gettime()*1000;
         delete(tbl, wc);
-        print (diff_time('delete: (' .. wc .. ')', x));
+        is_external.print_diff_time('delete: (' .. wc .. ')', x);
         local new_cnt = cnt - (((fke - fks) + 1) * cnt_per_fk);
         cnt = scanselect("COUNT(*)", tbl);
         if ((new_cnt - cnt) > variance) then
@@ -129,14 +123,15 @@ function widdle_delete_FK()
 end
 
 function run_widdler_test()
-    --init_ten_mill_mod100();
-    --widdle_delete_pk();
-    --init_ten_mill_mod100();
-    --widdle_update_FK();
+    init_ten_mill_mod100();
+    widdle_delete_pk();
+    init_ten_mill_mod100();
+    widdle_update_FK();
     widdle_delete_FK();
     return "+OK";
 end
 
 if is_external.yes == 1 then
+    --print (init_ten_mill_mod100());
     print (run_widdler_test());
 end

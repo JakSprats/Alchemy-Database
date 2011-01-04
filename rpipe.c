@@ -40,10 +40,10 @@ extern struct redisServer server;
 // FROM redis.c
 #define RL4 redisLog(4,
 
-//TODO this can be a static redisClient (make sure call is not nested)
-struct redisClient *rsql_createFakeClient(void) {
-    int                 curr_db_id = server.dbid;
-    struct redisClient *fc         = createFakeClient();
+//TODO this can be a static redisClient (but make sure call is not nested)
+redisClient *rsql_createFakeClient() {
+    int          curr_db_id = server.dbid;
+    redisClient *fc         = createFakeClient();
     selectDb(fc, curr_db_id);
     return fc;
 }

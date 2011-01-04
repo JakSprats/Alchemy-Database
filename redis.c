@@ -554,27 +554,26 @@ void rewriteCommand(redisClient *c);
 struct redisServer server; /* server global state */
 static struct redisCommand cmdTable[] = {
 #ifdef ALSOSQL
-    {"create",       createCommand,      -4,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
-    {"drop",         dropCommand,         3,REDIS_CMD_INLINE,NULL,1,1,1,1},
-    {"desc",         descCommand,         2,REDIS_CMD_INLINE,NULL,1,1,1,1},
-    {"dump",         dumpCommand,        -2,REDIS_CMD_INLINE,NULL,1,1,1,1},
-
-    {"insert",       insertCommand,      -5,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
     //TODO deprecate the following when 
     //      ./gen-benchmark is mature enough to deprecate redis-benchmark
     /* sqlSelectCommand is CMD_BULK for simplicity in redis-benchmark.s */
     {"select",       sqlSelectCommand,   -2,REDIS_CMD_BULK,NULL,1,1,1,1},
+    {"insert",       insertCommand,      -5,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
     {"update",       updateCommand,       6,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
     {"delete",       deleteCommand,       5,REDIS_CMD_INLINE,NULL,1,1,1,1},
-
     {"scanselect",   tscanCommand,       -4,REDIS_CMD_INLINE,NULL,1,1,1,1},
+
+    {"lua",          luaCommand,          2,REDIS_CMD_INLINE,NULL,1,1,1,1},
+
+    {"create",       createCommand,      -4,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
+    {"drop",         dropCommand,         3,REDIS_CMD_INLINE,NULL,1,1,1,1},
+    {"desc",         descCommand,         2,REDIS_CMD_INLINE,NULL,1,1,1,1},
+    {"dump",         dumpCommand,        -2,REDIS_CMD_INLINE,NULL,1,1,1,1},
     //{"norm",         normCommand,        -2,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1}, // DEPRECATED
     {"denorm",       denormCommand,       3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
 
     {"legacytable",  legacyTableCommand,  3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
     {"legacyinsert", legacyInsertCommand, 3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
-
-    {"lua",          luaCommand,          2,REDIS_CMD_INLINE,NULL,1,1,1,1},
 #endif /* ALSOSQL END */
     {"rewriteaof",rewriteCommand,2,REDIS_CMD_INLINE,NULL,1,1,1,0},
     {"get",getCommand,2,REDIS_CMD_INLINE,NULL,1,1,1,0},
@@ -1573,6 +1572,12 @@ static void createSharedObjects(void) {
     shared.insertsyntax_no_values = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: INSERT INTO tablename VALUES (vals,,,,) - \"VALUES\" keyword MISSING\r\n"));
 
+    shared.filter_between_filter = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: WHERE pk = 9 AND fk BETWEEN 1 AND 5 - \"BETWEEN\" only supported for Index-lookups, use \"fk >= 1 AND fk <= 5\" \r\n"));
+    shared.pk_filter = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: WHERE fk BETWEEN 1 AND 5 AND pk = 10 - primary key lookup can not come second\r\n"));
+    shared.pk_query_mustbe_eq = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: WHERE pk != 4 - primary key lookup must use EQUALS (=)\r\n"));
 
     shared.whereclause_in_err = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: WHERE col IN (...) - \"IN\" requires () delimited list\r\n"));

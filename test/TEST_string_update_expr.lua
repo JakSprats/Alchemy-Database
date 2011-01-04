@@ -1,12 +1,6 @@
 package.path = package.path .. ";;test/?.lua"
 require "is_external"
 
-require "socket"
-function diff_time(msg, x) 
-    return string.format("%s elapsed time: %.2f(s)\n",
-                         msg, (socket.gettime()*1000 - x) / 1000);
-end
-
 function init_string_appendone_test()
     local tbl = "updateme";
     drop_table(tbl);
@@ -36,7 +30,7 @@ function string_appendone_test()
       end
       loops = loops + 1;
     end
-    return diff_time('TEST: stringappendone:', x);
+    return is_external.diff_time('TEST: stringappendone:', x);
 end
 
 if is_external.yes == 1 then

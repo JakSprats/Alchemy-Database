@@ -59,21 +59,14 @@ typedef struct filter_row {
     int            qcols;
     int           *cmatchs;
     bool           nowc;
-    uchar          ctype;
+    uchar          octype; /* order by column type */
     list          *ll;
     bool           cstar;
-    uchar          ftype;
-    uint32         lowi;
-    uint32         highi;
-    float          lowf;
-    float          highf;
-    char          *lows;
-    char          *highs;
 } fr_t;
 
-static bool init_filter_row(fr_t *fr, redisClient *c, cswc_t *w, qr_t *q,
+static void init_filter_row(fr_t *fr, redisClient *c, cswc_t *w, qr_t *q,
                             int tmatch, int qcols, int *cmatchs, bool nowc,
-                            uchar ctype, list *ll, bool cstar, uchar ftype) {
+                            uchar octype, list *ll, bool cstar) {
     fr->c       = c;
     fr->w       = w;
     fr->q       = q;
@@ -81,77 +74,16 @@ static bool init_filter_row(fr_t *fr, redisClient *c, cswc_t *w, qr_t *q,
     fr->qcols   = qcols;
     fr->cmatchs = cmatchs;
     fr->nowc    = nowc;
-    fr->ctype   = ctype;
+    fr->octype  = octype;
     fr->ll      = ll;
     fr->cstar   = cstar;
-    fr->ftype   = ftype;
-    fr->lowi    = -1;
-    fr->highi   = -1;
-    fr->lowf    = FLT_MAX;
-    fr->highf   = FLT_MIN;
-    fr->lows    = NULL;
-    fr->highs   = NULL;
-
-    if (w->low) { /* RANGE_QUERY (or single lookup, currently also a range)*/
-         if (ftype == COL_TYPE_INT) {
-             uint32 i;
-             if (!strToInt(c, w->low->ptr, sdslen(w->low->ptr), &i)) return 0;
-             fr->lowi  = i;
-             if (!strToInt(c, w->high->ptr, sdslen(w->high->ptr), &i)) return 0;
-             fr->highi = i;
-         } else if (ftype == COL_TYPE_FLOAT) {
-             float f;
-             if (!strToFloat(c, w->low->ptr, sdslen(w->low->ptr), &f)) return 0;
-             fr->lowf  = f;
-             if (!strToFloat(c, w->high->ptr, sdslen(w->high->ptr), &f))
-                 return 0;
-             fr->highf = f;
-         } else {
-             fr->lows  = w->low->ptr;
-             fr->highs = w->high->ptr;
-         }
-    }
-    return 1;
 }
 
-static bool is_hit(fr_t *fr, aobj *a) {
-    if (fr->ftype == COL_TYPE_INT) {
-        if (a->i >= fr->lowi && a->i <= fr->highi) return 1;
-    } else if (fr->ftype == COL_TYPE_FLOAT) {
-        if (a->f >= fr->lowf && a->f <= fr->highf) return 1;
-    } else {             /* COL_TYPE_STRING */
-        if (strcmp(a->s, fr->lows)  >= 0 &&
-            strcmp(a->s, fr->highs) <= 0) return 1;
-    }
-    return 0;
-}
-static bool is_match(aobj *la, aobj *a, uchar ftype) {
-    if (     ftype == COL_TYPE_INT)      return (la->i == a->i);
-    else if (ftype == COL_TYPE_FLOAT)    return (la->f == a->f);
-    else           /* COL_TYPE_STRING */ return (strcmp(la->s, a->s) == 0);
-}
 
-//TODO merge w/ ALL RangeOps and InOps when FILTERS are implemented
 static void condSelectReply(fr_t *fr, aobj *akey, void *rrow, ulong *card) {
     uchar hit = 0;
-    if (fr->nowc) {
-        hit = 1;
-    } else {
-        aobj acol = getRawCol(rrow, fr->w->cmatch, NULL, fr->tmatch, NULL, 0);
-        if (fr->w->low) { /* RANGE_QUERY */
-            hit = is_hit(fr, &acol);
-        } else {          /* IN_QUERY */
-            listNode *ln;
-            listIter *li = listGetIterator(fr->w->inl, AL_START_HEAD);
-            while((ln = listNext(li)) != NULL) {
-                aobj *la = ln->value;
-                hit      = is_match(la, &acol, fr->ftype);
-                if (hit) break;
-            }
-            listReleaseIterator(li);
-        }
-        releaseAobj(&acol);
-    }
+    if (fr->nowc) hit = 1;
+    else          hit = passFilters(rrow, fr->w->flist, fr->tmatch);
 
     if (hit) {
         *card = *card + 1;
@@ -160,7 +92,7 @@ static void condSelectReply(fr_t *fr, aobj *akey, void *rrow, ulong *card) {
                             akey, fr->tmatch, 0);
         if (fr->q->qed) {
             addORowToRQList(fr->ll, r, rrow, fr->w->obc, akey,
-                            fr->tmatch, fr->ctype);
+                            fr->tmatch, fr->octype);
             decrRefCount(r);
         } else {
             addReplyBulk(fr->c, r);
@@ -168,7 +100,6 @@ static void condSelectReply(fr_t *fr, aobj *akey, void *rrow, ulong *card) {
         }
     }
 }
-
 
 /* SYNTAX
    1.) SCANSELECT * FROM tbl
@@ -202,14 +133,16 @@ void tscanCommand(redisClient *c) {
 
     cswc_t  w;
     list   *ll  = NULL; /* B4 GOTO */
-    uchar   sop = SQL_SCANSELECT;
     init_check_sql_where_clause(&w, tmatch, wc); /* on error: GOTO tscan_end */
 
     if (nowc && c->argc > 4) { /* ORDER BY or STORE w/o WHERE CLAUSE */
         if (!strncasecmp(where, "ORDER ", 6) ||
             !strncasecmp(where, "STORE ", 6)) {
-            if (!parseWCAddtlSQL(c, c->argv[4]->ptr, &w) ||
-                !leftoverParsingReply(c, w.lvr))            goto tscan_end;
+            if (!parseWCAddtlSQL(c, c->argv[4]->ptr, &w)) goto tscan_end;
+            if (w.lvr) {
+                w.lvr = sdsnewlen(w.lvr, strlen(w.lvr));
+                if (!leftoverParsingReply(c, w.lvr))      goto tscan_end;
+            }
             if (w.stor) { /* if STORE comes after ORDER BY */
                 addReply(c, shared.scan_store);
                 goto tscan_end;
@@ -217,14 +150,14 @@ void tscanCommand(redisClient *c) {
         }
     }
     if (nowc && w.obc == -1 && c->argc > 4) { /* argv[4] parse error */
-        w.lvr = where;
+        w.lvr = sdsdup(where);
         leftoverParsingReply(c, w.lvr);
         goto tscan_end;
     }
 
     if (!nowc && w.obc == -1) { /* WhereClause exists and no ORDER BY */
-        uchar wtype  = checkSQLWhereClauseReply(c, &w, sop, 1);
-        if (wtype == SQL_ERR_LOOKUP)         goto tscan_end;
+        parseWCReply(c, &w, SQL_SCANSELECT, 1);
+        if (w.wtype == SQL_ERR_LOOKUP)       goto tscan_end;
         if (!leftoverParsingReply(c, w.lvr)) goto tscan_end;
         if (w.imatch != -1) { /* disallow SCANSELECT on indexed columns */
             addReply(c, shared.scan_on_index);
@@ -234,13 +167,8 @@ void tscanCommand(redisClient *c) {
             addReply(c, shared.scan_store);
             goto tscan_end;
         }
-
-        /* HACK turn key into (low,high) - TODO this should be a SINGLE OP */
-        if (wtype != SQL_RANGE_QUERY && wtype != SQL_IN_LOOKUP) {
-            w.low  = cloneRobj(w.key);
-            w.high = cloneRobj(w.key);
-        }
     }
+
 
     if (cstar && w.obc != -1) { /* SCANSELECT COUNT(*) ORDER BY -> stupid */
         addReply(c, shared.orderby_count);
@@ -260,18 +188,28 @@ void tscanCommand(redisClient *c) {
     qr_t  q;
     setQueued(&w, &q);
     
-    uchar ctype = COL_TYPE_NONE;
+    uchar octype = COL_TYPE_NONE;
     if (q.qed) {
-        ll    = listCreate();
-        ctype = Tbl[server.dbid][tmatch].col_type[w.obc];
+        ll     = listCreate();
+        octype = Tbl[server.dbid][tmatch].col_type[w.obc];
     }
 
-    r_tbl_t *rt     = &Tbl[server.dbid][tmatch];
-    uchar    pktype = rt->col_type[0];
-    uchar    ftype  = (w.cmatch == -1) ? pktype : rt->col_type[w.cmatch];
     fr_t fr;
-    if (!init_filter_row(&fr, c, &w, &q, tmatch, qcols, cmatchs, nowc,
-                         ctype, ll, cstar, ftype)) goto tscan_end;
+    init_filter_row(&fr, c, &w, &q, tmatch, qcols, cmatchs, nowc,
+                    octype, ll, cstar);
+
+    f_t *flt = NULL; /* convert "index"(i.e. FIRST) lookup to filter */
+    if (w.wtype == SQL_SINGLE_FK_LOOKUP) {
+        r_tbl_t *rt     = &Tbl[server.dbid][tmatch];
+        uchar    ftype  = (w.cmatch == -1) ? rt->col_type[0] :
+                                             rt->col_type[w.cmatch];
+        flt          = createFilter(w.key, w.cmatch, ftype);
+    } else if (w.wtype == SQL_IN_LOOKUP) {
+        flt = createINLFilter(w.inl, w.cmatch);
+    }
+    if (!w.flist) w.flist = listCreate();
+    listAddNodeTail(w.flist, flt);
+    //dumpW(&w, w.wtype);
 
     LEN_OBJ
     btEntry *be;
@@ -291,7 +229,7 @@ void tscanCommand(redisClient *c) {
     btReleaseRangeIterator(bi);
 
     if (q.qed && card) {
-        obsl_t **vector = sortOrderByToVector(ll, ctype, w.asc);
+        obsl_t **vector = sortOrderByToVector(ll, octype, w.asc);
         for (int k = 0; k < (int)listLength(ll); k++) {
             if (w.lim != -1 && sent == w.lim) break;
             if (w.ofst > 0) {
@@ -302,7 +240,7 @@ void tscanCommand(redisClient *c) {
                 addReplyBulk(c, ob->row);
             }
         }
-        sortedOrderByCleanup(vector, listLength(ll), ctype, 1);
+        sortedOrderByCleanup(vector, listLength(ll), octype, 1);
         free(vector);
     }
 

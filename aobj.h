@@ -27,6 +27,7 @@ ALL RIGHTS RESERVED
 #ifndef __ALSOSQL_AOBJ__H
 #define __ALSOSQL_AOBJ__H
 
+#include "adlist.h"
 #include "redis.h"
 
 #include "btreepriv.h"
@@ -55,12 +56,24 @@ void destroyAobj(void *a);
 
 void dumpAobj(aobj *a);
 
+void aobjClone(aobj *dest, aobj *src);
 aobj *cloneAobj(aobj *a);
 aobj *copyRobjToAobj(robj *a, uchar ctype);
 aobj *createAobjFromString(char *s, int len, bool ctype);
+
 void convertINLtoAobj(list **inl, uchar ctype);
+list *cloneAobjList(list *ll);
+
 char *strFromAobj(aobj *a, int *len);
 aobj *createStringAobjFromAobj(aobj *a); /* AAAAAAobj */
 robj *createStringRobjFromAobj(aobj *a); /* RRRRRRobj */
+
+typedef bool aobj_cmp(aobj *a, aobj *b);
+bool aobjEQ(aobj *a, aobj *b);
+bool aobjNE(aobj *a, aobj *b);
+bool aobjLT(aobj *a, aobj *b);
+bool aobjLE(aobj *a, aobj *b);
+bool aobjGT(aobj *a, aobj *b);
+bool aobjGE(aobj *a, aobj *b);
 
 #endif /* __ALSOSQL_AOBJ__H */

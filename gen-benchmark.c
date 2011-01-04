@@ -58,6 +58,8 @@
 
 #define REDIS_NOTUSED(V) ((void) V)
 
+#define MAX_NUM_COLUMNS 64
+
 static struct config {
     int          numclients;
     int          requests;
@@ -77,7 +79,8 @@ static struct config {
     int          loop;
 
     int          sequential;
-    int          modulo;
+    int          num_modulo;
+    int          modulo[MAX_NUM_COLUMNS];
     int          incr_seq;
 
     sds          query;
@@ -453,8 +456,15 @@ void parseOptions(int argc, char **argv) {
             }
             i++;
         } else if (!strcmp(argv[i],"-m") && !lastarg) {
-            config.modulo = atoi(argv[i+1]);
-            if (config.modulo < 0) config.modulo = 0;
+            char *arg         = argv[i + 1];
+            config.modulo[0]  = atoi(arg); /* NOTE will stop at ',' */
+            char *nextc       = arg;
+            config.num_modulo = 1;
+            while ((nextc = strchr(nextc, ',')) != NULL) {
+                nextc++;
+                config.modulo[config.num_modulo] = atoi(nextc);
+                config.num_modulo++;
+            }
             i++;
         } else if (!strcmp(argv[i],"-i") && !lastarg) {
             config.incr_seq = atoi(argv[i+1]);
@@ -484,7 +494,7 @@ static void usage(char *arg) {
     printf(" -r <keyspacelen>        Use random keys\n");
     printf(" -s                      Use sequential keys\n");
     printf(" -i <incr_num>           Use incremental sequential keys\n");
-    printf(" -m <modulo>             Modulo for foreign keys (2nd instance of \"0000\")\n");
+    printf(" -m <modulo,,,,,,>       Modulo for foreign keys (2nd instance of \"0000\")\n");
     printf("  Using this option the benchmark will string replace queries\n");
     printf("  in the form 000012345678 instead of constant 000000000001\n");
     printf("  The <keyspacelen> argument determines the max\n");
@@ -503,6 +513,7 @@ static char *rand_replace(char *p, long r) {
     return p;
 }
 
+#define MIN(A,B) ((A > B) ? B : A)
 long Sequence = 1;
 static void randomizeClientKey(client c) {
     char *p = c->obuf;
@@ -510,11 +521,17 @@ static void randomizeClientKey(client c) {
     if (config.sequential)    r = Sequence++;
     else if (config.incr_seq) r = Sequence += config.incr_seq;
     else                      r = random() % config.randomkeys_keyspacelen;
-    int hits = 0;
+    int  hits   = 0;
+    long orig_r = r;
     while ((p = strstr(p, "0000"))) {
+        r      = orig_r;
         char x = *(p - 1);
         if (x == '(' || x == ',' || x == '_' || x == '=') {
-            if (hits > 0 && config.modulo) r %= config.modulo;
+            if (hits > 0 && config.num_modulo) {
+                int m = MIN((hits - 1), (config.num_modulo - 1));
+                //printf("m: %d r: %ld c.m: %ld\n", m, r, config.modulo[m]);
+                r %= config.modulo[m];
+            }
             p  = rand_replace(p, r);
             hits++;
         } else {
@@ -547,7 +564,7 @@ int main(int argc, char **argv) {
 
     config.sequential             = 0;
     config.incr_seq               = 0;
-    config.modulo                 = 0;
+    config.num_modulo             = 0;
     config.query                  = NULL;
     config.reply_type             = -1;
 

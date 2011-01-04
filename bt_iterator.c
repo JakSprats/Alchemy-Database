@@ -177,9 +177,15 @@ static btSIter *createIterator(bt          *btr,
 }
 
 static void setHigh(btSIter *siter, aobj *high, uchar ktype) {
-    if      (ktype == COL_TYPE_STRING) siter->x.highs = _strdup(high->s);
-    else if (ktype == COL_TYPE_INT)    siter->x.high  = high->i;
-    else if (ktype == COL_TYPE_FLOAT)  siter->x.highf = high->f;
+    if      (ktype == COL_TYPE_STRING) {
+        siter->x.highs = malloc(high->len + 1);
+        memcpy(siter->x.highs, high->s, high->len);
+        siter->x.highs[high->len] = '\0';
+    } else if (ktype == COL_TYPE_INT) {
+        siter->x.high  = high->i;
+    } else if (ktype == COL_TYPE_FLOAT) {
+        siter->x.highf = high->f;
+    }
 }
 
 btSIter *btGetRangeIterator(bt *btr, robj *low, robj *high) {
@@ -187,7 +193,7 @@ btSIter *btGetRangeIterator(bt *btr, robj *low, robj *high) {
     bool med; uchar sflag; uint32 ksize;
     //bt_dumptree(btr, btr->ktype);
     btSIter *siter = createIterator(btr, 0, iter_leaf, iter_node);
-    aobj    *alow  = copyRobjToAobj(low, btr->ktype);  //TODO LAME
+    aobj    *alow  = copyRobjToAobj(low,  btr->ktype);  //TODO LAME
     aobj    *ahigh = copyRobjToAobj(high, btr->ktype); //TODO LAME
     setHigh(siter, ahigh, btr->ktype);
     char *bkey = createBTKey(alow, btr->ktype, &med, &sflag, &ksize);/*FREE*/

@@ -160,7 +160,7 @@ bool istoreAction(redisClient *c,
         totlen  += cols[i].len;
     }
 
-    fc->argc     = qcols + 1;
+    fc->argc     = qcols + 2; /* NOT-used in performStoreCmdOrReply() */
     fc->argv[0]  = _createStringObject(StorageCommands[sto].name);
     fc->argv[1]  = _createStringObject(nname); /*NEW Objects NAME*/
     int    n     = 0;
@@ -183,7 +183,8 @@ bool istoreAction(redisClient *c,
     return performStoreCmdOrReply(c, fc, sto, 0);
 }
 
-bool istore_op(range_t *g, aobj *apk, void *rrow, bool q) {
+bool istore_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
+    if (!passFilters(rrow, g->co.w->flist, g->co.w->tmatch)) return 1;
     if (q) {
         addORowToRQList(g->co.ll, NULL, rrow, g->co.w->obc,
                         apk, g->co.w->tmatch, g->co.ctype);
@@ -193,6 +194,7 @@ bool istore_op(range_t *g, aobj *apk, void *rrow, bool q) {
                           g->st.sub_pk, g->st.nargc))
                               return 0;
     }
+    *card = *card + 1;
     return 1;
 }
 
@@ -209,8 +211,8 @@ void istoreCommit(redisClient *c,
         ctype   = Tbl[server.dbid][w->tmatch].col_type[w->obc];
     }
 
-    long         card  = 0;    /* B4 GOTO */ 
-    int          sent  = 0;    /* B4 GOTO */ 
+    long         card  = 0;    /* B4 GOTO */
+    int          sent  = 0;    /* B4 GOTO */
     redisClient *fc    = NULL; /* B4 GOTO */
     bool         err   = 0;    /* B4 GOTO */
 
@@ -230,12 +232,14 @@ void istoreCommit(redisClient *c,
     g.se.qcols   = qcols;
     g.se.cmatchs = cmatchs;
     g.st.fc      = fc;
-    if (w->low) { /* RANGE QUERY */
-        card = rangeOp(&g, istore_op);
-    } else {    /* IN () QUERY */
+    if (w->wtype == SQL_IN_LOOKUP) { /* IN_QUERY */
         card = inOp(&g, istore_op);
+    } else {                         /* RANGE_QUERY */
+        card = rangeOp(&g, istore_op);
     }
-    if (card != -1) {
+    if (card == -1) {
+        err = 1;
+    } else if (card) {
         if (q.qed) {
             obsl_t **v = sortOrderByToVector(ll, ctype, g.co.w->asc);
             sent       = sortedOrderByIstore(c, w, fc, g.se.cmatchs, qcols,
@@ -246,8 +250,6 @@ void istoreCommit(redisClient *c,
             free(v);
             if (sent == -1) err = 1;
         }
-    } else {
-        err = 1;
     }
 
 istore_end:
