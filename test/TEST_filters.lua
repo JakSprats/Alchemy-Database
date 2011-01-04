@@ -11,7 +11,6 @@ local max_iters   = 1000;
 --max_iters = 10000;
 
 function init_customer_profile()
-    local indx = "filters_fk";
     drop_table(tbl);
     create_table(tbl, "thread_sub_id INTEGER  NOT NULL, page_sub_id INTEGER  NOT NULL, page_id INTEGER  NOT NULL, thread_id INTEGER  NOT NULL, subject_id INTEGER  NOT NULL, corr_id INTEGER, cp_name CHARACTER VARYING(255), last_msg_id INTEGER, msg_cnt INTEGER, retrieved_cnt INTEGER");
     create_index("index_tsub_psub", tbl, "page_sub_id");
