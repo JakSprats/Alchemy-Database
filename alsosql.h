@@ -33,6 +33,9 @@ ALL RIGHTS RESERVED
 #include "aobj.h"
 #include "common.h"
 
+/* NOTE: SELECT STORE is implemented in LUA */
+void luaIstoreCommit(redisClient *c);
+
 typedef struct dual_lists {
     list *l1;
     list *l2;
@@ -53,6 +56,7 @@ typedef struct filter {
     /* WHERE fk BETWEEN 1 AND 10 AND x = 4 AND y != 5   */
     /* |-> range_query(fk, 1, 10) + list(f_t)->([x,=,4],[y,!,5]) */
 void initFilter(f_t *filt);
+f_t *newFilter(int cmatch, enum OP op, sds rhs);
 void releaseFilter(f_t *flt);
 f_t *cloneFilt(f_t *filt);
 f_t *createFilter(robj *key, int cmatch, uchar ctype);
@@ -66,7 +70,6 @@ typedef struct check_sql_where_clause {
     robj  *low;
     robj  *high;
     list  *inl;
-    sds    stor;
     sds    lvr;
     int    imatch;
     int    tmatch;

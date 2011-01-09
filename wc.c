@@ -35,7 +35,6 @@ char *strcasestr(const char *haystack, const char *needle); /*compiler warning*/
 #include "redis.h"
 
 #include "join.h"
-#include "store.h"
 #include "index.h"
 #include "cr8tblas.h"
 #include "colparse.h"
@@ -59,7 +58,6 @@ extern uchar    OP_len[7];
 char   *Ignore_keywords[]   = {"PRIMARY", "CONSTRAINT", "UNIQUE", "KEY",
                                "FOREIGN" };
 uint32  Num_ignore_keywords = 5;
-
 
 /* CREATE_TABLE_HELPERS CREATE_TABLE_HELPERS CREATE_TABLE_HELPERS */
 bool ignore_cname(char *tkn) {
@@ -304,8 +302,8 @@ bool parseWCAddtlSQL(redisClient *c, char *token, cswc_t *w) {
     if (check_sto) {
         w->lvr = token; /* assume parse error */
         if (!strncasecmp(token, "STORE ", 6)) {
-            w->stor = token;
-            w->lvr  = NULL;   /* negate parse error */
+            w->wtype += SQL_STORE_LOOKUP_MASK;
+            w->lvr    = NULL;   /* negate parse error */
         }
     }
     return 1;
@@ -551,7 +549,7 @@ static uchar parseWCTokenRelation(redisClient  *c,
     if (op != NONE) { /* "col=X", "col!=X" */
         char *end = spot - OP_len[op];;
         while (isblank(*end)) end--; /* find end of PK */
-        if (ifound) { /* set filter.[cmatch,op] */
+        if (is_scan || ifound) { /* set filter.[cmatch,op] */
             if (!(*pif)(c, &w->tmatch, token, end - token + 1, &flt->cmatch,
                         &idum, 0)) return SQL_ERR_LOOKUP;
             if (flt->cmatch == 0) { /* NO filters on PK */
@@ -573,7 +571,7 @@ static uchar parseWCTokenRelation(redisClient  *c,
         if (!*start) goto sql_tok_rel_err;
         char *tokfin = strchr(start, ' ');
         int   len    = tokfin ? tokfin - start : (uint32)strlen(start);
-        if (ifound) { /* set filter.rhs */
+        if (is_scan || ifound) { /* set filter.rhs */
             flt->rhs = sdsnewlen(start, len);
         } else {      /* set w.key */
             w->key   = createStringObject(start, len); //TODO -> aobj
@@ -597,27 +595,25 @@ static uchar parseWCTokenRelation(redisClient  *c,
         if (!strncasecmp(nextp, "IN ", 3)) {
             nextp = next_token(nextp);
             if (!nextp) goto sql_tok_rel_err;
-            if (!ifound) w->imatch = imatch;
+            if (!ifound && !is_scan) w->imatch = imatch;
             uchar ctype = Tbl[server.dbid][w->tmatch].col_type[cmatch];
             list *inl   = NULL;
             wtype       = parseWC_IN(c, nextp, &inl, ctype, finish);
-            if (ifound) {
+            if (wtype == SQL_ERR_LOOKUP) return SQL_ERR_LOOKUP;
+            if (ifound || is_scan) {
                 flt->op     = EQ;
                 flt->inl    = inl;
                 flt->cmatch = cmatch;
             } else {
                 w->inl      = inl;
-                w->cmatch   = cmatch; /* scan uses cmatch */
             }
         } else if (!strncasecmp(nextp, "BETWEEN ", 8)) { /* RANGE QUERY */
             nextp = next_token(nextp);
             if (!nextp) goto sql_tok_rel_err;
-            if (ifound || is_scan) { /* BETWEEN only for IndexRangeQuery */
-                addReply(c, shared.filter_between_filter);
-                return SQL_ERR_LOOKUP;
-            }
-            if (!ifound) w->imatch = imatch;
-            wtype      = parseRangeReply(c, nextp, w, finish);
+            if (!ifound && !is_scan) w->imatch = imatch;
+            wtype     = parseRangeReply(c, nextp, w, finish);
+            w->cmatch = cmatch; /* scan uses this */
+            if (wtype == SQL_ERR_LOOKUP) return SQL_ERR_LOOKUP;
         } else {
             goto sql_tok_rel_err;
         }
@@ -632,13 +628,24 @@ sql_tok_rel_err:
     return SQL_ERR_LOOKUP;
 }
 
+/* NOTE "BETWEEN"s produce 2 filters, so they must be parsed in parseWCReply */
+static void addLowHighToFlist(cswc_t *w) {
+    f_t *f_low  = newFilter(w->cmatch, GE, w->low->ptr);
+    listAddNodeTail(w->flist, f_low);
+    f_t *f_high = newFilter(w->cmatch, LE, w->high->ptr);
+    listAddNodeTail(w->flist, f_high);
+    decrRefCount(w->low);
+    w->low = NULL;
+    decrRefCount(w->high);
+    w->high = NULL;
+}
+
 /* FILTER_PARSING FILTER_PARSING FILTER_PARSING FILTER_PARSING */
 void parseWCReply(redisClient *c, cswc_t *w, uchar sop, bool is_scan) {
-    uchar   wtype  = SQL_ERR_LOOKUP;
-    bool    rwtype = SQL_ERR_LOOKUP;
-    char   *finish = w->token;
-    sds     token  = NULL;
-    bool    ifound = 0;
+    w->wtype     = SQL_ERR_LOOKUP;
+    char *finish = w->token;
+    sds   token  = NULL;
+    bool  ifound = 0;
 
     while (1) {
         f_t   flt;
@@ -655,14 +662,24 @@ void parseWCReply(redisClient *c, cswc_t *w, uchar sop, bool is_scan) {
                                             is_scan, &flt, ifound, 0);
         if (twtype == SQL_ERR_LOOKUP) goto p_wd_end;
 
-        if (ifound && flt.op != NONE) { /* index first token, then filters  */
-            //printf("new filter:\n"); dumpFilter(&flt);
+        if (is_scan) {
+            w->wtype = twtype;
             if (!w->flist) w->flist = listCreate();
-            listAddNodeTail(w->flist, cloneFilt(&flt));
+            if (w->wtype == SQL_RANGE_QUERY) {
+                addLowHighToFlist(w); /* convert -> "x >= low AND x <= high" */
+            } else {
+                listAddNodeTail(w->flist, cloneFilt(&flt));
+            }
             releaseFilter(&flt);
-        } else if (!ifound) {
-            wtype  = twtype;
-            ifound = 1;
+        } else {
+            if (ifound) { /* index first token, then filters  */
+                if (!w->flist) w->flist = listCreate();
+                listAddNodeTail(w->flist, cloneFilt(&flt));
+                releaseFilter(&flt);
+            } else {
+                w->wtype = twtype;
+                ifound   = 1;
+            }
         }
 
         if (and) {
@@ -675,19 +692,13 @@ void parseWCReply(redisClient *c, cswc_t *w, uchar sop, bool is_scan) {
             while (isblank(*finish)) finish++;
             if (!*finish) break;
             if (!parseWCAddtlSQL(c, finish, w)) goto p_wd_end;
-            if (w->stor) {
-                wtype += SQL_STORE_LOOKUP_MASK;
-                w->stor = sdsnewlen(w->stor, strlen(w->stor));
-            }
             break;
         }
     }
-    rwtype = wtype;
     convertFilterListToAobj(w->flist, w->tmatch);
 p_wd_end:
     if (w->lvr) w->lvr = sdsnewlen(w->lvr, strlen(w->lvr));
     if (token) sdsfree(token);
-    w->wtype = wtype;
 }
 
 /* JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN */
@@ -708,6 +719,7 @@ static bool addInd2Join(redisClient *c,
     return 1;
 }
 
+/* TODO clean this up when the join engine gets cleaned up */
 static void singleFKHack(cswc_t *w, uchar *wtype) {
     *wtype = SQL_RANGE_QUERY;
     w->low = cloneRobj(w->key);
@@ -719,10 +731,10 @@ static void singleFKHack(cswc_t *w, uchar *wtype) {
    NOTE: Joins currently work only on a single index and NOT on a star schema
 */
 static bool joinParseWCReply(redisClient  *c, jb_t *jb) {
-    uchar   sop    = SQL_SELECT;
-    uchar   wtype  = SQL_ERR_LOOKUP;
-    char   *finish = jb->w.token;
     cswc_t *w      = &jb->w;
+    w->wtype       = SQL_ERR_LOOKUP;
+    uchar   sop    = SQL_SELECT;
+    char   *finish = jb->w.token;
     int     ntoks  = 0;
     sds     token  = NULL;
     bool    ret    = 0;
@@ -737,9 +749,9 @@ static bool joinParseWCReply(redisClient  *c, jb_t *jb) {
         if (and && btwn && btwn < and) and = strcasestr(and + 5, " AND ");
         int   tlen   = and ? and - finish : (int)strlen(finish);
         token        = sdsnewlen(finish, tlen);
-        wtype        = parseWCTokenRelation(c, w, sop, token, &tokfin,
+        w->wtype     = parseWCTokenRelation(c, w, sop, token, &tokfin,
                                             0, &flt, 0, 1);
-        if (wtype == SQL_ERR_LOOKUP) goto j_pcw_end;
+        if (w->wtype == SQL_ERR_LOOKUP) goto j_pcw_end;
 
         if (!addInd2Join(c, w->imatch, &jb->n_ind, jb->j_indxs)) goto j_pcw_end;
 
@@ -753,7 +765,7 @@ static bool joinParseWCReply(redisClient  *c, jb_t *jb) {
                 decrRefCount(w->key);
                 w->key = NULL;
            } else { /* or if it is a key, it currently needs to be a range */
-               singleFKHack(w, &wtype);
+               singleFKHack(w, &w->wtype);
            }
         }
         ntoks++;
@@ -768,7 +780,6 @@ static bool joinParseWCReply(redisClient  *c, jb_t *jb) {
             while (isblank(*finish)) finish++;
             if (!*finish) break;
             if (!parseWCAddtlSQL(c, finish, w)) goto j_pcw_end;
-            if (w->stor) wtype += SQL_STORE_LOOKUP_MASK;
             break;
         }
     }
@@ -809,10 +820,8 @@ static bool joinParseWCReply(redisClient  *c, jb_t *jb) {
 
     ret = 1;
 j_pcw_end:
-    if (w->stor) w->stor = sdsnewlen(w->stor, strlen(w->stor));
     if (w->lvr)  w->lvr  = sdsnewlen(w->lvr, strlen(w->lvr));
     if (token) sdsfree(token);
-    w->wtype = wtype;
     return ret;
 }
 
@@ -856,7 +865,8 @@ void joinReply(redisClient *c) {
     init_join_block(&jb, c->argv[5]->ptr);
     if (!parseJoinReply(c, &jb, c->argv[1]->ptr, c->argv[3]->ptr)) goto j_end;
 
-    if (jb.w.stor) {
+    if (jb.w.wtype > SQL_STORE_LOOKUP_MASK) {
+        jb.w.wtype -= SQL_STORE_LOOKUP_MASK;
         if (!jb.w.low && !jb.w.inl) {
             addReply(c, shared.selectsyntax_store_norange);
             goto j_end;
@@ -869,7 +879,7 @@ void joinReply(redisClient *c) {
                 "-ERR command not allowed when used memory > 'maxmemory'\r\n"));
             goto j_end;
         }
-        joinStoreCommit(c, &jb);
+        luaIstoreCommit(c);
     } else {
         if (jb.cstar) { /* SELECT PK per index - minimum cols for "COUNT(*)" */
            jb.qcols = 0;

@@ -1,5 +1,5 @@
 /*
- * Implements join-store and join
+ * Implements AlchemyDB Denormalised table joins
  *
 
 GPL License
@@ -36,7 +36,6 @@ ALL RIGHTS RESERVED
 #include "bt_iterator.h"
 #include "row.h"
 #include "index.h"
-#include "store.h"
 #include "orderby.h"
 #include "rpipe.h"
 #include "colparse.h"
@@ -131,36 +130,25 @@ static bool jRowReply(jrow_reply_t *r, int lvl) {
         }
     }
 
-    if (r->sto != -1) { /* JOIN_STORE */
-        if (Order_by) {
-            prepare_jRowStore(r);
-            robj **argv = copyArgv(r->fc->argv, r->fc->argc);
-            addJoinOutputRowToList(r, argv);
-            return 1;
-        } else {
-            return jRowStore(r);
-        }
-    } else {
-        if (!Order_by && r->cstar) return 1; /* NOOP just count */
-        int slot = 0;
-        for (int i = 0; i < cnt; i++) {
-            char *s   = *Jrcols[i];
-            int rlen  = Jrc_lens[i];
-            memcpy(r->reply + slot, s, rlen);
-            slot     += rlen;
-            memcpy(r->reply + slot, OUTPUT_DELIM, 1);
-            slot++;
-        }
-        robj *resp = createStringObject(r->reply, slot -1);
-
-        if (Order_by) {
-            addJoinOutputRowToList(r, resp);
-        } else {
-            addReplyBulk(r->c, resp);
-            decrRefCount(resp);
-        }
-        return 1;
+    if (!Order_by && r->cstar) return 1; /* NOOP just count */
+    int slot = 0;
+    for (int i = 0; i < cnt; i++) {
+        char *s   = *Jrcols[i];
+        int rlen  = Jrc_lens[i];
+        memcpy(r->reply + slot, s, rlen);
+        slot     += rlen;
+        memcpy(r->reply + slot, OUTPUT_DELIM, 1);
+        slot++;
     }
+    robj *resp = createStringObject(r->reply, slot -1);
+
+    if (Order_by) {
+        addJoinOutputRowToList(r, resp);
+    } else {
+        addReplyBulk(r->c, resp);
+        decrRefCount(resp);
+    }
+    return 1;
 }
 
 static bool buildJRowReply(build_jrow_reply_t  *b,
@@ -387,8 +375,7 @@ void joinGeneric(redisClient *c,
         ctype = Tbl[server.dbid][w->obt].col_type[w->obc];
     }
 
-    EMPTY_LEN_OBJ
-    if (w->sto == -1) { INIT_LEN_OBJ } /* JoinStore can throw nested errs */
+    LEN_OBJ
 
     int    j_ind_len [MAX_JOIN_INDXS];
     int    jind_ncols[MAX_JOIN_INDXS];
@@ -508,7 +495,6 @@ void joinGeneric(redisClient *c,
         bjr.j.fc          = fc;
         bjr.j.jind_ncols  = jind_ncols;
         bjr.j.reply       = reply;
-        bjr.j.sto         = w->sto;
         bjr.j.sub_pk      = sub_pk;
         bjr.j.nargc       = nargc; 
         bjr.j.nname       = jb->nname;
@@ -591,36 +577,12 @@ join_end:
 
     if (err) return;
     if (w->lim != -1 && (uint32)sent < card) card = sent;
-    if (w->sto != -1) {
-        addReplyLongLong(c, card);
-        if (w->ovar) incrOffsetVar(c, w, card);
-    } else if (jb->cstar) {
+    if (jb->cstar) {
         lenobj->ptr = sdscatprintf(sdsempty(), ":%lu\r\n", card);
     } else {
         lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
         if (w->ovar) incrOffsetVar(c, w, card);
     }
-}
-
-void joinStoreCommit(redisClient *c, jb_t *jb) {
-    char *nname;
-    int   nlen;  
-    bool  sub_pk;
-    int   nargc; 
-    char *last = NULL;
-    if (!prepareToStoreReply(c, &jb->w, &nname, &nlen, 
-                             &sub_pk, &nargc, &last, jb->qcols)) return;
-    jb->nname = createStringObject(nname, nlen);
-
-    robj        *argv[STORAGE_MAX_ARGC + 1];
-    redisClient *fc = rsql_createFakeClient();
-    fc->argv        = argv;
-
-    joinGeneric(c, fc, jb, sub_pk, nargc);
-
-    if (last) *last = '$';/* write back in "$" for AOF and Slaves */
-
-    rsql_freeFakeClient(fc);
 }
 
 /* CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP CLEANUP */

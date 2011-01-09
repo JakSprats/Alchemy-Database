@@ -41,15 +41,14 @@ ALL RIGHTS RESERVED
 #include "range.h"
 #include "desc.h"
 #include "join.h"
-#include "store.h"
 #include "cr8tblas.h"
+#include "lua_integration.h"
 #include "wc.h"
 #include "parser.h"
 #include "colparse.h"
 #include "aobj.h"
 #include "common.h"
 #include "alsosql.h"
-
 
 // FROM redis.c
 #define RL4 redisLog(4,
@@ -70,6 +69,23 @@ char *Col_type_defs[] = {"TEXT", "INT", "FLOAT" };
 
 uchar OP_len[7] = {0,1,2,1,2,1,2};
 aobj_cmp *OP_CMP[7] = {NULL, aobjEQ, aobjNE, aobjLT, aobjLE, aobjGT, aobjGE};
+
+/* NOTE: SELECT STORE is implemented in LUA */
+void luaIstoreCommit(redisClient *c) {
+    sds cmd = sdscatprintf(sdsempty(), "return select_store('%s','%s','%s');",
+                                       (char *)c->argv[1]->ptr, 
+                                       (char *)c->argv[3]->ptr, 
+                                       (char *)c->argv[5]->ptr);
+    //printf("luaIstoreCommit: %s\n", cmd);
+    freeClientArgv(c); /* free the old argvs */
+    zfree(c->argv);    /* destroy the old argv */
+    robj **argv = zmalloc(sizeof(robj *) * 2);
+    argv[0] = _createStringObject("LUA");
+    argv[1] = createStringObject(cmd, sdslen(cmd));
+    sdsfree(cmd);
+    c->argv = argv;   /* replace w/ LUA argv's */
+    luaCommand(c);
+}
 
 
 /* CREATE_TABLE CREATE_TABLE CREATE_TABLE CREATE_TABLE CREATE_TABLE */
@@ -339,7 +355,6 @@ void init_check_sql_where_clause(cswc_t *w, int tmatch, sds token) {
     w->low      = NULL; //TODO -> aobj
     w->high     = NULL; //TODO -> aobj
     w->inl      = NULL;
-    w->stor     = NULL;
     w->lvr      = NULL;
     w->ovar     = NULL;
     w->flist    = NULL;
@@ -360,7 +375,6 @@ void destroy_check_sql_where_clause(cswc_t *w) {
     if (w->low)   decrRefCount(w->low);
     if (w->high)  decrRefCount(w->high);
     if (w->inl)   listRelease(w->inl);
-    if (w->stor)  sdsfree(w->stor);
     if (w->lvr)   sdsfree(w->lvr);
     if (w->ovar)  sdsfree(w->ovar);
     if (w->flist) listRelease(w->flist);
@@ -394,7 +408,6 @@ void dumpW(cswc_t *w) {
             dumpAobj(apk);
         }
     }
-    dumpSds(w->stor,  "\tstor: %s\n");
     dumpSds(w->ovar,  "\tovar: %s\n");
     if (w->flist) {
         printf("\tFlist: len: %d\n", listLength(w->flist));
@@ -426,6 +439,14 @@ void initFilter(f_t *flt) {
     bzero(flt, sizeof(f_t));
     initAobj(&flt->rhsv);
 }
+f_t *newFilter(int cmatch, enum OP op, sds rhs) { /* must be FREED */
+    f_t *f2    = malloc(sizeof(f_t));
+    initFilter(f2);
+    f2->op     = op;
+    f2->cmatch = cmatch;
+    if (rhs) f2->rhs = sdsdup(rhs);
+    return f2;
+}
 void releaseFilter(f_t *flt) {
     if (flt->rhs) {
         sdsfree(flt->rhs);
@@ -443,29 +464,19 @@ void destroyFilter(void *v) {
     free(flt);
 }
 f_t *cloneFilt(f_t *flt) { /* must be FREED */
-    f_t *f2    = malloc(sizeof(f_t));
-    initFilter(f2);
-    f2->cmatch = flt->cmatch;
-    f2->op     = flt->op;
+    f_t *f2 = newFilter(flt->cmatch, flt->op, flt->rhs);
     aobjClone(&f2->rhsv, &flt->rhsv);
-    if (flt->rhs) f2->rhs = sdsdup(flt->rhs);        /* sdsdup rhs */
     if (flt->inl) f2->inl = cloneAobjList(flt->inl); /* copy inl list */
     return f2;
 }
 f_t *createFilter(robj *key, int cmatch, uchar ctype) {
-    f_t *f2    = malloc(sizeof(f_t));
-    initFilter(f2);
-    f2->cmatch = cmatch;
-    f2->op     = EQ;
+    f_t *f2 = newFilter(cmatch, EQ, NULL);
     initAobjFromString(&f2->rhsv, key->ptr, sdslen(key->ptr), ctype);
     return f2;
 }
 f_t *createINLFilter(list *inl, int cmatch) {
-    f_t *f2    = malloc(sizeof(f_t));
-    initFilter(f2);
-    f2->cmatch = cmatch;
-    f2->op     = EQ;
-    f2->inl    = cloneAobjList(inl);
+    f_t *f2 = newFilter(cmatch, EQ, NULL);
+    f2->inl = cloneAobjList(inl);
     return f2;
 }
 void dumpFilter(f_t *flt) {
@@ -547,13 +558,12 @@ void sqlSelectCommand(redisClient *c) {
                 "-ERR command not allowed when used memory > 'maxmemory'\r\n"));
             goto select_cmd_end;
         }
-        istoreCommit(c, &w, cmatchs, qcols);
+        luaIstoreCommit(c);
     } else if (w.wtype != SQL_SINGLE_LOOKUP) { /* FK, RQ, IN */
         if (w.imatch == -1) {
             addReply(c, shared.rangequery_index_not_found);
             goto select_cmd_end;
         }
-
         iselectAction(c, &w, cmatchs, qcols, cstar);
     } else {  /* SQL_SINGLE_LOOKUP */
         uchar pktype = Tbl[server.dbid][tmatch].col_type[0];

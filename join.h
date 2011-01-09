@@ -1,5 +1,5 @@
 /*
- * Implements join-store and join
+ * Implements AlchemyDB Denormalised table joins
  *
 
 GPL License
@@ -23,8 +23,8 @@ ALL RIGHTS RESERVED
     along with AlchemyDatabase.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef __JOINSTORE__H
-#define __JOINSTORE__H
+#ifndef __ALCHEMYDB_JOIN__H
+#define __ALCHEMYDB_JOIN__H
 
 #include "adlist.h"
 #include "redis.h"
@@ -44,7 +44,6 @@ typedef struct jrow_reply {
     redisClient  *fc;
     int          *jind_ncols;
     int           qcols;
-    int           sto;
     bool          sub_pk;
     int           nargc;
     robj         *nname;
@@ -76,6 +75,4 @@ void joinGeneric(redisClient *c,
                  bool         sub_pk,
                  int          nargc);
 
-void joinStoreCommit(redisClient *c, jb_t *jb);
-
-#endif /* __JOINSTORE__H */ 
+#endif /* __ALCHEMYDB_JOIN__H */ 

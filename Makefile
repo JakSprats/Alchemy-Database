@@ -24,7 +24,7 @@ LUAJIT= no
 uname_S := $(shell sh -c 'uname -s 2>/dev/null || echo not')
 OPTIMIZATION?=-O2
 ifeq ($(uname_S),SunOS)
-  @echo "Sun not supported - sorry"
+  @echo "Sun not supported (no BigEndian support) - sorry"
   @exit
 else
   ifeq ($(LUAJIT),yes)
@@ -50,7 +50,7 @@ else
   MTYPE=$@
 endif
 
-OBJ = adlist.o ae.o anet.o dict.o redis.o sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o zipmap.o sha1.o bt.o bt_code.o bt_output.o alsosql.o sixbit.o row.o index.o rdb_alsosql.o join.o bt_iterator.o wc.o denorm.o store.o scan.o orderby.o lua_integration.o parser.o nri.o legacy.o cr8tblas.o rpipe.o range.o desc.o aobj.o stream.o colparse.o
+OBJ = adlist.o ae.o anet.o dict.o redis.o sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o zipmap.o sha1.o bt.o bt_code.o bt_output.o alsosql.o sixbit.o row.o index.o rdb_alsosql.o join.o bt_iterator.o wc.o denorm.o scan.o orderby.o lua_integration.o parser.o nri.o legacy.o cr8tblas.o rpipe.o range.o desc.o aobj.o stream.o colparse.o
 BENCHOBJ = ae.o anet.o redis-benchmark.o sds.o adlist.o zmalloc.o
 GENBENCHOBJ = ae.o anet.o gen-benchmark.o sds.o adlist.o zmalloc.o
 CLIOBJ = anet.o sds.o adlist.o redis-cli.o zmalloc.o linenoise.o
@@ -144,7 +144,7 @@ redis-cli.o: redis-cli.c fmacros.h anet.h sds.h adlist.h zmalloc.h \
 redis.o: redis.c fmacros.h config.h redis.h ae.h sds.h anet.h dict.h \
   adlist.h zmalloc.h lzf.h pqsort.h zipmap.h staticsymbols.h sha1.h \
   alsosql.h bt_iterator.h index.h bt.h sixbit.h row.h common.h \
-  btree.h btreepriv.h row.h join.h wc.h store.h rdb_alsosql.h \
+  btree.h btreepriv.h row.h join.h wc.h rdb_alsosql.h \
   rpipe.h nri.h lua_integration.h aobj.h
   
 sds.o: sds.c sds.h zmalloc.h
@@ -162,20 +162,19 @@ cr8tblas.o: cr8tblas.h colparse.h wc.h rpipe.h aobj.h redis.h common.h
 denorm.o: bt_iterator.h alsosql.h parser.h legacy.h aobj.h redis.h common.h
 desc.o: desc.h colparse.h bt_iterator.h bt.h aobj.h redis.h common.h
 index.o: index.h colparse.h bt_iterator.h alsosql.h orderby.h nri.h legacy.h stream.h aobj.h redis.h common.h
-join.o: join.h wc.h colparse.h bt_iterator.h alsosql.h orderby.h store.h aobj.h redis.h common.h
+join.o: join.h wc.h colparse.h bt_iterator.h alsosql.h orderby.h aobj.h redis.h common.h
 lua_integration.o: lua_integration.h rpipe.h redis.h zmalloc.h
 legacy.o: legacy.h colparse.h alsosql.h redis.h common.h
 #norm.o: sql.h bt_iterator.h legacy.h redis.h common.h -> DEPRECATED
 nri.o: nri.h stream.h colparse.h alsosql.h aobj.h redis.h common.h
-orderby.o: orderby.h store.h join.h aobj.h redis.h common.h
+orderby.o: orderby.h join.h aobj.h redis.h common.h
 parser.o: parser.h redis.h zmalloc.h common.h
 range.o: range.h colparse.h orderby.h bt_iterator.h bt.h aobj.h redis.h common.h
 rdb_alsosql.o: rdb_alsosql.h bt_iterator.h alsosql.h nri.h index.h stream.h redis.h common.h
 row.o: row.h alsosql.h aobj.h redis.h common.h
 rpipe.o: rpipe.h redis.h common.h
-scan.o: alsosql.h colparse.h bt_iterator.h wc.h aobj.h redis.h
+scan.o: alsosql.h colparse.h bt_iterator.h wc.h orderby.h aobj.h redis.h
 sixbit.o: sixbit.h
-store.o: store.h colparse.h bt_iterator.h alsosql.h orderby.h legacy.h aobj.h redis.h common.h
 stream.o: aobj.h common.h
 wc.o: wc.h colparse.h bt_iterator.h cr8tblas.h rpipe.h redis.h common.h
 colparse.o: colparse.h alsosql.h redis.h common.h

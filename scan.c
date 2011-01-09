@@ -51,6 +51,7 @@ extern struct redisServer server;
 
 extern r_tbl_t Tbl[MAX_NUM_DB][MAX_NUM_TABLES];
 
+// TODO merge w/ struct range
 typedef struct filter_row {
     redisClient   *c;
     cswc_t        *w;
@@ -62,11 +63,12 @@ typedef struct filter_row {
     uchar          octype; /* order by column type */
     list          *ll;
     bool           cstar;
+    bool           orobj;
 } fr_t;
 
 static void init_filter_row(fr_t *fr, redisClient *c, cswc_t *w, qr_t *q,
                             int tmatch, int qcols, int *cmatchs, bool nowc,
-                            uchar octype, list *ll, bool cstar) {
+                            uchar octype, list *ll, bool cstar, bool orobj) {
     fr->c       = c;
     fr->w       = w;
     fr->q       = q;
@@ -77,6 +79,7 @@ static void init_filter_row(fr_t *fr, redisClient *c, cswc_t *w, qr_t *q,
     fr->octype  = octype;
     fr->ll      = ll;
     fr->cstar   = cstar;
+    fr->orobj   = orobj;
 }
 
 
@@ -91,7 +94,7 @@ static void condSelectReply(fr_t *fr, aobj *akey, void *rrow, ulong *card) {
         robj *r = outputRow(rrow, fr->qcols, fr->cmatchs,
                             akey, fr->tmatch, 0);
         if (fr->q->qed) {
-            addORowToRQList(fr->ll, r, rrow, fr->w->obc, akey,
+            addORowToRQList(fr->ll, r, fr->orobj, rrow, fr->w->obc, akey,
                             fr->tmatch, fr->octype);
             decrRefCount(r);
         } else {
@@ -143,7 +146,7 @@ void tscanCommand(redisClient *c) {
                 w.lvr = sdsnewlen(w.lvr, strlen(w.lvr));
                 if (!leftoverParsingReply(c, w.lvr))      goto tscan_end;
             }
-            if (w.stor) { /* if STORE comes after ORDER BY */
+            if (w.wtype > SQL_STORE_LOOKUP_MASK) { /* STORE after ORDER BY */
                 addReply(c, shared.scan_store);
                 goto tscan_end;
             }
@@ -163,12 +166,11 @@ void tscanCommand(redisClient *c) {
             addReply(c, shared.scan_on_index);
             goto tscan_end;
         }
-        if (w.stor) { /* disallow SCANSELECT STOREs (for now) */
+        if (w.wtype > SQL_STORE_LOOKUP_MASK) { /* no SCAN STOREs (for now) */
             addReply(c, shared.scan_store);
             goto tscan_end;
         }
     }
-
 
     if (cstar && w.obc != -1) { /* SCANSELECT COUNT(*) ORDER BY -> stupid */
         addReply(c, shared.orderby_count);
@@ -196,19 +198,7 @@ void tscanCommand(redisClient *c) {
 
     fr_t fr;
     init_filter_row(&fr, c, &w, &q, tmatch, qcols, cmatchs, nowc,
-                    octype, ll, cstar);
-
-    f_t *flt = NULL; /* convert "index"(i.e. FIRST) lookup to filter */
-    if (w.wtype == SQL_SINGLE_FK_LOOKUP) {
-        r_tbl_t *rt     = &Tbl[server.dbid][tmatch];
-        uchar    ftype  = (w.cmatch == -1) ? rt->col_type[0] :
-                                             rt->col_type[w.cmatch];
-        flt          = createFilter(w.key, w.cmatch, ftype);
-    } else if (w.wtype == SQL_IN_LOOKUP) {
-        flt = createINLFilter(w.inl, w.cmatch);
-    }
-    if (!w.flist) w.flist = listCreate();
-    listAddNodeTail(w.flist, flt);
+                    octype, ll, cstar, 1);
     //dumpW(&w, w.wtype);
 
     LEN_OBJ
@@ -240,7 +230,7 @@ void tscanCommand(redisClient *c) {
                 addReplyBulk(c, ob->row);
             }
         }
-        sortedOrderByCleanup(vector, listLength(ll), octype, 1);
+        sortedOrderByCleanup(vector, listLength(ll), octype, fr.orobj);
         free(vector);
     }
 

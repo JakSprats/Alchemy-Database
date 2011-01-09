@@ -353,8 +353,8 @@ function order_by_test_joins() {
 function istore_customer_hobby_order_by_denorm_to_many_lists() {
   echo SELECT employee, hobby FROM customer WHERE employee BETWEEN 3 AND 6 ORDER BY hobby STORE RPUSH employee_ordered_hobby_list$
   $CLI SELECT "employee, hobby" FROM customer WHERE "employee BETWEEN 3 AND 6 ORDER BY hobby STORE RPUSH employee_ordered_hobby_list$"
-  echo LRANGE employee_ordered_hobby_list:4 0 -1
-  $CLI LRANGE employee_ordered_hobby_list:4 0 -1
+  echo LRANGE employee_ordered_hobby_list4 0 -1
+  $CLI LRANGE employee_ordered_hobby_list4 0 -1
 }
 
 function sql_orderby_test() {
@@ -563,6 +563,7 @@ function scanner() {
 }
 
 function init_x3() {
+  $CLI DROP TABLE X3
   $CLI CREATE TABLE X3  "(id int, f float, t text, i int)";
 }
 function insert_x3() {
@@ -594,6 +595,18 @@ function scan_x3() {
   echo SCANSELECT \* FROM X3 ORDER BY f DESC LIMIT 2 OFFSET 2
   $CLI SCANSELECT \* FROM X3 ORDER BY f DESC LIMIT 2 OFFSET 2
 
+  echo SCANSELECT "COUNT(*)" FROM X3
+  $CLI SCANSELECT "COUNT(*)" FROM X3
+  echo DELETE FROM X3 WHERE id BETWEEN 1 AND 3 ORDER BY f DESC LIMIT 1
+  $CLI DELETE FROM X3 WHERE id BETWEEN 1 AND 3 ORDER BY f DESC LIMIT 1
+  echo SCANSELECT "COUNT(*)" FROM X3
+  $CLI SCANSELECT "COUNT(*)" FROM X3
+  echo DUMP X3
+  $CLI DUMP X3
+  echo UPDATE X3 SET t = "XXXXXXXXXXX" WHERE id BETWEEN 1 AND 3 ORDER BY f DESC LIMIT 1
+  $CLI UPDATE X3 SET t = "XXXXXXXXXXX" WHERE id BETWEEN 1 AND 3 ORDER BY f DESC LIMIT 1
+  echo DUMP X3
+  $CLI DUMP X3
 }
 
 function test_x3() {
@@ -692,15 +705,15 @@ function istore_worker_name_list() {
 function istore_customer_hobby_denorm_to_many_lists() {
   echo SELECT employee, hobby FROM customer WHERE employee BETWEEN 3 AND 6 STORE RPUSH employee_hobby_list$
   $CLI SELECT "employee, hobby" FROM customer WHERE "employee BETWEEN 3 AND 6 STORE RPUSH employee_hobby_list$"
-  echo LRANGE employee_hobby_list:6 0 -1
-  $CLI LRANGE employee_hobby_list:6 0 -1
+  echo LRANGE employee_hobby_list6 0 -1
+  $CLI LRANGE employee_hobby_list6 0 -1
 }
 
 function istore_emp_div_sal_denorm_to_many_zset() {
   echo SELECT division, salary, name FROM worker WHERE id BETWEEN 1 AND 8 STORE ZADD worker_div$
   $CLI SELECT "division, salary, name" FROM worker WHERE "id BETWEEN 1 AND 8 STORE ZADD worker_div$"
-  echo ZRANGE worker_div:66 0 -1
-  $CLI ZRANGE worker_div:66 0 -1
+  echo ZRANGE worker_div66 0 -1
+  $CLI ZRANGE worker_div66 0 -1
 }
 
 function init_actionlist() {
@@ -765,8 +778,8 @@ function join_store_worker_location_hash() {
 function join_store_city_wrkr_denorm_to_many_hash() {
   echo SELECT division.location, worker.name, worker.salary FROM worker,division WHERE division.id=worker.division AND worker.division BETWEEN 11 AND 66 STORE HSET city_wrkr$
   $CLI SELECT "division.location, worker.name, worker.salary" FROM "worker,division" WHERE "division.id=worker.division AND worker.division BETWEEN 11 AND 66 STORE HSET city_wrkr$"
-  echo HGETALL city_wrkr:N.Y.C
-  $CLI HGETALL city_wrkr:N.Y.C
+  echo HGETALL city_wrkrN.Y.C
+  $CLI HGETALL city_wrkrN.Y.C
 }
 
 function create_table_as_select_customer() {
@@ -839,13 +852,19 @@ function protocol_example_sql() {
   $CLI DESC foo
   $CLI DUMP foo
 }
-
 function protocol_example_lua() {
   $CLI CONFIG SET luafilename helper.lua
   $CLI LUA "return select('*','foo','id = 1');"
 }
+function protocol_example_denorm() {
+  $CLI CREATE TABLE user "(id INT, name TEXT, age INT, city TEXT)"
+  $CLI INSERT INTO user VALUES "(1,'bill',33,'capitol city')"
+  $CLI INSERT INTO user VALUES "(2,'jane',22,'houston')"
+  $CLI denorm user "user:*"
+  $CLI HGETALL user:1
+}
 alias TCPDUMP_ALCHEMY="sudo tcpdump -l -q -A -s 1500 -i lo 'tcp port 6379'"
-alias FREE_LINUX_BUFFS="sudo sync && echo 3 | sudo tee /proc/sys/vm/drop_caches"
+
 
 # BENCHMARK_HELPERS BENCHMARK_HELPERS BENCHMARK_HELPERS BENCHMARK_HELPERS
 # BENCHMARK_HELPERS BENCHMARK_HELPERS BENCHMARK_HELPERS BENCHMARK_HELPERS
@@ -1272,6 +1291,7 @@ function dump_mysql_table_to_redisql() {
 
 # LUA LUA LUA LUA LUA LUA LUA LUA LUA LUA LUA LUA LUA LUA LUA
 RECONF="$CLI CONFIG SET luafilename helper.lua"
+alias FREE_LINUX_BUFFS="sudo sync && echo 3 | sudo tee /proc/sys/vm/drop_caches"
 
 function lua_return_value_test() {
   $RECONF

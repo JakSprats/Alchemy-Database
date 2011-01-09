@@ -197,6 +197,7 @@ typedef struct redisClient {
     list *pubsub_patterns;  /* patterns a client is interested in (SUBSCRIBE) */
 } redisClient;
 
+void freeClientArgv(redisClient *c);
 robj *createObject(int type, void *ptr);
 robj *createHashObject(void);
 robj *createSetObject(void);
@@ -304,8 +305,7 @@ struct sharedObjectsStruct {
     *insertsyntax,           *insertsyntax_no_into,
     *insertsyntax_no_values, *index_nonrel_decl_fmt,
 
-    *filter_between_filter,      *pk_filter,
-    *pk_query_mustbe_eq,
+    *pk_filter,                  *pk_query_mustbe_eq,
     *whereclause_in_err,         *where_in_select,
     *whereclause_orderby_no_by,  *whereclause_orderby_err,
     *order_by_col_not_found,

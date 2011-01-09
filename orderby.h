@@ -43,6 +43,7 @@ int stringOrderByRevSort(const void *s1, const void *s2);
 
 void addORowToRQList(list  *ll,
                      void  *r,
+                     bool   is_robj,
                      void  *rrow,
                      int    obc,
                      aobj  *apk,
@@ -56,22 +57,8 @@ void sortedOrderByCleanup(obsl_t **vector,
                           uchar    ctype,
                           bool     decr_row);
 
-/* for ISTORE */
-int sortedOrderByIstore(redisClient  *c,
-                        cswc_t       *w,    
-                        redisClient  *fc,
-                        int           cmatchs[],
-                        int           qcols, 
-                        char         *nname,
-                        bool          sub_pk,
-                        int           nargc, 
-                        uchar         ctype, 
-                        obsl_t      **vector,
-                        int           vlen);
-
-/* for JoinStore */
+/* JOIN */
 void addJoinOutputRowToList(jrow_reply_t *r, void *resp);
-
 int sortJoinOrderByAndReply(redisClient *c, build_jrow_reply_t *b, cswc_t *w);
 
 #endif /* __ORDER_BY__H */ 

@@ -106,6 +106,7 @@ flag         LuaFlag     = PIPE_NONE_FLAG;
 ulong        CurrCard    = 0;
 redisClient *CurrClient  = NULL;
 char        *Luafilename = NULL;
+#define LUA_INTERNAL_FILE "internal.lua"
 
 #define RL4 redisLog(4, 
 //#define SAVE_BY_DEFAULT
@@ -699,7 +700,6 @@ extern r_tbl_t   Tbl     [MAX_NUM_DB][MAX_NUM_TABLES];
 extern int       Num_indx[MAX_NUM_DB];
 extern r_ind_t   Index   [MAX_NUM_DB][MAX_NUM_INDICES];
 
-extern stor_cmd  StorageCommands[];
 extern stor_cmd  AccessCommands[];
 extern char     *Col_type_defs[];
 #endif /* ALSOSQL END */
@@ -1572,8 +1572,6 @@ static void createSharedObjects(void) {
     shared.insertsyntax_no_values = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: INSERT INTO tablename VALUES (vals,,,,) - \"VALUES\" keyword MISSING\r\n"));
 
-    shared.filter_between_filter = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: WHERE pk = 9 AND fk BETWEEN 1 AND 5 - \"BETWEEN\" only supported for Index-lookups, use \"fk >= 1 AND fk <= 5\" \r\n"));
     shared.pk_filter = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: WHERE fk BETWEEN 1 AND 5 AND pk = 10 - primary key lookup can not come second\r\n"));
     shared.pk_query_mustbe_eq = createObject(REDIS_STRING,sdsnew(
@@ -1762,7 +1760,9 @@ static bool loadLuaHelperFile(char *fname) {
 static bool initLua() {
     Lua = lua_open();
     luaL_openlibs(Lua);
-    lua_register(Lua, "client", redisLua);
+    lua_register(Lua, "client",    luaCall_client);
+    lua_register(Lua, "raw_write", luaCall_raw_write);
+    loadLuaHelperFile(LUA_INTERNAL_FILE);
 
     if (Luafilename) return loadLuaHelperFile(Luafilename);
     else             return 1;
@@ -1912,37 +1912,6 @@ static void initServer() {
     if (server.vm_enabled) vmInit();
 
 #ifdef ALSOSQL
-    StorageCommands[0].func  = lpushCommand;
-    StorageCommands[0].name  = "LPUSH";
-    StorageCommands[0].argc  = 1;
-    StorageCommands[1].func  = rpushCommand;
-    StorageCommands[1].name  = "RPUSH";
-    StorageCommands[1].argc  = 1;
-    StorageCommands[2].func  = lsetCommand;
-    StorageCommands[2].name  = "LSET";
-    StorageCommands[2].argc  = 2;
-    StorageCommands[3].func  = saddCommand;
-    StorageCommands[3].name  = "SADD";
-    StorageCommands[3].argc  = 1;
-    StorageCommands[4].func  = zaddCommand;
-    StorageCommands[4].name  = "ZADD";
-    StorageCommands[4].argc  = 2;
-    StorageCommands[5].func  = hsetCommand;
-    StorageCommands[5].name  = "HSET";
-    StorageCommands[5].argc  = 2;
-    StorageCommands[6].func  = setCommand;
-    StorageCommands[6].name  = "SET";
-    StorageCommands[6].argc  = -1;      /* < 0 means combine 1st arg w/ name */
-    StorageCommands[7].func  = setnxCommand;
-    StorageCommands[7].name  = "SETNX";
-    StorageCommands[7].argc  = -1;      /* < 0 means combine 1st arg w/ name */
-    StorageCommands[8].func  = appendCommand;
-    StorageCommands[8].name  = "APPEND";
-    StorageCommands[8].argc  = -1;      /* < 0 means combine 1st arg w/ name */
-    StorageCommands[9].func = setexCommand;
-    StorageCommands[9].name = "SETEX";
-    StorageCommands[9].argc = -2;      /* < 0 means combine 1st arg w/ name */
-
     //#define ACCESS_SELECT_COMMAND_NUM 0
     AccessCommands[0].func   = sqlSelectCommand;
     AccessCommands[0].name   = "SELECT";
@@ -2241,7 +2210,7 @@ loaderr:
     exit(1);
 }
 
-static void freeClientArgv(redisClient *c) {
+void freeClientArgv(redisClient *c) {
     int j;
 
     for (j = 0; j < c->argc; j++)

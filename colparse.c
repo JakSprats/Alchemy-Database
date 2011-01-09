@@ -40,7 +40,6 @@ ALL RIGHTS RESERVED
 #include "range.h"
 #include "desc.h"
 #include "join.h"
-#include "store.h"
 #include "cr8tblas.h"
 #include "wc.h"
 #include "parser.h"
@@ -54,7 +53,7 @@ extern struct redisServer server;
 
 // GLOBALS
 int Num_tbls[MAX_NUM_DB];
-// Redisql table information is stored here
+// AlchemyDB table information is stored here
 r_tbl_t Tbl[MAX_NUM_DB][MAX_NUM_TABLES];
 
 /* HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS */

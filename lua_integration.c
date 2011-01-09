@@ -29,10 +29,6 @@ ALL RIGHTS RESERVED
 #include <strings.h>
 #include <unistd.h>
 
-#include "lua.h"
-#include "lualib.h"
-#include "lauxlib.h"
-
 #include "redis.h"
 #include "zmalloc.h"
 
@@ -51,7 +47,7 @@ extern flag         LuaFlag;
 #define RL4 redisLog(4,
 
 void luaCommand(redisClient *c) {
-    //RL4 "LUA: %s", c->argv[1]->ptr);
+    //printf("LUA: %s\n", c->argv[1]->ptr);
     LuaFlag   = PIPE_NONE_FLAG;
     LuaClient = c;             /* used in func redisLua */
     int s     = luaL_dostring(Lua, c->argv[1]->ptr);
@@ -63,7 +59,7 @@ void luaCommand(redisClient *c) {
     }
 
     int lret = lua_gettop(Lua);
-    //RL4 "LuaFlag: %d lret: %d", LuaFlag, lret);
+    //printf("LuaFlag: %d lret: %d\n", LuaFlag, lret);
     if (lua_istable(Lua, -1)) {
         const int len = lua_objlen(Lua, -1 );
         addReplySds(c, sdscatprintf(sdsempty(), "*%d\r\n", len));
@@ -101,6 +97,16 @@ void luaCommand(redisClient *c) {
         lua_pop(Lua, 1);
     }
     lua_gc(Lua, LUA_GCCOLLECT, 0);
+}
+
+/* This gets called when the function "raw_write()" gets called in Lua */
+int luaCall_raw_write(lua_State *L) {
+    char       *buf  = "-ERR raw_write() needs arguments\r\n";
+    const char *arg1 = lua_tostring(L, 1);
+    if (!arg1) arg1 = buf;
+    lua_pushstring(L, arg1);
+    LuaFlag          = PIPE_ONE_LINER_FLAG;
+    return 1;
 }
 
 /* This function stores the results from the
@@ -148,7 +154,8 @@ static int redisLuaArityErr(lua_State *L, char *name) {
     return 1;
 }
 
-int redisLua(lua_State *L) {
+/* This gets called when the function "client)" gets called in Lua */
+int luaCall_client(lua_State *L) {
     LuaFlag            = PIPE_NONE_FLAG;
     int           argc = lua_gettop(L);
     const char   *arg1 = lua_tostring(L, 1);

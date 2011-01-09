@@ -1,8 +1,8 @@
 package.path = package.path .. ";;test/?.lua"
 require "is_external"
+local tbl  = "ONEK_mod100";
 
 function init_scanselect_test()
-    local tbl  = "ONEK_mod100";
     local indx = "ind_ONEK_mod100";
     drop_table(tbl);
     drop_index(indx);
@@ -20,7 +20,6 @@ function init_scanselect_test()
 end
 
 function scanselect_int()
-    local tbl  = "ONEK_mod100";
     update(tbl, 'i = 2', 'id BETWEEN 100 AND 200');
     local icnt = scanselect("COUNT(*)", tbl, 'i = 2');
     if (icnt ~= 101) then
@@ -38,14 +37,13 @@ function scanselect_int()
 end
 
 function scanselect_float()
-    local tbl  = "ONEK_mod100";
     update(tbl, 'f = 333.33', 'id BETWEEN 400 AND 500');
     local icnt = scanselect("COUNT(*)", tbl, 'f = 333.3299866');
     if (icnt ~= 101) then
         print ('FAILURE: SCANSELECT float SINGLE cnt should be 101: ' .. icnt);
     end
     update(tbl, 'f = 444.44', 'id BETWEEN 450 AND 550');
-    local icnt = scanselect("COUNT(*)", tbl, 'f BETWEEN 333 AND 445');
+    local icnt = scanselect("COUNT(*)", tbl, 'f >= 333 AND f <= 445');
     if (icnt ~= 151) then
         print ('FAILURE: SCANSELECT float RANGE cnt should be 151: ' .. icnt);
     end
@@ -56,14 +54,13 @@ function scanselect_float()
 end
 
 function scanselect_string()
-    local tbl  = "ONEK_mod100";
     update(tbl, "s = 'TEST'", 'id BETWEEN 700 AND 800');
     local icnt = scanselect("COUNT(*)", tbl, "s = 'TEST'");
     if (icnt ~= 101) then
         print ('FAILURE: SCANSELECT string SINGLE cnt should be 101: ' .. icnt);
     end
     update(tbl, "s = 'TTT'", 'id BETWEEN 750 AND 850');
-    local icnt = scanselect("COUNT(*)", tbl, "s BETWEEN 'T' AND 'U'");
+    local icnt = scanselect("COUNT(*)", tbl, "s >= 'T' AND s <= 'U'");
     if (icnt ~= 151) then
         print ('FAILURE: SCANSELECT string RANGE cnt should be 151: ' .. icnt);
     end
@@ -74,7 +71,6 @@ function scanselect_string()
 end
 
 function run_scanselect_test()
-    local tbl  = "ONEK_mod100";
     local cnt = scanselect("COUNT(*)", tbl);
     --print ('cnt: ' .. cnt);
     scanselect_int();

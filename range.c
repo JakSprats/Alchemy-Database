@@ -93,18 +93,20 @@ void setQueued(cswc_t *w, qr_t *q) {
     else        setRangeQueued(w, q);
 }
 
-void init_range(range_t     *g,
-                redisClient *c,
-                cswc_t      *w,
-                qr_t        *q,
-                list        *ll,
-                uchar        ctype) {
+static void init_range(range_t     *g,
+                       redisClient *c,
+                       cswc_t      *w,
+                       qr_t        *q,
+                       list        *ll,
+                       uchar        ctype,
+                       bool         orobj) {
     bzero(g, sizeof(range_t));
     g->co.c     = c;
     g->co.w     = w;
     g->q        = q;
     g->co.ll    = ll;
     g->co.ctype = ctype;
+    g->co.orobj = orobj;
 }
 
 static long rangeOpPK(range_t *g, row_op *p) {
@@ -352,7 +354,7 @@ bool select_op(range_t *g, aobj *akey, void *rrow, bool q, long *card) {
     if (!g->se.cstar) {
         robj *r = outputRow(rrow, g->se.qcols, g->se.cmatchs,
                             akey, g->co.w->tmatch, 0);
-        if (q) addORowToRQList(g->co.ll, r, rrow, g->co.w->obc,
+        if (q) addORowToRQList(g->co.ll, r, g->co.orobj, rrow, g->co.w->obc,
                                akey, g->co.w->tmatch, g->co.ctype);
         else   addReplyBulk(g->co.c, r);
         decrRefCount(r);
@@ -375,7 +377,7 @@ void iselectAction(redisClient *c,
         ctype   = Tbl[server.dbid][w->tmatch].col_type[w->obc];
     }
     range_t g;
-    init_range(&g, c, w, &q, ll, ctype);
+    init_range(&g, c, w, &q, ll, ctype, 1);
     g.se.cstar   = cstar;
     g.se.qcols   = qcols;
     g.se.cmatchs = cmatchs;
@@ -400,7 +402,7 @@ void iselectAction(redisClient *c,
                     addReplyBulk(c, ob->row);
                 }
             }
-            sortedOrderByCleanup(v, listLength(ll), ctype, 1);
+            sortedOrderByCleanup(v, listLength(ll), ctype, g.co.orobj);
             free(v);
         } else {
             sent = card;
@@ -418,7 +420,7 @@ void iselectAction(redisClient *c,
 bool build_del_list_op(range_t *g, aobj *akey, void *rrow, bool q, long *card) {
     if (!passFilters(rrow, g->co.w->flist, g->co.w->tmatch)) return 1;
     if (q) {
-        addORowToRQList(g->co.ll, akey, rrow, g->co.w->obc,
+        addORowToRQList(g->co.ll, akey, g->co.orobj, rrow, g->co.w->obc,
                         akey, g->co.w->tmatch, g->co.ctype);
     } else {
         aobj *cln  = cloneAobj(akey);
@@ -436,7 +438,7 @@ void ideleteAction(redisClient *c,
     uchar ctype = (w->obc == -1) ? COL_TYPE_NONE :
                                   Tbl[server.dbid][w->tmatch].col_type[w->obc];
     range_t g;
-    init_range(&g, c, w, &q, ll, ctype);
+    init_range(&g, c, w, &q, ll, ctype, 0);
     ulong   card  = 0;
     if (w->wtype == SQL_IN_LOOKUP) { /* IN_QUERY */
         card = (ulong)inOp(&g, build_del_list_op);
@@ -461,7 +463,7 @@ void ideleteAction(redisClient *c,
                     deleteRow(c, w->tmatch, apk, matches, indices);
                 }
             }
-            sortedOrderByCleanup(v, listLength(ll), ctype, 1);
+            sortedOrderByCleanup(v, listLength(ll), ctype, g.co.orobj);
             free(v);
         } else {
             listNode  *ln;
@@ -485,7 +487,7 @@ void ideleteAction(redisClient *c,
 bool update_op(range_t *g, aobj *akey, void *rrow, bool q, long *card) {
     if (!passFilters(rrow, g->co.w->flist, g->co.w->tmatch)) return 1;
     if (q) {
-        addORowToRQList(g->co.ll, akey, rrow, g->co.w->obc,
+        addORowToRQList(g->co.ll, akey, g->co.orobj, rrow, g->co.w->obc,
                         akey, g->co.w->tmatch, g->co.ctype);
     } else {
         updateRow(g->co.c, g->up.btr, akey, rrow, g->co.w->tmatch, g->up.ncols,
@@ -518,7 +520,7 @@ void iupdateAction(redisClient *c,
     bt   *btr    = (bt *)btt->ptr;
 
     range_t g;
-    init_range(&g, c, w, &q, ll, ctype);
+    init_range(&g, c, w, &q, ll, ctype, 0);
     g.up.btr     = btr;
     g.up.ncols   = ncols;
     g.up.matches = matches;
@@ -552,7 +554,7 @@ void iupdateAction(redisClient *c,
                               matches, indices, vals, vlens, cmiss, ue);
                 }
             }
-            sortedOrderByCleanup(v, listLength(ll), ctype, 1);
+            sortedOrderByCleanup(v, listLength(ll), ctype, g.co.orobj);
             free(v);
         } else {
             sent = card;

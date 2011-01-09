@@ -48,13 +48,6 @@ typedef struct queue_range_results {
 /* NOTE: the range_* structs only hold pointers and ints, i.e. no destructor */
 /*       IMPORTANT: range_* structs are just skeletons,
                     i.e. not to be changed after initialization, just derefed */
-typedef struct range_store {
-    bool         sub_pk;
-    redisClient *fc;
-    char        *nname;
-    int          nargc;
-} rs_t;
-
 typedef struct range_select {
     bool cstar;
     int  qcols;
@@ -78,24 +71,17 @@ typedef struct range_common {
     redisClient *c;
     cswc_t      *w;
     list        *ll;
+    bool         orobj; /* order by sorting contains a robj or not */
 } rcomm_t;
 
 typedef struct range {
     rcomm_t co;
     rsel_t  se;
-    rs_t    st;
     rup_t   up;
     qr_t    *q;
 } range_t;
 
 void setQueued(cswc_t *w, qr_t *q);
-
-void init_range(range_t     *g,
-                redisClient *c,
-                cswc_t      *w,
-                qr_t        *q,
-                list        *ll,
-                uchar        ctype);
 
 typedef bool row_op(range_t *g, aobj *akey, void *rrow, bool q, long *card);
 long rangeOp(range_t *g, row_op *p); /* RangeQuery */

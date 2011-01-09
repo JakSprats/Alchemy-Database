@@ -26,10 +26,16 @@ ALL RIGHTS RESERVED
 #ifndef __LUA_INTEGRATION__H
 #define __LUA_INTEGRATION__H
 
+#include "lua.h"
+#include "lualib.h"
+#include "lauxlib.h"
+
 #include "redis.h"
 
 void luaCommand(redisClient *c);
 
-int redisLua(lua_State *L);
+/* the following are C functions the define Lua functions */
+int luaCall_client(lua_State *L);
+int luaCall_raw_write(lua_State *L);
 
 #endif /* __LUA_INTEGRATION__H */ 

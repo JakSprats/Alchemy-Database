@@ -34,7 +34,6 @@ ALL RIGHTS RESERVED
 #include "adlist.h"
 
 #include "row.h"
-#include "store.h"
 #include "rpipe.h"
 #include "parser.h"
 #include "alsosql.h"
@@ -104,6 +103,7 @@ int stringOrderByRevSort(const void *s1, const void *s2) {
 
 void addORowToRQList(list  *ll,
                      void  *r,
+                     bool   is_robj,
                      void  *rrow,
                      int    obc,
                      aobj  *apk,
@@ -111,13 +111,8 @@ void addORowToRQList(list  *ll,
                      uchar  ctype) {
     flag cflag;
     obsl_t *ob  = (obsl_t *)malloc(sizeof(obsl_t));/*freed sortedOrdrByCleanup*/
-    if (r) {
-        /*decrRefCount()d N sortedOrderByCleanup() */
-        ob->row = cloneRobj((robj *)r);
-    } else {
-        /* ONLY in istoreCommit SELECT PK ORDER BY notPK (to preserve pk) */
-        ob->row = rrow; //TODO DANGER ... TEST THIS
-    }
+    ob->row = is_robj ? cloneRobj((robj *)r) :
+                        r; /* decRefCount()ed in sortedOrderByCleanup() */
     aobj ao = getRawCol(rrow, obc, apk, tmatch, &cflag, 0);
     if (ctype == COL_TYPE_INT) {
         ob->key   = (void *)(long)ao.i;
@@ -169,45 +164,8 @@ void sortedOrderByCleanup(obsl_t **vector,
     }
 }
 
-/* ISTORE ISTORE ISTORE ISTORE ISTORE ISTORE ISTORE ISTORE ISTORE ISTORE */
-/* ISTORE ISTORE ISTORE ISTORE ISTORE ISTORE ISTORE ISTORE ISTORE ISTORE */
-int sortedOrderByIstore(redisClient  *c,
-                        cswc_t       *w,
-                        redisClient  *fc,
-                        int           cmatchs[],
-                        int           qcols,
-                        char         *nname,
-                        bool          sub_pk,
-                        int           nargc,
-                        uchar         ctype,
-                        obsl_t      **vector,
-                        int           vlen) {
-    aobj akey;
-    initAobj(&akey);
-
-    int sent = 0;
-    for (int k = 0; k < vlen; k++) {
-        if (w->lim != -1 && sent == w->lim) break;
-        if (w->ofst > 0) {
-            w->ofst--;
-        } else {
-            sent++;
-            obsl_t *ob = vector[k];
-            if (!initAobjFromVoid(&akey, c, ob->key, ctype)) return -1;
-            aobj *row  = ob->row;
-            bool  ret  = istoreAction(c, fc, w->tmatch, cmatchs, qcols, w->sto,
-                                      &akey, row, nname, sub_pk, nargc);
-            releaseAobj(&akey);
-            if (!ret) return -1;
-        }
-    }
-    return sent;
-}
-
-
-/* JOIN_STORE JOIN_STORE JOIN_STORE JOIN_STORE JOIN_STORE JOIN_STORE */
-/* JOIN_STORE JOIN_STORE JOIN_STORE JOIN_STORE JOIN_STORE JOIN_STORE */
-
+/* JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN */
+/* JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN */
 void addJoinOutputRowToList(jrow_reply_t *r, void *resp) {
     obsl_t *ob = (obsl_t *)malloc(sizeof(obsl_t));
     ob->row    = resp;
@@ -223,9 +181,7 @@ void addJoinOutputRowToList(jrow_reply_t *r, void *resp) {
     listAddNodeTail(r->ll, ob);
 }
 
-int sortJoinOrderByAndReply(redisClient        *c,
-                                    build_jrow_reply_t *b,
-                                    cswc_t             *w) {
+int sortJoinOrderByAndReply(redisClient *c, build_jrow_reply_t *b, cswc_t *w) {
     listNode  *ln;
     int        vlen   = listLength(b->j.ll);
     obsl_t   **vector = malloc(sizeof(obsl_t *) * vlen); /* freed in function */
@@ -254,15 +210,8 @@ int sortJoinOrderByAndReply(redisClient        *c,
         } else {
             sent++;
             obsl_t *ob = vector[k];
-            if (b->j.sto != -1) { /* JSTORE */
-                b->j.fc->argv = ob->row; /* argv's in list */
-                rsql_resetFakeClient(b->j.fc);
-                if (!performStoreCmdOrReply(b->j.c, b->j.fc, b->j.sto, 1))
-                    return -1;
-            } else {
-                addReplyBulk(c, ob->row);
-                decrRefCount(ob->row);
-            }
+            addReplyBulk(c, ob->row);
+            decrRefCount(ob->row);
         }
     }
     for (int k = 0; k < vlen; k++) {

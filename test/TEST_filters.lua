@@ -245,8 +245,8 @@ end
 
 if is_external.yes == 1 then
     print (init_customer_profile());
-    print (validate_customer_profile_integrity());
     print (validate_operators());
     print (validate_select_filter());
     print (validate_scan_filter());
+    print (validate_customer_profile_integrity());
 end
