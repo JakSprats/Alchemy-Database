@@ -168,9 +168,7 @@ static void writeFloatCol(uchar **row, float fcol) {
     *row  = *row + 4;
 }
 
-static uint32 streamIntToUInt(uchar  *data,
-                              uint32 *clen,
-                              flag   *sflag) {
+static uint32 streamIntToUInt(uchar *data, uint32 *clen, flag *sflag) {
     uint32 val;
     uchar  b1 = *data;
     if (b1 & COL_1BYTE_INT) {
@@ -402,13 +400,16 @@ aobj getRawCol(void  *orow,
                int    tmatch,
                flag  *cflag,
                bool   force_string) {
-    uchar ctype = Tbl[server.dbid][tmatch].col_type[cmatch];
-    if (!cmatch) { /* PK stored ONLY in KEY not in ROW, echo it */
-        if (force_string) return *createStringAobjFromAobj(aopk);
-        else              return *aopk;
-    }
     aobj a;
-    bzero(&a, sizeof(aobj)); /* avoid compiler warning */
+    initAobj(&a);
+    if (!cmatch) { /* PK stored ONLY in KEY not in ROW, echo it */
+        if (force_string) {
+            initStringAobjFromAobj(&a, aopk);
+            return a;
+        } else {
+            return *aopk;
+        }
+    }
 
     uchar    rflag;
     uint32   rlen, ncols;
@@ -416,33 +417,34 @@ aobj getRawCol(void  *orow,
     uchar   *row      = getRowPayload(meta, &rflag, &ncols, &rlen);
     uchar    sflag    = rflag & RFLAG_SIZE_FLAG;
     uchar   *cofst    = meta + 2; // 2 {flag,ncols}
-    int      o_cmatch = cmatch;
+    int      cmatch_m = cmatch;
 
-    cmatch--; // key was not stored
+    cmatch_m--; // key was not stored
     uint32 start = 0;
     uint32 next;
     if (rflag        & RFLAG_1BYTE_INT) {
-        if (cmatch) start = (uint32)*(cofst + cmatch - 1);
-        next  = (uint32)*(cofst + cmatch);
+        if (cmatch_m) start = (uint32)*(cofst + cmatch_m - 1);
+        next = (uint32)*(cofst + cmatch_m);
     } else if (rflag & RFLAG_2BYTE_INT) {
         unsigned short *m;
-        if (cmatch) {
-            m = (unsigned short *)(char *)(cofst + ((cmatch - 1) * sflag));
+        if (cmatch_m) {
+            m     = (ushort *)(char *)(cofst + ((cmatch_m - 1) * sflag));
             start = (uint32)*m;
         }
-        m = (unsigned short *)(char *)(cofst + (cmatch * sflag));
+        m    = (ushort *)(char *)(cofst + (cmatch_m * sflag));
         next = (uint32)*m;
     } else {        /* RFLAG_4BYTE_INT */
         uint32 *i;
-        if (cmatch) {
-            i = (uint32 *)(char *)(cofst + ((cmatch - 1) * sflag));
+        if (cmatch_m) {
+            i     = (uint32 *)(char *)(cofst + ((cmatch_m - 1) * sflag));
             start = *i;
         }
-        i = (uint32 *)(char *)(cofst + (cmatch * sflag));
+        i    = (uint32 *)(char *)(cofst + (cmatch_m * sflag));
         next = *i;
     }
 
-    if (Tbl[server.dbid][tmatch].col_type[o_cmatch]        == COL_TYPE_INT) {
+    uchar ctype = Tbl[server.dbid][tmatch].col_type[cmatch];
+    if (Tbl[server.dbid][tmatch].col_type[cmatch]        == COL_TYPE_INT) {
         uint32  clen;
         a.type       = COL_TYPE_INT;
         uchar  *data = row + start;
@@ -452,24 +454,24 @@ aobj getRawCol(void  *orow,
             a.enc  = COL_TYPE_INT;
             a.len  = clen;
         } else {
-            snprintf(RawCols[o_cmatch], 32, "%u", val);
-            a.len = strlen(RawCols[o_cmatch]);
-            a.s   = RawCols[o_cmatch];
+            snprintf(RawCols[cmatch], 32, "%u", val);
+            a.len = strlen(RawCols[cmatch]);
+            a.s   = RawCols[cmatch];
             a.enc  = COL_TYPE_STRING;
         }
-    } else if (Tbl[server.dbid][tmatch].col_type[o_cmatch] == COL_TYPE_FLOAT) {
+    } else if (Tbl[server.dbid][tmatch].col_type[cmatch] == COL_TYPE_FLOAT) {
         uint32  clen;
-        uchar  *data = row + start;
         a.type       = COL_TYPE_FLOAT;
+        uchar  *data = row + start;
         float   f    = streamFloatToFloat(data, &clen);
         if (!force_string && ctype == COL_TYPE_FLOAT) { /* request for FLOAT */
             a.f    = f;
             a.enc  = COL_TYPE_FLOAT;
             a.len  = clen;
         } else {
-            sprintfOutputFloat(RawCols[o_cmatch], 32, f);
-            a.len = strlen(RawCols[o_cmatch]);
-            a.s   = RawCols[o_cmatch];
+            sprintfOutputFloat(RawCols[cmatch], 32, f);
+            a.len = strlen(RawCols[cmatch]);
+            a.s   = RawCols[cmatch];
             a.enc  = COL_TYPE_STRING;
         }
     } else {                                               /* COL_TYPE_STRING */
@@ -502,20 +504,14 @@ robj *outputRow(void *rrow,
                 bool  quote_text_cols) {
     aobj   cols[MAX_COLUMN_PER_TABLE];
     uint32 totlen = 0;
-
     for (int i = 0; i < qcols; i++) {
         cols[i]  = getRawCol(rrow, cmatchs[i], aopk, tmatch, NULL, 1);
         totlen  += cols[i].len;
     }
     totlen += (uint32)qcols - 1; // -1 no final comma
     if (quote_text_cols) totlen += 2 * (uint32)qcols;
-
-    char *s;
-    if (totlen >= OUPUT_BUFFER_SIZE) {
-        s  = malloc(totlen);                  /* FREE me soon */
-    } else {
-        s = OutputBuffer;
-    }
+    char *s = (totlen >= OUPUT_BUFFER_SIZE) ? malloc(totlen) : /* FREE ME 014 */
+                                              OutputBuffer;
     uint32 slot = 0;
     for (int i = 0; i < qcols; i++) {
         QUOTE_COL
@@ -529,7 +525,7 @@ robj *outputRow(void *rrow,
         releaseAobj(&cols[i]);
     }
     robj *r = createStringObject(s, totlen);
-    if (totlen >= OUPUT_BUFFER_SIZE) free(s); /* freeD */
+    if (totlen >= OUPUT_BUFFER_SIZE) free(s);                  /* FREED 014 */
     return r;
 }
 
@@ -725,6 +721,7 @@ static void *rewriteRow(int    ncols,
 
 
 //TODO simultaneous PK and normal update
+//TODO too many arguments for a per-row-OP, merge into a struct
 bool updateRow(redisClient *c,
                bt          *btr,
                aobj        *aopk,

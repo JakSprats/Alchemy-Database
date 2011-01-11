@@ -65,8 +65,8 @@ void convertINLtoAobj(list **inl, uchar ctype);
 list *cloneAobjList(list *ll);
 
 char *strFromAobj(aobj *a, int *len);
-aobj *createStringAobjFromAobj(aobj *a); /* AAAAAAobj */
-robj *createStringRobjFromAobj(aobj *a); /* RRRRRRobj */
+void initStringAobjFromAobj(aobj *na, aobj *a);
+robj *createStringRobjFromAobj(aobj *a);
 
 typedef bool aobj_cmp(aobj *a, aobj *b);
 bool aobjEQ(aobj *a, aobj *b);

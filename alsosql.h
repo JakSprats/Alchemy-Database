@@ -65,24 +65,24 @@ void dumpFilter(f_t *filt);
 void convertFilterListToAobj(list *flist, int tmatch);
 
 typedef struct check_sql_where_clause {
-    uchar  wtype;
-    robj  *key;
-    robj  *low;
-    robj  *high;
-    list  *inl;
-    sds    lvr;
-    int    imatch;
-    int    tmatch;
-    int    cmatch;
-    int    obc;    /* ORDER BY col */
-    int    obt;    /* ORDER BY tbl -> JOINS */
-    bool   asc;
-    int    lim;
-    int    ofst;
-    sds    ovar;  /* OFFSET variable name - used by cursors */
-    sds    token;
-    int    sto;
-    list  *flist;
+    uchar   wtype;
+    sds     token;
+    robj   *key;
+    robj   *low;                       /* BETWEEN low AND high */
+    robj   *high;                      /* BETWEEN low AND high */
+    list   *inl;                       /* IN (list,,,,) */
+    sds     lvr;                       /* Leftover AFTER parse */
+    int     imatch;
+    int     tmatch;
+    int     cmatch;
+    int     nob;                       /* number ORDER BY columns */
+    int     obc[MAX_ORDER_BY_COLS];    /* ORDER BY col */
+    int     obt[MAX_ORDER_BY_COLS];    /* ORDER BY tbl -> JOINS */
+    bool    asc[MAX_ORDER_BY_COLS];    /* ORDER BY ASC/DESC */
+    int     lim;                       /* ORDER BY LIMIT */
+    int     ofst;                      /* ORDER BY OFFSET */
+    sds     ovar;                      /* OFFSET varname - used by cursors */
+    list   *flist;                     /* FILTER list (nonindexed cols in WC) */
 } cswc_t;
 
 void init_check_sql_where_clause(cswc_t *w, int tmatch, sds token);

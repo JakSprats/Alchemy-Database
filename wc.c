@@ -45,7 +45,6 @@ char *strcasestr(const char *haystack, const char *needle); /*compiler warning*/
 #include "wc.h"
 
 // FROM redis.c
-#define RL4 redisLog(4,
 extern struct sharedObjectsStruct shared;
 extern struct redisServer server;
 
@@ -58,6 +57,11 @@ extern uchar    OP_len[7];
 char   *Ignore_keywords[]   = {"PRIMARY", "CONSTRAINT", "UNIQUE", "KEY",
                                "FOREIGN" };
 uint32  Num_ignore_keywords = 5;
+
+static char CLT = '<';
+static char CGT = '>';
+static char CEQ = '=';
+static char CNE = '!';
 
 /* CREATE_TABLE_HELPERS CREATE_TABLE_HELPERS CREATE_TABLE_HELPERS */
 bool ignore_cname(char *tkn) {
@@ -80,7 +84,7 @@ bool parseCreateTable(redisClient *c,
         addReply(c, shared.createsyntax);
         return 0;      
     }
-    while (isblank(*token)) token++;
+    SKIP_SPACES(token)
     while (token) {
         if (*ccount == MAX_COLUMN_PER_TABLE) {
             addReply(c, shared.toomanycolumns);
@@ -96,9 +100,9 @@ bool parseCreateTable(redisClient *c,
         if (!token) break;
         if (!cCpyOrReply(c, token, cnames[*ccount], clen)) return 0;
 
-        token       = next_token_delim(token, ',', ')'); /* parse ctype, flags*/
+        token       = next_token_delim3(token, ',', ')'); /* parse ctype*/
         if (!token) break;
-        sds   type  = sdsnewlen(token, get_token_len_delim(token, ',', ')'));
+        sds   type  = sdsnewlen(token, get_tlen_delim3(token, ',', ')'));
         token       = get_next_token_nonparaned_comma(token);
 
         /* in type search for INT (but not BIGINT - too big @8 Bytes) */
@@ -139,7 +143,7 @@ static uchar parseRangeReply(redisClient  *c,
     char *and    = strchr(first, ' ');
     if (!and) goto parse_range_err;
     int   flen   = and - first;
-    while (isblank(*and)) and++; /* find start of value */
+    SKIP_SPACES(and) /* find start of value */
     if (strncasecmp(and, "AND ", 4)) {
         addReply(c, shared.whereclause_no_and);
         return SQL_ERR_LOOKUP;
@@ -149,16 +153,14 @@ static uchar parseRangeReply(redisClient  *c,
     char *tokfin = strchr(second, ' ');
     if (tokfin) {
         slen    = tokfin - second;
-        while (isblank(*tokfin)) tokfin++;
+        SKIP_SPACES(tokfin)
         *finish = tokfin;
     } else {
         slen    = strlen(second);
         *finish = NULL;
     }
-
     w->low  = createStringObject(first,  flen);
     w->high = createStringObject(second, slen);
-    //RL4 "RANGEQUERY: low: %s high: %s", w->low->ptr, w->high->ptr);
     return SQL_RANGE_QUERY;
 
 parse_range_err:
@@ -192,7 +194,86 @@ static bool setOffsetReply(redisClient *c, cswc_t *w, char *nextp) {
     return 1;
 }
 
-/* SYNTAX: ORDER BY col [DESC] [LIMIT n [OFFSET m]] */
+#define PARSEOB_DONE(endt)   \
+    if (!endt || !(*endt)) { \
+        *more   = 0;         \
+        *finish = NULL;      \
+        *token  = NULL;      \
+        return 1;            \
+    }
+
+#define PARSEOB_IFCOMMA_NEXTTOK(endt) \
+    if (*endt == ',') {               \
+        endt++;                       \
+        PARSEOB_DONE(endt)            \
+        SKIP_SPACES(endt)             \
+        PARSEOB_DONE(endt)            \
+        *more  = 1;                   \
+        *token = endt;                \
+        return 1;                     \
+    }
+
+/* SYNTAX: ORDER BY {col [DESC],}+ [LIMIT n [OFFSET m]] */
+static bool parseOBYcol(redisClient  *c,
+                        char        **token,
+                        int           tmatch,
+                        cswc_t       *w,
+                        char        **finish,
+                        bool         *more) {
+    int   tlen  = get_tlen_delim2(*token, ',');
+    if (!tlen) tlen = (int)strlen(*token);
+    char *prd   = _strnchr(*token, '.', tlen);
+    if (prd) { /* JOIN - NOTE: currently only support single column ORDER BY */
+        if ((w->obt[w->nob] = find_table_n(*token, prd - *token)) == -1) {
+            addReply(c, shared.join_order_by_tbl);
+            return 0;
+        }
+        char *cname = prd + 1;
+        int   clen  = get_token_len(cname); /* no COMMA delimiting for JOINS */
+        if (!clen) {
+            addReply(c, shared.join_order_by_col);
+            return 0;
+        }
+        w->obc[w->nob] = find_column_n(w->obt[w->nob], cname, clen);
+        if (w->obc[w->nob] == -1) {
+            addReply(c, shared.join_order_by_col);
+            return 0;
+        }
+    } else {  /* RANGE QUERY */
+        w->obc[w->nob] = find_column_n(tmatch, *token, tlen);
+        if (w->obc[w->nob] == -1) {
+            addReply(c, shared.order_by_col_not_found);
+            return 0;
+        }
+    }
+    w->asc[w->nob] = 1; /* ASC by default */
+    *more          = (*(*token + tlen) == ',') ? 1: 0;
+    int nob        = w->nob;
+    w->nob++;           /* increment as parsing may already be finished */
+
+    char *nextt = next_token_delim2(*token, ',');
+    PARSEOB_DONE(nextt)            /* e.g. "ORDER BY X" no DESC nor COMMA    */
+    PARSEOB_IFCOMMA_NEXTTOK(nextt) /* e.g. "ORDER BY col1,col2,col3"         */
+    SKIP_SPACES(nextt)             /* e.g. "ORDER BY col1    DESC" -> "DESC" */
+    PARSEOB_IFCOMMA_NEXTTOK(nextt) /* e.g. "ORDER BY col1    ,   col2"       */
+    PARSEOB_DONE(nextt)            /* e.g. "ORDER BY X   " no DESC nor COMMA */
+
+    if (!strncasecmp(nextt, "DESC", 4)) {
+        w->asc[nob] = 0;
+        if (*(nextt + 4) == ',') *more = 1;
+        nextt       = next_token_delim2(nextt, ',');
+        PARSEOB_DONE(nextt) /* for misformed ORDER BY ending in ',' */
+    } else if (!strncasecmp(nextt, "ASC", 3)) {
+        w->asc[nob] = 1;
+        if (*(nextt + 3) == ',') *more = 1;
+        nextt       = next_token_delim2(nextt, ',');
+        PARSEOB_DONE(nextt) /* for misformed ORDER BY ending in ',' */
+    }
+    PARSEOB_IFCOMMA_NEXTTOK(nextt) /* e.g. "ORDER BY c1 DESC ,c2" -> "c2" */
+    *token = nextt;
+    return 1;
+}
+
 static bool parseOrderBy(redisClient  *c,
                          char         *by,
                          int           tmatch,
@@ -202,76 +283,43 @@ static bool parseOrderBy(redisClient  *c,
         addReply(c, shared.whereclause_orderby_no_by);
         return 0;
     }
-
     char *token = next_token(by);
     if (!token) {
         addReply(c, shared.whereclause_orderby_no_by);
         return 0;
     }
-    char *nextp = strchr(token, ' ');
-    int   tlen  = nextp ? nextp - token : (int)strlen(token);
-    char *prd   = _strnchr(token, '.', tlen);
-    if (prd) { /* JOIN */
-        if ((w->obt = find_table_n(token, prd - token)) == -1) {
-            addReply(c, shared.join_order_by_tbl);
+    bool more = 1; /* more OBC to parse */
+    while (more) {
+        if (w->nob == MAX_ORDER_BY_COLS) {
+            addReply(c, shared.toomany_nob);
             return 0;
         }
-        char *cname = prd + 1;
-        int   clen  = get_token_len(cname);
-        if (!clen || (w->obc = find_column_n(w->obt, cname, clen)) == -1) {
-            addReply(c, shared.join_order_by_col);
-            return 0;
-        }
-    } else {  /* RANGE QUERY */
-        w->obc = find_column_n(tmatch, token, tlen);
-        if (w->obc == -1) {
-            addReply(c, shared.order_by_col_not_found);
-            return 0;
-        }
+        if (!parseOBYcol(c, &token, tmatch, w, finish, &more)) return 0;
     }
 
-    if (!nextp) { /* "ORDER BY X" - no DESC, LIMIT, OFFSET */
-        *finish = NULL;
-        return 1;
-    }
-    while (isblank(*nextp)) nextp++;
-    if (!nextp) { /* "ORDER BY X   " - no DESC, LIMIT, OFFSET */
-        *finish = NULL;
-        return 1;
-    }
-
-    if (!strncasecmp(nextp, "DESC", 4)) {
-        w->asc = 0;
-        nextp  = next_token(nextp);
-    } else if (!strncasecmp(nextp, "ASC", 3)) {
-        w->asc = 1;
-        nextp  = next_token(nextp);
-    }
-
-    if (nextp) {
-        if (!strncasecmp(nextp, "LIMIT", 5)) {
-            nextp  = next_token(nextp);
-            if (!nextp) {
+    if (token) {
+        if (!strncasecmp(token, "LIMIT ", 6)) {
+            token  = next_token(token);
+            if (!token) {
                 addReply(c, shared.orderby_limit_needs_number);
                 return 0;
             }
-            w->lim = atoi(nextp);
-            nextp  = next_token(nextp);
-            if (nextp) {
-                if (!strncasecmp(nextp, "OFFSET", 6)) {
-                    nextp  = next_token(nextp);
-                    if (!nextp) {
+            w->lim = atoi(token);
+            token  = next_token(token);
+            if (token) {
+                if (!strncasecmp(token, "OFFSET", 6)) {
+                    token  = next_token(token);
+                    if (!token) {
                         addReply(c, shared.orderby_offset_needs_number);
                         return 0;
                     }
-                    if (!setOffsetReply(c, w, nextp)) return 0;
-                    nextp   = next_token(nextp);
+                    if (!setOffsetReply(c, w, token)) return 0;
+                    token   = next_token(token);
                 }
             }
         }
     }
-
-    if (nextp) *finish = nextp; /* still something to parse - maybe STORE */
+    if (token) *finish = token; /* still something to parse - maybe "STORE" */
     return 1;
 }
 
@@ -285,7 +333,6 @@ bool parseWCAddtlSQL(redisClient *c, char *token, cswc_t *w) {
             addReply(c, shared.whereclause_orderby_no_by);
             return 0;
         }
-
         char *lfin    = NULL;
         if (!parseOrderBy(c, by, w->tmatch, w, &lfin)) {
             w->lvr = NULL;
@@ -325,6 +372,51 @@ static bool addRCmdToINList(redisClient *c,
 #define IN_RCMD_ERR_MSG \
   "-ERR SELECT FROM WHERE col IN(Redis_cmd) - inner command had error: "
 
+static bool parseWC_IN_NRI(redisClient *c, list **inl,char *s, int slen) {
+    int   axs  = getAccessCommNum(s);
+    if (axs == -1 ) {
+        addReply(c, shared.accesstypeunknown);
+        return 0;
+    }
+    int     argc;
+    robj **rargv;
+    if (axs == ACCESS_SELECT_COMMAND_NUM) { /* SELECT has 6 args */
+        argc  = 6;
+        sds x = sdsnewlen(s, slen);
+        rargv = parseSelectCmdToArgv(x);
+        sdsfree(x);
+        if (!rargv) {
+            addReply(c, shared.where_in_select);
+            return 0;
+        }
+    } else {
+        sds *argv  = sdssplitlen(s, slen, " ", 1, &argc);
+        int  arity = AccessCommands[axs].argc;
+        if ((arity > 0 && arity != argc) || (argc < -arity)) { 
+            zfree(argv);
+            addReply(c, shared.accessnumargsmismatch);
+            return 0;
+        }
+        rargv = zmalloc(sizeof(robj *) * argc);
+        for (int j = 0; j < argc; j++) {
+            rargv[j] = createStringObject(argv[j], sdslen(argv[j]));
+        }
+        zfree(argv);
+    }
+    redisClient *rfc = rsql_createFakeClient();
+    rfc->argv        = rargv;
+    rfc->argc        = argc;
+
+    uchar f   = 0;
+    fakeClientPipe(c, rfc, inl, 0, &f, addRCmdToINList, emptyNoop);
+    bool  err = 0;
+    if (!replyIfNestedErr(c, rfc, IN_RCMD_ERR_MSG)) err = 1;
+
+    rsql_freeFakeClient(rfc);
+    zfree(rargv);
+    return !err;
+}
+
 /* SYNTAX: IN (a,b,c) OR IN($redis_command arg1 arg2) */
 static uchar parseWC_IN(redisClient  *c,
                         char         *token,
@@ -345,61 +437,19 @@ static uchar parseWC_IN(redisClient  *c,
     if (piped) {
         char *s    = token + 1;
         int   slen = end - s;
-        int   axs  = getAccessCommNum(s);
-        if (axs == -1 ) {
-            addReply(c, shared.accesstypeunknown);
-            return SQL_ERR_LOOKUP;
-        }
-
-        int     argc;
-        robj **rargv;
-        if (axs == ACCESS_SELECT_COMMAND_NUM) { /* SELECT has 6 args */
-            argc  = 6;
-            sds x = sdsnewlen(s, slen);
-            rargv = parseSelectCmdToArgv(x);
-            sdsfree(x);
-            if (!rargv) {
-                addReply(c, shared.where_in_select);
-                return SQL_ERR_LOOKUP;
-            }
-        } else {
-            sds *argv  = sdssplitlen(s, slen, " ", 1, &argc);
-            int  arity = AccessCommands[axs].argc;
-            if ((arity > 0 && arity != argc) || (argc < -arity)) { 
-                zfree(argv);
-                addReply(c, shared.accessnumargsmismatch);
-                return SQL_ERR_LOOKUP;
-            }
-            rargv = zmalloc(sizeof(robj *) * argc);
-            for (int j = 0; j < argc; j++) {
-                rargv[j] = createStringObject(argv[j], sdslen(argv[j]));
-            }
-            zfree(argv);
-        }
-        redisClient *rfc = rsql_createFakeClient();
-        rfc->argv        = rargv;
-        rfc->argc        = argc;
-
-        uchar f   = 0;
-        fakeClientPipe(c, rfc, inl, 0, &f, addRCmdToINList, emptyNoop);
-        bool  err = 0;
-        if (!replyIfNestedErr(c, rfc, IN_RCMD_ERR_MSG)) err = 1;
-
-        rsql_freeFakeClient(rfc);
-        zfree(rargv);
-        if (err) return SQL_ERR_LOOKUP;
+        if (!parseWC_IN_NRI(c, inl, s, slen)) return SQL_ERR_LOOKUP;
     } else {
         char *s   = token;
         char *beg = s;
-        while (1) {
+        while (1) { /* the next line can search beyond end, safe but lame */
             char *nextc = str_next_unescaped_chr(beg, s, ',');
-            if (!nextc) break;
-            while (isblank(*s)) s++;
+            if (!nextc || nextc > end) break;
+            SKIP_SPACES(s)
             robj *r     = createStringObject(s, nextc - s);
             listAddNodeTail(*inl, r);
             nextc++;
             s           = nextc;
-            while (isblank(*s)) s++;
+            SKIP_SPACES(s)
         }
         robj *r = createStringObject(s, end - s);
         listAddNodeTail(*inl, r);
@@ -409,19 +459,11 @@ static uchar parseWC_IN(redisClient  *c,
 
     end++;
     if (*end) {
-        while (isblank(*end)) end++;
+        SKIP_SPACES(end)
         *finish = end;
     }
     return SQL_IN_LOOKUP;
 }
-
-typedef bool parse_inum_func(redisClient *c,
-                             int         *tmatch, 
-                             char        *token, 
-                             int          tlen, 
-                             int         *cmatch, 
-                             int         *imatch,
-                             bool         is_scan);
 
 /* Parse "tablename.columnname" into [tmatch, cmatch, imatch */
 static bool parseInumTblCol(redisClient *c,
@@ -477,10 +519,6 @@ static bool parseInumCol(redisClient *c,
     return 1;
 }
 
-static char CLT = '<';
-static char CGT = '>';
-static char CEQ = '=';
-static char CNE = '!';
 static enum OP findOperator(char *val, uint32 vlen, char **spot) {
     for (uint32 i = 0; i < vlen; i++) {
         char x = val[i];
@@ -517,8 +555,8 @@ static enum OP findOperator(char *val, uint32 vlen, char **spot) {
     return NONE;
 }
 
-/* SYNTAX Where Relation
-     1.) "col = 4" ... can be "col=4", "col= 4", "col =4", "col = 4"
+/* SYNTAX Where Relational Token
+     1.) "col = 4"
      2.) "col BETWEEN x AND y"
      3.) "col IN (,,,,,)" */
 static uchar parseWCTokenRelation(redisClient  *c,
@@ -546,7 +584,7 @@ static uchar parseWCTokenRelation(redisClient  *c,
 
     char    *spot = NULL;
     enum OP  op   = findOperator(token, two_tok_len, &spot);
-    if (op != NONE) { /* "col=X", "col!=X" */
+    if (op != NONE) { /* "col=X", "col !=X", "col <= X" */
         char *end = spot - OP_len[op];;
         while (isblank(*end)) end--; /* find end of PK */
         if (is_scan || ifound) { /* set filter.[cmatch,op] */
@@ -567,21 +605,19 @@ static uchar parseWCTokenRelation(redisClient  *c,
         }
         wtype        = w->cmatch ? SQL_SINGLE_FK_LOOKUP : SQL_SINGLE_LOOKUP;
         char *start  = spot + 1;
-        while (isblank(*start)) start++; /* find start of value */
+        SKIP_SPACES(start) /* find start of value */
         if (!*start) goto sql_tok_rel_err;
         char *tokfin = strchr(start, ' ');
         int   len    = tokfin ? tokfin - start : (uint32)strlen(start);
         if (is_scan || ifound) { /* set filter.rhs */
             flt->rhs = sdsnewlen(start, len);
-        } else {      /* set w.key */
+        } else {                 /* set w.key */
             w->key   = createStringObject(start, len); //TODO -> aobj
         }
-
-        if (tokfin) while (isblank(*tokfin)) tokfin++;
+        if (tokfin) SKIP_SPACES(tokfin)
         *finish = tokfin;
-        //TODO is the PK=X check needed
-        if (!w->cmatch || !tokfin) { /* PK=X(single row) OR nutn 2 parse */
-            w->lvr = tokfin;
+        if (!tokfin) { /* nutn 2 parse */
+            w->lvr = NULL;
             return wtype;
         }
     } else { /* RANGE_QUERY or IN_QUERY */
@@ -591,7 +627,7 @@ static uchar parseWCTokenRelation(redisClient  *c,
         int cmatch = -1;
         if (!(*pif)(c, &w->tmatch, token, nextp - token,
                     &cmatch, &imatch, !is_scan)) return SQL_ERR_LOOKUP;
-        while (isblank(*nextp)) nextp++; /* find start of next token */
+        SKIP_SPACES(nextp) /* find start of next token */
         if (!strncasecmp(nextp, "IN ", 3)) {
             nextp = next_token(nextp);
             if (!nextp) goto sql_tok_rel_err;
@@ -646,7 +682,6 @@ void parseWCReply(redisClient *c, cswc_t *w, uchar sop, bool is_scan) {
     char *finish = w->token;
     sds   token  = NULL;
     bool  ifound = 0;
-
     while (1) {
         f_t   flt;
         initFilter(&flt);
@@ -657,13 +692,13 @@ void parseWCReply(redisClient *c, cswc_t *w, uchar sop, bool is_scan) {
         if (and && btwn && btwn < and) and = strcasestr(and + 5, " AND ");
         int   tlen   = and ? and - finish : (int)strlen(finish);
         if (token) sdsfree(token);
-        token        = sdsnewlen(finish, tlen);
-        uchar twtype = parseWCTokenRelation(c, w, sop, token, &tokfin,
-                                            is_scan, &flt, ifound, 0);
-        if (twtype == SQL_ERR_LOOKUP) goto p_wd_end;
+        token         = sdsnewlen(finish, tlen);
+        uchar t_wtype = parseWCTokenRelation(c, w, sop, token, &tokfin,
+                                             is_scan, &flt, ifound, 0);
+        if (t_wtype == SQL_ERR_LOOKUP) goto p_wd_end;
 
         if (is_scan) {
-            w->wtype = twtype;
+            w->wtype = t_wtype;
             if (!w->flist) w->flist = listCreate();
             if (w->wtype == SQL_RANGE_QUERY) {
                 addLowHighToFlist(w); /* convert -> "x >= low AND x <= high" */
@@ -677,27 +712,32 @@ void parseWCReply(redisClient *c, cswc_t *w, uchar sop, bool is_scan) {
                 listAddNodeTail(w->flist, cloneFilt(&flt));
                 releaseFilter(&flt);
             } else {
-                w->wtype = twtype;
+                w->wtype = t_wtype;
                 ifound   = 1;
             }
         }
 
         if (and) {
             finish = and + 5; /* go past " AND " */
-            while (isblank(*finish)) finish++;
+            SKIP_SPACES(finish)
             if (!*finish) break;
         } else {
             if (!tokfin) break;
             finish = tokfin;
-            while (isblank(*finish)) finish++;
+            SKIP_SPACES(finish)
             if (!*finish) break;
             if (!parseWCAddtlSQL(c, finish, w)) goto p_wd_end;
             break;
         }
     }
     convertFilterListToAobj(w->flist, w->tmatch);
+
 p_wd_end:
-    if (w->lvr) w->lvr = sdsnewlen(w->lvr, strlen(w->lvr));
+    if (w->lvr) { /* blank space in lvr is not actually lvr */
+        SKIP_SPACES(w->lvr)
+        if (*(w->lvr)) w->lvr = sdsnewlen(w->lvr, strlen(w->lvr));
+        else           w->lvr = NULL;
+    }
     if (token) sdsfree(token);
 }
 
@@ -728,8 +768,7 @@ static void singleFKHack(cswc_t *w, uchar *wtype) {
 /* SYNTAX: The join clause is parse into tokens delimited by "AND"
             the special case of "BETWEEN x AND y" overrides the "AND" delimter
            These tokens are then parses as "relations"
-   NOTE: Joins currently work only on a single index and NOT on a star schema
-*/
+   NOTE: Joins currently work only on a single index and NOT on a star schema */
 static bool joinParseWCReply(redisClient  *c, jb_t *jb) {
     cswc_t *w      = &jb->w;
     w->wtype       = SQL_ERR_LOOKUP;
@@ -748,6 +787,7 @@ static bool joinParseWCReply(redisClient  *c, jb_t *jb) {
         char *btwn   = strcasestr(finish, " BETWEEN ");
         if (and && btwn && btwn < and) and = strcasestr(and + 5, " AND ");
         int   tlen   = and ? and - finish : (int)strlen(finish);
+        if (token) sdsfree(token);
         token        = sdsnewlen(finish, tlen);
         w->wtype     = parseWCTokenRelation(c, w, sop, token, &tokfin,
                                             0, &flt, 0, 1);
@@ -772,26 +812,26 @@ static bool joinParseWCReply(redisClient  *c, jb_t *jb) {
 
         if (and) {
             finish = and + 5; /* go past " AND " */
-            while (isblank(*finish)) finish++;
+            SKIP_SPACES(finish)
             if (!*finish) break;
         } else {
             if (!tokfin) break;
             finish = tokfin;
-            while (isblank(*finish)) finish++;
+            SKIP_SPACES(finish)
             if (!*finish) break;
             if (!parseWCAddtlSQL(c, finish, w)) goto j_pcw_end;
             break;
         }
     }
     if (w->lvr) { /* leftover from parsing */
-        while (isblank(*(w->lvr))) w->lvr++;
+        SKIP_SPACES(w->lvr)
         if (*(w->lvr)) goto j_pcw_end;
     }
 
-    if (w->obc != -1 ) { /* ORDER BY -> Table must be in join */
+    if (w->obc[0] != -1 ) { /* ORDER BY -> Table must be in join */
         bool hit = 0;
         for (int i = 0; i < jb->qcols; i++) {
-            if (jb->j_tbls[i] == w->obt) {
+            if (jb->j_tbls[i] == w->obt[0]) {
                 hit = 1;
                 break;
             }
@@ -829,11 +869,9 @@ void init_join_block(jb_t *jb, char *wc) {
     init_check_sql_where_clause(&(jb->w), -1, wc);
     jb->n_ind = 0;
     jb->qcols = 0;
-    jb->nname = NULL;
     jb->cstar = 0;
 }
 void destroy_join_block(jb_t *jb) {
-    if (jb->nname) decrRefCount(jb->nname);
     destroy_check_sql_where_clause(&(jb->w));
 }
 
@@ -889,7 +927,7 @@ void joinReply(redisClient *c) {
                jb.qcols++;
            }
         }
-        joinGeneric(c, NULL, &jb, 0, -1);
+        joinGeneric(c, &jb);
     }
 
 j_end:

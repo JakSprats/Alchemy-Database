@@ -75,6 +75,7 @@ function select_store(col_list, tbls, whereclause)
 
     -- 3.) execute select, storing results in a table
     local t = client('select', col_list, "FROM", tbls, "WHERE", wc);
+    if (t == nil) then return 0; end
 
     -- 4.) iterate thru results, running "command" on each row
     for key,value in ipairs(t) do

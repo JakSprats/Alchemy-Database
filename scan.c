@@ -53,30 +53,26 @@ extern r_tbl_t Tbl[MAX_NUM_DB][MAX_NUM_TABLES];
 
 // TODO merge w/ struct range
 typedef struct filter_row {
-    redisClient   *c;
-    cswc_t        *w;
+    bool           nowc;
     qr_t          *q;
-    int            tmatch;
     int            qcols;
     int           *cmatchs;
-    bool           nowc;
-    uchar          octype; /* order by column type */
-    list          *ll;
     bool           cstar;
+    redisClient   *c;
+    cswc_t        *w;
+    list          *ll;
     bool           orobj;
 } fr_t;
 
 static void init_filter_row(fr_t *fr, redisClient *c, cswc_t *w, qr_t *q,
-                            int tmatch, int qcols, int *cmatchs, bool nowc,
-                            uchar octype, list *ll, bool cstar, bool orobj) {
+                            int qcols, int *cmatchs, bool nowc,
+                            list *ll, bool cstar, bool orobj) {
     fr->c       = c;
     fr->w       = w;
     fr->q       = q;
-    fr->tmatch  = tmatch;
     fr->qcols   = qcols;
     fr->cmatchs = cmatchs;
     fr->nowc    = nowc;
-    fr->octype  = octype;
     fr->ll      = ll;
     fr->cstar   = cstar;
     fr->orobj   = orobj;
@@ -86,21 +82,16 @@ static void init_filter_row(fr_t *fr, redisClient *c, cswc_t *w, qr_t *q,
 static void condSelectReply(fr_t *fr, aobj *akey, void *rrow, ulong *card) {
     uchar hit = 0;
     if (fr->nowc) hit = 1;
-    else          hit = passFilters(rrow, fr->w->flist, fr->tmatch);
+    else          hit = passFilters(rrow, fr->w->flist, fr->w->tmatch);
 
     if (hit) {
         *card = *card + 1;
         if (fr->cstar) return; /* just counting */
         robj *r = outputRow(rrow, fr->qcols, fr->cmatchs,
-                            akey, fr->tmatch, 0);
-        if (fr->q->qed) {
-            addORowToRQList(fr->ll, r, fr->orobj, rrow, fr->w->obc, akey,
-                            fr->tmatch, fr->octype);
-            decrRefCount(r);
-        } else {
-            addReplyBulk(fr->c, r);
-            decrRefCount(r);
-        }
+                            akey, fr->w->tmatch, 0);
+        if (fr->q->qed) addRow2OBList(fr->ll, fr->w, r, fr->orobj, rrow, akey);
+        else            addReplyBulk(fr->c, r);
+        decrRefCount(r);
     }
 }
 
@@ -152,13 +143,13 @@ void tscanCommand(redisClient *c) {
             }
         }
     }
-    if (nowc && w.obc == -1 && c->argc > 4) { /* argv[4] parse error */
+    if (nowc && !w.nob && c->argc > 4) { /* argv[4] parse error */
         w.lvr = sdsdup(where);
         leftoverParsingReply(c, w.lvr);
         goto tscan_end;
     }
 
-    if (!nowc && w.obc == -1) { /* WhereClause exists and no ORDER BY */
+    if (!nowc && !w.nob) { /* WhereClause exists and no ORDER BY */
         parseWCReply(c, &w, SQL_SCANSELECT, 1);
         if (w.wtype == SQL_ERR_LOOKUP)       goto tscan_end;
         if (!leftoverParsingReply(c, w.lvr)) goto tscan_end;
@@ -172,38 +163,28 @@ void tscanCommand(redisClient *c) {
         }
     }
 
-    if (cstar && w.obc != -1) { /* SCANSELECT COUNT(*) ORDER BY -> stupid */
+    if (cstar && w.nob) { /* SCANSELECT COUNT(*) ORDER BY -> stupid */
         addReply(c, shared.orderby_count);
         goto tscan_end;
     }
 
-    robj *btt  = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
+    robj *btt  = lookupKeyRead(c->db, Tbl[server.dbid][w.tmatch].name);
     bt   *btr = (bt *)btt->ptr;
     if (cstar && nowc) { /* SCANSELECT COUNT(*) FROM tbl */
         addReplyLongLong(c, (long long)btr->numkeys);
         goto tscan_end;
     }
-
     // TODO on "fk_lim" iterate on FK (not PK)
-    //if (w.obc != -1) w.imatch = find_index(tmatch, w.obc);
-
-    qr_t  q;
-    setQueued(&w, &q);
-    
-    uchar octype = COL_TYPE_NONE;
-    if (q.qed) {
-        ll     = listCreate();
-        octype = Tbl[server.dbid][tmatch].col_type[w.obc];
-    }
-
+    //if (w.nob) w.imatch = find_index(w.tmatch, w.obc);
     fr_t fr;
-    init_filter_row(&fr, c, &w, &q, tmatch, qcols, cmatchs, nowc,
-                    octype, ll, cstar, 1);
+    qr_t q;
+    setQueued(&w, &q);
+    ll = initOBsort(q.qed, &w);
+    init_filter_row(&fr, c, &w, &q, qcols, cmatchs, nowc, ll, cstar, 1);
     //dumpW(&w, w.wtype);
-
     LEN_OBJ
     btEntry *be;
-    int      sent  =  0;
+    ulong    sent  =  0;
     long     loops = -1;
     btSIter *bi    = q.pk_lo ? btGetFullIteratorXth(btr, w.ofst):
                                btGetFullRangeIterator(btr);
@@ -218,21 +199,7 @@ void tscanCommand(redisClient *c) {
     }
     btReleaseRangeIterator(bi);
 
-    if (q.qed && card) {
-        obsl_t **vector = sortOrderByToVector(ll, octype, w.asc);
-        for (int k = 0; k < (int)listLength(ll); k++) {
-            if (w.lim != -1 && sent == w.lim) break;
-            if (w.ofst > 0) {
-                w.ofst--;
-            } else {
-                sent++;
-                obsl_t *ob = vector[k];
-                addReplyBulk(c, ob->row);
-            }
-        }
-        sortedOrderByCleanup(vector, listLength(ll), octype, fr.orobj);
-        free(vector);
-    }
+    if (q.qed && card) opSelectOnSort(c, ll, &w, fr.orobj, &sent);
 
     if (w.lim != -1 && (uint32)sent < card) card = sent;
     if (cstar) lenobj->ptr = sdscatprintf(sdsempty(), ":%lu\r\n", card);
@@ -241,6 +208,6 @@ void tscanCommand(redisClient *c) {
     if (w.ovar) incrOffsetVar(c, &w, card);
 
 tscan_end:
-    if (ll) listRelease(ll);
+    releaseOBsort(ll);
     destroy_check_sql_where_clause(&w);
 }

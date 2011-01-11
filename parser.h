@@ -52,10 +52,16 @@ char *rem_backticks(char *token, int *len);
 char *str_next_unescaped_chr(char *beg, char *s, int x);
 char *strn_next_unescaped_chr(char *beg, char *s, int x, int len);
 
+#define SKIP_SPACES(tok) while (isblank(*tok)) tok++;
+
+char *min2(char *p, char *q);
+
 char *next_token(char *nextp);
 int get_token_len(char *tok);
-int get_token_len_delim(char *nextp, char x, char z);
-char *next_token_delim(char *p, char x, char z);
+int get_tlen_delim2(char *nextp, char x);
+char *next_token_delim2(char *p, char x);
+int get_tlen_delim3(char *nextp, char x, char z);
+char *next_token_delim3(char *p, char x, char z);
 char *get_next_token_nonparaned_comma(char *token);
 
 robj **parseCmdToArgvReply(redisClient *c, char *as_cmd, int *rargc);

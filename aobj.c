@@ -172,13 +172,16 @@ aobj *createAobjFromString(char *s, int len, bool ctype) {
 void convertINLtoAobj(list **inl, uchar ctype) {
     listNode *ln;
     list     *nl = listCreate();
-    listIter *li = listGetIterator(*inl, AL_START_HEAD);
+    list     *ol = *inl;
+    listIter *li = listGetIterator(ol, AL_START_HEAD);
     while((ln = listNext(li)) != NULL) {
         robj *ink = ln->value;
         aobj *a   = copyRobjToAobj(ink, ctype);
         listAddNodeTail(nl, a);
     }
-    listRelease(*inl);
+    listReleaseIterator(li);
+    ol->free     = decrRefCount;
+    listRelease(ol);
     *inl         = nl;
     (*inl)->free = destroyAobj;
 }
@@ -199,13 +202,12 @@ static char SFA_buf[32];
 char *strFromAobj(aobj *a, int *len) {
     char *s = NULL; /* compiler warning */
     if (       a->type == COL_TYPE_STRING) {
-        s         = malloc(a->len + 1);
+        s         = malloc(a->len + 1);                  /* FREE ME 015 */
         memcpy(s, a->s, a->len);
         s[a->len] = '\0';
         *len      = a->len;
     } else if (a->type == COL_TYPE_INT) {
         snprintf(SFA_buf, 32, "%d", a->i);
-        SFA_buf[31] = '\0'; /* paranoia */
         s = _strdup(SFA_buf);
         *len = strlen(SFA_buf);
     } else {           /* COL_TYPE_FLOAT */
@@ -229,14 +231,12 @@ bool initAobjFromVoid(aobj *a, redisClient *c, void *col, uchar ctype) {
     return 1;
 }
 
-aobj *createStringAobjFromAobj(aobj *a) {
-    aobj *na   = (aobj *)malloc(sizeof(aobj));
-    initAobj(na);
-    na->enc    = COL_TYPE_STRING;
-    na->type   = COL_TYPE_STRING;
-    na->freeme = 1;
-    na->s      = strFromAobj(a, (int *)&na->len);
-    return na;
+void initStringAobjFromAobj(aobj *a, aobj *a2) {
+    initAobj(a);
+    a->enc    = COL_TYPE_STRING;
+    a->type   = COL_TYPE_STRING;
+    a->freeme = 1;
+    a->s      = strFromAobj(a2, (int *)&a->len);
 }
 
 robj *createStringRobjFromAobj(aobj *a) {

@@ -1,5 +1,5 @@
 /*
- * This file implements "SELECT ... ORDER BY col LIMIT X OFFSET Y" helper funcs
+ * This file implements "SELECT ... ORDER BY col LIMIT X OFFSET Y"
  *
 
 GPL License
@@ -36,148 +36,160 @@ ALL RIGHTS RESERVED
 #include "row.h"
 #include "rpipe.h"
 #include "parser.h"
-#include "alsosql.h"
 #include "aobj.h"
 #include "common.h"
 #include "orderby.h"
 
 // FROM redis.c
-#define RL4 redisLog(4,
+extern struct redisServer server;
 
 /* GLOBALS */
-extern char  *Order_by_col_val;
+extern void    *Order_by_col_val;
+extern r_tbl_t  Tbl     [MAX_NUM_DB][MAX_NUM_TABLES];
 
+int   OB_nob   = 0;
+bool  OB_asc  [MAX_ORDER_BY_COLS];
+uchar OB_ctype[MAX_ORDER_BY_COLS];
 
-//TODO there is most likely too much register assignment in these functions
-/* ORDER BY START */
 int intOrderBySort(const void *s1, const void *s2) {
-    obsl_t *o1 = (obsl_t *)s1;
-    obsl_t *o2 = (obsl_t *)s2;
-    int    *i1 = (int *)(o1->key);
-    int    *i2 = (int *)(o2->key);
-    return *i1 - *i2;
+    return (long)s1 - (long)s2;
 }
 int intOrderByRevSort(const void *s1, const void *s2) {
-    obsl_t *o1 = (obsl_t *)s1;
-    obsl_t *o2 = (obsl_t *)s2;
-    int    *i1 = (int *)(o1->key);
-    int    *i2 = (int *)(o2->key);
-    return *i2 - *i1;
+    return (long)s2 - (long)s1;
 }
-
 int floatOrderBySort(const void *s1, const void *s2) {
-    obsl_t *o1 = (obsl_t *)s1;
-    obsl_t *o2 = (obsl_t *)s2;
-    float  *i1 = (float *)(o1->key);
-    float  *i2 = (float *)(o2->key);
-    float   f  = *i1 - *i2;
+    float f1, f2;
+    memcpy(&f1, &s1, sizeof(float));
+    memcpy(&f2, &s2, sizeof(float));
+    float   f  = f1 - f2;
     return (f == 0.0) ? 0 : ((f > 0.0) ? 1: -1);
 }
 int floatOrderByRevSort(const void *s1, const void *s2) {
-    obsl_t *o1 = (obsl_t *)s1;
-    obsl_t *o2 = (obsl_t *)s2;
-    float  *i1 = (float *)(o1->key);
-    float  *i2 = (float *)(o2->key);
-    float   f  = *i1 - *i2;
+    float f1, f2;
+    memcpy(&f1, &s1, sizeof(float));
+    memcpy(&f2, &s2, sizeof(float));
+    float   f  = f2 - f1;
     return (f == 0.0) ? 0 : ((f > 0.0) ? -1: 1);
 }
-
 int stringOrderBySort(const void *s1, const void *s2) {
-    obsl_t  *o1 = (obsl_t *)s1;
-    obsl_t  *o2 = (obsl_t *)s2;
-    char   **c1 = (char **)(o1->key);
-    char   **c2 = (char **)(o2->key);
-    char    *x1 = *c1;
-    char    *x2 = *c2;
-    return (x1 && x2) ? strcmp(x1, x2) : x1 - x2; /* strcmp() not ok w/ NULLs */
+    char *c1 = (char *)s1;
+    char *c2 = (char *)s2;
+    return (c1 && c2) ? strcmp(c1, c2) : c1 - c2; /* strcmp() not ok w/ NULLs */
 }
 int stringOrderByRevSort(const void *s1, const void *s2) {
-    obsl_t  *o1 = (obsl_t *)s1;
-    obsl_t  *o2 = (obsl_t *)s2;
-    char   **c1 = (char **)(o1->key);
-    char   **c2 = (char **)(o2->key);
-    char    *x1 = *c1;
-    char    *x2 = *c2;
-    return (x1 && x2) ? strcmp(x2, x1) : x2 - x1; /* strcmp() not ok w/ NULLs */
+    char *c1 = (char *)s1;
+    char *c2 = (char *)s2;
+    return (c1 && c2) ? strcmp(c2, c1) : c2 - c1; /* strcmp() not ok w/ NULLs */
 }
 
-void addORowToRQList(list  *ll,
-                     void  *r,
-                     bool   is_robj,
-                     void  *rrow,
-                     int    obc,
-                     aobj  *apk,
-                     int    tmatch,
-                     uchar  ctype) {
-    flag cflag;
-    obsl_t *ob  = (obsl_t *)malloc(sizeof(obsl_t));/*freed sortedOrdrByCleanup*/
-    ob->row = is_robj ? cloneRobj((robj *)r) :
-                        r; /* decRefCount()ed in sortedOrderByCleanup() */
-    aobj ao = getRawCol(rrow, obc, apk, tmatch, &cflag, 0);
+typedef int ob_cmp(const void *, const void *);
+/* COL_TYPE_STRING=0, COL_TYPE_INT=1, COL_TYPE_FLOAT=2 */
+/* slot = OB_ctype[j] * 2 + OB_asc[j] */
+ob_cmp (*OB_cmp[6]) = {stringOrderByRevSort, stringOrderBySort,
+                       intOrderByRevSort,    intOrderBySort,
+                       floatOrderByRevSort,  floatOrderBySort};
+
+int genOBsort(const void *s1, const void *s2) {
+    int     ret = 0;
+    obsl_t *o1  = *(obsl_t **)s1;
+    obsl_t *o2  = *(obsl_t **)s2;
+    for (int j = 0; j < OB_nob; j++) {
+        ob_cmp *compar = OB_cmp[OB_ctype[j] * 2 + OB_asc[j]];
+        ret            = (*compar)(o1->keys[j], o2->keys[j]);
+        if (ret) return ret; /* return the first non-zero compar result */
+    }
+    return ret;
+}
+
+list *initOBsort(bool qed, cswc_t *w) {
+    OB_nob = w->nob;
+    if (OB_nob) {
+        for (int i = 0; i < OB_nob; i++) {
+            OB_asc[i]   = w->asc[i];
+            OB_ctype[i] = Tbl[server.dbid][w->tmatch].col_type[w->obc[i]];
+        }
+    }
+    return qed ? listCreate() : NULL ;         /* DESTROY 009 */
+}
+void releaseOBsort(list *ll) {
+    if (ll) listRelease(ll);                   /* DESTROYED 009 */
+    OB_nob = 0;
+}
+
+obsl_t *create_obsl(void *row, int nob) {
+    obsl_t *ob = (obsl_t *)malloc(sizeof(obsl_t)); /* FREE ME 001 */
+    ob->row    = row;
+    ob->keys   = malloc(sizeof(void *) * nob);     /* FREE ME 006 */
+    return ob;
+}
+static void destroy_obsl(obsl_t *ob, bool orobj) {
+    for (int i = 0; i < OB_nob; i++) {
+        if (OB_ctype[i] == COL_TYPE_STRING) free(ob->keys[i]); /* FREED 003 */
+    }
+    if (orobj) decrRefCount(ob->row); /* DESTROYED 005 */
+    free(ob->keys);                   /* FREED 006 */
+    free(ob);                         /* FREED 001 */
+}
+
+void assignObKey(cswc_t *w, void *rrow, aobj *apk, int i, obsl_t *ob) {
+    flag   cflag;
+    void  *key;
+    uchar  ctype = Tbl[server.dbid][w->tmatch].col_type[w->obc[i]];
+    aobj   ao    = getRawCol(rrow, w->obc[i], apk, w->tmatch, &cflag, 0);
     if (ctype == COL_TYPE_INT) {
-        ob->key   = (void *)(long)ao.i;
+        key = (void *)(long)ao.i;
     } else if (ctype == COL_TYPE_FLOAT) {
-        memcpy(&(ob->key), &ao.f, sizeof(float));
-    } else {
-        char *s   = malloc(ao.len + 1); /*free()d in sortedOrderByCleanup() */
+        memcpy(&(key), &ao.f, sizeof(float));
+    } else { /* memcpy needed here as ao.s may be sixbit encoded */
+        char *s   = malloc(ao.len + 1);        /* FREE ME 003 */
         memcpy(s, ao.s, ao.len);
         s[ao.len] = '\0';
-        ob->key   = s;
+        key       = s;
     }
     releaseAobj(&ao);
+    ob->keys[i] = key;
+}
+void addRow2OBList(list   *ll,
+                   cswc_t *w,
+                   void   *r,
+                   bool    orobj,
+                   void   *rrow,
+                   aobj   *apk) {
+    void   *row = orobj ? cloneRobj((robj *)r) : r; /* DESTROY ME 005 */
+    obsl_t *ob  = create_obsl(row, w->nob);         /* FREE ME 001 */
+    for (int i = 0; i < w->nob; i++) {
+        assignObKey(w, rrow, apk, i, ob);
+    }
     listAddNodeTail(ll, ob);
 }
 
-obsl_t **sortOrderByToVector(list *ll, uchar ctype, bool asc) {
+obsl_t **sortOB2Vector(list *ll) {
     listNode  *ln;
-    listIter   li;
     int        vlen   = listLength(ll);
-    obsl_t   **vector = malloc(sizeof(obsl_t *) * vlen); /* freed in function */
+    obsl_t   **vector = malloc(sizeof(obsl_t *) * vlen); /* FREE ME 004 */
     int        j      = 0;
-    listRewind(ll, &li);
-    while((ln = listNext(&li))) {
+    listIter *li      = listGetIterator(ll, AL_START_HEAD);
+    while((ln = listNext(li)) != NULL) {
         vector[j] = (obsl_t *)ln->value;
         j++;
     }
-    if (ctype == COL_TYPE_INT) {
-        asc ? qsort(vector, vlen, sizeof(obsl_t *), intOrderBySort) :
-              qsort(vector, vlen, sizeof(obsl_t *), intOrderByRevSort);
-    } else if (ctype == COL_TYPE_FLOAT) {
-        asc ? qsort(vector, vlen, sizeof(obsl_t *), floatOrderBySort) :
-              qsort(vector, vlen, sizeof(obsl_t *), floatOrderByRevSort);
-    } else {
-        asc ? qsort(vector, vlen, sizeof(obsl_t *), stringOrderBySort) :
-              qsort(vector, vlen, sizeof(obsl_t *), stringOrderByRevSort);
-    }
+    listReleaseIterator(li);
+
+    qsort(vector, vlen, sizeof(obsl_t *), genOBsort);
     return vector;
 }
 
-void sortedOrderByCleanup(obsl_t **vector,
-                          int      vlen,
-                          uchar    ctype,
-                          bool     decr_row) {
-    for (int k = 0; k < vlen; k++) {
-        obsl_t *ob = vector[k];
-        if (decr_row)                 decrRefCount(ob->row);
-        if (ctype == COL_TYPE_STRING) free(        ob->key);
-        free(ob);
+void sortOBCleanup(obsl_t **vector, int vlen, bool orobj) {
+    for (int i = 0; i < vlen; i++) {
+        destroy_obsl((obsl_t *)vector[i], orobj);
     }
 }
 
 /* JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN */
 /* JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN */
 void addJoinOutputRowToList(jrow_reply_t *r, void *resp) {
-    obsl_t *ob = (obsl_t *)malloc(sizeof(obsl_t));
-    ob->row    = resp;
-    if (r->ctype == COL_TYPE_INT) {
-        ob->key = Order_by_col_val ? (void *)(long)atoi(Order_by_col_val) :
-                                     (void *)-1; /* -1 for UINT */
-    } else if (r->ctype == COL_TYPE_FLOAT) {
-        float f = Order_by_col_val ? atof(Order_by_col_val) : FLT_MIN;
-        memcpy(&(ob->key), &f, sizeof(float));
-    } else if (r->ctype == COL_TYPE_STRING) {
-        ob->key = Order_by_col_val;
-    }
+    obsl_t *ob  = create_obsl(resp, 1);             /* FREE ME 008 */
+    ob->keys[0] = Order_by_col_val;
     listAddNodeTail(r->ll, ob);
 }
 
@@ -192,16 +204,10 @@ int sortJoinOrderByAndReply(redisClient *c, build_jrow_reply_t *b, cswc_t *w) {
         j++;
     }
     listReleaseIterator(li);
-    if (       b->j.ctype == COL_TYPE_INT) {
-        w->asc ? qsort(vector, vlen, sizeof(obsl_t *), intOrderBySort) :
-                 qsort(vector, vlen, sizeof(obsl_t *), intOrderByRevSort);
-    } else if (b->j.ctype == COL_TYPE_STRING) {
-        w->asc ? qsort(vector, vlen, sizeof(obsl_t *), stringOrderBySort) :
-                 qsort(vector, vlen, sizeof(obsl_t *), stringOrderByRevSort);
-    } else if (b->j.ctype == COL_TYPE_FLOAT) {
-        w->asc ? qsort(vector, vlen, sizeof(obsl_t *), floatOrderBySort) :
-                 qsort(vector, vlen, sizeof(obsl_t *), floatOrderByRevSort);
-    }
+
+    qsort(vector, vlen, sizeof(obsl_t *), genOBsort);
+
+    //TODO this is almost (opSelectOnSort + sortOBCleanup)
     int sent = 0;
     for (int k = 0; k < vlen; k++) {
         if (w->lim != -1 && sent == w->lim) break;

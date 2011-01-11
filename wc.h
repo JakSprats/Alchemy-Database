@@ -65,6 +65,14 @@ bool parseWCAddtlSQL(redisClient *c,
                      char        *token,
                      cswc_t      *w);
 
+typedef bool parse_inum_func(redisClient *c,
+                             int         *tmatch,
+                             char        *token,
+                             int          tlen,
+                             int         *cmatch,
+                             int         *imatch,
+                             bool         is_scan);
+
 void parseWCReply(redisClient *c, cswc_t *w, uchar sop, bool is_scan);
 
 void init_join_block(jb_t *jb, char *wc);

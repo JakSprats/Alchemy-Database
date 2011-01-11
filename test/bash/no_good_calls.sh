@@ -208,6 +208,29 @@ function bad_join_syntax() {
   $CLI SELECT user.name,user_action.when,user_action.deed FROM user,user_action WHERE ""
 }
 
+function bad_select_multi-obc() {
+  (cd test; lua TEST_mult_col_OB.lua)
+  echo TEST: SELECT MULTI OBC
+  echo "ORDER BY k desc, l"
+  $CLI SELECT id FROM obycol WHERE "id BETWEEN 1 AND 10 ORDER BY k desc, l"
+  $CLI SELECT id FROM obycol WHERE "id BETWEEN 1 AND ORDER BY k desc, l"
+  $CLI SELECT id FROM obycol WHERE "id BETWEEN 1 AND 10 ORDER BY ,k desc, l"
+  $CLI SELECT id FROM obycol WHERE "id BETWEEN 1 AND 10 ORDER BY k desc desc asc, l"
+  $CLI SELECT id FROM obycol WHERE "id BETWEEN 1 AND 10 ORDER BY k desc, l ascc"
+  $CLI SELECT id FROM obycol WHERE "id BETWEEN 1 AND 10 ORDER BY k desc, l des"
+  $CLI SELECT id FROM obycol WHERE "id BETWEEN 1 AND 10 ORDER BY k desc, l asc,"
+  $CLI SELECT id FROM obycol WHERE "id BETWEEN 1 AND 10 ORDER BY k desc, l asc, 7"
+  $CLI SELECT id FROM obycol WHERE "id BETWEEN 1 AND 10 ORDER BY k desc, l asc, 7, desc"
+  $CLI SELECT id FROM obycol WHERE "id BETWEEN 1 AND 10 ORDER BY k desc, l asc,,,,"
+  $CLI SELECT id FROM obycol WHERE "id BETWEEN 1 AND 10 ORDER BY k desc, l asc,i,i , , "
+  $CLI SELECT id FROM obycol WHERE "id BETWEEN 1 AND 10 ORDER BY k desc, l asc, i desc ,k asc, i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i,i"
+  $CLI SELECT id FROM obycol WHERE "id BETWEEN 1 AND 10 ORDER BY id,i,j,k,l,m"
+  $CLI SELECT id FROM obycol WHERE "id BETWEEN 1 AND 10 ORDER BY id asc,i,j desc ,k , l desc , m,,,"
+  $CLI SELECT id FROM obycol WHERE "id BETWEEN 1 AND 10 ORDER BY id asc,i,j desc ,k , l desc , LIMIT 2"
+  $CLI SELECT id FROM obycol WHERE "id BETWEEN 1 AND 10 ORDER BY id asc,i,j desc ,k , l desc  LIMIT 2 STORE LPUSH L"
+  $CLI SELECT id FROM obycol WHERE "id BETWEEN 1 AND 10 ORDER BY id asc,i,j desc ,k , l desc ,,  LIMIT 2 STORE LPUSH L"
+  $CLI SELECT id FROM obycol WHERE "id IN (1,2,3,4,5, , ) ORDER BY id asc,i,j desc ,k , l desc  LIMIT 2 STORE LPUSH L"
+}
 function bad_tests() {
   $CLI FLUSHALL
   populate
@@ -230,6 +253,8 @@ function bad_tests() {
   bad_insert_return_size
   echo
   bad_join_syntax
+  echo
+  bad_select_multi-obc
 }
 
 function do_bad_sql_queries() {

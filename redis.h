@@ -292,6 +292,7 @@ struct sharedObjectsStruct {
     *col_uint_string_too_long, *col_float_string_too_long,
     *uint_pk_too_big,          *uint_no_negative_values,
 
+    *toomany_nob,                *join_m_obc,
     *joinindexedcolumnlisterror, *joincolumnlisterror, *join_on_multi_col,
     *join_requires_range,
     *join_order_by_syntax,       *join_order_by_tbl,   *join_order_by_col,

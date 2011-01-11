@@ -41,19 +41,14 @@ typedef struct jqo {
 
 typedef struct jrow_reply {
     redisClient  *c;
-    redisClient  *fc;
     int          *jind_ncols;
     int           qcols;
-    bool          sub_pk;
-    int           nargc;
-    robj         *nname;
     jqo_t        *csort_order;
     bool          reordered;
     char         *reply;
     int           obt;
     int           obc;
     list         *ll;
-    bool          ctype;
     bool          cstar;
 } jrow_reply_t;
 
@@ -70,9 +65,6 @@ void freeAppendSetObject(robj *o);
 void freeValSetObject(robj *o);
 
 void joinGeneric(redisClient *c,
-                 redisClient *fc,
-                 jb_t        *jb,
-                 bool         sub_pk,
-                 int          nargc);
+                 jb_t        *jb);
 
 #endif /* __ALCHEMYDB_JOIN__H */ 

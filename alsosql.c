@@ -361,12 +361,12 @@ void init_check_sql_where_clause(cswc_t *w, int tmatch, sds token) {
     w->imatch   = -1;
     w->tmatch   = tmatch;
     w->cmatch   = -1;
-    w->obc      = -1;
-    w->obt      = -1;
+    w->nob      =  0;
+    w->obc[0]   = -1;
+    w->obt[0]   = -1;
+    w->asc[0]   = 1;
     w->lim      = -1;
     w->ofst     = -1;
-    w->sto      = -1;
-    w->asc      = 1;
     w->token    = token;
 }
 
@@ -536,16 +536,16 @@ void sqlSelectCommand(redisClient *c) {
         return;
     }
 
+
     cswc_t w;
     init_check_sql_where_clause(&w, tmatch, c->argv[5]->ptr);
     parseWCReply(c, &w, SQL_SELECT, 0);
     if (w.wtype == SQL_ERR_LOOKUP)       goto select_cmd_end;
     if (!leftoverParsingReply(c, w.lvr)) goto select_cmd_end;
-    if (cstar && w.obc != -1) { /* SELECT COUNT(*) ORDER BY -> stupid */
+    if (cstar && w.nob) { /* SELECT COUNT(*) ORDER BY -> stupid */
         addReply(c, shared.orderby_count);
         goto select_cmd_end;
     }
-
     //dumpW(&w);
     if (w.wtype > SQL_STORE_LOOKUP_MASK) { /* SELECT STORE LPUSH redislist */
         w.wtype -= SQL_STORE_LOOKUP_MASK;

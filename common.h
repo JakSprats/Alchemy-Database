@@ -75,4 +75,7 @@ ALL RIGHTS RESERVED
 #define MAX_COLUMN_NAME_SIZE  128
 
 #define MIN(A,B) ((A > B) ? B : A)
+
+#define MAX_ORDER_BY_COLS 16
+
 #endif /* __ALSOSQL_COMMON__H */

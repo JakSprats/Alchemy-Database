@@ -1530,6 +1530,10 @@ static void createSharedObjects(void) {
     shared.invalidrange = createObject(REDIS_STRING,sdsnew(
         "-ERR RANGE: Invalid range\r\n"));
 
+    shared.toomany_nob = createObject(REDIS_STRING,sdsnew(
+        "-ERR SELECT: JOIN: ORDER BY columns MAX = 16\r\n"));
+    shared.join_m_obc = createObject(REDIS_STRING,sdsnew(
+        "-ERR SELECT: JOIN: Multiple columns in ORDER BY not yet supported\r\n"));
     shared.toofewindicesinjoin = createObject(REDIS_STRING,sdsnew(
         "-ERR SELECT: JOIN: Too few indexed columns in join(min=2)\r\n"));
     shared.toomanyindicesinjoin = createObject(REDIS_STRING,sdsnew(
@@ -1598,7 +1602,7 @@ static void createSharedObjects(void) {
         "-ERR SYNTAX: SELECT COUNT(*) ... WHERE ... ORDER BY col - \"ORDER BY\" and \"COUNT(*)\" dont mix, drop the \"ORDER BY\"\r\n"));
 
     shared.selectsyntax = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: SELECT col,,,, FROM tablename WHERE [indexed_column = val]|| [indexed_column BETWEEN x AND y] [ORDER BY col LIMIT num offset] [STORE redis_cmd redis_args]\r\n"));
+        "-ERR SYNTAX: SELECT [col,,,,] FROM tablename WHERE [[indexed_column = val]|| [indexed_column BETWEEN x AND y] || [indexed_column IN (X,Y,Z,...)] || [indexed_column IN ($redis_statment)]] [ORDER BY [col [DESC/ASC]*,,] LIMIT n OFFSET m] [STORE redis_cmd redis_obj]\r\n"));
     shared.selectsyntax_nofrom = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: SELECT col,,,, FROM tablename WHERE indexed_column = val - \"FROM\" keyword MISSING\r\n"));
     shared.selectsyntax_nowhere = createObject(REDIS_STRING,sdsnew(

@@ -29,33 +29,28 @@ ALL RIGHTS RESERVED
 #include "join.h"
 #include "aobj.h"
 
-typedef struct order_by_sort_element {
-    void *key;
-    void *row;
+list *initOBsort(bool qed, cswc_t *w);
+void releaseOBsort(list *ll);
+
+typedef struct order_by_sort_element { /* INT(4) PTR*3(24) -> 28B */
+    void  *row;
+    void **keys;
 } obsl_t;
+obsl_t *create_obsl(void *row, int nob);
 
-int intOrderBySort(      const void *s1, const void *s2);
-int intOrderByRevSort(   const void *s1, const void *s2);
-int floatOrderBySort(    const void *s1, const void *s2);
-int floatOrderByRevSort( const void *s1, const void *s2);
-int stringOrderBySort(   const void *s1, const void *s2);
-int stringOrderByRevSort(const void *s1, const void *s2);
+void assignObKey(cswc_t *w, void *rrow, aobj *apk, int i, obsl_t *ob);
+void addRow2OBList(list    *ll,
+                   cswc_t  *w,
+                   void    *r,
+                   bool     is_robj,
+                   void    *rrow,
+                   aobj    *apk);
 
-void addORowToRQList(list  *ll,
-                     void  *r,
-                     bool   is_robj,
-                     void  *rrow,
-                     int    obc,
-                     aobj  *apk,
-                     int    tmatch,
-                     uchar  ctype);
+obsl_t **sortOB2Vector(list *ll);
 
-obsl_t **sortOrderByToVector(list *ll, uchar ctype, bool asc);
-
-void sortedOrderByCleanup(obsl_t **vector,
-                          int      vlen,
-                          uchar    ctype,
-                          bool     decr_row);
+void sortOBCleanup(obsl_t **vector,
+                   int      vlen,
+                   bool     decr_row);
 
 /* JOIN */
 void addJoinOutputRowToList(jrow_reply_t *r, void *resp);

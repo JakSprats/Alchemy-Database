@@ -66,8 +66,6 @@ typedef struct range_update {
 } rup_t;
 
 typedef struct range_common {
-    uchar        ctype;
-    bool         qed;
     redisClient *c;
     cswc_t      *w;
     list        *ll;
@@ -89,6 +87,11 @@ long inOp(range_t *g, row_op *p);    /* InQuery */
 
 bool passFilters(void *rrow, list *flist, int tmatch);
 
+void opSelectOnSort(redisClient *c,
+                    list        *ll,
+                    cswc_t      *w,
+                    bool         orobj,
+                    ulong       *sent);
 void iselectAction(redisClient *c,
                    cswc_t      *w,
                    int          cmatchs[MAX_COLUMN_PER_TABLE],

@@ -357,6 +357,20 @@ function istore_customer_hobby_order_by_denorm_to_many_lists() {
   $CLI LRANGE employee_ordered_hobby_list4 0 -1
 }
 
+function multiple_column_orderby_init() {
+  $CLI CREATE TABLE obycol "(id INT, i INT, j INT, k INT, l INT, m INT)"
+}
+function multiple_column_orderby_insert() {
+  $CLI INSERT INTO obycol VALUES "(1,1,1,2,4,1)"
+  $CLI INSERT INTO obycol VALUES "(2,1,1,2,4,3)"
+  $CLI INSERT INTO obycol VALUES "(3,1,2,2,3,5)"
+  $CLI INSERT INTO obycol VALUES "(4,1,2,2,3,7)"
+  $CLI INSERT INTO obycol VALUES "(5,2,3,2,2,9)"
+  $CLI INSERT INTO obycol VALUES "(6,2,3,1,2,2)"
+  $CLI INSERT INTO obycol VALUES "(7,2,4,1,1,4)"
+  $CLI INSERT INTO obycol VALUES "(8,2,4,1,1,6)"
+  $CLI INSERT INTO obycol VALUES "(9,2,4,1,1,8)"
+}
 function sql_orderby_test() {
   order_by_test
   order_by_limit_offset_test
@@ -485,7 +499,7 @@ function works() {
   populate
   selecter
   iselecter
-  updater
+  #updater
   iselecter_employee
   deleter
   iselecter
@@ -1606,4 +1620,27 @@ function run_lua_tests() {
         time taskset -c 1 luajit $a
     done
   )
+}
+
+function mem_leak_tests() {
+  C=200
+  REQ=1000000
+  multiple_column_orderby_init
+  multiple_column_orderby_insert
+  echo "obycol - id=1"
+  taskset -c 1 $BENCH -c $C -n $REQ -s -A MULTI -Q SELECT \* FROM obycol WHERE "id=1";
+  echo "obycol - id BETWEEN 1 AND 10"
+  taskset -c 1 $BENCH -c $C -n $REQ -s -A MULTI -Q SELECT \* FROM obycol WHERE "id between 1 AND 10";
+  echo "obycol - id IN (1,2,3,4,5,6,7,8,9) "
+  taskset -c 1 $BENCH -c $C -n $REQ -s -A MULTI -Q SELECT \* FROM obycol WHERE "id IN (1,2,3,4,5,6,7,8,9)";
+  echo "obycol - id BETWEEN 1 AND 10 ORDER BY k, m DESC LIMIT 4 OFFSET 3"
+  taskset -c 1 $BENCH -c $C -n $REQ -s -A MULTI -Q SELECT \* FROM obycol WHERE "id BETWEEN 1 AND 10 ORDER BY k, m DESC LIMIT 4 OFFSET 3"; 
+  echo "update expression"
+  taskset -c 1 $BENCH -c $C -n $REQ -s -A INT -Q UPDATE obycol SET "k = k + 1, l = l + 2" WHERE "id = 4"
+
+  init_test_table
+  $CLI INSERT INTO test VALUES "(1,field,name)"
+  echo "JOIN"
+  taskset -c 1 $BENCH -c $C -n $REQ -s -A MULTI -Q SELECT "obycol.id, test.name" FROM "obycol, test" WHERE "obycol.id = test.id AND obycol.id = 1"
+ 
 }

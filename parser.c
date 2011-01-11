@@ -147,7 +147,7 @@ int get_token_len(char *tok) {
     return x ? x - tok : (int)strlen(tok);
 }
 
-static char *min2(char *p, char *q) {
+char *min2(char *p, char *q) {
     if      (!p)    return q;
     else if (!q)    return p;
     else if (p < q) return p;
@@ -169,7 +169,22 @@ static char *min3(char *p, char *q, char *o) {
     }
 }
 
-int get_token_len_delim(char *nextp, char x, char z) {
+int get_tlen_delim2(char *nextp, char x) {
+    char *p  = strchr(nextp, x);
+    char *o  = strchr(nextp, ' ');
+    char *mn = min2(p, o);
+    return mn ? mn - nextp : 0;
+}
+
+char *next_token_delim2(char *p, char x) {
+    int len  = get_tlen_delim2(p, x);
+    if (!len) return NULL;
+    p       += len + 1;
+    while (isblank(*p)) p++;
+    return *p ? p : NULL;
+}
+
+int get_tlen_delim3(char *nextp, char x, char z) {
     char *p  = strchr(nextp, x);
     char *q  = strchr(nextp, z);
     char *o  = strchr(nextp, ' ');
@@ -177,8 +192,8 @@ int get_token_len_delim(char *nextp, char x, char z) {
     return mn ? mn - nextp : 0;
 }
 
-char *next_token_delim(char *p, char x, char z) {
-    int len  = get_token_len_delim(p, x, z);
+char *next_token_delim3(char *p, char x, char z) {
+    int len  = get_tlen_delim3(p, x, z);
     if (!len) return NULL;
     p       += len + 1;
     while (isblank(*p)) p++;
