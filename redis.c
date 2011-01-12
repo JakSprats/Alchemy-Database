@@ -4571,11 +4571,13 @@ void setGenericCommand(redisClient *c, int nx, robj *key, robj *val,
                 incrRefCount(key);
 #ifdef ALSOSQL
             /* JAKSPRATS: ALSOSQL: tables or indices cant get overwritten */
-            if (dictReplace(c->db->dict,key,val) == DICT_ERR) {
+            robj *o = lookupKeyWrite(c->db, key);
+            if (o->type == REDIS_BTREE || o->type == REDIS_NRL_INDEX) {
                 addReply(c, shared.wrongtypeerr);
                 return;
             }
 #endif
+            dictReplace(c->db->dict,key,val);
             incrRefCount(val);
         } else {
             if (internal) addReply(c,shared.czero);
@@ -4627,6 +4629,14 @@ static void getCommand(redisClient *c) {
 static void getsetCommand(redisClient *c) {
     if (getGenericCommand(c) == REDIS_ERR) return;
     if (dictAdd(c->db->dict,c->argv[1],c->argv[2]) == DICT_ERR) {
+#ifdef ALSOSQL
+        /* JAKSPRATS: ALSOSQL: tables or indices cant get overwritten */
+        robj *o = lookupKeyWrite(c->db, c->argv[1]);
+        if (o->type == REDIS_BTREE || o->type == REDIS_NRL_INDEX) {
+            addReply(c, shared.wrongtypeerr);
+            return;
+        }
+#endif
         dictReplace(c->db->dict,c->argv[1],c->argv[2]);
     } else {
         incrRefCount(c->argv[1]);
@@ -4683,11 +4693,13 @@ static void msetGenericCommand(redisClient *c, int nx) {
         if (retval == DICT_ERR) {
 #ifdef ALSOSQL
             /* JAKSPRATS: ALSOSQL: tables or indices cant get overwritten */
-            if (dictReplace(c->db->dict,c->argv[j],c->argv[j+1]) == DICT_ERR) {
+            robj *o = lookupKeyWrite(c->db, c->argv[j]);
+            if (o->type == REDIS_BTREE || o->type == REDIS_NRL_INDEX) {
                 addReply(c, shared.wrongtypeerr);
                 return;
             }
 #endif
+            dictReplace(c->db->dict,c->argv[j],c->argv[j+1]);
             incrRefCount(c->argv[j+1]);
         } else {
             incrRefCount(c->argv[j]);
@@ -7588,6 +7600,14 @@ static void sortCommand(redisClient *c) {
                 }
             }
         }
+#ifdef ALSOSQL
+        /* JAKSPRATS: ALSOSQL: tables or indices cant get overwritten */
+        robj *o = lookupKeyWrite(c->db, storekey);
+        if (o && (o->type == REDIS_BTREE || o->type == REDIS_NRL_INDEX)) {
+            addReply(c, shared.wrongtypeerr);
+            return;
+        }
+#endif
         if (dictReplace(c->db->dict,storekey,listObject)) {
             incrRefCount(storekey);
         }

@@ -313,12 +313,6 @@ int dictReplace(dict *d, void *key, void *val)
     /* It already exists, get the entry */
     entry = dictFind(d, key);
 
-    /* JAKSPRATS: ALSOSQL: tables or indices cant get overwritten */
-    if (entry && val) {
-        robj *dval = entry->val;
-        if (dval->type == REDIS_BTREE) return DICT_ERR;
-    }
-
     /* Free the old value and set the new one */
     /* Set the new value and free the old one. Note that it is important
      * to do that in this order, as the value may just be exactly the same
