@@ -50,7 +50,6 @@ ALL RIGHTS RESERVED
 #include "index.h"
 
 // FROM redis.c
-#define RL4 redisLog(4,
 extern struct sharedObjectsStruct shared;
 extern struct redisServer server;
 
@@ -156,7 +155,7 @@ void addToIndex(redisDb *db, aobj *apk, char *vals, uint32 cofsts[], int inum) {
 void delFromIndex(redisDb *db, aobj *apk, void *rrow, int inum, int tmatch) {
     if (Index[server.dbid][inum].virt) return;
     bool  nrl     = Index[server.dbid][inum].nrl;
-    if (nrl) { RL4 "NRL delFromIndex"); /* TODO add in nrldel */ return; }
+    if (nrl) { /* TODO add in nrldel */ return; }
     robj *ind     = Index[server.dbid][inum].obj;
     int   cmatch  = Index[server.dbid][inum].column;
     int   itm     = Index[server.dbid][inum].table;
@@ -178,7 +177,7 @@ static void _updateIndex(redisDb *db,
                          int      tmatch) {
     if (Index[server.dbid][inum].virt) return;
     bool  nrl     = Index[server.dbid][inum].nrl;
-    if (nrl) { RL4 "NRL updateIndex"); /* TODO add nrldel/add */ return; }
+    if (nrl) { /* TODO add nrldel/add */ return; }
     int   cmatch  = Index[server.dbid][inum].column;
     robj *ind     = Index[server.dbid][inum].obj;
     int   itm     = Index[server.dbid][inum].table;
