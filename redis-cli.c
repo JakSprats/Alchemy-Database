@@ -45,18 +45,10 @@
 
 #include "common.h"
 
-void redisLog(int level, const char *fmt, ...) {
-    va_list ap;
-    level = 0; /* compliler warning */
-
-    va_start(ap, fmt);
-    vprintf(fmt, ap);
-    printf("\n");
-    va_end(ap);
-
-}
-
-#define RL4 redisLog(4, 
+//#define ALCHEMY_LZO_COMPRESSION
+#ifdef ALCHEMY_LZO_COMPRESSION
+#include "minilzo.h"
+#endif
 
 #define REDIS_CMD_INLINE 1
 #define REDIS_CMD_BULK 2
@@ -386,6 +378,26 @@ static int cliReadReply(int fd) {
     }
 }
 
+#ifdef ALCHEMY_LZO_COMPRESSION
+#define HEAP_ALLOC(var,size) \
+    lzo_align_t __LZO_MMODEL var [ ((size) + (sizeof(lzo_align_t) - 1)) / sizeof(lzo_align_t) ]
+
+static HEAP_ALLOC(wrkmem, LZO1X_1_MEM_COMPRESS);
+
+lzo_uint lzolen = 0;
+unsigned char lzobuf[4096];
+
+int lzoAnetWrite(int fd, char *buf, int count) {
+    lzo_uint in_len = count;
+    int r = lzo1x_1_compress((uchar *)buf, in_len, lzobuf, &lzolen, wrkmem);
+    if (r == LZO_E_OK) {
+        printf("compressed %lu bytes into %lu bytes\n",
+            (ulong) in_len, (ulong) lzolen);
+    }
+    return anetWrite(fd, (char *)lzobuf, lzolen);
+}
+#endif
+
 static int selectDb(int fd) {
     int retval;
     sds cmd;
@@ -395,11 +407,7 @@ static int selectDb(int fd) {
         return 0;
 
     cmd = sdsempty();
-#ifdef ALSOSQL
-    cmd = sdscatprintf(cmd,"CHANGEDB %d\r\n",config.dbnum);
-#else
     cmd = sdscatprintf(cmd,"SELECT %d\r\n",config.dbnum);
-#endif
     anetWrite(fd,cmd,sdslen(cmd));
     anetRead(fd,&type,1);
     if (type <= 0 || type != '+') return 1;
@@ -804,7 +812,9 @@ int main(int argc, char **argv) {
     int firstarg;
     char **argvcopy;
     struct redisCommand *rc;
-
+#ifdef ALCHEMY_LZO_COMPRESSION
+    lzo_init();
+#endif
     config.hostip = "127.0.0.1";
     config.hostport = 6379;
     config.repeat = 1;

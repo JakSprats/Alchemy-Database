@@ -278,6 +278,7 @@ void descCommand(redisClient *c) {
     }
 
     char buf[256];
+    long long tot = btr->data_size + btr->malloc_size + index_size;
     if (minkey.type == COL_TYPE_STRING) {
         sds mins = sdsnewlen(minkey.s, (minkey.len > 64) ? 64 : minkey.len);
         sds maxs = sdsnewlen(maxkey.s, (minkey.len > 64) ? 64 : minkey.len);
@@ -285,7 +286,7 @@ void descCommand(redisClient *c) {
                           " BYTES: [BT-DATA: %lld BT-TOTAL: %lld INDEX: %lld"\
                             " COMBINED_TOTAL: %lld]",
                 btr->numkeys, mins, maxs, btr->data_size, btr->malloc_size,
-                index_size, (btr->malloc_size + index_size));
+                index_size, tot);
         buf[255] = '\0';
         sdsfree(mins);
         sdsfree(maxs);
@@ -294,7 +295,7 @@ void descCommand(redisClient *c) {
                           " BYTES: [BT-DATA: %lld BT-TOTAL: %lld INDEX: %lld"\
                             " COMBINED_TOTAL: %lld]",
                btr->numkeys, minkey.i, maxkey.i, btr->data_size,
-               btr->malloc_size, index_size, (btr->malloc_size + index_size));
+               btr->malloc_size, index_size, tot);
         buf[255] = '\0';
     }
     robj *r = _createStringObject(buf);

@@ -1306,6 +1306,8 @@ function dump_mysql_table_to_redisql() {
 # LUA LUA LUA LUA LUA LUA LUA LUA LUA LUA LUA LUA LUA LUA LUA
 RECONF="$CLI CONFIG SET luafilename helper.lua"
 alias FREE_LINUX_BUFFS="sudo sync && echo 3 | sudo tee /proc/sys/vm/drop_caches"
+alias ALL_TESTS_LOOP="while true; do all_tests; done > /dev/null"
+alias BAD_TESTS_LOOP="while true; do all_tests; done > /dev/null"
 
 function lua_return_value_test() {
   $RECONF
@@ -1642,5 +1644,42 @@ function mem_leak_tests() {
   $CLI INSERT INTO test VALUES "(1,field,name)"
   echo "JOIN"
   taskset -c 1 $BENCH -c $C -n $REQ -s -A MULTI -Q SELECT "obycol.id, test.name" FROM "obycol, test" WHERE "obycol.id = test.id AND obycol.id = 1"
- 
 }
+
+function init_edge_test() {
+  $CLI DROP TABLE ob
+  $CLI CREATE TABLE ob "(id INT, fk INT, a INT, b INT, c INT)"
+}
+function insert_edge_test() {
+  $CLI INSERT INTO ob VALUES "(1,9,1,1,1)"
+  $CLI INSERT INTO ob VALUES "(2,9,1,1,2)"
+  $CLI INSERT INTO ob VALUES "(3,9,1,1,3)"
+  $CLI INSERT INTO ob VALUES "(4,9,2,1,1)"
+  $CLI INSERT INTO ob VALUES "(5,9,2,1,2)"
+  $CLI INSERT INTO ob VALUES "(6,9,2,2,2)"
+  $CLI INSERT INTO ob VALUES "(7,9,1,2,2)"
+  $CLI INSERT INTO ob VALUES "(8,9,1,2,1)"
+}
+function edge_test() {
+  init_edge_test
+  insert_edge_test
+  echo SCANSELECT id FROM ob "ORDER BY a,b,c"
+  $CLI SCANSELECT id FROM ob "ORDER BY a,b,c"
+  $CLI CONFIG ADD LUA test/alchemy.lua
+  # now the edge
+  $CLI DROP TABLE ob_nri
+  $CLI CREATE TABLE ob_nri "(id TEXT, fk INT, pk INT)"
+  $CLI CREATE INDEX ind_on_fk ON ob_nri "(fk)"
+  $CLI LUA "function nri_string_ob3(tbl, pk, fk, a, b, c)
+                local tpk = a .. '_' .. b .. '_' .. c .. '_' .. pk;
+                insert(tbl, tpk .. ',' .. fk .. ',' .. pk);
+                return '+OK';
+            end
+            return 'function nri_zset_ob3 created';"
+  $CLI CREATE INDEX ind_ob_nri_tbl ON ob "LUA return nri_string_ob3('ob_nri', \$id, \$fk, \$a, \$b, \$c);"
+  echo SELECT id FROM ob WHERE "id IN (\$SELECT pk FROM ob_nri WHERE fk = 9 ORDER BY fk LIMIT 5)"
+  $CLI SELECT id FROM ob WHERE "id IN (\$SELECT pk FROM ob_nri WHERE fk = 9 ORDER BY fk LIMIT 5)"
+}
+
+BENCH=./gen-benchmark
+MANY="taskset -c 1 $BENCH -q -c $C -n $REQ -s -A MULTI -Q"

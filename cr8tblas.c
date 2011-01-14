@@ -270,15 +270,20 @@ static void createTableAsObjectOperation(redisClient  *c,
     if (!err) addReplyLongLong(c, card);
 }
 
-static void createTableAsSelect(redisClient *c, char *as_cmd) {
+static void createTableAsSelect(redisClient *c, char *as_cmd, int axs) {
     int  cmatchs[MAX_COLUMN_PER_TABLE];
     bool cstar  =  0;
     int  qcols  =  0;
     int  tmatch = -1;
     bool join   =  0;
 
-    int    rargc = 6;
-    robj **rargv = parseSelectCmdToArgv(as_cmd);
+    int    rargc;
+    robj **rargv = (*AccessCommands[axs].parse)(as_cmd, &rargc);
+    //TODO support CREATE TABLE AS SCANSELECT
+    if (!strcmp(rargv[0]->ptr, "SCANSELECT")) {
+        addReply(c, shared.cr8tbl_scan);
+        goto cr8_tblassel_end;
+    }
 
     if (!parseSelectReply(c, 0, NULL, &tmatch, cmatchs, &qcols, &join,
                           &cstar,  rargv[1]->ptr, rargv[2]->ptr,
@@ -369,8 +374,8 @@ void createTableAsObject(redisClient *c) {
         }
     }
 
-    if (axs == ACCESS_SELECT_COMMAND_NUM) { /* CREATE TABLE AS SELECT */
-        createTableAsSelect(c, as_cmd);
+    if (AccessCommands[axs].parse) { /* CREATE TABLE AS SELECT */
+        createTableAsSelect(c, as_cmd, axs);
         return;
     }
 

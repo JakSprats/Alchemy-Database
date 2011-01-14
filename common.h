@@ -74,6 +74,8 @@ ALL RIGHTS RESERVED
 //TODO make array dynamic in size
 #define MAX_COLUMN_NAME_SIZE  128
 
+#define NUM_ACCESS_TYPES              17
+
 #define MIN(A,B) ((A > B) ? B : A)
 
 #define MAX_ORDER_BY_COLS 16

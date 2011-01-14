@@ -372,7 +372,7 @@ static bool addRCmdToINList(redisClient *c,
 #define IN_RCMD_ERR_MSG \
   "-ERR SELECT FROM WHERE col IN(Redis_cmd) - inner command had error: "
 
-static bool parseWC_IN_NRI(redisClient *c, list **inl,char *s, int slen) {
+static bool parseWC_IN_NRI(redisClient *c, list **inl, char *s, int slen) {
     int   axs  = getAccessCommNum(s);
     if (axs == -1 ) {
         addReply(c, shared.accesstypeunknown);
@@ -380,10 +380,9 @@ static bool parseWC_IN_NRI(redisClient *c, list **inl,char *s, int slen) {
     }
     int     argc;
     robj **rargv;
-    if (axs == ACCESS_SELECT_COMMAND_NUM) { /* SELECT has 6 args */
-        argc  = 6;
+    if (AccessCommands[axs].parse) { /* SELECT has 6 args */
         sds x = sdsnewlen(s, slen);
-        rargv = parseSelectCmdToArgv(x);
+        rargv = (*AccessCommands[axs].parse)(x, &argc);
         sdsfree(x);
         if (!rargv) {
             addReply(c, shared.where_in_select);
@@ -569,18 +568,12 @@ static uchar parseWCTokenRelation(redisClient  *c,
                                   bool          ifound,
                                   bool          is_join) {
     int              idum;
-    parse_inum_func *pif;
     int              two_tok_len;
     uchar            wtype = SQL_ERR_LOOKUP;
-    if (is_join) {
-        pif         = parseInumTblCol;
-        char *tok2  = next_token(token);
-        if (!tok2) two_tok_len = strlen(token);
-        else       two_tok_len = (tok2 - token) + get_token_len(tok2);
-    } else {
-        pif         = parseInumCol;
-        two_tok_len = strlen(token);
-    }
+    parse_inum_func *pif   = (is_join) ? parseInumTblCol : parseInumCol;
+    char            *tok2  = next_token(token);
+    if (!tok2) two_tok_len = strlen(token);
+    else       two_tok_len = (tok2 - token) + get_token_len(tok2);
 
     char    *spot = NULL;
     enum OP  op   = findOperator(token, two_tok_len, &spot);
@@ -769,6 +762,7 @@ static void singleFKHack(cswc_t *w, uchar *wtype) {
             the special case of "BETWEEN x AND y" overrides the "AND" delimter
            These tokens are then parses as "relations"
    NOTE: Joins currently work only on a single index and NOT on a star schema */
+//TODO (parseWCReply & joinParseWCReply) are identical -> (refactor + merge)
 static bool joinParseWCReply(redisClient  *c, jb_t *jb) {
     cswc_t *w      = &jb->w;
     w->wtype       = SQL_ERR_LOOKUP;

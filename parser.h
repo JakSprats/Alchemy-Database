@@ -65,6 +65,7 @@ char *next_token_delim3(char *p, char x, char z);
 char *get_next_token_nonparaned_comma(char *token);
 
 robj **parseCmdToArgvReply(redisClient *c, char *as_cmd, int *rargc);
-robj **parseSelectCmdToArgv(char *as_cmd);
+robj **parseSelectCmdToArgv(char *as_cmd, int *argc);
+robj **parseScanSelectCmdToArgv(char *as_cmd, int *argc);
 
 #endif /* __ALC_PARSER__H */

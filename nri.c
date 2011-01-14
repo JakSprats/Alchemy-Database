@@ -182,6 +182,7 @@ run_cmd_end:
 
 void nrlIndexAdd(robj *o, aobj *apk, char *vals, uint32 cofsts[]) {
     sds cmd = genNRL_Cmd((d_l_t *)o->ptr, apk, vals, cofsts, NULL, -1);
+    //printf("nri: cmd: %s\n", cmd);
     runCmdInFakeClient(cmd);
     sdsfree(cmd);
     return;

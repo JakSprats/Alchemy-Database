@@ -27,12 +27,10 @@ ALL RIGHTS RESERVED
 #ifndef __CR8TBLAS__H
 #define __CR8TBLAS__H
 
-#include "common.h"
 #include "redis.h"
 
-#define NUM_ACCESS_TYPES              15
-#define ACCESS_SELECT_COMMAND_NUM      0
-//#define ACCESS_SCANSELECT_COMMAND_NUM  1
+#include "common.h"
+
 int getAccessCommNum(char *as_cmd);
 
 void createTableAsObject(redisClient *c);

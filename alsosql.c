@@ -87,7 +87,6 @@ void luaIstoreCommit(redisClient *c) {
     luaCommand(c);
 }
 
-
 /* CREATE_TABLE CREATE_TABLE CREATE_TABLE CREATE_TABLE CREATE_TABLE */
 /* CREATE_TABLE CREATE_TABLE CREATE_TABLE CREATE_TABLE CREATE_TABLE */
 bool cCpyOrReply(redisClient *c, char *src, char *dest, uint32 len) {
@@ -228,6 +227,7 @@ void insertCommitReply(redisClient *c,
         goto insert_commit_end;
     }
 
+    /* PREPARED STATEMENT ENTRY POINT */
     int pktype = Tbl[server.dbid][tmatch].col_type[0];
     apk.type   = pktype;
     apk.enc    = pktype;
@@ -349,6 +349,7 @@ static void selectOnePKReply(redisClient  *c,
     decrRefCount(r);
 }
 
+//TODO move to wc.c
 void init_check_sql_where_clause(cswc_t *w, int tmatch, sds token) {
     w->wtype    = SQL_ERR_LOOKUP;
     w->key      = NULL; //TODO -> aobj
@@ -536,7 +537,6 @@ void sqlSelectCommand(redisClient *c) {
         return;
     }
 
-
     cswc_t w;
     init_check_sql_where_clause(&w, tmatch, c->argv[5]->ptr);
     parseWCReply(c, &w, SQL_SELECT, 0);
@@ -586,9 +586,7 @@ void deleteCommand(redisClient *c) {
         addReply(c, shared.deletesyntax);
         return;
     }
-
     TABLE_CHECK_OR_REPLY(c->argv[2]->ptr,)
-
     if (strcasecmp(c->argv[3]->ptr, "WHERE")) {
         addReply(c, shared.deletesyntax_nowhere);
         return;

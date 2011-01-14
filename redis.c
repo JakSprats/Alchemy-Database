@@ -83,6 +83,8 @@
 #include "sha1.h"         /* SHA1 is used for DEBUG DIGEST */
 #include "release.h"      /* Release and/or git repository information */
 
+#define ALSOSQL
+#ifdef ALSOSQL
 #include "bt.h"              /* ALSOSQL B-trees */
 #include "bt_iterator.h"     /* ALSOSQL B-tree Iterators */
 #include "sixbit.h"          /* sixbit string compression */
@@ -97,9 +99,11 @@
 #include "alsosql.h"         /* ALSOSQL */
 #include "aobj.h"            /* ALSOSQL's ROW object called AOBJ */
 #include "common.h"          /* ALSOSQL's common definitions */
+//#define ALCHEMY_LZO_COMPRESSION
+#ifdef ALCHEMY_LZO_COMPRESSION
+#include "minilzo.h"
+#endif
 
-#define ALSOSQL
-#ifdef ALSOSQL
 lua_State   *Lua         = NULL;
 redisClient *LuaClient   = NULL; /* combine w/ CurrClient? */
 flag         LuaFlag     = PIPE_NONE_FLAG;
@@ -1663,6 +1667,8 @@ static void createSharedObjects(void) {
         "-ERR SCANSELECT on an indexed column -> use SELECT\r\n"));
     shared.scan_store = createObject(REDIS_STRING,sdsnew(
         "-ERR SCANSELECT STORE not yet supported\r\n"));
+    shared.cr8tbl_scan = createObject(REDIS_STRING,sdsnew(
+        "-ERR CREATE TABLE AS SCANSELECT not yet supported\r\n"));
 
     shared.istorecommit_err = createObject(REDIS_STRING,sdsnew(
         "-ERR INTERNAL: SELECT STORE failed (generic)\r\n"));
@@ -1916,17 +1922,11 @@ static void initServer() {
     if (server.vm_enabled) vmInit();
 
 #ifdef ALSOSQL
-    //#define ACCESS_SELECT_COMMAND_NUM 0
+    bzero(&AccessCommands, sizeof(stor_cmd) * NUM_ACCESS_TYPES);
     AccessCommands[0].func   = sqlSelectCommand;
     AccessCommands[0].name   = "SELECT";
-    AccessCommands[0].argc   = 4;
-
-#if 0
-    //#define ACCESS_SCANSELECT_COMMAND_NUM 1
-    AccessCommands[1].func   = tscanCommand;
-    AccessCommands[1].name   = "SCANSELECT";
-    AccessCommands[1].argc   = 4;
-#endif
+    AccessCommands[0].argc   = 6;
+    AccessCommands[0].parse  = parseScanSelectCmdToArgv;
 
     AccessCommands[1].func   = sortCommand;
     AccessCommands[1].name   = "SORT";
@@ -1958,23 +1958,31 @@ static void initServer() {
     AccessCommands[9].func   = hgetallCommand;
     AccessCommands[9].name   = "HGETALL";
     AccessCommands[9].argc   = 2;
+    AccessCommands[10].func  = hgetCommand;
+    AccessCommands[10].name  = "HGET";
+    AccessCommands[10].argc  = 3;
 
-    AccessCommands[10].func   = sunionCommand;
-    AccessCommands[10].name   = "SUNION";
-    AccessCommands[10].argc   = -3;
-    AccessCommands[11].func   = sdiffCommand;
-    AccessCommands[11].name   = "SDIFF";
-    AccessCommands[11].argc   = -3;
-    AccessCommands[12].func  = sinterCommand;
-    AccessCommands[12].name  = "SINTER";
+    AccessCommands[11].func  = sunionCommand;
+    AccessCommands[11].name  = "SUNION";
+    AccessCommands[11].argc  = -3;
+    AccessCommands[12].func  = sdiffCommand;
+    AccessCommands[12].name  = "SDIFF";
     AccessCommands[12].argc  = -3;
     AccessCommands[13].func  = sinterCommand;
-    AccessCommands[13].name  = "SMEMBERS";
-    AccessCommands[13].argc  = 2;
-
-    AccessCommands[14].func  = getCommand;
-    AccessCommands[14].name  = "GET";
+    AccessCommands[13].name  = "SINTER";
+    AccessCommands[13].argc  = -3;
+    AccessCommands[14].func  = sinterCommand;
+    AccessCommands[14].name  = "SMEMBERS";
     AccessCommands[14].argc  = 2;
+
+    AccessCommands[15].func  = getCommand;
+    AccessCommands[15].name  = "GET";
+    AccessCommands[15].argc  = 2;
+
+    AccessCommands[16].func  = tscanCommand;
+    AccessCommands[16].name  = "SCANSELECT";
+    AccessCommands[16].argc  = 4;
+    AccessCommands[16].parse = parseScanSelectCmdToArgv;
 
     init_six_bit_strings();
 
@@ -2905,6 +2913,18 @@ again:
         }
     }
 }
+
+#ifdef ALSOSQL
+#ifdef ALCHEMY_LZO_COMPRESSION
+#define HEAP_ALLOC(var,size) \
+    lzo_align_t __LZO_MMODEL var [ ((size) + (sizeof(lzo_align_t) - 1)) / sizeof(lzo_align_t) ]
+
+static HEAP_ALLOC(wrkmem, LZO1X_1_MEM_COMPRESS);
+
+lzo_uint lzolen = 0;
+unsigned char lzobuf[REDIS_IOBUF_LEN + 64]; //64 bytes overhead per 1KB
+#endif
+#endif
 
 static void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
     redisClient *c = (redisClient*) privdata;
@@ -11402,6 +11422,12 @@ static void usage() {
 
 int main(int argc, char **argv) {
     time_t start;
+
+#ifdef ALSOSQL
+#ifdef ALCHEMY_LZO_COMPRESSION
+    lzo_init();
+#endif
+#endif
 
     initServerConfig();
     if (argc == 2) {

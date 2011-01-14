@@ -236,7 +236,6 @@ char *get_next_token_nonparaned_comma(char *token) {
    return token;
 }
 
-
 /* PIPE_PARSING PIPE_PARSING PIPE_PARSING PIPE_PARSING PIPE_PARSING */
 /* PIPE_PARSING PIPE_PARSING PIPE_PARSING PIPE_PARSING PIPE_PARSING */
 robj **parseCmdToArgvReply(redisClient *c, char *as_cmd, int *rargc) {
@@ -255,48 +254,88 @@ robj **parseCmdToArgvReply(redisClient *c, char *as_cmd, int *rargc) {
     return rargv;
 }
 
-robj **parseSelectCmdToArgv(char *as_cmd) {
-    int    argc;
+robj **parseScanSelectCmdToArgv(char *as_cmd, int *argc) {
+    int    rargc;
     robj **rargv = NULL;
-    sds   *argv  = sdssplitlen(as_cmd, strlen(as_cmd), " ", 1, &argc);
-    if (argc < 6)                            goto parse_sel_2argv_end;
-    if (strcasecmp(argv[0], "SELECT"))       goto parse_sel_2argv_end;
+    sds   *argv  = sdssplitlen(as_cmd, strlen(as_cmd), " ", 1, &rargc);
+    /* all errors -> GOTO */
+    if (rargc < 4)                     goto parse_scan_2argv_end;
+    bool is_sel;
+    if (     !strcasecmp(argv[0], "SCANSELECT")) is_sel = 0;
+    else if (!strcasecmp(argv[0], "SELECT"))     is_sel = 1;
+    else                               goto parse_scan_2argv_end;
+
+    if (is_sel && rargc < 6)           goto parse_scan_2argv_end;
     int j;
-    for (j = 1; j < argc; j++) {
+    for (j = 1; j < rargc; j++) {
         if (!strcasecmp(argv[j], "FROM")) break;
     }
-    if ((j == (argc -1)) || (j == 1))        goto parse_sel_2argv_end;
+    if ((j == (rargc -1)) || (j == 1)) goto parse_scan_2argv_end;
     int k;
-    for (k = j + 1; k < argc; k++) {
+    bool nowc_oby = 0;
+    for (k = j + 1; k < rargc; k++) {
         if (!strcasecmp(argv[k], "WHERE")) break;
+        if (!strcasecmp(argv[k], "ORDER")) {
+            nowc_oby = 1;
+            break;
+        }
     }
-    if ((k == (argc - 1)) || (k == (j + 1))) goto parse_sel_2argv_end;
+    if (is_sel && nowc_oby) goto parse_scan_2argv_end; /* SELECT needs WHERE */
+    if ((k == (j + 1)))     goto parse_scan_2argv_end; /* FROM WHERE */
+    if ((k == (rargc - 1))) goto parse_scan_2argv_end; /* .... WHERE */
+    bool nowc = (k == rargc); /* k loop did not fidn "WHERE" */
+    if (is_sel && nowc)     goto parse_scan_2argv_end; /* SELECT needs WHERE */
 
-    rargv      = zmalloc(sizeof(robj *) * 6);
-    rargv[0]   = createStringObject("SELECT", 6);
+    /* parsing is OK, time to zmalloc and set argc -> no more GOTOs */
+    if (nowc)          *argc = 4;
+    else if (nowc_oby) *argc = 5;
+    else               *argc = 6;
+    rargv      = zmalloc(sizeof(robj *) * *argc);
+    rargv[0]   = is_sel ?  createStringObject("SELECT", 6) :
+                           createStringObject("SCANSELECT", 10);
     sds clist  = sdsempty();
     for (int i = 1; i < j; i++) {
-        if (sdslen(clist)) clist = sdscatlen(clist, ",", 1);
-        clist = sdscatlen(clist, argv[i], sdslen(argv[i]));
+        if (sdslen(argv[i])) {
+            if (sdslen(clist)) clist = sdscatlen(clist, ",", 1);
+            clist = sdscatlen(clist, argv[i], sdslen(argv[i]));
+        }
     }
     rargv[1]   = createObject(REDIS_STRING, clist);
     rargv[2]   = createStringObject("FROM",   4);
     sds tlist  = sdsempty();
     for (int i = j + 1; i < k; i++) {
-        if (sdslen(tlist)) tlist = sdscatlen(tlist, ",", 1);
-        tlist = sdscatlen(tlist, argv[i], sdslen(argv[i]));
+        if (sdslen(argv[i])) {
+            if (sdslen(tlist)) tlist = sdscatlen(tlist, ",", 1);
+            tlist = sdscatlen(tlist, argv[i], sdslen(argv[i]));
+        }
     }
     rargv[3]   = createObject(REDIS_STRING, tlist);
-    rargv[4]   = createStringObject("WHERE",  5);
-    sds wc     = sdsempty();
-    for (int i = k + 1; i < argc; i++) {
-        if (sdslen(wc)) wc = sdscatlen(wc, " ", 1);
-        wc = sdscatlen(wc, argv[i], sdslen(argv[i]));
-    }
-    rargv[5]   = createObject(REDIS_STRING, wc);
 
-parse_sel_2argv_end:
-    for (int i = 0; i < argc; i++) sdsfree(argv[i]);
+    if (!nowc) {
+        if (nowc_oby) {
+            sds oby    = sdsnewlen("ORDER ", 6);
+            for (int i = k + 1; i < rargc; i++) {
+                if (sdslen(argv[i])) {
+                    if (sdslen(oby)) oby = sdscatlen(oby, " ", 1);
+                    oby = sdscatlen(oby, argv[i], sdslen(argv[i]));
+                }
+            }
+            rargv[4]   = createObject(REDIS_STRING, oby);
+        } else {
+            rargv[4]   = createStringObject("WHERE",  5);
+            sds wc     = sdsempty();
+            for (int i = k + 1; i < rargc; i++) {
+                if (sdslen(argv[i])) {
+                    if (sdslen(wc)) wc = sdscatlen(wc, " ", 1);
+                    wc = sdscatlen(wc, argv[i], sdslen(argv[i]));
+                }
+            }
+            rargv[5]   = createObject(REDIS_STRING, wc);
+        }
+    }
+
+parse_scan_2argv_end:
+    for (int i = 0; i < rargc; i++) sdsfree(argv[i]);
     zfree(argv);
     return rargv;
 }

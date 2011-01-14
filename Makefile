@@ -178,6 +178,7 @@ sixbit.o: sixbit.h
 stream.o: aobj.h common.h
 wc.o: wc.h colparse.h bt_iterator.h cr8tblas.h rpipe.h redis.h common.h
 colparse.o: colparse.h alsosql.h redis.h common.h
+#minilzo.o: minilzo.h
 
 redisql-server: $(OBJ)
 	$(CC) -o $(PRGNAME) $(CCOPT) $(DEBUG) $(OBJ) $(EXTRA_LD)

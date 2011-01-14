@@ -322,7 +322,7 @@ struct sharedObjectsStruct {
     *update_expr_str,        *update_expr_math_str,  *update_expr_col_other,
     *update_expr_float_overflow,                     *update_expr_empty_str,
     *scanselectsyntax,       *scan_join,             *scanselectsyntax_noequals,
-    *scan_on_index,          *scan_store,
+    *scan_on_index,          *scan_store,            *cr8tbl_scan,
     *istorecommit_err,
 
     *rangequery_index_not_found,
@@ -551,10 +551,12 @@ void hsetCommand(redisClient *c);
 void selectCommand(redisClient *c);
 
 #ifdef ALSOSQL
+typedef robj **pc2a(char *as_cmd, int *argc);
 typedef struct storage_command {
     void (*func)(redisClient *c);
     char *name;
     int   argc;
+    pc2a *parse;
 } stor_cmd;
 #endif
 
