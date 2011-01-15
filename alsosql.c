@@ -409,6 +409,10 @@ void dumpW(cswc_t *w) {
             dumpAobj(apk);
         }
     }
+    printf("\tnob: %d\n", w->nob);
+    for (int i = 0; i < w->nob; i++) {
+        printf("\tobc[%d]: %d\n", i, w->obc[i]);
+    }
     dumpSds(w->ovar,  "\tovar: %s\n");
     if (w->flist) {
         printf("\tFlist: len: %d\n", listLength(w->flist));

@@ -59,17 +59,17 @@ static void setRangeQueued(cswc_t *w, qr_t *q) {
     r_ind_t *ri     = (w->imatch == -1) ? NULL : &Index[server.dbid][w->imatch];
     bool     virt   = (w->imatch == -1) ? 0    : ri->virt;
     int      indcol = (w->imatch == -1) ? -1   : ri->column;
-    //printf("virt: %d asc: %d obc: %d lim: %d ofst: %d\n",
-            //virt, w->asc[0], w->obc[0], w->lim, w->ofst);
-    q->pk           = (w->nob > 1 || !w->asc[0] || (w->obc[0] > 0));
+    q->pk           = (w->nob > 0 || !w->asc[0] || (w->obc[0] > 0));
     q->pk_lim       = (w->asc[0] && w->obc[0] == 0);
     q->pk_lo        = (!q->pk && (w->lim != -1) && (w->ofst != -1));
 
-    q->fk           = (w->nob > 1 || (w->obc[0] > 0 && w->obc[0] != indcol));
+    q->fk           = (w->nob > 0 || (w->obc[0] > 0 && w->obc[0] != indcol));
     q->fk_lim       = (w->asc[0] && !q->fk);
     q->fk_lo        = (!q->fk && (w->lim != -1) && (w->ofst != -1));
 
     q->qed          = virt ? q->pk : q->fk;
+    //printf("virt: %d asc: %d obc: %d lim: %d ofst: %d -> qed: %d\n",
+            //virt, w->asc[0], w->obc[0], w->lim, w->ofst, q->qed);
 }
 
 static void setInQueued(cswc_t *w, qr_t *q) {
@@ -77,12 +77,12 @@ static void setInQueued(cswc_t *w, qr_t *q) {
     r_ind_t *ri   = (w->imatch == -1) ? NULL : &Index[server.dbid][w->imatch];
     bool     virt = (w->imatch == -1) ? 0    : ri->virt;
     if (virt) {
-        q->pk      = (w->nob > 1 || !w->asc[0] || (w->obc[0] > 0));
+        q->pk      = (w->nob > 0 || !w->asc[0] || (w->obc[0] > 0));
         q->pk_lim  = (w->asc[0] && w->obc[0] == 0);
         q->qed     = q->pk;
     } else {
         int indcol = (w->imatch == -1) ? -1 : ri->column;
-        q->fk      = (w->nob > 1 || (w->obc[0] > 0 && w->obc[0] != indcol));
+        q->fk      = (w->nob > 0 || (w->obc[0] > 0 && w->obc[0] != indcol));
         q->fk_lim  = (w->asc[0] && w->nob && w->obc[0] == indcol);
         q->qed     = q->fk;
     }
