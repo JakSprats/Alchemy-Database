@@ -20,7 +20,7 @@ PLATS= aix ansi bsd freebsd generic linux macosx mingw posix solaris
 # 4.) export LD_LIBRARY_PATH=/usr/local/lib/
 # 5.) set LUAJIT= yes
 LUAJIT= no
-LUAJIT= yes
+#LUAJIT= yes
 uname_S := $(shell sh -c 'uname -s 2>/dev/null || echo not')
 OPTIMIZATION?=-O2
 ifeq ($(uname_S),SunOS)
