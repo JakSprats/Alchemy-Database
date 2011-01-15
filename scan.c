@@ -61,12 +61,12 @@ typedef struct filter_row {
     redisClient   *c;
     cswc_t        *w;
     list          *ll;
-    bool           orobj;
+    bool           ofree;
 } fr_t;
 
 static void init_filter_row(fr_t *fr, redisClient *c, cswc_t *w, qr_t *q,
                             int qcols, int *cmatchs, bool nowc,
-                            list *ll, bool cstar, bool orobj) {
+                            list *ll, bool cstar, bool ofree) {
     fr->c       = c;
     fr->w       = w;
     fr->q       = q;
@@ -75,11 +75,11 @@ static void init_filter_row(fr_t *fr, redisClient *c, cswc_t *w, qr_t *q,
     fr->nowc    = nowc;
     fr->ll      = ll;
     fr->cstar   = cstar;
-    fr->orobj   = orobj;
+    fr->ofree   = ofree;
 }
 
 
-static void condSelectReply(fr_t *fr, aobj *akey, void *rrow, ulong *card) {
+static void condSelectReply(fr_t *fr, aobj *akey, void *rrow, long *card) {
     uchar hit = 0;
     if (fr->nowc) hit = 1;
     else          hit = passFilters(rrow, fr->w->flist, fr->w->tmatch);
@@ -89,7 +89,7 @@ static void condSelectReply(fr_t *fr, aobj *akey, void *rrow, ulong *card) {
         if (fr->cstar) return; /* just counting */
         robj *r = outputRow(rrow, fr->qcols, fr->cmatchs,
                             akey, fr->w->tmatch, 0);
-        if (fr->q->qed) addRow2OBList(fr->ll, fr->w, r, fr->orobj, rrow, akey);
+        if (fr->q->qed) addRow2OBList(fr->ll, fr->w, r, fr->ofree, rrow, akey);
         else            addReplyBulk(fr->c, r);
         decrRefCount(r);
     }
@@ -180,11 +180,12 @@ void tscanCommand(redisClient *c) {
     qr_t q;
     setQueued(&w, &q);
     ll = initOBsort(q.qed, &w);
-    init_filter_row(&fr, c, &w, &q, qcols, cmatchs, nowc, ll, cstar, 1);
+    init_filter_row(&fr, c, &w, &q, qcols, cmatchs, nowc,
+                    ll, cstar, OBY_FREE_ROBJ);
     //dumpW(&w, w.wtype);
     LEN_OBJ
     btEntry *be;
-    ulong    sent  =  0;
+    long     sent  =  0;
     long     loops = -1;
     btSIter *bi    = q.pk_lo ? btGetFullIteratorXth(btr, w.ofst):
                                btGetFullRangeIterator(btr);
@@ -193,17 +194,17 @@ void tscanCommand(redisClient *c) {
         if (q.pk_lim) {
             if (!q.pk_lo && w.ofst != -1 && loops < w.ofst) continue;
             sent++;
-            if ((uint32)w.lim == card) break; /* ORDRBY PK LIM */
+            if (w.lim == card) break; /* ORDRBY PK LIM */
         }
         condSelectReply(&fr, be->key, be->val, &card);
     }
     btReleaseRangeIterator(bi);
 
-    if (q.qed && card) opSelectOnSort(c, ll, &w, fr.orobj, &sent);
+    if (q.qed && card) opSelectOnSort(c, ll, &w, fr.ofree, &sent);
 
-    if (w.lim != -1 && (uint32)sent < card) card = sent;
-    if (cstar) lenobj->ptr = sdscatprintf(sdsempty(), ":%lu\r\n", card);
-    else       lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
+    if (w.lim != -1 && sent < card) card = sent;
+    if (cstar) lenobj->ptr = sdscatprintf(sdsempty(), ":%ld\r\n", card);
+    else       lenobj->ptr = sdscatprintf(sdsempty(), "*%ld\r\n", card);
 
     if (w.ovar) incrOffsetVar(c, &w, card);
 

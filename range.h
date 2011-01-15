@@ -65,11 +65,13 @@ typedef struct range_update {
     ue_t    *ue;
 } rup_t;
 
+#define OBY_FREE_ROBJ 1
+#define OBY_FREE_AOBJ 2
 typedef struct range_common {
     redisClient *c;
     cswc_t      *w;
     list        *ll;
-    bool         orobj; /* order by sorting contains a robj or not */
+    uchar        ofree; /* order by sorting needs to free [robj,aobj] */
 } rcomm_t;
 
 typedef struct range {
@@ -81,17 +83,13 @@ typedef struct range {
 
 void setQueued(cswc_t *w, qr_t *q);
 
-typedef bool row_op(range_t *g, aobj *akey, void *rrow, bool q, long *card);
-long rangeOp(range_t *g, row_op *p); /* RangeQuery */
-long inOp(range_t *g, row_op *p);    /* InQuery */
-
 bool passFilters(void *rrow, list *flist, int tmatch);
 
 void opSelectOnSort(redisClient *c,
                     list        *ll,
                     cswc_t      *w,
-                    bool         orobj,
-                    ulong       *sent);
+                    uchar        ofree,
+                    long        *sent);
 void iselectAction(redisClient *c,
                    cswc_t      *w,
                    int          cmatchs[MAX_COLUMN_PER_TABLE],

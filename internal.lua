@@ -42,7 +42,7 @@ end
 
 local StorageCommands = {LPUSH = 1, RPUSH =  1, LSET = 2, ZADD = 2, HSET = 2, SET = 1, SETNX = 1, APPEND = 1, SETEX = 1, SELECT = 4, SCANSELECT = 2};
 
-function select_store(col_list, tbls, whereclause)
+function internal_select_store(col_list, tbls, whereclause)
     -- 1.) parse STORE "command" out of WhereClause
     local x    = string.find(whereclause, ' STORE ');
     local cmd  = string.sub(whereclause, x + 7);

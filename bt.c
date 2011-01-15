@@ -31,7 +31,6 @@ ALL RIGHTS RESERVED
 #include <strings.h>
 
 #include "redis.h"
-#include "zmalloc.h"
 
 #include "row.h"
 #include "btree.h"
@@ -139,7 +138,7 @@ static void abt_destroy(bt *nbtr, bt *btr) {
 
 #define DECLARE_BT_KEY \
     bool  med; uchar sflag; uint32 ksize;                                     \
-    char *btkey    = createBTKey(akey, ktype, &med, &sflag, &ksize);/*FREEME*/\
+    char *btkey = createBTKey(akey, ktype, &med, &sflag, &ksize); /*FREE 026*/\
     if (!btkey) return 0;
     
 static bool abt_replace(bt *btr, const aobj *akey, void *val, int ktype) {
@@ -147,22 +146,22 @@ static bool abt_replace(bt *btr, const aobj *akey, void *val, int ktype) {
     DECLARE_BT_KEY
     char  *nstream = createStream(btr, val, btkey, ksize, &ssize);
     uchar *ostream = bt_replace(btr, btkey, nstream);
-    destroyBTKey(btkey, med);                                       /* FREED */
+    destroyBTKey(btkey, med);                            /* FREED 026 */
     return destroyStream(btr, ostream);
 }
 
 static void *abt_find_val(bt *btr, const aobj *akey, int ktype) {
     DECLARE_BT_KEY
     uchar *stream = bt_find(btr, btkey);
-    destroyBTKey(btkey, med);                                       /* FREED */
+    destroyBTKey(btkey, med);                            /* FREED 026 */
     return parseStream(stream, btr->btype);
 }
 
 static bool abt_del(bt *btr, const aobj *akey, int ktype) {
     DECLARE_BT_KEY
-    uchar *stream = bt_delete(btr, btkey);
-    destroyBTKey(btkey, med);                                       /* FREED */
-    return destroyStream(btr, stream);
+    uchar *stream = bt_delete(btr, btkey);               /* FREED 028 */
+    destroyBTKey(btkey, med);                            /* FREED 026 */
+    return destroyStream(btr, stream);                   /* DESTROYED 027 */
 }
 
 static uint32 abt_insert(bt *btr, aobj *akey, void *val, int ktype) {
@@ -171,9 +170,9 @@ static uint32 abt_insert(bt *btr, aobj *akey, void *val, int ktype) {
     }
     uint32 ssize;
     DECLARE_BT_KEY
-    char *stream = createStream(btr, val, btkey, ksize, &ssize);
-    destroyBTKey(btkey, med);                                       /* FREED */
-    bt_insert(btr, stream);
+    char *stream = createStream(btr, val, btkey, ksize, &ssize); /*DESTROY 027*/
+    destroyBTKey(btkey, med);                            /* FREED 026 */
+    bt_insert(btr, stream);                              /* FREE ME 028 */
     return ssize;
 }
 

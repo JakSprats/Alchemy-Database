@@ -56,7 +56,6 @@ void rsql_resetFakeClient(struct redisClient *c) {
 }
 
 void rsql_freeFakeClient(struct redisClient *c) {
-    rsql_resetFakeClient(c);
     freeFakeClient(c);
 }
 
@@ -144,24 +143,24 @@ long fakeClientPipe(redisClient *c,
         fline      = 0;
         //RL4 "PIPE: %s", s);
         if (o_fl) {
-            if (*s == '-') {
+            if (*s == '-') { /* -ERR */
                 *flg = PIPE_ONE_LINER_FLAG;
                 r    = parseUpToR(li, &ln, s);
                 if (!r) goto p_err;
                 if (!(*adder)(c, wfc, r, &card, is_ins, nlines)) goto p_err;
-                break; /* error */
-            } else if (*s == '+') {
+                break;
+            } else if (*s == '+') { /* +OK */
                 *flg = PIPE_ONE_LINER_FLAG;
                 r    = parseUpToR(li, &ln, s);
                 if (!r) goto p_err;
                 if (!(*adder)(c, wfc, r, &card, is_ins, nlines)) goto p_err;
-                break; /* OK */
-            } else if (*s == ':') {
+                break;
+            } else if (*s == ':') { /* :INT */
                 *flg = PIPE_ONE_LINER_FLAG;
                 r    = parseUpToR(li, &ln, s);
                 if (!r) goto p_err;
                 if (!(*adder)(c, wfc, r, &card, is_ins, nlines)) goto p_err;
-                break; /* single integer reply */
+                break;
             } else if (*s == '*') {
                 nlines = atoi(s + 1); /* some pipes need to know num_lines */
                 if (nlines == -1) {
@@ -208,6 +207,7 @@ long fakeClientPipe(redisClient *c,
     return card - 1; /* started at 1 */
 
 p_err:
+    listReleaseIterator(li);
     if (r) decrRefCount(r);
     return -1;
 }

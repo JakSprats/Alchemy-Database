@@ -225,7 +225,7 @@ static uchar assign_rflag(bool can_six, uint32 rlen) {
 static void *createRowBlob(int ncols, uchar rflag, uint32 rlen) {
     uint32  meta_len    = 2 + (ncols * rflag); /*flag,ncols+cofsts*/ 
     uint32  new_row_len = meta_len + rlen;
-    uchar  *orow        = malloc(new_row_len);
+    uchar  *orow        = malloc(new_row_len);           /* FREE ME 023 */
     uchar  *row         = orow;
     *row                = rflag;               /* SET flag      (size++) */
     row++;
@@ -279,7 +279,7 @@ void *createRow(redisClient *c,
             uint32  s_len;
             uint32  len   = cofsts[i] - cofsts[i - 1] - 1;
             char   *start = vals + cofsts[i - 1];
-            uchar  *dest  = _createSixBitString(start, len, &s_len);
+            uchar  *dest  = _createSixBitString(start, len, &s_len); // FREE 022
             if (!dest) {
                 can_six = 0;
                 break;
@@ -299,12 +299,12 @@ void *createRow(redisClient *c,
         if (Tbl[server.dbid][tmatch].col_type[i]        == COL_TYPE_INT) {
             char   *start = vals + cofsts[i - 1];
             uint32  clen  = createICol(c, start, len, &sflags[i], &icols[i]);
-            if (!clen) return NULL;
+            if (!clen) goto create_row_err;
             diff          = (len - clen);  
         } else if (Tbl[server.dbid][tmatch].col_type[i] == COL_TYPE_FLOAT) {
             char   *start = vals + cofsts[i - 1];
             uint32  clen  = createFCol(c, start, len, &fcols[i]);
-            if (!clen) return NULL;
+            if (!clen) goto create_row_err;
             diff          = (len - clen);  
         } else if (can_six) {                           /* COL_TYPE_STRING */
             diff          = (len - sixbitlen[k]);  
@@ -334,18 +334,20 @@ void *createRow(redisClient *c,
                 row += sixbitlen[k];
                 k++;
             } else {
-                uint32  len = cofsts[i] - cofsts[i - 1] - 1;
-                char   *col = vals + cofsts[i - 1];
+                uint32  len  = cofsts[i] - cofsts[i - 1] - 1;
+                char   *col  = vals + cofsts[i - 1];
                 memcpy(row, col, len);
-                row        += len;
+                row         += len;
            }
         }
     }
-
-    for (uint32 j = 0; j < n_6b_s; j++) free(sixbitstr[j]);
-
+    for (uint32 j = 0; j < n_6b_s; j++) free(sixbitstr[j]); /* FREED 022 */
     server.dirty++;
     return orow;
+
+create_row_err:
+    for (uint32 j = 0; j < n_6b_s; j++) free(sixbitstr[j]); /* FREED 022 */
+    return NULL;
 }
 
 /* IMPORTANT: do not modify buffer(row) here [READ-OP] */
@@ -661,7 +663,7 @@ static void *rewriteRow(int    ncols,
                 uint32  s_len;
                 uint32  len   = avals[i].len;
                 char   *start = avals[i].s;
-                uchar  *dest  = _createSixBitString(start, len, &s_len);
+                uchar  *dest  = _createSixBitString(start, len, &s_len); //F 024
                 if (!dest) {
                     can_six = 0;
                     break;
@@ -715,7 +717,7 @@ static void *rewriteRow(int    ncols,
         }
     }
 
-    for (uint32 j = 0; j < n_6b_s; j++) free(sixbitstr[j]);
+    for (uint32 j = 0; j < n_6b_s; j++) free(sixbitstr[j]); /* FREED 024 */
     return orow;
 }
 
@@ -795,7 +797,7 @@ bool updateRow(redisClient *c,
         // overwrite w/ new row
         btReplace(btr, aopk, nrow, pktype);
     }
-    free(nrow);
+    free(nrow);                                          /* FREED 023 */
     server.dirty++;
     ret = 1;
 

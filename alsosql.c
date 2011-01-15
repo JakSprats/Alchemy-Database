@@ -51,7 +51,6 @@ ALL RIGHTS RESERVED
 #include "alsosql.h"
 
 // FROM redis.c
-#define RL4 redisLog(4,
 extern struct sharedObjectsStruct shared;
 extern struct redisServer server;
 extern ulong              CurrCard;
@@ -72,7 +71,8 @@ aobj_cmp *OP_CMP[7] = {NULL, aobjEQ, aobjNE, aobjLT, aobjLE, aobjGT, aobjGE};
 
 /* NOTE: SELECT STORE is implemented in LUA */
 void luaIstoreCommit(redisClient *c) {
-    sds cmd = sdscatprintf(sdsempty(), "return select_store('%s','%s','%s');",
+    sds cmd = sdscatprintf(sdsempty(),
+                                "return internal_select_store('%s','%s','%s');",
                                        (char *)c->argv[1]->ptr, 
                                        (char *)c->argv[3]->ptr, 
                                        (char *)c->argv[5]->ptr);
@@ -203,9 +203,9 @@ static void addSizeToInsertResponse(redisClient *c,
           "INFO: BYTES: [ROW: %d BT-DATA: %lld BT-TOTAL: %lld INDEX: %lld]",
                len, btr->data_size, btr->malloc_size, index_size);
     buf[127] = '\0';
-    robj *r  = _createStringObject(buf);
+    robj *r  = _createStringObject(buf);                 /* DESTROY ME 025 */
     addReplyBulk(c, r);
-    decrRefCount(r);
+    decrRefCount(r);                                     /* DESTROYED 025 */
 }
 
 void insertCommitReply(redisClient *c,
@@ -216,7 +216,7 @@ void insertCommitReply(redisClient *c,
                        int          indices[],
                        bool         ret_size) {
     uint32  cofsts[MAX_COLUMN_PER_TABLE];
-    aobj  apk;
+    aobj    apk;
     initAobj(&apk);
     void   *nrow   = NULL; /* B4 GOTO */
     int     pklen  = 0;
@@ -240,7 +240,7 @@ void insertCommitReply(redisClient *c,
         apk.f = f;
     } else {            /* COL_TYPE_STRING */
         apk.s        = pk;
-        apk.freeme   = 0; /* "pk will free() itself */
+        apk.freeme   = 0; /* "pk will free() itself below */
         apk.len      = pklen;
     }
 
@@ -279,8 +279,8 @@ void insertCommitReply(redisClient *c,
     }
 
 insert_commit_end:
-    if (nrow) free(nrow);
-    if (pk)   free(pk);
+    if (nrow) free(nrow);                                /* FREED 023 */
+    if (pk)   free(pk);                                  /* FREED 021 */
     releaseAobj(&apk);
 }
 
@@ -303,16 +303,16 @@ void insertCommand(redisClient *c) {
     }
 
     bool ret_size = 0;
-    if (c->argc == 6) {
+    if (c->argc == 6) { /* use leftoverParsingReply() to throw error */
         leftoverParsingReply(c, c->argv[5]->ptr);
         return;
     } else if (c->argc > 6) {
         if (!strcasecmp(c->argv[5]->ptr, "RETURN") &&
             !strcasecmp(c->argv[6]->ptr, "SIZE")) {
            ret_size = 1;
-        } else {
+        } else { /* use leftoverParsingReply() to throw error */
             sds s = sdsnewlen(c->argv[5]->ptr, sdslen(c->argv[5]->ptr));
-            s = sdscatprintf(s, " %s", (char *)c->argv[6]->ptr);
+            s     = sdscatprintf(s, " %s", (char *)c->argv[6]->ptr);
             leftoverParsingReply(c, s);
             sdsfree(s);
             return;
@@ -396,10 +396,10 @@ static void dumpSds(sds s, char *smsg) {
 void dumpW(cswc_t *w) {
     printf("START dumpW: %d\n", w->wtype);
     printf("\timatch: %d\n", w->imatch);
-    printf("\t\tcmatch: %d\n", w->cmatch);
-    dumpRobj(w->key,  "\tkey: %s\n",  "\tkey: %d\n");
-    dumpRobj(w->low,  "\tlow: %s\n",  "\tlow: %d\n");
-    dumpRobj(w->high, "\thigh: %s\n", "\thigh: %d\n");
+    printf("\tcmatch: %d\n", w->cmatch);
+    dumpRobj(w->key,  "\tkey:    %s\n",  "\tkey: %d\n");
+    dumpRobj(w->low,  "\tlow:    %s\n",  "\tlow: %d\n");
+    dumpRobj(w->high, "\thigh:   %s\n", "\thigh: %d\n");
     if (w->inl) {
         printf("\tIN list: len: %d\n", listLength(w->inl));
         listNode *ln;
@@ -409,11 +409,16 @@ void dumpW(cswc_t *w) {
             dumpAobj(apk);
         }
     }
-    printf("\tnob: %d\n", w->nob);
-    for (int i = 0; i < w->nob; i++) {
-        printf("\tobc[%d]: %d\n", i, w->obc[i]);
+    if (w->nob) {
+        printf("\tnob:    %d\n", w->nob);
+        for (int i = 0; i < w->nob; i++) {
+            printf("\t\tobc[%d]: %d\n", i, w->obc[i]);
+            printf("\t\tasc[%d]: %d\n", i, w->asc[i]);
+        }
+        printf("\tlim:    %ld\n", w->lim);
+        printf("\tofst:   %ld\n", w->ofst);
     }
-    dumpSds(w->ovar,  "\tovar: %s\n");
+    dumpSds(w->ovar,  "\tovar:    %s\n");
     if (w->flist) {
         printf("\tFlist: len: %d\n", listLength(w->flist));
         listNode *ln;
@@ -601,7 +606,7 @@ void deleteCommand(redisClient *c) {
     parseWCReply(c, &w, SQL_DELETE, 0);
     if (w.wtype == SQL_ERR_LOOKUP)       goto delete_cmd_end;
     if (!leftoverParsingReply(c, w.lvr)) goto delete_cmd_end;
-
+    //dumpW(&w);
     if (w.wtype != SQL_SINGLE_LOOKUP) { /* FK, RQ, IN */
         if (w.imatch == -1) {
             addReply(c, shared.rangequery_index_not_found);
@@ -720,7 +725,7 @@ void updateCommand(redisClient *c) {
     parseWCReply(c, &w, SQL_UPDATE, 0);
     if (w.wtype == SQL_ERR_LOOKUP)       goto update_cmd_end;
     if (!leftoverParsingReply(c, w.lvr)) goto update_cmd_end;
-
+    //dumpW(&w);
     if (w.wtype != SQL_SINGLE_LOOKUP) { /* FK, RQ, IN */
         if (pkupc != -1) {
             addReply(c, shared.update_pk_range_query);

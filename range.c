@@ -54,38 +54,47 @@ extern aobj_cmp *OP_CMP[7];
 extern r_tbl_t   Tbl  [MAX_NUM_DB][MAX_NUM_TABLES];
 extern r_ind_t   Index[MAX_NUM_DB][MAX_NUM_INDICES];
 
+typedef void row_op(range_t *g, aobj *akey, void *rrow, bool q, long *card);
+
+void printQueued(cswc_t *w, qr_t *q) {
+    r_ind_t *ri     = (w->imatch == -1) ? NULL : &Index[server.dbid][w->imatch];
+    bool     virt   = (w->imatch == -1) ? 0    : ri->virt;
+    printf("virt: %d asc: %d obc: %d lim: %ld ofst: %ld -> qed: %d\n",
+            virt, w->asc[0], w->obc[0], w->lim, w->ofst, q->qed);
+    if (virt) printf("pk: %d pklim: %d pklo: %d\n", q->pk, q->pk_lim, q->pk_lo);
+    else      printf("fk: %d fklim: %d fklo: %d\n", q->fk, q->fk_lim, q->fk_lo);
+}
 static void setRangeQueued(cswc_t *w, qr_t *q) {
     bzero(q, sizeof(qr_t));
     r_ind_t *ri     = (w->imatch == -1) ? NULL : &Index[server.dbid][w->imatch];
     bool     virt   = (w->imatch == -1) ? 0    : ri->virt;
     int      indcol = (w->imatch == -1) ? -1   : ri->column;
-    q->pk           = (w->nob > 0 || !w->asc[0] || (w->obc[0] > 0));
+    q->pk           = (w->nob > 0 && (!w->asc[0] || (w->obc[0] > 0)));
     q->pk_lim       = (w->asc[0] && w->obc[0] == 0);
     q->pk_lo        = (!q->pk && (w->lim != -1) && (w->ofst != -1));
 
-    q->fk           = (w->nob > 0 || (w->obc[0] > 0 && w->obc[0] != indcol));
+    q->fk           = (w->nob > 0 && (w->obc[0] > 0 && w->obc[0] != indcol));
     q->fk_lim       = (w->asc[0] && !q->fk);
     q->fk_lo        = (!q->fk && (w->lim != -1) && (w->ofst != -1));
 
     q->qed          = virt ? q->pk : q->fk;
-    //printf("virt: %d asc: %d obc: %d lim: %d ofst: %d -> qed: %d\n",
-            //virt, w->asc[0], w->obc[0], w->lim, w->ofst, q->qed);
+    //printQueued(w, q);
 }
-
 static void setInQueued(cswc_t *w, qr_t *q) {
     bzero(q, sizeof(qr_t));
     r_ind_t *ri   = (w->imatch == -1) ? NULL : &Index[server.dbid][w->imatch];
     bool     virt = (w->imatch == -1) ? 0    : ri->virt;
     if (virt) {
-        q->pk      = (w->nob > 0 || !w->asc[0] || (w->obc[0] > 0));
+        q->pk      = w->nob > 0 && (!w->asc[0] || (w->obc[0] > 0));
         q->pk_lim  = (w->asc[0] && w->obc[0] == 0);
         q->qed     = q->pk;
     } else {
         int indcol = (w->imatch == -1) ? -1 : ri->column;
-        q->fk      = (w->nob > 0 || (w->obc[0] > 0 && w->obc[0] != indcol));
+        q->fk      = (w->nob > 0 && (w->obc[0] > 0 && w->obc[0] != indcol));
         q->fk_lim  = (w->asc[0] && w->nob && w->obc[0] == indcol);
         q->qed     = q->fk;
     }
+    //printQueued(w, q);
 }
 
 void setQueued(cswc_t *w, qr_t *q) {
@@ -98,13 +107,13 @@ static void init_range(range_t     *g,
                        cswc_t      *w,
                        qr_t        *q,
                        list        *ll,
-                       bool         orobj) {
+                       uchar        ofree) {
     bzero(g, sizeof(range_t));
     g->co.c     = c;
     g->co.w     = w;
     g->q        = q;
     g->co.ll    = ll;
-    g->co.orobj = orobj;
+    g->co.ofree = ofree;
 }
 
 static long rangeOpPK(range_t *g, row_op *p) {
@@ -117,30 +126,74 @@ static long rangeOpPK(range_t *g, row_op *p) {
     bt      *btr   = (bt *)btt->ptr;
     long     loops = -1;
     long     card  =  0;
-    btSIter *bi = q->pk_lo ? btGetIteratorXth(btr, w->low, w->high, w->ofst):
-                             btGetRangeIterator(btr, w->low, w->high);
+    btSIter *bi    = q->pk_lo ? btGetIteratorXth(btr, w->low, w->high, w->ofst):
+                                btGetRangeIterator(btr, w->low, w->high);
     while ((be = btRangeNext(bi)) != NULL) {     /* iterate btree */
         loops++;
         if (q->pk_lim) {
             if (!q->pk_lo && w->ofst != -1 && loops < w->ofst) continue;
-            if ((uint32)w->lim == card) break; /* ORDRBY PK LIM */
+            if (w->lim == card) break; /* ORDRBY PK LIM */
         }
-        if (!(*p)(g, be->key, be->val, q->pk, &card)) goto range_op_err;
+        (*p)(g, be->key, be->val, q->pk, &card);
     }
     btReleaseRangeIterator(bi);
     return card;
-
-range_op_err:
-    if (bi) btReleaseRangeIterator(bi);
-    return -1;
 }
+
+/* NOTE: this struct contains pointers, it is to be used ONLY for derefs */
+typedef struct inner_bt_data {
+    row_op  *p;
+    range_t *g;
+    qr_t    *q;
+    bt      *btr;
+    bt      *nbtr;
+    long    *ofst;
+    long    *card;
+    long    *loops;
+    uchar    pktype;
+    bool    *brkr;
+} ibtd_t;
+static void init_ibtd(ibtd_t *d, row_op *p, range_t *g, qr_t *q,
+                      bt *btr, bt *nbtr,
+                      long *ofst, long *card, long *loops,
+                      uchar pktype, bool *brkr) {
+    d->p      = p;      d->g    = g;    d->q = q;
+    d->btr    = btr;    d->nbtr = nbtr;
+    d->ofst   = ofst;   d->card = card; d->loops = loops;
+    d->pktype = pktype; d->brkr = brkr;
+}
+
+static void innerBT_Op(ibtd_t *d) {
+    btEntry *nbe;
+    *d->brkr     = 1;
+    cswc_t  *w   = d->g->co.w;
+    qr_t    *q   = d->g->q;
+    btSIter *nbi = (q->fk_lo && *d->ofst) ?
+                                       btGetFullIteratorXth(d->nbtr, *d->ofst) :
+                                       btGetFullRangeIterator(d->nbtr);
+    while ((nbe = btRangeNext(nbi)) != NULL) {
+        *d->loops = *d->loops + 1;
+        if (q->fk_lim) {
+            if (!q->fk_lo && *d->ofst != -1 && *d->loops < *d->ofst)
+                continue;
+            if (w->lim == *d->card) break; /* ORDRBY FK LIM */
+        }
+        void *rrow = btFindVal(d->btr, nbe->key, d->pktype);
+        (*d->p)(d->g, nbe->key, rrow, q->fk, d->card);
+    }
+    btReleaseRangeIterator(nbi);
+    if (q->fk_lo) *d->ofst = 0; /* OFFSET fulfilled */
+    if (q->fk_lim && w->lim == *d->card) *d->brkr = 1; /*ORDRBY FK LIM*/
+}
+
 
 static long rangeOpFK(range_t *g, row_op *p) {
     //printf("rangeOpFK\n");
-    btEntry *be, *nbe;
+    ibtd_t   d;
+    bool     brkr;
+    btEntry *be;
     cswc_t  *w      = g->co.w;
     qr_t    *q      = g->q;
-    btSIter *nbi    = NULL; /* B4 GOTO */
     bool     pktype = Tbl[server.dbid][w->tmatch].col_type[0];
     robj    *tname  = Tbl[server.dbid][w->tmatch].name;
     robj    *btt    = lookupKeyRead(g->co.c->db, tname); // TODO pass into func
@@ -148,53 +201,35 @@ static long rangeOpFK(range_t *g, row_op *p) {
     robj    *ind    = Index[server.dbid][w->imatch].obj;
     robj    *ibtt   = lookupKey(g->co.c->db, ind);       // TODO pass into func
     bt      *ibtr   = (bt *)ibtt->ptr;
-    long     ofst   = (long)w->ofst;
+    long     ofst   = w->ofst;
     long     loops  = -1;
     long     card   =  0;
     btSIter *bi     = q->pk_lo ? btGetIteratorXth(ibtr, w->low, w->high, ofst) :
                                  btGetRangeIterator(ibtr, w->low, w->high);
+    init_ibtd(&d, p, g, q, btr, NULL, &ofst, &card, &loops, pktype, &brkr);
     while ((be = btRangeNext(bi)) != NULL) {
-        bt *nbtr = be->val;
+        d.nbtr = be->val;
         if (g->se.cstar && !g->co.w->flist) { /* FK cstar w/o filters */
-            card += nbtr->numkeys;
+            card += d.nbtr->numkeys;
         } else {
             if (q->fk_lo) {
-                if (nbtr->numkeys <= ofst) { /* skip IndexNode */
-                    ofst -= nbtr->numkeys;
+                if (d.nbtr->numkeys <= ofst) { /* skip IndexNode */
+                    ofst -= d.nbtr->numkeys;
                     continue;
                 }
             }
-            nbi = (q->fk_lo && ofst) ? btGetFullIteratorXth(nbtr, ofst) :
-                                       btGetFullRangeIterator(nbtr);
-            while ((nbe = btRangeNext(nbi)) != NULL) {
-                loops++;
-                if (q->fk_lim) {
-                    if (!q->fk_lo && ofst != -1 && loops < ofst) continue;
-                    if ((uint32)w->lim == card) break; /* ORDRBY FK LIM */
-                }
-                void *rrow = btFindVal(btr, nbe->key, pktype);
-                if (!(*p)(g, nbe->key, rrow, q->fk, &card)) goto range_op_err;
-            }
-            if (q->fk_lo) ofst = 0; /* OFFSET fulfilled */
-            if (q->fk_lim && (uint32)w->lim == card) break; /*ORDRBY FK LIM*/
+            innerBT_Op(&d);
+            if (!brkr) break;
         }
-        btReleaseRangeIterator(nbi);
-        nbi = NULL; /* explicit in case of GOTO in inner loop */
     }
     btReleaseRangeIterator(bi);
-    bi = NULL; /* explicit in case of GOTO in inner loop */
     return card;
-
-range_op_err:
-    if (nbi) btReleaseRangeIterator(nbi);
-    if (bi)  btReleaseRangeIterator(bi);
-    return -1;
 }
 
 static long singleOpFK(range_t *g, row_op *p) {
     //printf("singleOpFK\n");
-    btEntry  *nbe;
-    btSIter  *nbi     = NULL; /* B4 GOTO */
+    ibtd_t    d;
+    bool      brkr;
     cswc_t   *w       = g->co.w;
     qr_t     *q       = g->q;
     bool      pktype  = Tbl[server.dbid][w->tmatch].col_type[0];
@@ -208,31 +243,19 @@ static long singleOpFK(range_t *g, row_op *p) {
     bool      fktype  = Tbl[server.dbid][w->tmatch].col_type[indcol];
     aobj     *afk     = copyRobjToAobj(w->key, fktype);
     bt       *nbtr    = btIndFindVal(ibtr, afk, fktype);
+    long      ofst    = w->ofst;
+    long      loops   = -1;
     long      card    =  0;
+    init_ibtd(&d, p, g, q, btr, nbtr, &ofst, &card, &loops, pktype, &brkr);
     if (nbtr) {
-        if (g->se.cstar && !g->co.w->flist) { /* FK cstar w/o filters */
-            card += nbtr->numkeys;
-        } else {
-            nbi = btGetFullRangeIterator(nbtr);
-            while ((nbe = btRangeNext(nbi)) != NULL) {
-                if (q->fk_lim && (uint32)w->lim == card) break;
-                void *rrow  = btFindVal(btr, nbe->key, pktype);
-                if (!(*p)(g, nbe->key, rrow, q->fk, &card)) goto sing_fk_err;
-            }
-        }
-        btReleaseRangeIterator(nbi);
-        nbi = NULL; /* explicit in case of GOTO in inner loop */
+        if (g->se.cstar && !g->co.w->flist) card += nbtr->numkeys;
+        else                                innerBT_Op(&d);
     }
     destroyAobj(afk);
     return card;
-
-sing_fk_err:
-    destroyAobj(afk);
-    if (nbi) btReleaseRangeIterator(nbi);
-    return -1;
 }
 
-long rangeOp(range_t *g, row_op *p) {
+static long rangeOp(range_t *g, row_op *p) {
     cswc_t *w    = g->co.w;
     if (w->wtype & SQL_SINGLE_FK_LOOKUP) {
         return singleOpFK(g, p);
@@ -254,26 +277,21 @@ static long inOpPK(range_t *g, row_op *p) {
     long      card    =  0;
     listIter *li      = listGetIterator(w->inl, AL_START_HEAD);
     while((ln = listNext(li)) != NULL) {
-        if (q->pk_lim && (uint32)w->lim == card) break; /* ORDRBY PK LIM */
+        if (q->pk_lim && w->lim == card) break; /* ORDRBY PK LIM */
         aobj *apk  = ln->value;
         void *rrow = btFindVal(btr, apk, pktype);
         if (rrow) {
-            if (!(*p)(g, apk, rrow, q->pk, &card)) goto in_op_pk_err;
+            (*p)(g, apk, rrow, q->pk, &card);
         }
     }
     listReleaseIterator(li);
     return card;
-
-in_op_pk_err:
-    listReleaseIterator(li);
-    return -1;
 }
 
 static long inOpFK(range_t *g, row_op *p) {
     //printf("inOpFK\n");
     listNode *ln;
     btEntry  *nbe;
-    btSIter  *nbi     = NULL; /* B4 GOTO */
     cswc_t   *w       = g->co.w;
     qr_t     *q       = g->q;
     bool      pktype  = Tbl[server.dbid][w->tmatch].col_type[0];
@@ -294,24 +312,18 @@ static long inOpFK(range_t *g, row_op *p) {
             if (g->se.cstar && !g->co.w->flist) { /* FK cstar w/o filters */
                 card += nbtr->numkeys;
             } else {
-                nbi = btGetFullRangeIterator(nbtr);
+                btSIter *nbi = btGetFullRangeIterator(nbtr);
                 while ((nbe = btRangeNext(nbi)) != NULL) {
-                    if (q->fk_lim && (uint32)w->lim == card) break;
+                    if (q->fk_lim && w->lim == card) break;
                     void *rrow  = btFindVal(btr, nbe->key, pktype);
-                    if (!(*p)(g, nbe->key, rrow, q->fk, &card)) goto in_op_err;
+                    (*p)(g, nbe->key, rrow, q->fk, &card);
                 }
+                btReleaseRangeIterator(nbi);
             }
-            btReleaseRangeIterator(nbi);
-            nbi = NULL; /* explicit in case of GOTO in inner loop */
         }
     }
     listReleaseIterator(li);
     return card;
-
-in_op_err:
-    listReleaseIterator(li);
-    if (nbi)  btReleaseRangeIterator(nbi);
-    return -1;
 }
 
 long inOp(range_t *g, row_op *p) {
@@ -350,26 +362,25 @@ bool passFilters(void *rrow, list *flist, int tmatch) {
 
 /* SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS */
 /* SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS */
-bool select_op(range_t *g, aobj *akey, void *rrow, bool q, long *card) {
-    if (!passFilters(rrow, g->co.w->flist, g->co.w->tmatch)) return 1;
+static void select_op(range_t *g, aobj *akey, void *rrow, bool q, long *card) {
+    if (!passFilters(rrow, g->co.w->flist, g->co.w->tmatch)) return;
     if (!g->se.cstar) {
         robj *r = outputRow(rrow, g->se.qcols, g->se.cmatchs,
                             akey, g->co.w->tmatch, 0);
-        if (q) addRow2OBList(g->co.ll, g->co.w, r, g->co.orobj, rrow, akey);
+        if (q) addRow2OBList(g->co.ll, g->co.w, r, g->co.ofree, rrow, akey);
         else   addReplyBulk(g->co.c, r);
         decrRefCount(r);
     }
     *card = *card + 1;
-    return 1;
 }
 void opSelectOnSort(redisClient *c,
                     list        *ll,
                     cswc_t      *w,
-                    bool         orobj,
-                    ulong       *sent) {
+                    bool         ofree,
+                    long        *sent) {
     obsl_t **v = sortOB2Vector(ll);
     for (int i = 0; i < (int)listLength(ll); i++) {
-        if (w->lim != -1 && *sent == (uint32)w->lim) break;
+        if (w->lim != -1 && *sent == w->lim) break;
         if (w->ofst > 0) {
             w->ofst--;
         } else {
@@ -378,7 +389,7 @@ void opSelectOnSort(redisClient *c,
             addReplyBulk(c, ob->row);
         }
     }
-    sortOBCleanup(v, listLength(ll), orobj);
+    sortOBCleanup(v, listLength(ll), ofree);
     free(v); /* FREED 004 */
 }
 void iselectAction(redisClient *c,
@@ -390,52 +401,48 @@ void iselectAction(redisClient *c,
     qr_t    q;
     setQueued(w, &q);
     list *ll     = initOBsort(q.qed, w);
-    init_range(&g, c, w, &q, ll, 1);
+    init_range(&g, c, w, &q, ll, OBY_FREE_ROBJ);
     g.se.cstar   = cstar;
     g.se.qcols   = qcols;
     g.se.cmatchs = cmatchs;
     LEN_OBJ
-    if (w->wtype == SQL_IN_LOOKUP) { /* IN_QUERY */
-        card = (ulong)inOp(&g, select_op);
-    } else {                         /* RANGE_QUERY */
-        card = (ulong)rangeOp(&g, select_op);
-    }
+    if (w->wtype == SQL_IN_LOOKUP) card = inOp(&g, select_op);
+    else                           card = rangeOp(&g, select_op);
 
-    ulong sent = 0;
+    long sent = 0;
     if (card) {
-        if (q.qed) opSelectOnSort(c, ll, w, g.co.orobj, &sent);
+        if (q.qed) opSelectOnSort(c, ll, w, g.co.ofree, &sent);
         else       sent = card;
     }
 
     if (w->lim != -1 && sent < card) card = sent;
-    if (cstar) lenobj->ptr = sdscatprintf(sdsempty(), ":%lu\r\n", card);
-    else       lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
+    if (cstar) lenobj->ptr = sdscatprintf(sdsempty(), ":%ld\r\n", card);
+    else       lenobj->ptr = sdscatprintf(sdsempty(), "*%ld\r\n", card);
 
     if (w->ovar) incrOffsetVar(c, w, card);
     releaseOBsort(ll);
 }
 
-bool build_del_list_op(range_t *g, aobj *akey, void *rrow, bool q, long *card) {
-    if (!passFilters(rrow, g->co.w->flist, g->co.w->tmatch)) return 1;
+static void dellist_op(range_t *g, aobj *akey, void *rrow, bool q, long *card) {
+    if (!passFilters(rrow, g->co.w->flist, g->co.w->tmatch)) return;
     if (q) {
-        addRow2OBList(g->co.ll, g->co.w, akey, g->co.orobj, rrow, akey);
+        addRow2OBList(g->co.ll, g->co.w, akey, g->co.ofree, rrow, akey);
     } else {
         aobj *cln  = cloneAobj(akey);
         listAddNodeTail(g->co.ll, cln); /* UGLY: build list of PKs to delete */
     }
     *card = *card + 1;
-    return 1;
 }
 void opDeleteOnSort(redisClient *c,
                     list        *ll,
                     cswc_t      *w,
-                    bool         orobj,
-                    ulong       *sent,
+                    bool         ofree,
+                    long        *sent,
                     int          matches,
                     int          indices[]) {
     obsl_t **v = sortOB2Vector(ll);
     for (int i = 0; i < (int)listLength(ll); i++) {
-        if (w->lim != -1 && *sent == (uint32)w->lim) break;
+        if (w->lim != -1 && *sent == w->lim) break;
         if (w->ofst > 0) {
             w->ofst--;
         } else {
@@ -445,28 +452,26 @@ void opDeleteOnSort(redisClient *c,
             deleteRow(c, w->tmatch, apk, matches, indices);
         }
     }
-    sortOBCleanup(v, listLength(ll), orobj);
+    sortOBCleanup(v, listLength(ll), ofree);
     free(v); /* FREED 004 */
 }
 void ideleteAction(redisClient *c, cswc_t *w) {
     range_t g;
     qr_t    q;
     setQueued(w, &q);
-    list *ll     = initOBsort(1, w);
-    init_range(&g, c, w, &q, ll, 0);
-    ulong  card  = 0;
-    if (w->wtype == SQL_IN_LOOKUP) { /* IN_QUERY */
-        card = (ulong)inOp(&g, build_del_list_op);
-    } else {                         /* RANGE_QUERY */
-        card = (ulong)rangeOp(&g, build_del_list_op);
-    }
+    list *ll    = initOBsort(1, w);
+    if (!q.qed) ll->free = destroyAobj;
+    init_range(&g, c, w, &q, ll, OBY_FREE_AOBJ);
+    long  card  = 0;
+    if (w->wtype == SQL_IN_LOOKUP) card = inOp(&g, dellist_op);
+    else                           card = rangeOp(&g, dellist_op);
 
     MATCH_INDICES(w->tmatch)
 
-    ulong sent = 0;
+    long sent = 0;
     if (card) {
         if (q.qed) {
-            opDeleteOnSort(c, ll, w, g.co.orobj, &sent, matches, indices);
+            opDeleteOnSort(c, ll, w, g.co.ofree, &sent, matches, indices);
         } else {
             listNode  *ln;
             listIter  *li = listGetIterator(ll, AL_START_HEAD);
@@ -479,37 +484,36 @@ void ideleteAction(redisClient *c, cswc_t *w) {
         }
     }
 
-    if (w->lim != -1 && (uint32)sent < card) card = sent;
-    addReplyLongLong(c, card);
+    if (w->lim != -1 && sent < card) card = sent;
+    addReplyLongLong(c, (ull)card);
 
     if (w->ovar) incrOffsetVar(c, w, card);
     releaseOBsort(ll);
 }
 
-bool update_op(range_t *g, aobj *akey, void *rrow, bool q, long *card) {
-    if (!passFilters(rrow, g->co.w->flist, g->co.w->tmatch)) return 1;
+static void update_op(range_t *g, aobj *akey, void *rrow, bool q, long *card) {
+    if (!passFilters(rrow, g->co.w->flist, g->co.w->tmatch)) return;
     if (q) {
-        addRow2OBList(g->co.ll, g->co.w, akey, g->co.orobj, rrow, akey);
+        addRow2OBList(g->co.ll, g->co.w, akey, g->co.ofree, rrow, akey);
     } else {
         updateRow(g->co.c, g->up.btr, akey, rrow, g->co.w->tmatch, g->up.ncols,
                   g->up.matches, g->up.indices, g->up.vals, g->up.vlens,
                   g->up.cmiss, g->up.ue);
     }
     *card = *card + 1;
-    return 1;
 }
 void opUpdateOnSort(redisClient *c,
                     list        *ll,
                     cswc_t      *w,
-                    bool         orobj,
-                    ulong       *sent,
+                    bool         ofree,
+                    long        *sent,
                     bt          *btr,
                     int          ncols,
                     range_t     *g) {
     bool     pktype = Tbl[server.dbid][w->tmatch].col_type[0];
     obsl_t **v      = sortOB2Vector(ll);
     for (int i = 0; i < (int)listLength(ll); i++) {
-        if (w->lim != -1 && *sent == (uint32)w->lim) break;
+        if (w->lim != -1 && *sent == w->lim) break;
         if (w->ofst > 0) {
             w->ofst--;
         } else {
@@ -522,7 +526,7 @@ void opUpdateOnSort(redisClient *c,
                       g->up.vals, g->up.vlens, g->up.cmiss, g->up.ue);
         }
     }
-    sortOBCleanup(v, listLength(ll), orobj);
+    sortOBCleanup(v, listLength(ll), ofree);
     free(v); /* FREED 004 */
 }
 void iupdateAction(redisClient *c,
@@ -538,7 +542,7 @@ void iupdateAction(redisClient *c,
     qr_t    q;
     setQueued(w, &q);
     list *ll     = initOBsort(q.qed, w);
-    init_range(&g, c, w, &q, ll, 0);
+    init_range(&g, c, w, &q, ll, OBY_FREE_AOBJ);
     robj *tname  = Tbl[server.dbid][w->tmatch].name;
     robj *btt    = lookupKeyRead(c->db, tname);
     bt   *btr    = (bt *)btt->ptr;
@@ -550,21 +554,18 @@ void iupdateAction(redisClient *c,
     g.up.vlens   = vlens;
     g.up.cmiss   = cmiss;
     g.up.ue      = ue;
-    ulong card   = 0;
-    if (w->wtype == SQL_IN_LOOKUP) { /* IN_QUERY */
-        card = (ulong)inOp(&g, update_op);
-    } else {                         /* RANGE_QUERY */
-        card = (ulong)rangeOp(&g, update_op);
-    }
+    long card    = 0;
+    if (w->wtype == SQL_IN_LOOKUP) card = inOp(&g, update_op);
+    else                           card = rangeOp(&g, update_op);
 
-    ulong sent = 0;
+    long sent = 0;
     if (card) {
-        if (q.qed) opUpdateOnSort(c, ll, w, g.co.orobj, &sent, btr, ncols, &g);
+        if (q.qed) opUpdateOnSort(c, ll, w, g.co.ofree, &sent, btr, ncols, &g);
         else       sent = card;
     }
 
-    if (w->lim != -1 && (uint32)sent < card) card = sent;
-    addReplyLongLong(c, card);
+    if (w->lim != -1 && sent < card) card = sent;
+    addReplyLongLong(c, (ull)card);
 
     if (w->ovar) incrOffsetVar(c, w, card);
     releaseOBsort(ll);

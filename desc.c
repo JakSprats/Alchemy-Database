@@ -60,8 +60,8 @@ r_ind_t Index   [MAX_NUM_DB][MAX_NUM_INDICES];
     decrRefCount(r);              \
     card++;
 
-#define FILE_DUMP_SUCCESS "SUCCESS: DUMPED: %llu bytes in %lu rows to file: %s"
-#define FILE_DUMP_FAILURE "FAILURE: DUMPED: %llu bytes in %lu rows to file: %s"
+#define FILE_DUMP_SUCCESS "SUCCESS: DUMPED: %llu bytes in %ld rows to file: %s"
+#define FILE_DUMP_FAILURE "FAILURE: DUMPED: %llu bytes in %ld rows to file: %s"
 #define SINGLE_LINE       "*1\r\n$%lu\r\n%s\r\n"
 #define EMPTY_DUMP2FILE   "-ERR: table is empty\r\n"
 
@@ -159,8 +159,8 @@ void dumpCommand(redisClient *c) {
             } else if (to_file) {
                 if ((fwrite(r->ptr, sdslen(r->ptr), 1, fp) == 0) ||
                     ((fwrite("\n", 1, 1, fp) == 0))) {
-                    sds s = sdscatprintf(sdsempty(), FILE_DUMP_FAILURE,
-                                                      bytes, card, fname);
+                    sds s       = sdscatprintf(sdsempty(), FILE_DUMP_FAILURE,
+                                                            bytes, card, fname);
                     lenobj->ptr = sdscatprintf(sdsempty(), SINGLE_LINE,
                                                             sdslen(s), s);
                     sdsfree(s);
@@ -184,8 +184,8 @@ void dumpCommand(redisClient *c) {
     }
     if (to_file) {
         if (fp) {
-            sds s = sdscatprintf(sdsempty(), FILE_DUMP_SUCCESS,
-                                             bytes, card, fname);
+            sds s       = sdscatprintf(sdsempty(), FILE_DUMP_SUCCESS,
+                                                    bytes, card, fname);
             lenobj->ptr = sdscatprintf(sdsempty(), SINGLE_LINE, sdslen(s), s);
             sdsfree(s);
             fclose(fp);
@@ -193,7 +193,7 @@ void dumpCommand(redisClient *c) {
             lenobj->ptr = sdsnewlen(EMPTY_DUMP2FILE, strlen(EMPTY_DUMP2FILE));
         }
     } else {
-        lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
+        lenobj->ptr = sdscatprintf(sdsempty(), "*%ld\r\n", card);
     }
 }
  
@@ -211,7 +211,7 @@ ull get_sum_all_index_size_for_table(redisClient *c, int tmatch) {
     return isize;
 }
 
-static void outputNonRelIndexInfo(redisClient *c, int tmatch, ulong *card) {
+static void outputNonRelIndexInfo(redisClient *c, int tmatch, long *card) {
     MATCH_INDICES(tmatch)
     if (matches) { /* Add to Indices */
         for (int i = 0; i < matches; i++) {
@@ -302,5 +302,5 @@ void descCommand(redisClient *c) {
     addReplyBulk(c, r);
     decrRefCount(r);
     card++;
-    lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
+    lenobj->ptr = sdscatprintf(sdsempty(), "*%ld\r\n", card);
 }

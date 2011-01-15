@@ -181,7 +181,7 @@ static bool setOffsetReply(redisClient *c, cswc_t *w, char *nextp) {
             if (!checkType(c, o, REDIS_STRING) &&
                  getLongLongFromObjectOrReply(c, o, &value,
                             "OFFSET variable is not an integer") == REDIS_OK) {
-                w->ofst = (int)value;
+                w->ofst = (long)value;
             } else { /* possibly variable was a ZSET,LIST,etc */
                 sdsfree(w->ovar);
                 w->ovar = NULL;
@@ -189,7 +189,7 @@ static bool setOffsetReply(redisClient *c, cswc_t *w, char *nextp) {
             }
         }
     } else {
-        w->ofst = atoi(nextp); /* LIMIT N OFFSET X */
+        w->ofst = atol(nextp); /* LIMIT N OFFSET X */
     }
     return 1;
 }
@@ -304,7 +304,7 @@ static bool parseOrderBy(redisClient  *c,
                 addReply(c, shared.orderby_limit_needs_number);
                 return 0;
             }
-            w->lim = atoi(token);
+            w->lim = atol(token);
             token  = next_token(token);
             if (token) {
                 if (!strncasecmp(token, "OFFSET", 6)) {

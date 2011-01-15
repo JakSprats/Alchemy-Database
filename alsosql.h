@@ -79,8 +79,8 @@ typedef struct check_sql_where_clause {
     int     obc[MAX_ORDER_BY_COLS];    /* ORDER BY col */
     int     obt[MAX_ORDER_BY_COLS];    /* ORDER BY tbl -> JOINS */
     bool    asc[MAX_ORDER_BY_COLS];    /* ORDER BY ASC/DESC */
-    int     lim;                       /* ORDER BY LIMIT */
-    int     ofst;                      /* ORDER BY OFFSET */
+    long    lim;                       /* ORDER BY LIMIT */
+    long    ofst;                      /* ORDER BY OFFSET */
     sds     ovar;                      /* OFFSET varname - used by cursors */
     list   *flist;                     /* FILTER list (nonindexed cols in WC) */
 } cswc_t;
@@ -98,20 +98,19 @@ int parseUpdateOrReply(redisClient  *c,
                        char         *vals   [],
                        unsigned int  vlens  []);
 
-#define LEN_OBJ                                               \
-    unsigned long  card   = 0;                                \
-    robj          *lenobj = createObject(REDIS_STRING, NULL); \
-    addReply(c, lenobj);                                      \
-    decrRefCount(lenobj);
-
-#define EMPTY_LEN_OBJ             \
-    unsigned long  card   = 0;    \
-    robj          *lenobj = NULL;
+#define EMPTY_LEN_OBJ    \
+    long  card   = 0;    \
+    robj *lenobj = NULL;
 
 #define INIT_LEN_OBJ                           \
     lenobj = createObject(REDIS_STRING, NULL); \
     addReply(c, lenobj);                       \
     decrRefCount(lenobj);
+
+#define LEN_OBJ     \
+    long  card = 0; \
+    robj *lenobj;   \
+    INIT_LEN_OBJ
 
 void createTableCommitReply(redisClient *c,
                             char         cnames[][MAX_COLUMN_NAME_SIZE],

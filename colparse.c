@@ -146,7 +146,7 @@ char *parseRowVals(char    *vals,
         if (!*pk) {
             *pklen    = (nextc - vals);
             if (!*pklen) return NULL;
-            char *s   = malloc(*pklen + 1);
+            char *s   = malloc(*pklen + 1);              /* FREE ME 021 */
             memcpy(s, vals, *pklen);
             s[*pklen] = '\0';
             *pk       = s;

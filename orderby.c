@@ -29,6 +29,7 @@ ALL RIGHTS RESERVED
 #include <strings.h>
 #include <unistd.h>
 #include <float.h>
+//#include <assert.h>
 
 #include "redis.h"
 #include "adlist.h"
@@ -36,6 +37,7 @@ ALL RIGHTS RESERVED
 #include "row.h"
 #include "rpipe.h"
 #include "parser.h"
+#include "range.h"
 #include "aobj.h"
 #include "common.h"
 #include "orderby.h"
@@ -109,26 +111,27 @@ list *initOBsort(bool qed, cswc_t *w) {
             OB_ctype[i] = Tbl[server.dbid][w->tmatch].col_type[w->obc[i]];
         }
     }
-    return qed ? listCreate() : NULL ;         /* DESTROY 009 */
+    return qed ? listCreate() : NULL ;                   /* DESTROY 009 */
 }
 void releaseOBsort(list *ll) {
-    if (ll) listRelease(ll);                   /* DESTROYED 009 */
+    if (ll) listRelease(ll);                             /* DESTROYED 009 */
     OB_nob = 0;
 }
 
 obsl_t *create_obsl(void *row, int nob) {
-    obsl_t *ob = (obsl_t *)malloc(sizeof(obsl_t)); /* FREE ME 001 */
+    obsl_t *ob = (obsl_t *)malloc(sizeof(obsl_t));       /* FREE ME 001 */
     ob->row    = row;
-    ob->keys   = malloc(sizeof(void *) * nob);     /* FREE ME 006 */
+    ob->keys   = malloc(sizeof(void *) * nob);           /* FREE ME 006 */
     return ob;
 }
-static void destroy_obsl(obsl_t *ob, bool orobj) {
+static void destroy_obsl(obsl_t *ob, bool ofree) {
     for (int i = 0; i < OB_nob; i++) {
         if (OB_ctype[i] == COL_TYPE_STRING) free(ob->keys[i]); /* FREED 003 */
     }
-    if (orobj) decrRefCount(ob->row); /* DESTROYED 005 */
-    free(ob->keys);                   /* FREED 006 */
-    free(ob);                         /* FREED 001 */
+    if (     ofree == OBY_FREE_ROBJ) decrRefCount(ob->row);  /* DESTROYED 005 */
+    else if (ofree == OBY_FREE_AOBJ) destroyAobj(ob->row);   /* DESTROYED 029 */
+    free(ob->keys);                                      /* FREED 006 */
+    free(ob);                                            /* FREED 001 */
 }
 
 void assignObKey(cswc_t *w, void *rrow, aobj *apk, int i, obsl_t *ob) {
@@ -141,7 +144,7 @@ void assignObKey(cswc_t *w, void *rrow, aobj *apk, int i, obsl_t *ob) {
     } else if (ctype == COL_TYPE_FLOAT) {
         memcpy(&(key), &ao.f, sizeof(float));
     } else { /* memcpy needed here as ao.s may be sixbit encoded */
-        char *s   = malloc(ao.len + 1);        /* FREE ME 003 */
+        char *s   = malloc(ao.len + 1);                  /* FREE ME 003 */
         memcpy(s, ao.s, ao.len);
         s[ao.len] = '\0';
         key       = s;
@@ -152,11 +155,14 @@ void assignObKey(cswc_t *w, void *rrow, aobj *apk, int i, obsl_t *ob) {
 void addRow2OBList(list   *ll,
                    cswc_t *w,
                    void   *r,
-                   bool    orobj,
+                   bool    ofree,
                    void   *rrow,
                    aobj   *apk) {
-    void   *row = orobj ? cloneRobj((robj *)r) : r; /* DESTROY ME 005 */
-    obsl_t *ob  = create_obsl(row, w->nob);         /* FREE ME 001 */
+    void   *row;
+    if (     ofree == OBY_FREE_ROBJ) row = cloneRobj((robj *)r); /* DEST 005 */
+    else if (ofree == OBY_FREE_AOBJ) row = cloneAobj((aobj *)r); /* DEST 029 */
+    //else assert(!"OBY_FREE not defined");
+    obsl_t *ob  = create_obsl(row, w->nob);              /* FREE ME 001 */
     for (int i = 0; i < w->nob; i++) {
         assignObKey(w, rrow, apk, i, ob);
     }
@@ -179,9 +185,9 @@ obsl_t **sortOB2Vector(list *ll) {
     return vector;
 }
 
-void sortOBCleanup(obsl_t **vector, int vlen, bool orobj) {
+void sortOBCleanup(obsl_t **vector, int vlen, bool ofree) {
     for (int i = 0; i < vlen; i++) {
-        destroy_obsl((obsl_t *)vector[i], orobj);
+        destroy_obsl((obsl_t *)vector[i], ofree);
     }
 }
 
@@ -193,7 +199,7 @@ void addJoinOutputRowToList(jrow_reply_t *r, void *resp) {
     listAddNodeTail(r->ll, ob);
 }
 
-int sortJoinOrderByAndReply(redisClient *c, build_jrow_reply_t *b, cswc_t *w) {
+long sortJoinOrderByAndReply(redisClient *c, build_jrow_reply_t *b, cswc_t *w) {
     listNode  *ln;
     int        vlen   = listLength(b->j.ll);
     obsl_t   **vector = malloc(sizeof(obsl_t *) * vlen); /* freed in function */
@@ -208,7 +214,7 @@ int sortJoinOrderByAndReply(redisClient *c, build_jrow_reply_t *b, cswc_t *w) {
     qsort(vector, vlen, sizeof(obsl_t *), genOBsort);
 
     //TODO this is almost (opSelectOnSort + sortOBCleanup)
-    int sent = 0;
+    long sent = 0;
     for (int k = 0; k < vlen; k++) {
         if (w->lim != -1 && sent == w->lim) break;
         if (w->ofst > 0) {

@@ -558,6 +558,8 @@ typedef struct storage_command {
     int   argc;
     pc2a *parse;
 } stor_cmd;
+
+void btreeCommand(redisClient *c);
 #endif
 
 #endif

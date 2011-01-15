@@ -60,7 +60,7 @@ static sds genNRL_Cmd(d_l_t  *nrlind,
                       uint32  cofsts[],
                       void   *rrow,
                       int     tmatch) {
-    sds       cmd     = sdsempty();
+    sds       cmd     = sdsempty();                      /* DESTROY ME 016 */
     list     *nrltoks = nrlind->l1;
     list     *nrlcols = nrlind->l2;
     listIter *li1     = listGetIterator(nrltoks, AL_START_HEAD);
@@ -89,6 +89,7 @@ static sds genNRL_Cmd(d_l_t  *nrlind,
                     xlen = cofsts[cmatch] - cofsts[cmatch - 1] - 1;
                 }
                 cmd = sdscatlen(cmd, x, xlen);
+                if (!cmatch) free(x);                    /* FREED 015 */
             } else { /* not from INSERT -> fetch row */
                 aobj rcol = getRawCol(rrow, cmatch, apk, tmatch, NULL, 1);
                 x         = rcol.s;
@@ -121,11 +122,11 @@ static bool nonRelIndRespHandler(redisClient *c,
         char *s = key->ptr;
         robj *r = _createStringObject(s + 1); /* +1 skips '+','-',':' */
         decrRefCount(key);
-        key    = r;
+        key     = r;
     }
     addReplyBulk(c, key);
     decrRefCount(key);
-    *card   = *card + 1;
+    *card = *card + 1;
     CurrCard++;
     return 1;
 }
@@ -133,7 +134,7 @@ static bool nonRelIndRespHandler(redisClient *c,
 static void runCmdInFakeClient(sds s) {
     //RL4 "runCmdInFakeClient: %s", s);
     int           argc;
-    sds          *argv = sdssplitlen(s, sdslen(s), " ", 1, &argc);
+    sds          *argv = sdssplitlen(s, sdslen(s), " ", 1, &argc); // FREEME 017
     if (!argv)    return;
     if (argc < 1) goto run_cmd_end;
     redisCommand *cmd  = lookupCommand(argv[0]);
@@ -146,58 +147,57 @@ static void runCmdInFakeClient(sds s) {
                           cmd->proc == sqlSelectCommand ||
                           cmd->proc == tscanCommand)       {
         arity = abs(cmd->arity);
-        rargv = zmalloc(sizeof(robj *) * arity);
+        rargv = zmalloc(sizeof(robj *) * arity);         /* ZFREE ME 018 */
         for (int j = 0; j < arity - 1; j++) {
-            rargv[j] = createStringObject(argv[j], sdslen(argv[j]));
+            rargv[j] = createStringObject(argv[j], sdslen(argv[j])); // FREE 019
         }
         sds lastarg = sdsempty();
         for (int j = arity - 1; j < argc; j++) {
             if (j != (arity - 1)) lastarg = sdscatlen(lastarg, " ", 1);
             lastarg = sdscatlen(lastarg, argv[j], sdslen(argv[j]));
         }
-        rargv[arity - 1] = createObject(REDIS_STRING, lastarg);
+        rargv[arity - 1] = createObject(REDIS_STRING, lastarg); // FREE 019
     } else {
         arity = argc;
-        rargv = zmalloc(sizeof(robj *) * arity);
+        rargv = zmalloc(sizeof(robj *) * arity);         /* ZFREE ME 018 */
         for (int j = 0; j < arity; j++) {
-            rargv[j] = createStringObject(argv[j], sdslen(argv[j]));
+            rargv[j] = createStringObject(argv[j], sdslen(argv[j])); // FREE 019
         }
     }
     redisClient *c  = CurrClient;
-    redisClient *fc = rsql_createFakeClient();
+    redisClient *fc = rsql_createFakeClient();           /* DESTROY ME 020 */
     fc->argv        = rargv;
     fc->argc        = arity;
     fakeClientPipe(c, fc, NULL, 0, &NriFlag,
                    nonRelIndRespHandler, emptyNonRelIndRespHandler);
-    rsql_freeFakeClient(fc);
-    for (int j = 0; j < arity; j++) decrRefCount(rargv[j]);
-    zfree(rargv);
+    rsql_freeFakeClient(fc);                             /* DESTROYED 020 */
+    for (int j = 0; j < arity; j++) decrRefCount(rargv[j]); /* FREED 019 */
+    zfree(rargv);                                        /* ZFREED 018 */
 
 run_cmd_end:
-    if (argv) {
-        for (int j = 0; j < argc; j++) sdsfree(argv[j]);
-        zfree(argv);
-    }
+    for (int j = 0; j < argc; j++) sdsfree(argv[j]);     /* FREED 017 */
+    zfree(argv);                                         /* FREED 017 */
 }
 
 void nrlIndexAdd(robj *o, aobj *apk, char *vals, uint32 cofsts[]) {
     sds cmd = genNRL_Cmd((d_l_t *)o->ptr, apk, vals, cofsts, NULL, -1);
     //printf("nri: cmd: %s\n", cmd);
     runCmdInFakeClient(cmd);
-    sdsfree(cmd);
+    sdsfree(cmd);                                        /* DESTROYED 016 */
     return;
 }
 
 void runNrlIndexFromStream(uchar *stream,
                            d_l_t *nrlind,
                            int    itbl) {
-    aobj key;
-    convertStream2Key(stream, &key);
+    aobj akey;
+    convertStream2Key(stream, &akey);
     void *rrow = parseStream(stream, BTREE_TABLE);
     /* create command and run it */
-    sds cmd    = genNRL_Cmd(nrlind, &key, NULL, NULL, rrow, itbl);
+    sds cmd    = genNRL_Cmd(nrlind, &akey, NULL, NULL, rrow, itbl);
     runCmdInFakeClient(cmd);
-    sdsfree(cmd);
+    sdsfree(cmd);                                        /* DESTROYED 016 */
+    releaseAobj(&akey);
 }
 
 /* CREATE NON-RELATIONAL-INDEX */

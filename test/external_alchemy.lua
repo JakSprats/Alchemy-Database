@@ -32,7 +32,9 @@ end
 function create_index(iname, tname, column)
   return redis:create_index(iname, tname, column);
 end
-
+function create_nri_index(iname, tname, column)
+  return redis:create_nri_index(iname, tname, column);
+end
 function drop_index(iname)
   return redis:drop_index(iname);
 end

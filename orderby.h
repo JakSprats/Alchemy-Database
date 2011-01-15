@@ -54,6 +54,6 @@ void sortOBCleanup(obsl_t **vector,
 
 /* JOIN */
 void addJoinOutputRowToList(jrow_reply_t *r, void *resp);
-int sortJoinOrderByAndReply(redisClient *c, build_jrow_reply_t *b, cswc_t *w);
+long sortJoinOrderByAndReply(redisClient *c, build_jrow_reply_t *b, cswc_t *w);
 
 #endif /* __ORDER_BY__H */ 

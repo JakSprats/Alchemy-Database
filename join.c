@@ -473,7 +473,7 @@ void joinGeneric(redisClient *c,
     LEN_OBJ
 
     bool        err   = 0;
-    int         sent  = 0;
+    long        sent  = 0;
     btIterator *bi    = NULL; /* B4 GOTO */
     char       *reply = NULL; /* B4 GOTO */
     if (!one_empty) {
@@ -565,11 +565,11 @@ join_end:
     }
 
     if (err) return;
-    if (w->lim != -1 && (uint32)sent < card) card = sent;
+    if (w->lim != -1 && sent < card) card = sent;
     if (jb->cstar) {
-        lenobj->ptr = sdscatprintf(sdsempty(), ":%lu\r\n", card);
+        lenobj->ptr = sdscatprintf(sdsempty(), ":%ld\r\n", card);
     } else {
-        lenobj->ptr = sdscatprintf(sdsempty(), "*%lu\r\n", card);
+        lenobj->ptr = sdscatprintf(sdsempty(), "*%ld\r\n", card);
         if (w->ovar) incrOffsetVar(c, w, card);
     }
 }

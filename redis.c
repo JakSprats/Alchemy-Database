@@ -579,6 +579,7 @@ static struct redisCommand cmdTable[] = {
 
     {"legacytable",  legacyTableCommand,  3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
     {"legacyinsert", legacyInsertCommand, 3,REDIS_CMD_INLINE|REDIS_CMD_DENYOOM,NULL,1,1,1,1},
+    //{"btree",        btreeCommand,        2,REDIS_CMD_INLINE,NULL,1,1,1,1},
 #endif /* ALSOSQL END */
     {"rewriteaof",rewriteCommand,2,REDIS_CMD_INLINE,NULL,1,1,1,0},
     {"get",getCommand,2,REDIS_CMD_INLINE,NULL,1,1,1,0},

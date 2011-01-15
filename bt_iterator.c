@@ -431,8 +431,10 @@ void btReleaseJoinRangeIterator(btIterator *iter) {
 
 #if 0
 /* used for DEBUGGING the Btrees innards */
+extern struct redisServer server;
+extern struct sharedObjectsStruct shared;
+extern r_tbl_t Tbl     [MAX_NUM_DB][MAX_NUM_TABLES];
 void btreeCommand(redisClient *c) {
-    char buf[192];
     TABLE_CHECK_OR_REPLY(c->argv[1]->ptr,)
     robj *btt  = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
     bt   *btr  = (bt *)btt->ptr;

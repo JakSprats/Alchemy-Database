@@ -56,7 +56,7 @@ typedef struct build_jrow_reply {
     jrow_reply_t  j;
     int           n_ind;
     robj         *jk;
-    ulong        *card;
+    long         *card;
     int          *j_indxs;
 } build_jrow_reply_t;
 
