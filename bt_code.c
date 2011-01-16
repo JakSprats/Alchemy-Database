@@ -37,14 +37,7 @@ extern size_t          used_memory;
 extern int             zmalloc_thread_safe;
 extern pthread_mutex_t used_memory_mutex;
 
-#if 0
-static void bt_internal_dump(struct btree *btr) {
-    bt_dumptree(btr, btr->ktype, REDIS_BTREE);
-}
-#endif
-
-
-#define NODE_SIZE sizeof(struct btreenode) + btr->textra
+#define NODE_SIZE sizeof(bt_n) + btr->textra
 static void bt_increment_used_memory(bt *btr, size_t size) {
     btr->malloc_size += (ull)size;
     increment_used_memory(size);
@@ -60,12 +53,12 @@ void *bt_malloc(int size, bt *btr) {
     btr->data_size += size;
     return v;
 }
-static struct btreenode *allocbtreenode(bt *btr) {
-    size_t            size = NODE_SIZE;
-    struct btreenode *btn  = malloc(size);
+static bt_n *allocbtreenode(bt *btr) {
+    size_t  size = NODE_SIZE;
+    bt_n   *btn  = malloc(size);
     bt_increment_used_memory(btr, size);
     bzero(btn, size);
-    btn->leaf              = 1;
+    btn->leaf     = 1;
     return btn;
 }
 static void *bt_malloc_btree() {
@@ -76,8 +69,8 @@ static void *bt_malloc_btree() {
     bt_increment_used_memory(btr, size);
     return btr;
 }
-static struct btree *allocbtree(void) {
-    struct btree *btr = bt_malloc_btree();
+static bt *allocbtree(void) {
+    bt *btr = bt_malloc_btree();
     btr->root         = NULL;
     btr->cmp          = NULL;
     btr->keyoff       = 0;
@@ -107,25 +100,24 @@ void bt_free_btree(void *v, bt *btr) {
 }
 
 static inline int _log2(unsigned int a, int nbits);
-struct btree *bt_create(bt_cmp_t cmp, int size) {
-    struct btree *btr    = NULL;
-    int           textra = 0;
+bt *bt_create(bt_cmp_t cmp, int size) {
+    bt  *btr    = NULL;
+    int  textra = 0;
 
-    size   -= sizeof(struct btreenode);
-    size   -= sizeof(struct btreenode *);
+    size   -= sizeof(bt_n);
+    size   -= sizeof(bt_n *);
 
     /*calculate maximum t that will fix in size, and that t >= 2 */
-    int n   = size / (sizeof(struct btreenode *) + sizeof(bt_data_t));
+    int n   = size / (sizeof(bt_n *) + sizeof(bt_data_t));
     assert(n > 0);
     int t   = (n + 1) / 2;
     assert(t >= 2);
     n       = 2 * t - 1;
-    textra += sizeof (btr->root) +
-                           n * (sizeof(struct btreenode *) + sizeof(bt_data_t));
+    textra += sizeof (btr->root) + n * (sizeof(bt_n *) + sizeof(bt_data_t));
 
     btr                     = allocbtree();
     btr->cmp                = cmp;
-    btr->keyoff             = sizeof(struct btreenode);
+    btr->keyoff             = sizeof(bt_n);
     unsigned int nodeptroff = btr->keyoff + n * sizeof(bt_data_t);
     assert(nodeptroff <= USHRT_MAX);
     btr->nodeptroff         = (unsigned short)nodeptroff;
@@ -195,11 +187,7 @@ static inline int _log2(unsigned int a, int nbits) {
     return table[a];
 }
 
-static int findkindex(struct btree      *btr,
-                      struct btreenode  *x,
-                      bt_data_t          k,
-                      int               *r,
-                      struct btIterator *iter) {
+static int findkindex(bt *btr, bt_n *x, bt_data_t k, int *r, btIterator *iter) {
     int a, b, i, tr;
     int *rr; /* rr means key is greater than current entry */
 
@@ -223,7 +211,6 @@ static int findkindex(struct btree      *btr,
     }
     if ((*rr = btr->cmp(k, KEYS(btr, x)[i])) < 0)  i--;
 
-    //RL7 "findkindex: i: %d r: %d", i, *rr);
     if (iter) {
         iter->bln->in = (i > 0) ? i : 0;
         iter->bln->ik = (i > 0) ? i : 0;
@@ -232,12 +219,9 @@ static int findkindex(struct btree      *btr,
     return i;
 }
 
-static void btreesplitchild(struct btree     *btr,
-                            struct btreenode *x,
-                            int               i,
-                            struct btreenode *y) {
+static void btreesplitchild(bt *btr, bt_n *x, int i, bt_n *y) {
     int j;
-    struct btreenode *z;
+    bt_n *z;
 
     btr->numnodes++;
     if ((z = allocbtreenode(btr)) == NULL) exit(1);
@@ -276,9 +260,7 @@ static void btreesplitchild(struct btree     *btr,
 }
 
 #define n(x) ((2*x)-1)
-static void btreeinsertnonfull(struct btree     *btr,
-                               struct btreenode *x,
-                               bt_data_t         k) {
+static void btreeinsertnonfull(bt *btr, bt_n *x, bt_data_t k) {
     int i = x->n - 1;
     if (x->leaf) {
         /* we are a leaf, just add it in */
@@ -301,8 +283,8 @@ static void btreeinsertnonfull(struct btree     *btr,
     }
 }
 
-void bt_insert(struct btree *btr, bt_data_t k) {
-    struct btreenode *r, *s;
+void bt_insert(bt *btr, bt_data_t k) {
+    bt_n *r, *s;
 
     btr->numkeys++;
     r = btr->root;
@@ -330,15 +312,12 @@ void *case_2c_ptr = NULL;
  * it as 0, if you want to delete the max node, pass it as 1, or if you
  * want to delete the min node, pass it as 2.
  */
-static bt_data_t nodedeletekey(struct btree     *btr,
-                               struct btreenode *x,
-                               bt_data_t         k,
-                               int               s) {
-    struct btreenode *xp, *y, *z;
-    bt_data_t         kp;
-    int               yn, zn;
-    int               i;
-    int               r = -1;
+static bt_data_t nodedeletekey(bt *btr, bt_n *x, bt_data_t k, int s) {
+    bt_n *xp, *y, *z;
+    bt_data_t kp;
+    int       yn, zn;
+    int       i;
+    int       r = -1;
 
     if (x == NULL) return 0;
 
@@ -518,8 +497,8 @@ static bt_data_t nodedeletekey(struct btree     *btr,
     return nodedeletekey(btr, xp, k, s);
 }
 
-bt_data_t bt_delete(struct btree *btr, bt_data_t k) {
-    struct btreenode *x;
+bt_data_t bt_delete(bt *btr, bt_data_t k) {
+    bt_n *x;
     bt_data_t r;
 
     case_2c_ptr = NULL;
@@ -539,27 +518,25 @@ bt_data_t bt_delete(struct btree *btr, bt_data_t k) {
     else             return r;
 }
 
-static bt_data_t findmaxnode(struct btree *btr, struct btreenode *x) {
+static bt_data_t findmaxnode(bt *btr, bt_n *x) {
     if (x->leaf) return KEYS(btr, x)[x->n - 1];
     else         return findmaxnode(btr, NODES(btr, x)[x->n]);
 }
 
-static bt_data_t findminnode(struct btree *btr, struct btreenode *x) {
+static bt_data_t findminnode(bt *btr, bt_n *x) {
     if (x->leaf) return KEYS(btr, x)[0];
     else         return findminnode(btr, NODES(btr, x)[0]);
 }
 
-bt_data_t bt_max(struct btree *btr) {
+bt_data_t bt_max(bt *btr) {
     return findmaxnode(btr, btr->root);
 }
 
-bt_data_t bt_min(struct btree *btr) {
+bt_data_t bt_min(bt *btr) {
     return findminnode(btr, btr->root);
 }
 
-static bt_data_t findnodekey(struct btree     *btr,
-                             struct btreenode *x,
-                             bt_data_t         k) {
+static bt_data_t findnodekey(bt *btr, bt_n *x, bt_data_t k) {
     int i, r;
     while (x != NULL) {
         i = findkindex(btr, x, k, &r, NULL);
@@ -570,17 +547,17 @@ static bt_data_t findnodekey(struct btree     *btr,
     return NULL;
 }
 
-bt_data_t bt_find(struct btree *btr, bt_data_t k) {
+bt_data_t bt_find(bt *btr, bt_data_t k) {
     return findnodekey(btr, btr->root, k);
 }
 
 /* copy of findnodekey */
-int bt_init_iterator(struct btree *btr, bt_data_t k, struct btIterator *iter) {
+int bt_init_iterator(bt *btr, bt_data_t k, btIterator *iter) {
     if (!btr->root) return -1;
     int i; int r;
 
-    struct btreenode *x          = btr->root;
-    unsigned char     only_right = 1;
+    bt_n  *x          = btr->root;
+    uchar  only_right = 1;
     while (x != NULL) {
         i = findkindex(btr, x, k, &r, iter);
 
@@ -617,7 +594,6 @@ static bt_data_t findnodekeyreplace(bt *btr, bt_n *x,
     return NULL;
 }
 
-bt_data_t bt_replace(struct btree *btr, bt_data_t k, bt_data_t val) {
+bt_data_t bt_replace(bt *btr, bt_data_t k, bt_data_t val) {
     return findnodekeyreplace(btr, btr->root, k, val);
 }
-
