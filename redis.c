@@ -1525,6 +1525,8 @@ static void createSharedObjects(void) {
         "-ERR Column does not exist\r\n"));
     shared.nonexistentindex = createObject(REDIS_STRING,sdsnew(
         "-ERR Index does not exist\r\n"));
+    shared.drop_virtual_index = createObject(REDIS_STRING,sdsnew(
+        "-ERR MISC: Primary Key Indices can not be dropped\r\n"));
     shared.badindexedcolumnsyntax = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: JOIN WHERE tablename.columname ...\r\n"));
     shared.index_nonrel_decl_fmt = createObject(REDIS_STRING,sdsnew(
@@ -1539,24 +1541,9 @@ static void createSharedObjects(void) {
         "-ERR SELECT: JOIN: ORDER BY columns MAX = 16\r\n"));
     shared.join_m_obc = createObject(REDIS_STRING,sdsnew(
         "-ERR SELECT: JOIN: Multiple columns in ORDER BY not yet supported\r\n"));
-    shared.toofewindicesinjoin = createObject(REDIS_STRING,sdsnew(
-        "-ERR SELECT: JOIN: Too few indexed columns in join(min=2)\r\n"));
-    shared.toomanyindicesinjoin = createObject(REDIS_STRING,sdsnew(
-        "-ERR SELECT: JOIN: MAX indices in JOIN reached(64)\r\n"));
-    shared.joinindexedcolumnlisterror = createObject(REDIS_STRING,sdsnew(
-        "-ERR SELECT: JOIN: error on indexed columns (join columns)\r\n"));
-    shared.joincolumnlisterror = createObject(REDIS_STRING,sdsnew(
-        "-ERR SELECT: JOIN: error in columnlist (select columns)\r\n"));
-    shared.join_on_multi_col = createObject(REDIS_STRING,sdsnew(
-        "-ERR SELECT: JOIN: Only SINGLE index joins are supported\r\n"));
-    shared.join_requires_range = createObject(REDIS_STRING,sdsnew(
-        "-ERR SELECT: JOIN: A range must be specified when joining, e.g. [tbl.col BETWEEN x AND y] or [tbl.col IN (1,2,3)] - Use SCANSELECT for FullTableJoins \r\n"));
-    shared.join_order_by_tbl = createObject(REDIS_STRING,sdsnew(
-        "-ERR SELECT: JOIN: ORDER BY tablename.columname - table does not exist\r\n"));
-    shared.join_order_by_col = createObject(REDIS_STRING,sdsnew(
-        "-ERR SELECT: JOIN: ORDER BY tablename.columname - column does not exist\r\n"));
-    shared.join_table_not_in_query = createObject(REDIS_STRING,sdsnew(
-        "-ERR SELECT: JOIN: ORDER BY tablename.columname - table not in SELECT *\r\n"));
+
+    shared.nrl_suicide = createObject(REDIS_STRING,sdsnew(
+        "-ERR PROHIBITED: calling DELETE from WITHIN A BTREE ITERATOR\r\n"));
 
     shared.accesstypeunknown = createObject(REDIS_STRING,sdsnew(
         "-ERR STORE: AccessType must be read commands (SELECT,GET,LRANGE,ZRANGE,ZRANGEBYSCORE,ZREVRANGE,HMGET,HKEYS,HVALS,HGETALL,SUNION,SDIFF,SINTER,SMEMBERS,SORT)\r\n"));
@@ -1674,11 +1661,26 @@ static void createSharedObjects(void) {
     shared.istorecommit_err = createObject(REDIS_STRING,sdsnew(
         "-ERR INTERNAL: SELECT STORE failed (generic)\r\n"));
 
+    shared.toofewindicesinjoin = createObject(REDIS_STRING,sdsnew(
+        "-ERR SELECT: JOIN: Too few indexed columns in join(min=2)\r\n"));
+    shared.toomanyindicesinjoin = createObject(REDIS_STRING,sdsnew(
+        "-ERR SELECT: JOIN: MAX indices in JOIN reached(64)\r\n"));
+    shared.joinindexedcolumnlisterror = createObject(REDIS_STRING,sdsnew(
+        "-ERR SELECT: JOIN: error on indexed columns (join columns)\r\n"));
+    shared.joincolumnlisterror = createObject(REDIS_STRING,sdsnew(
+        "-ERR SELECT: JOIN: error in columnlist (select columns)\r\n"));
+    shared.join_on_multi_col = createObject(REDIS_STRING,sdsnew(
+        "-ERR SELECT: JOIN: Only SINGLE index joins are supported\r\n"));
+    shared.join_requires_range = createObject(REDIS_STRING,sdsnew(
+        "-ERR SELECT: JOIN: A range must be specified when joining, e.g. [tbl.col BETWEEN x AND y] or [tbl.col IN (1,2,3)] - Use SCANSELECT for FullTableJoins \r\n"));
+    shared.join_order_by_tbl = createObject(REDIS_STRING,sdsnew(
+        "-ERR SELECT: JOIN: ORDER BY tablename.columname - table does not exist\r\n"));
+    shared.join_order_by_col = createObject(REDIS_STRING,sdsnew(
+        "-ERR SELECT: JOIN: ORDER BY tablename.columname - column does not exist\r\n"));
+    shared.join_table_not_in_query = createObject(REDIS_STRING,sdsnew(
+        "-ERR SELECT: JOIN: ORDER BY tablename.columname - table not in SELECT *\r\n"));
     shared.joinsyntax_no_tablename = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: SELECT tbl.col,,,, FROM tbl1,tbl2 WHERE tbl1.indexed_column = tbl2.indexed_column AND tbl1.indexed_column BETWEEN x AND y - MISSING table-name in WhereClause\r\n"));
-
-    shared.drop_virtual_index = createObject(REDIS_STRING,sdsnew(
-        "-ERR MISC: Primary Key Indices can not be dropped\r\n"));
 
     shared.createtable_as_on_wrong_type = createObject(REDIS_STRING,sdsnew(
         "-ERR TYPE: CREATE TABLE tablename AS X - X must be [LIST,SET,HASH,ZSET]\r\n"));

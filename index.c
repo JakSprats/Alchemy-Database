@@ -106,27 +106,27 @@ int match_index_name(char *iname) {
 /* INDEX_MAINTENANCE INDEX_MAINTENANCE INDEX_MAINTENANCE INDEX_MAINTENANCE */
 /* INDEX_MAINTENANCE INDEX_MAINTENANCE INDEX_MAINTENANCE INDEX_MAINTENANCE */
 static void iAdd(bt *ibtr, aobj *acol, aobj *apk, uchar pktype) {
-    bt *nbtr = btIndFindVal(ibtr, acol, ibtr->ktype);
+    bt *nbtr = btIndFindVal(ibtr, acol);
     if (!nbtr) {
         nbtr               = createIndexNode(pktype);
-        btIndAdd(ibtr, acol, nbtr, ibtr->ktype);
+        btIndAdd(ibtr, acol, nbtr);
         ibtr->malloc_size += nbtr->malloc_size; /* ibtr inherits nbtr */
     }
     ull pre_size  = nbtr->malloc_size;
-    btIndNodeAdd(nbtr, apk, pktype);
+    btIndNodeAdd(nbtr, apk);
     ull post_size = nbtr->malloc_size;
     ibtr->malloc_size += (post_size - pre_size); /* ibtr inherits nbtr */
 }
 
-static void iRem(bt *ibtr, aobj *acol, aobj *apk, int pktype) {
-    bt   *nbtr         = btIndFindVal(ibtr, acol, ibtr->ktype);
+static void iRem(bt *ibtr, aobj *acol, aobj *apk) {
+    bt   *nbtr         = btIndFindVal(ibtr, acol);
     ull   pre_size     = nbtr->malloc_size;
-    int   n_size       = btIndNodeDelete(nbtr, apk, pktype);
+    int   n_size       = btIndNodeDelete(nbtr, apk);
     ull   post_size    = nbtr->malloc_size;
     ibtr->malloc_size += (post_size - pre_size); /* inherits nbtr */
     if (!n_size) {
-        btIndDelete(ibtr, acol, ibtr->ktype); /* remove Ind ref to NodeBT */
-        btDestroy(nbtr, ibtr);                /* must come after btIndDelete()*/
+        btIndDelete(ibtr, acol); /* remove Ind ref to NodeBT */
+        btDestroy(nbtr, ibtr);   /* must come after btIndDelete()*/
     }
 }
 
@@ -156,14 +156,12 @@ void delFromIndex(redisDb *db, aobj *apk, void *rrow, int inum, int tmatch) {
     if (Index[server.dbid][inum].virt) return;
     bool  nrl     = Index[server.dbid][inum].nrl;
     if (nrl) { /* TODO add in nrldel */ return; }
-    robj *ind     = Index[server.dbid][inum].obj;
     int   cmatch  = Index[server.dbid][inum].column;
-    int   itm     = Index[server.dbid][inum].table;
-    int   pktype  = Tbl[server.dbid][itm].col_type[0];
+    robj *ind     = Index[server.dbid][inum].obj;
     robj *ibtt    = lookupKey(db, ind);
     bt   *ibtr    = (bt *)(ibtt->ptr);
     aobj  acol    = getRawCol(rrow, cmatch, apk, tmatch, NULL, 0);
-    iRem(ibtr, &acol, apk, pktype);
+    iRem(ibtr, &acol, apk);
     releaseAobj(&acol);
 }
 
@@ -185,7 +183,7 @@ static void _updateIndex(redisDb *db,
     robj *ibtt    = lookupKey(db, ind);
     bt   *ibtr    = (bt *)(ibtt->ptr);
     aobj  acol    = getRawCol(rrow, cmatch, aopk, tmatch, NULL, 0);
-    iRem(ibtr, &acol, aopk, pktype);
+    iRem(ibtr, &acol, aopk);
     if (pkup) iAdd(ibtr, &acol, anpk, pktype);
     else      iAdd(ibtr, ncol,  anpk, pktype);
     releaseAobj(&acol);
@@ -249,17 +247,18 @@ bool newIndexReply(redisClient *c,
     return 1;
 }
 
-static void makeIndexFromStream(uchar *stream,
+static void makeIndexFromStream(bt    *btr,
+                                uchar *stream,
                                 bt    *ibtr,
                                 int    icol,
                                 int    itbl) {
     /* get the pk and the fk and then call iAdd() */
-    aobj key;
-    convertStream2Key(stream, &key);
-    void *rrow   = parseStream(stream, BTREE_TABLE);
-    aobj  acol   = getRawCol(rrow, icol, &key, itbl, NULL, 0);
+    aobj akey;
+    convertStream2Key(stream, &akey, btr);
+    void *rrow   = parseStream(stream, btr);
+    aobj  acol   = getRawCol(rrow, icol, &akey, itbl, NULL, 0);
     uchar pktype = Tbl[server.dbid][itbl].col_type[0];
-    iAdd(ibtr, &acol, &key, pktype);
+    iAdd(ibtr, &acol, &akey, pktype);
     releaseAobj(&acol);
 }
 
@@ -267,8 +266,8 @@ static void makeIndexFromStream(uchar *stream,
 int buildIndex(bt *btr, bt_n *x, bt *ibtr, int icol, int itbl, bool nrl) {
     for (int i = 0; i < x->n; i++) {
         uchar *stream = KEYS(btr, x)[i];
-        if (nrl) runNrlIndexFromStream(stream, (d_l_t *)ibtr, itbl);
-        else     makeIndexFromStream(stream, ibtr, icol, itbl);
+        if (nrl) runNrlIndexFromStream(btr, stream, (d_l_t *)ibtr, itbl);
+        else     makeIndexFromStream(  btr, stream, ibtr, icol,    itbl);
     }
 
     if (!x->leaf) {
@@ -329,6 +328,17 @@ static void indexCommit(redisClient *c,
         }
     }
 
+    robj *btt = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
+    bt   *btr = (bt *)btt->ptr;
+    if (nrlind && btr->numkeys > 0) {
+        listNode *ln  = nrlind->l1->head;
+        sds       cmd = ln->value;
+        if (!strncasecmp(cmd, "DELETE", 6)) {
+            addReply(c, shared.nrl_suicide);
+            return;
+        }
+    }
+
     if (!newIndexReply(c, iname, tmatch, cmatch, 0, nrlind)) {
         if (nrlind) destroy_d_l_t(nrlind);
         return;
@@ -336,8 +346,6 @@ static void indexCommit(redisClient *c,
     addReply(c, shared.ok);
 
     /* IF table has rows - loop thru and populate index */
-    robj *btt = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
-    bt   *btr = (bt *)btt->ptr;
     if (btr->numkeys > 0) {
         robj *ind  = Index[server.dbid][Num_indx[server.dbid] - 1].obj;
         robj *ibt  = lookupKey(c->db, ind);

@@ -41,33 +41,39 @@ ALL RIGHTS RESERVED
 #include "aobj.h"
 #include "common.h"
 
-/* GLOBALS */
-#define RL4 redisLog(4,
-extern char *COLON;
-
 /* Abstract-BTREE Prototypes */
-static bt *abt_create(uchar ktype, int num, uchar btype);
-static void abt_destroy(bt *nbtr, bt *btr);
+static bt   *abt_create(uchar ktype, int num, uchar btype);
+static void  abt_destroy(bt *nbtr, bt *btr);
+
+static int intCmp(void *s1, void *s2) {
+    return (long)s1 - (long)s2;
+}
 
 bt *btCreate(uchar ktype, int num, uchar btype) {
     return abt_create(ktype, num, btype);
 }
-
-robj *createBtreeObject(uchar ktype, int num, uchar btype) { /*Data & Index*/
+robj *createBtreeObject(uchar ktype, int num, uchar btype) { /* Data & Index */
     bt *btr = btCreate(ktype, num, btype);
     return createObject(REDIS_BTREE, btr);
 }
 robj *createEmptyBtreeObject() {                           /* Virtual indices */
     return createObject(REDIS_BTREE, NULL);
 }
-bt *createIndexNode(uchar pktype) {                       /* Nodes of Indices */
-    return btCreate(pktype, -1, BTREE_INDEX_NODE);
+static bt *createInodeIntBt() {
+    bt *btr    = bt_create(intCmp, TRANSITION_ONE_BTREE_BYTES);
+    btr->ktype = COL_TYPE_INT;
+    btr->btype = BTREE_INDEX_NODE;
+    btr->num   = -1;
+    return btr;
+}
+bt *createIndexNode(uchar pktype) {                          /* INODE_BT */
+    if (pktype == COL_TYPE_INT) return createInodeIntBt();
+    else                        return btCreate(pktype, -1, BTREE_INDEX_NODE);
 }
 
 void btDestroy(bt *nbtr, bt *btr) {
     abt_destroy(nbtr, btr);
 }
-
 void freeBtreeObject(robj *o) {
     bt *btr = (bt *)(o->ptr);
     if (!btr) return; /* virtual indices have a NULL here */
@@ -78,7 +84,7 @@ void freeBtreeObject(robj *o) {
 static void destroy_bt_node(bt *btr, bt_n *n) {
     for (int i = 0; i < n->n; i++) {
         void *be    = KEYS(btr, n)[i];
-        int   ssize = getStreamMallocSize(be, btr->btype);
+        int   ssize = getStreamMallocSize(be, btr);
         if (btr->btype == BTREE_INDEX) { /* Index is BT of IndexNodeBTs */
             uchar *stream = be;
             skipToVal(&stream);
@@ -86,7 +92,7 @@ static void destroy_bt_node(bt *btr, bt_n *n) {
             destroy_bt_node(*nbtr, (*nbtr)->root);
             bt_free_btree(*nbtr, btr);      /* memory management in btr(Index)*/
         }
-        bt_free(be, btr, ssize);
+        if (!INODE(btr)) bt_free(be, btr, ssize);
     }
     if (!n->leaf) {
         for (int i = 0; i <= n->n; i++) {
@@ -96,7 +102,7 @@ static void destroy_bt_node(bt *btr, bt_n *n) {
     bt_free_btreenode(n, btr); /* memory management in btr */
 }
 
-/* bt_release means dont destroy data, just btree */
+/* bt_release -> dont destroy data, just btree */
 static void bt_release(bt *btr, bt_n *n) {
     if (!n->leaf) {
         for (int i = 0; i <= n->n; i++) {
@@ -119,7 +125,6 @@ static void bt_to_bt_insert(bt *nbtr, bt *obtr, bt_n *n) {
 }
           
 /* ABSTRACT-BTREE ABSTRACT-BTREE ABSTRACT-BTREE ABSTRACT-BTREE ABSTRACT-BTREE */
-/* ABSTRACT-BTREE ABSTRACT-BTREE ABSTRACT-BTREE ABSTRACT-BTREE ABSTRACT-BTREE */
 static bt *abt_create(uchar ktype, int num, uchar btype) {
     bt *btr    = bt_create(btStreamCmp, TRANSITION_ONE_BTREE_BYTES);
     btr->ktype = ktype;
@@ -137,11 +142,11 @@ static void abt_destroy(bt *nbtr, bt *btr) {
 }
 
 #define DECLARE_BT_KEY \
-    bool  med; uchar sflag; uint32 ksize;                                     \
-    char *btkey = createBTKey(akey, ktype, &med, &sflag, &ksize); /*FREE 026*/\
+    bool  med; uchar sflag; uint32 ksize;                                    \
+    char *btkey = createBTKey(akey, &med, &sflag, &ksize, btr); /*FREE 026*/ \
     if (!btkey) return 0;
     
-static bool abt_replace(bt *btr, const aobj *akey, void *val, int ktype) {
+static bool abt_replace(bt *btr, aobj *akey, void *val) {
     uint32 ssize;
     DECLARE_BT_KEY
     char  *nstream = createStream(btr, val, btkey, ksize, &ssize);
@@ -150,21 +155,21 @@ static bool abt_replace(bt *btr, const aobj *akey, void *val, int ktype) {
     return destroyStream(btr, ostream);
 }
 
-static void *abt_find_val(bt *btr, const aobj *akey, int ktype) {
+static void *abt_find_val(bt *btr, aobj *akey) {
     DECLARE_BT_KEY
     uchar *stream = bt_find(btr, btkey);
     destroyBTKey(btkey, med);                            /* FREED 026 */
-    return parseStream(stream, btr->btype);
+    return parseStream(stream, btr);
 }
 
-static bool abt_del(bt *btr, const aobj *akey, int ktype) {
+static bool abt_del(bt *btr, aobj *akey) {
     DECLARE_BT_KEY
     uchar *stream = bt_delete(btr, btkey);               /* FREED 028 */
     destroyBTKey(btkey, med);                            /* FREED 026 */
     return destroyStream(btr, stream);                   /* DESTROYED 027 */
 }
 
-static uint32 abt_insert(bt *btr, aobj *akey, void *val, int ktype) {
+static uint32 abt_insert(bt *btr, aobj *akey, void *val) {
     if (btr->numkeys == TRANSITION_ONE_MAX) {
         btr = abt_resize(btr, TRANSITION_TWO_BTREE_BYTES);
     }
@@ -177,7 +182,7 @@ static uint32 abt_insert(bt *btr, aobj *akey, void *val, int ktype) {
 }
 
 bt *abt_resize(bt *obtr, int new_size) {
-     bt *nbtr         = bt_create(btStreamCmp, new_size);
+     bt *nbtr         = bt_create(obtr->cmp, new_size);
      nbtr->ktype      = obtr->ktype;
      nbtr->btype      = obtr->btype;
      nbtr->num        = obtr->num;
@@ -187,51 +192,28 @@ bt *abt_resize(bt *obtr, int new_size) {
         bt_release(obtr, obtr->root);            /* 2.) release old */
         memcpy(obtr, nbtr, sizeof(bt));          /* 3.) overwrite old w/ new */
         free(nbtr);                              /* 4.) free new */
-    }
-    //bt_dump_info(obtr, obtr->ktype);
+    } //bt_dump_info(obtr, obtr->ktype);
     return obtr;
 }
 
-/* API API API  API API API  API API API  API API API  API API API  */
-/* API API API  API API API  API API API  API API API  API API API  */
-int btAdd(bt *btr, aobj *apk, void *val, int ktype) {
-    return abt_insert(btr, apk, val, ktype);
-}
-
-int btReplace(bt *btr, aobj *apk, void *val, int ktype) {
-    abt_replace(btr, apk, val, ktype);
-    return DICT_OK;
-}
-void *btFindVal(bt *btr, const aobj *apk, int ktype) {
-    void *v = abt_find_val(btr, apk, ktype);
-    return v;
-}
-int btDelete(bt *btr, const aobj *apk, int ktype) {
-    return abt_del(btr, apk, ktype);
-}
+/* DATA DATA DATA DATA DATA DATA DATA DATA DATA DATA DATA DATA DATA DATA */
+int   btAdd(bt *btr, aobj *apk, void *val) { return abt_insert(btr, apk, val); }
+void  btReplace(bt *btr, aobj *apk, void *val) { abt_replace(btr, apk, val); }
+void *btFindVal(bt *btr, aobj *apk) { return abt_find_val(btr, apk); }
+int   btDelete( bt *btr, aobj *apk) { return abt_del(btr, apk); }
 
 /* INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX */
-/* INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX */
-int btIndAdd(bt *ibtr, aobj *akey, bt *nbtr, int ktype) {
-    abt_insert(ibtr, akey, nbtr, ktype);
-    return DICT_OK;
-}
-bt *btIndFindVal(bt *ibtr, const aobj *akey, int ktype) {
-    return abt_find_val(ibtr, akey, ktype);
-}
-int btIndDelete(bt *ibtr, const aobj *akey, int ktype) {
-    abt_del(ibtr, akey, ktype);
+void btIndAdd(bt *ibtr, aobj *akey, bt *nbtr) { abt_insert(ibtr, akey, nbtr); }
+bt *btIndFindVal(bt *ibtr, aobj *akey) { return abt_find_val(ibtr, akey); }
+int btIndDelete(bt *ibtr, aobj *akey) {
+    abt_del(ibtr, akey);
     return ibtr->numkeys;
 }
 
 /* INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE */
-/* INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE */
-int btIndNodeAdd(bt *nbtr, aobj *apk, int ktype) {
-    abt_insert(nbtr, apk, NULL, ktype);
-    return DICT_OK;
-}
-int btIndNodeDelete(bt *nbtr, const aobj *apk, int ktype) {
-    abt_del(nbtr, apk, ktype);
+void btIndNodeAdd(   bt *nbtr, aobj *apk) { abt_insert(nbtr, apk, NULL); }
+int  btIndNodeDelete(bt *nbtr, aobj *apk) {
+    abt_del(nbtr, apk);
     return nbtr->numkeys;
 }
 

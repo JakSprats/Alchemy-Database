@@ -45,19 +45,23 @@ void freeBtreeObject(robj *o);
 #define BTREE_INDEX_NODE      2
 #define BTREE_JOIN_RESULT_SET 3
 
-void btDestroy(bt *nbtr, bt *btr);
-int   btAdd(    bt *btr,       aobj *apk, void *val, int ctype);
-int   btReplace(bt *btr,       aobj *apk, void *val, int ctype);
-int   btDelete( bt *btr, const aobj *apk,            int ctype);
-void *btFindVal(bt *btr, const aobj *apk,            int ctype);
+/* INT Indexes have been optimised */
+#define INODE(btr) \
+  (btr->btype == BTREE_INDEX_NODE && btr->ktype == COL_TYPE_INT)
 
-int   btIndAdd(    bt *btr,       aobj *akey, bt  *nbtr, int k_type);
-bt   *btIndFindVal(bt *btr, const aobj *akey,            int k_type);
-int   btIndDelete( bt *btr, const aobj *akey,            int k_type);
+void btDestroy(bt *nbtr, bt *btr);
+int   btAdd(    bt *btr, aobj *apk, void *val);
+void  btReplace(bt *btr, aobj *apk, void *val);
+int   btDelete( bt *btr, aobj *apk);
+void *btFindVal(bt *btr, aobj *apk);
+
+void  btIndAdd(    bt *btr, aobj *akey, bt  *nbtr);
+bt   *btIndFindVal(bt *btr, aobj *akey);
+int   btIndDelete( bt *btr, aobj *akey);
 
 bt   *createIndexNode(uchar pktype);
-int   btIndNodeAdd(   bt *btr,       aobj *apk,         int k_type);
-int   btIndNodeDelete(bt *btr, const aobj *apk,         int k_type);
+void  btIndNodeAdd(   bt *btr, aobj *apk);
+int   btIndNodeDelete(bt *btr, aobj *apk);
 
 /* JOINS */
 typedef struct joinRowEntry {

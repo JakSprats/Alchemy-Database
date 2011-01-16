@@ -42,6 +42,6 @@ void nrlIndexAdd(robj *o, aobj *apk, char *vals, uint32 cofsts[]);
 bool parseNRLcmd(char *o_s, list *nrltoks, list *nrlcols, int tmatch);
 sds rebuildOrigNRLcmd(robj *o);
 
-void runNrlIndexFromStream(uchar *stream, d_l_t *nrlind, int itbl);
+void runNrlIndexFromStream(bt *btr, uchar *stream, d_l_t *nrlind, int itbl);
 
 #endif /* __NRI__H */ 

@@ -498,14 +498,13 @@ void createTableAsObject(redisClient *c) {
         btEntry *be;
         /* table created above */
         int      tmatch  = Num_tbls[server.dbid] - 1;
-        int      pktype  = Tbl[server.dbid][tmatch].col_type[0];
         robj    *tname   = Tbl[server.dbid][tmatch].name;
         robj    *new_btt = lookupKeyWrite(c->db, tname);
         bt      *new_btr = (bt *)new_btt->ptr;
         bt      *btr     = (bt *)o->ptr;
         bi               = btGetFullRangeIterator(btr);
         while ((be = btRangeNext(bi)) != NULL) {      // iterate btree
-            btAdd(new_btr, be->key, be->val, pktype); /* row-to-row copy */
+            btAdd(new_btr, be->key, be->val); /* row-to-row copy */
         }
     }
     addReplyLongLong(c, (card -1));

@@ -178,7 +178,7 @@ static void innerBT_Op(ibtd_t *d) {
                 continue;
             if (w->lim == *d->card) break; /* ORDRBY FK LIM */
         }
-        void *rrow = btFindVal(d->btr, nbe->key, d->pktype);
+        void *rrow = btFindVal(d->btr, nbe->key);
         (*d->p)(d->g, nbe->key, rrow, q->fk, d->card);
     }
     btReleaseRangeIterator(nbi);
@@ -242,7 +242,7 @@ static long singleOpFK(range_t *g, row_op *p) {
     int       indcol  = (int)Index[server.dbid][w->imatch].column;
     bool      fktype  = Tbl[server.dbid][w->tmatch].col_type[indcol];
     aobj     *afk     = copyRobjToAobj(w->key, fktype);
-    bt       *nbtr    = btIndFindVal(ibtr, afk, fktype);
+    bt       *nbtr    = btIndFindVal(ibtr, afk);
     long      ofst    = w->ofst;
     long      loops   = -1;
     long      card    =  0;
@@ -270,7 +270,6 @@ static long inOpPK(range_t *g, row_op *p) {
     listNode  *ln;
     cswc_t    *w      = g->co.w;
     qr_t      *q      = g->q;
-    bool       pktype = Tbl[server.dbid][w->tmatch].col_type[0];
     robj     *tname   = Tbl[server.dbid][w->tmatch].name;
     robj      *btt    = lookupKeyRead(g->co.c->db, tname); //TODO pass into func
     bt        *btr    = (bt *)btt->ptr;
@@ -279,7 +278,7 @@ static long inOpPK(range_t *g, row_op *p) {
     while((ln = listNext(li)) != NULL) {
         if (q->pk_lim && w->lim == card) break; /* ORDRBY PK LIM */
         aobj *apk  = ln->value;
-        void *rrow = btFindVal(btr, apk, pktype);
+        void *rrow = btFindVal(btr, apk);
         if (rrow) {
             (*p)(g, apk, rrow, q->pk, &card);
         }
@@ -294,20 +293,17 @@ static long inOpFK(range_t *g, row_op *p) {
     btEntry  *nbe;
     cswc_t   *w       = g->co.w;
     qr_t     *q       = g->q;
-    bool      pktype  = Tbl[server.dbid][w->tmatch].col_type[0];
     robj     *tname   = Tbl[server.dbid][w->tmatch].name;
     robj     *btt     = lookupKeyRead(g->co.c->db, tname); //TODO pass into func
     bt       *btr     = (bt *)btt->ptr;
     robj     *ind     = Index[server.dbid][w->imatch].obj;
     robj     *ibtt    = lookupKey(g->co.c->db, ind);       //TODO pass into func
     bt       *ibtr    = (bt *)ibtt->ptr;
-    int       indcol  = (int)Index[server.dbid][w->imatch].column;
-    bool      fktype  = Tbl[server.dbid][w->tmatch].col_type[indcol];
     long      card    =  0;
     listIter *li      = listGetIterator(w->inl, AL_START_HEAD);
     while((ln = listNext(li)) != NULL) {
         aobj *afk  = ln->value;
-        bt   *nbtr = btIndFindVal(ibtr, afk, fktype);
+        bt   *nbtr = btIndFindVal(ibtr, afk);
         if (nbtr) {
             if (g->se.cstar && !g->co.w->flist) { /* FK cstar w/o filters */
                 card += nbtr->numkeys;
@@ -315,7 +311,7 @@ static long inOpFK(range_t *g, row_op *p) {
                 btSIter *nbi = btGetFullRangeIterator(nbtr);
                 while ((nbe = btRangeNext(nbi)) != NULL) {
                     if (q->fk_lim && w->lim == card) break;
-                    void *rrow  = btFindVal(btr, nbe->key, pktype);
+                    void *rrow  = btFindVal(btr, nbe->key);
                     (*p)(g, nbe->key, rrow, q->fk, &card);
                 }
                 btReleaseRangeIterator(nbi);
@@ -510,7 +506,6 @@ void opUpdateOnSort(redisClient *c,
                     bt          *btr,
                     int          ncols,
                     range_t     *g) {
-    bool     pktype = Tbl[server.dbid][w->tmatch].col_type[0];
     obsl_t **v      = sortOB2Vector(ll);
     for (int i = 0; i < (int)listLength(ll); i++) {
         if (w->lim != -1 && *sent == w->lim) break;
@@ -520,7 +515,7 @@ void opUpdateOnSort(redisClient *c,
             *sent        = *sent + 1;
             obsl_t *ob   = v[i];
             aobj   *apk  = ob->row;
-            void   *rrow = btFindVal(btr, apk, pktype);
+            void   *rrow = btFindVal(btr, apk);
             updateRow(c, btr, apk, rrow, w->tmatch, ncols,
                       g->up.matches, g->up.indices,
                       g->up.vals, g->up.vlens, g->up.cmiss, g->up.ue);

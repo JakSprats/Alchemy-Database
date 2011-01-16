@@ -397,7 +397,6 @@ void joinGeneric(redisClient *c,
         robj *btt    = lookupKeyRead(c->db, Tbl[server.dbid][jc.itable].name);
         jc.btr       = (bt *)btt->ptr;
         jc.virt      = Index[server.dbid][jb->j_indxs[i]].virt;
-        uchar pktype = jc.btr->ktype;
      
         if (w->low) { /* RANGE QUERY */
             if (jc.virt) { /* PK */
@@ -418,7 +417,7 @@ void joinGeneric(redisClient *c,
                     bt      *nbtr = be->val;
                     btSIter *nbi  = btGetFullRangeIterator(nbtr);
                     while ((nbe = btRangeNext(nbi)) != NULL) {
-                        jc.rrow = btFindVal(jc.btr, nbe->key, pktype);
+                        jc.rrow = btFindVal(jc.btr, nbe->key);
                         joinAddColsFromInd(&jc, rset, w);
                     }
                     btReleaseRangeIterator(nbi);
@@ -431,23 +430,21 @@ void joinGeneric(redisClient *c,
             if (jc.virt) {
                 while((ln = listNext(li)) != NULL) {
                     jc.ajk  = ln->value;
-                    jc.rrow = btFindVal(jc.btr, jc.ajk, pktype);
+                    jc.rrow = btFindVal(jc.btr, jc.ajk);
                     if (jc.rrow) joinAddColsFromInd(&jc, rset, w);
                 }
             } else {
                 btSIter *nbi;
                 robj *ind    = Index[server.dbid][jb->j_indxs[i]].obj;
-                int   indcol = (int)Index[server.dbid][jb->j_indxs[i]].column;
-                bool  fktype = Tbl[server.dbid][jc.itable].col_type[indcol];
                 robj *ibtt   = lookupKey(c->db, ind);   
                 bt   *ibtr   = (bt *)ibtt->ptr;
                 while((ln = listNext(li)) != NULL) {
                     jc.ajk   = ln->value;
-                    bt *nbtr = btIndFindVal(ibtr, jc.ajk, fktype);
+                    bt *nbtr = btIndFindVal(ibtr, jc.ajk);
                     if (nbtr) {
                         nbi  = btGetFullRangeIterator(nbtr);
                         while ((nbe = btRangeNext(nbi)) != NULL) {
-                            jc.rrow = btFindVal(jc.btr, nbe->key, pktype);
+                            jc.rrow = btFindVal(jc.btr, nbe->key);
                             joinAddColsFromInd(&jc, rset, w);
                         }
                         btReleaseRangeIterator(nbi);

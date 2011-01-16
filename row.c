@@ -536,17 +536,16 @@ bool deleteRow(redisClient *c,
                aobj        *apk,
                int          matches,
                int          indices[]) {
-    uchar  pktype = Tbl[server.dbid][tmatch].col_type[0];
     robj  *btt    = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
     bt    *btr    = (bt *)btt->ptr;
-    void  *rrow   = btFindVal(btr, apk, pktype);
+    void  *rrow   = btFindVal(btr, apk);
     if (!rrow) return 0;
     if (matches) { // indices
         for (int i = 0; i < matches; i++) {         // delete indices
             delFromIndex(c->db, apk, rrow, indices[i], tmatch);
         }
     }
-    btDelete(btr, apk, pktype);
+    btDelete(btr, apk);
     server.dirty++;
     return 1;
 }
@@ -740,7 +739,6 @@ bool updateRow(redisClient *c,
     aobj   avals    [MAX_COLUMN_PER_TABLE];
     flag   sflags   [MAX_COLUMN_PER_TABLE];
     uint32 icols    [MAX_COLUMN_PER_TABLE];
-    uchar  pktype = Tbl[server.dbid][tmatch].col_type[0];
     uint32 rlen   = 0;
     int    ret    = 0;
     for (int i = 1; i < ncols; i++) {  /* necessary in case of update_row_err */
@@ -781,8 +779,8 @@ bool updateRow(redisClient *c,
             updatePKIndex(c->db, aopk, &avals[0], rrow, indices[i], tmatch);
         }
         // delete then add
-        btDelete(btr, aopk, pktype);
-        btAdd(btr, &avals[0], nrow, pktype);
+        btDelete(btr, aopk);
+        btAdd(btr, &avals[0], nrow);
     } else {
         if (matches) {
             for (int i = 0; i < matches; i++) { //redo ALL affected indices
@@ -795,7 +793,7 @@ bool updateRow(redisClient *c,
             }
         }
         // overwrite w/ new row
-        btReplace(btr, aopk, nrow, pktype);
+        btReplace(btr, aopk, nrow);
     }
     free(nrow);                                          /* FREED 023 */
     server.dirty++;

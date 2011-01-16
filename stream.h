@@ -34,19 +34,15 @@ ALL RIGHTS RESERVED
 
 uint32 skipToVal(uchar **stream);
 
-uint32 getStreamMallocSize(uchar *stream, uchar btype);
+uint32 getStreamMallocSize(uchar *stream, bt *btr);
 
 int btStreamCmp(void *a, void *b);
 
-char *createBTKey(const aobj *key,
-                   int        ktype,
-                   bool      *med,
-                   uchar     *sflag,
-                   uint32    *ksize);
-void  destroyBTKey(char *simkey, bool  med);
+char *createBTKey(aobj *key, bool *med, uchar *sflag, uint32 *ksize, bt *btr);
+void  destroyBTKey(char *btkey, bool  med);
 
-void convertStream2Key(uchar *stream, aobj *key);
-uchar *parseStream(uchar *stream, uchar btype);
+void convertStream2Key(uchar *stream, aobj *key, bt *btr);
+uchar *parseStream(uchar *stream, bt *btr);
 
 void *createStream(bt *btr,
                    void *val,

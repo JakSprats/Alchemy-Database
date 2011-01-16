@@ -246,7 +246,7 @@ void insertCommitReply(redisClient *c,
 
     robj *btt = lookupKeyWrite(c->db, Tbl[server.dbid][tmatch].name);
     bt   *btr = (bt *)btt->ptr;
-    void *row = btFindVal(btr, &apk, pktype);
+    void *row = btFindVal(btr, &apk);
     if (row) {
         addReply(c, shared.insertcannotoverwrite);
         goto insert_commit_end;
@@ -266,7 +266,7 @@ void insertCommitReply(redisClient *c,
             addToIndex(c->db, &apk, vals, cofsts, indices[i]);
         }
     }
-    int len = btAdd(btr, &apk, nrow, pktype);
+    int len = btAdd(btr, &apk, nrow);
     if (ret_size) { /* print SIZE stats */
         addSizeToInsertResponse(c, tmatch, btr, len);
     } else {
@@ -331,13 +331,12 @@ static void selectOnePKReply(redisClient  *c,
                              int           tmatch,
                              int           cmatchs[],
                              int           qcols,
-                             bool          cstar,
-                             uchar         pktype) {
+                             bool          cstar) {
     if (cstar) {
         addReply(c, shared.cone);
         return;
     }
-    void *rrow = btFindVal(btr, apk, pktype);
+    void *rrow = btFindVal(btr, apk);
     if (!rrow) {
         addReply(c, shared.nullbulk);
         return;
@@ -579,7 +578,7 @@ void sqlSelectCommand(redisClient *c) {
         robj *btt    = lookupKeyRead(c->db, Tbl[server.dbid][w.tmatch].name);
         bt   *btr    = (bt *)btt->ptr;
         aobj *apk    = copyRobjToAobj(w.key, pktype); //TODO LAME
-        selectOnePKReply(c, btr, apk, w.tmatch, cmatchs, qcols, cstar, pktype);
+        selectOnePKReply(c, btr, apk, w.tmatch, cmatchs, qcols, cstar);
         destroyAobj(apk);                             //TODO LAME
         if (w.ovar) incrOffsetVar(c, &w, 1);
     }
@@ -636,7 +635,7 @@ static bool checkOverWritePKUpdate(redisClient *c,
                                    uchar        pktype,
                                    bt          *btr) {
     aobj *ax   = createAobjFromString(mvals[pkupc], mvlens[pkupc], pktype);
-    void *xrow = btFindVal(btr, ax, pktype);
+    void *xrow = btFindVal(btr, ax);
     destroyAobj(ax);
     if (xrow) {
         addReply(c, shared.update_pk_overwrite);
@@ -746,7 +745,7 @@ void updateCommand(redisClient *c) {
                 goto update_cmd_end;
         }
         akey      = copyRobjToAobj(w.key, pktype); //TODO LAME
-        void *row = btFindVal(btr, akey, pktype);
+        void *row = btFindVal(btr, akey);
         if (!row) { /* no row to update */
             addReply(c, shared.czero);
             goto update_cmd_end;

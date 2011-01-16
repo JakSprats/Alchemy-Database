@@ -53,32 +53,32 @@ int   OB_nob   = 0;
 bool  OB_asc  [MAX_ORDER_BY_COLS];
 uchar OB_ctype[MAX_ORDER_BY_COLS];
 
-int intOrderBySort(const void *s1, const void *s2) {
+static int intOrderBySort(const void *s1, const void *s2) {
     return (long)s1 - (long)s2;
 }
-int intOrderByRevSort(const void *s1, const void *s2) {
+static int intOrderByRevSort(const void *s1, const void *s2) {
     return (long)s2 - (long)s1;
 }
-int floatOrderBySort(const void *s1, const void *s2) {
+static int floatOrderBySort(const void *s1, const void *s2) {
     float f1, f2;
     memcpy(&f1, &s1, sizeof(float));
     memcpy(&f2, &s2, sizeof(float));
     float   f  = f1 - f2;
     return (f == 0.0) ? 0 : ((f > 0.0) ? 1: -1);
 }
-int floatOrderByRevSort(const void *s1, const void *s2) {
+static int floatOrderByRevSort(const void *s1, const void *s2) {
     float f1, f2;
     memcpy(&f1, &s1, sizeof(float));
     memcpy(&f2, &s2, sizeof(float));
     float   f  = f2 - f1;
     return (f == 0.0) ? 0 : ((f > 0.0) ? -1: 1);
 }
-int stringOrderBySort(const void *s1, const void *s2) {
+static int stringOrderBySort(const void *s1, const void *s2) {
     char *c1 = (char *)s1;
     char *c2 = (char *)s2;
     return (c1 && c2) ? strcmp(c1, c2) : c1 - c2; /* strcmp() not ok w/ NULLs */
 }
-int stringOrderByRevSort(const void *s1, const void *s2) {
+static int stringOrderByRevSort(const void *s1, const void *s2) {
     char *c1 = (char *)s1;
     char *c2 = (char *)s2;
     return (c1 && c2) ? strcmp(c2, c1) : c2 - c1; /* strcmp() not ok w/ NULLs */
@@ -159,8 +159,8 @@ void addRow2OBList(list   *ll,
                    void   *rrow,
                    aobj   *apk) {
     void   *row;
-    if (     ofree == OBY_FREE_ROBJ) row = cloneRobj((robj *)r); /* DEST 005 */
-    else if (ofree == OBY_FREE_AOBJ) row = cloneAobj((aobj *)r); /* DEST 029 */
+    if (ofree == OBY_FREE_ROBJ)   row = cloneRobj((robj *)r); /* DEST 005 */
+    else /*      OBY_FREE_AOBJ */ row = cloneAobj((aobj *)r); /* DEST 029 */
     //else assert(!"OBY_FREE not defined");
     obsl_t *ob  = create_obsl(row, w->nob);              /* FREE ME 001 */
     for (int i = 0; i < w->nob; i++) {

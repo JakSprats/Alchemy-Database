@@ -131,7 +131,7 @@ robj *rdbLoadNRL(FILE *fp) {
 static int rdbSaveAllRows(FILE *fp, bt *btr, bt_n *x) {
     for (int i = 0; i < x->n; i++) {
         uchar *stream = KEYS(btr, x)[i];
-        int    ssize  = getStreamMallocSize(stream, btr->btype);
+        int    ssize  = getStreamMallocSize(stream, btr);
         if (rdbSaveLen(fp, ssize)        == -1) return -1;
         if (fwrite(stream, ssize, 1, fp) == 0) return -1;
     }

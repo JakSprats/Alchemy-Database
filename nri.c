@@ -187,14 +187,13 @@ void nrlIndexAdd(robj *o, aobj *apk, char *vals, uint32 cofsts[]) {
     return;
 }
 
-void runNrlIndexFromStream(uchar *stream,
-                           d_l_t *nrlind,
-                           int    itbl) {
+void runNrlIndexFromStream(bt *btr, uchar *stream, d_l_t *nrlind, int itbl) {
     aobj akey;
-    convertStream2Key(stream, &akey);
-    void *rrow = parseStream(stream, BTREE_TABLE);
+    convertStream2Key(stream, &akey, btr);
+    void *rrow = parseStream(stream, btr);
     /* create command and run it */
     sds cmd    = genNRL_Cmd(nrlind, &akey, NULL, NULL, rrow, itbl);
+    //printf("run_nri: cmd: %s\n", cmd);
     runCmdInFakeClient(cmd);
     sdsfree(cmd);                                        /* DESTROYED 016 */
     releaseAobj(&akey);

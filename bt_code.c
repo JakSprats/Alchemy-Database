@@ -32,9 +32,6 @@
 #include "redis.h"
 #include "common.h"
 
-#define RL4 redisLog(4,
-#define RL7 if (iter && iter->which == 0) redisLog(4,
-
 /* FROM zmalloc.c */
 extern size_t          used_memory;
 extern int             zmalloc_thread_safe;
@@ -44,22 +41,17 @@ extern pthread_mutex_t used_memory_mutex;
 static void bt_internal_dump(struct btree *btr) {
     bt_dumptree(btr, btr->ktype, REDIS_BTREE);
 }
-
-//RL4 "%p: INC BT size: %d TOT: %d size: %d", btr, btr->malloc_size, used_memory, size);
-//RL4 "%p: BT OBJ size: %d", btr, size);
-int loops = 0;
-//loops++; if (loops%100 == 0) RL4 "MALLOC NODE: %d BTR: %d DATA: %d RATIO: %f", size, btr->malloc_size, btr->data_size, ((double)btr->malloc_size/(double)btr->data_size));
-//RL4 "MALLOC TREE: %d", size);
-//RL4 "%p: DEC BT size: %d TOT: %d", btr, btr->malloc_size, used_memory);
-RL4 "bt_malloc: %d BTR: %d DATA: %d RATIO: %f", size, btr->malloc_size, btr->data_size, ((double)btr->malloc_size/(double)btr->data_size));
 #endif
 
 
 #define NODE_SIZE sizeof(struct btreenode) + btr->textra
 static void bt_increment_used_memory(bt *btr, size_t size) {
-    //RL4 "ADD:  bt_increment_used_memory: curr: %d size: %d", btr->malloc_size, size);
     btr->malloc_size += (ull)size;
     increment_used_memory(size);
+}
+static void bt_decrement_used_memory(bt *btr, size_t size) {
+    btr->malloc_size -= (ull)size;
+    decrement_used_memory(size);
 }
 
 void *bt_malloc(int size, bt *btr) {
@@ -68,7 +60,6 @@ void *bt_malloc(int size, bt *btr) {
     btr->data_size += size;
     return v;
 }
-
 static struct btreenode *allocbtreenode(bt *btr) {
     size_t            size = NODE_SIZE;
     struct btreenode *btn  = malloc(size);
@@ -77,7 +68,6 @@ static struct btreenode *allocbtreenode(bt *btr) {
     btn->leaf              = 1;
     return btn;
 }
-
 static void *bt_malloc_btree() {
     int  size = sizeof(struct btree);
     bt  *btr  = (bt *)malloc(size);
@@ -86,7 +76,6 @@ static void *bt_malloc_btree() {
     bt_increment_used_memory(btr, size);
     return btr;
 }
-
 static struct btree *allocbtree(void) {
     struct btree *btr = bt_malloc_btree();
     btr->root         = NULL;
@@ -101,11 +90,6 @@ static struct btree *allocbtree(void) {
     return btr;
 }
 
-static void bt_decrement_used_memory(bt *btr, size_t size) {
-    //RL4 "LESS: bt_decrement_used_memory: curr: %d size: %d", btr->malloc_size, size);
-    btr->malloc_size -= (ull)size;
-    decrement_used_memory(size);
-}
 void bt_free(void *v, bt *btr, int size) {
     bt_decrement_used_memory(btr, size);
     btr->data_size -= size;
@@ -158,7 +142,7 @@ struct btree *bt_create(bt_cmp_t cmp, int size) {
     btr->root               = allocbtreenode(btr);
     assert(btr->root);
 
-    //RL4 "BT t: %d nbits: %d textra: %d keyoff: %d nodeptroff: %d",
+    //printf("BT t: %d nbits: %d textra: %d keyoff: %d nodeptroff: %d\n",
            //btr->t, btr->nbits, btr->textra, btr->keyoff, btr->nodeptroff);
     return btr;
 }

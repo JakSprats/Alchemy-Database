@@ -58,8 +58,8 @@ static void dumpnode(bt *btr, bt_n *x, int ktype, int depth) {
         void *be = KEYS(btr, x)[i];
         aobj  key;
         void *rrow;
-        convertStream2Key(be, &key);
-        rrow = parseStream(be, btr->btype);
+        convertStream2Key(be, &key, btr);
+        rrow = parseStream(be, btr);
 
         //TODO (GARBAGE) needs to understand key & val have different types
         if (ktype == COL_TYPE_STRING) {

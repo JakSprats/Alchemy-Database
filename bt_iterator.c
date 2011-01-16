@@ -115,7 +115,6 @@ static void iter_node(btIterator *iter) {
 }
 void *btNext(btIterator *iter) {
     if (iter->finished) return NULL;
-    //RL4 "btNext: leaf: %d", iter->bln->self->leaf);
     struct btree *btr  = iter->btr;
     void         *curr = KEYS(btr, iter->bln->self)[iter->bln->ik];
     if (iter->bln->self->leaf) (*iter->iLeaf)(iter);
@@ -196,7 +195,7 @@ btSIter *btGetRangeIterator(bt *btr, robj *low, robj *high) {
     aobj    *alow  = copyRobjToAobj(low,  btr->ktype);  //TODO LAME
     aobj    *ahigh = copyRobjToAobj(high, btr->ktype); //TODO LAME
     setHigh(siter, ahigh, btr->ktype);
-    char *bkey = createBTKey(alow, btr->ktype, &med, &sflag, &ksize);/*FREE*/
+    char    *bkey  = createBTKey(alow, &med, &sflag, &ksize, btr); // DESC 032
     destroyAobj(ahigh);                                //TODO LAME
     destroyAobj(alow);                                 //TODO LAME
 
@@ -205,7 +204,7 @@ btSIter *btGetRangeIterator(bt *btr, robj *low, robj *high) {
         btReleaseRangeIterator(siter);
         siter = NULL;
     }
-    destroyBTKey(bkey, med);                                      /* freeD */
+    destroyBTKey(bkey, med);                             /* DESTROYED 032 */
 
     return siter;
 }
@@ -214,8 +213,8 @@ btEntry *btRangeNext(btSIter *siter) {
     if (!siter) return NULL;
     void *be = btNext(&(siter->x));
     if (!be)    return NULL;
-    convertStream2Key(be, siter->be.key);
-    siter->be.val = parseStream(be, siter->x.btr->btype);
+    convertStream2Key(be, siter->be.key, siter->x.btr);
+    siter->be.val = parseStream(be, siter->x.btr);
     if (       siter->ktype == COL_TYPE_INT) {
         ulong l = (ulong)(siter->key.i);
         if (l == siter->x.high)  siter->x.finished = 1;       /* exact match */
@@ -234,13 +233,13 @@ btEntry *btRangeNext(btSIter *siter) {
 bool assignMinKey(bt *btr, aobj *key) {
     void *e = bt_min(btr);
     if (!e) return 0;
-    convertStream2Key(e, key);
+    convertStream2Key(e, key, btr);
     return 1;
 }
 bool assignMaxKey(bt *btr, aobj *key) {
     void *e = bt_max(btr);
     if (!e) return 0;
-    convertStream2Key(e, key);
+    convertStream2Key(e, key, btr);
     return 1;
 }
 btSIter *btGetFullRangeIterator(bt *btr) {
@@ -252,13 +251,13 @@ btSIter *btGetFullRangeIterator(bt *btr) {
 
     btSIter *siter = createIterator(btr, 1, iter_leaf, iter_node);
     setHigh(siter, &aH, btr->ktype);
-    char    *bkey  = createBTKey(&aL, btr->ktype, &med, &sflag, &ksize);/*FREE*/
+    char    *bkey  = createBTKey(&aL, &med, &sflag, &ksize, btr); //DEST 030
     if (!bkey) return NULL;
     if (!btIterInit(btr, bkey, &(siter->x))) {
         btReleaseRangeIterator(siter);
         siter = NULL;
     }
-    destroyBTKey(bkey, med);                                       /* FREED */
+    destroyBTKey(bkey, med);                             /* DESTROYED 030 */
 
     return siter;
 }
@@ -309,10 +308,10 @@ static void iter_node_cnt(btIterator *iter) {
 
 static btSIter *XthIteratorFind(btSIter *siter, aobj *alow, long x, bt *btr) {
     bool med; uchar sflag; unsigned int ksize;
-    char *bkey = createBTKey(alow, btr->ktype, &med, &sflag, &ksize);/*FREE*/
+    char *bkey = createBTKey(alow, &med, &sflag, &ksize, btr); // DESTROY 031
     if (!bkey) return NULL;
     bt_init_iterator(btr, bkey, &(siter->x));
-    destroyBTKey(bkey, med);                                /* freeD */
+    destroyBTKey(bkey, med);                             /* DESTROYED 031 */
 
     tl_t tl;
     tl.l1         = 0; /* count */

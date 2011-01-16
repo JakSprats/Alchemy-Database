@@ -293,15 +293,11 @@ struct sharedObjectsStruct {
     *uint_pk_too_big,          *uint_no_negative_values,
 
     *toomany_nob,                *join_m_obc,
-    *joinindexedcolumnlisterror, *joincolumnlisterror, *join_on_multi_col,
-    *join_requires_range,
-    *join_order_by_syntax,       *join_order_by_tbl,   *join_order_by_col,
-    *join_table_not_in_query,
 
     *storagetypeunkown, *storagenumargsmismatch, *erronstoretotable,
     *accesstypeunknown, *accessnumargsmismatch,
 
-    *createsyntax, *dropsyntax, *drop_virtual_index,
+    *createsyntax, *dropsyntax, *drop_virtual_index, *nrl_suicide,
 
     *insertsyntax,           *insertsyntax_no_into,
     *insertsyntax_no_values, *index_nonrel_decl_fmt,
@@ -323,14 +319,19 @@ struct sharedObjectsStruct {
     *update_expr_float_overflow,                     *update_expr_empty_str,
     *scanselectsyntax,       *scan_join,             *scanselectsyntax_noequals,
     *scan_on_index,          *scan_store,            *cr8tbl_scan,
-    *istorecommit_err,
 
     *rangequery_index_not_found,
 
     *whereclause_col_not_indxd, *whereclause_col_not_found,
     *whereclause_no_and,        *whereclause_between,
 
+    *istorecommit_err,
     *selectsyntax_store_norange, *select_store_count,
+
+    *joinindexedcolumnlisterror, *joincolumnlisterror, *join_on_multi_col,
+    *join_requires_range,
+    *join_order_by_syntax,       *join_order_by_tbl,   *join_order_by_col,
+    *join_table_not_in_query,
     *joinsyntax_no_tablename,
 
     *createtable_as_on_wrong_type,       *createtable_as_index,
