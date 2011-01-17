@@ -34,10 +34,13 @@ struct btree;
 
 #define	BT_SIZEDEF	128
 
+#define VOIDSIZE sizeof(void *)
+#define UINTSIZE sizeof(unsigned int)
+
 typedef void * bt_data_t;
 typedef int (*bt_cmp_t)(bt_data_t k1, bt_data_t k2);
 
-struct btree *bt_create(bt_cmp_t, int nodesize);
+struct btree *bt_create(bt_cmp_t, unsigned char trans, int keysize);
 void *bt_malloc(int, struct btree *btr);
 void  bt_free(void *, struct btree *btr, int);
 void  bt_free_btreenode(void *, struct btree *btr);
@@ -47,7 +50,7 @@ void  bt_insert(struct btree *btr, bt_data_t k);
 void *bt_delete(struct btree *btr, bt_data_t k);
 void *bt_replace(struct btree *btr, bt_data_t k, bt_data_t val);
 
-void  bt_dumptree(struct btree *btr, int ktype);
+void  bt_dumptree(struct btree *btr);
 void  bt_treestats(struct btree *btr);
 int   bt_checktree(struct btree *btr, bt_data_t kmin, bt_data_t kmax);
 

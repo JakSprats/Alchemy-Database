@@ -2,13 +2,13 @@ package.path = package.path .. ";;test/?.lua"
 require "is_external"
 
 local c    = 200;
-local req  = 500000;
+local req  = 10000000;
 local tbl  = "memleak";
 
 function init_memleak_tbl()
     drop_table(tbl);
-    create_table(tbl, "id INT, page_no INT, msg TEXT");
-    create_index("ind_ml_p", tbl, "page_no");
+    create_table(tbl, "id INT, fk INT, msg TEXT");
+    create_index("ind_ml_p", tbl, "fk");
     local icmd = '../gen-benchmark -q -c ' .. c ..' -n ' .. req ..
                  ' -s -A OK ' .. 
                  ' -Q INSERT INTO memleak VALUES ' .. 

@@ -130,7 +130,7 @@ robj *rdbLoadNRL(FILE *fp) {
 
 static int rdbSaveAllRows(FILE *fp, bt *btr, bt_n *x) {
     for (int i = 0; i < x->n; i++) {
-        uchar *stream = KEYS(btr, x)[i];
+        uchar *stream = (uchar *)KEYS(btr, x, i);
         int    ssize  = getStreamMallocSize(stream, btr);
         if (rdbSaveLen(fp, ssize)        == -1) return -1;
         if (fwrite(stream, ssize, 1, fp) == 0) return -1;
@@ -193,7 +193,7 @@ static int rdbLoadRow(FILE *fp, bt *btr) {
     char *bt_val = bt_malloc(ssize, btr); // mem bookkeeping done in BT
     if (fread(bt_val, ssize, 1, fp) == 0) return -1;
     if (btr->numkeys == TRANSITION_ONE_MAX) {
-        btr = abt_resize(btr, TRANSITION_TWO_BTREE_BYTES);
+        btr = abt_resize(btr, TRANSITION_TWO_BTREE);
     }
     bt_insert(btr, bt_val);
     return 0;

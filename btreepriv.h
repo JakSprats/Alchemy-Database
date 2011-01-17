@@ -29,13 +29,14 @@
 
 #include "btree.h"
 
-//TODO: benchmark HOW 4096 outperforms 128 as IndexNodeBT size
-//       also does 32 make sense as TRANSITION_ONE_MAX
-#define TRANSITION_ONE_MAX            31
-#define TRANSITION_ONE_BTREE_BYTES   128
-#define TRANSITION_TWO_BTREE_BYTES  4096
 
-/* SIZE: 2ptr(16), 5shrt(10), 3uchar(3), 2LL(24) + 2int(8) -> 53bytes */
+#define TRANSITION_ONE_MAX 31 // Does 32 make sense as TRANSITION_ONE_MAX?
+#define TRANSITION_ONE_BTREE   1
+#define TRANSITION_ONE_INODEBT 2
+#define TRANSITION_TWO_BTREE   3
+#define TRANSITION_TWO_INODEBT 4
+
+/* SIZE: 2ptr(16), 5shrt(10), 4uchar(4), 2LL(24) + 2int(8) -> 54bytes */
 typedef struct btree {
     struct btreenode *root;
     bt_cmp_t           cmp;
@@ -48,6 +49,7 @@ typedef struct btree {
 
     unsigned char      ktype; /* [STRING,INT,FLOAT] */
     unsigned char      btype; /* [data,index,node] */
+    unsigned char      ksize; /* 4->INODE, sizeof(void *)->OTHER */
     short              num;
 
     unsigned long long malloc_size;
@@ -62,7 +64,7 @@ typedef struct btreenode { /* 2 bytes */
     int    leaf : 1;
 } bt_n;
 
-#define KEYS(btr, x)     ((void **)((char *)x + btr->keyoff))
-#define NODES(btr, x)    ((struct btreenode **)((char *)x + btr->nodeptroff))
+void *KEYS(bt *btr, bt_n *x, int i);
+#define NODES(btr, x)    ((bt_n **)((char *)x + btr->nodeptroff))
 
 #endif /* _BTREEPRIV_H_ */

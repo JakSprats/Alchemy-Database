@@ -481,6 +481,19 @@ function populate() {
   inserter
 }
 
+
+function simple_test_btree_table_transition() {
+  echo "simple_test_btree_table_transition"
+  $CLI DROP TABLE bt_trans
+  $CLI CREATE TABLE bt_trans "(id INT, t TEXT)"
+  LIM=40
+  I=0
+  while [ $I -lt $LIM ]; do
+    $CLI INSERT INTO bt_trans VALUES "($I,'TEXT_$I')"
+    I=$[${I}+1];
+  done
+}
+
 function sql_test() {
   dropper
   works
@@ -490,6 +503,7 @@ function sql_test() {
   select_counter
   sql_create_table_as_tester
   sql_float_tests
+  simple_test_btree_table_transition
   init_test_table
   NUM=$(echo "math.randomseed(os.time()); print (math.random(1000));" | lua)
   ./redisql-benchmark -n $NUM -r $NUM -c 100 -T

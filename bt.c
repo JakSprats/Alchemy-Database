@@ -60,7 +60,7 @@ robj *createEmptyBtreeObject() {                           /* Virtual indices */
     return createObject(REDIS_BTREE, NULL);
 }
 static bt *createInodeIntBt() {
-    bt *btr    = bt_create(intCmp, TRANSITION_ONE_BTREE_BYTES);
+    bt *btr    = bt_create(intCmp, TRANSITION_ONE_INODEBT, UINTSIZE);
     btr->ktype = COL_TYPE_INT;
     btr->btype = BTREE_INDEX_NODE;
     btr->num   = -1;
@@ -83,7 +83,7 @@ void freeBtreeObject(robj *o) {
 //TODO the following 3 functions should go into bt_code.c
 static void destroy_bt_node(bt *btr, bt_n *n) {
     for (int i = 0; i < n->n; i++) {
-        void *be    = KEYS(btr, n)[i];
+        void *be    = KEYS(btr, n, i);
         int   ssize = getStreamMallocSize(be, btr);
         if (btr->btype == BTREE_INDEX) { /* Index is BT of IndexNodeBTs */
             uchar *stream = be;
@@ -114,7 +114,7 @@ static void bt_release(bt *btr, bt_n *n) {
 
 static void bt_to_bt_insert(bt *nbtr, bt *obtr, bt_n *n) {
     for (int i = 0; i < n->n; i++) {
-        char *be = KEYS(obtr, n)[i];
+        void *be = KEYS(obtr, n, i);
         bt_insert(nbtr, be);
     }
     if (!n->leaf) {
@@ -126,7 +126,7 @@ static void bt_to_bt_insert(bt *nbtr, bt *obtr, bt_n *n) {
           
 /* ABSTRACT-BTREE ABSTRACT-BTREE ABSTRACT-BTREE ABSTRACT-BTREE ABSTRACT-BTREE */
 static bt *abt_create(uchar ktype, int num, uchar btype) {
-    bt *btr    = bt_create(btStreamCmp, TRANSITION_ONE_BTREE_BYTES);
+    bt *btr    = bt_create(btStreamCmp, TRANSITION_ONE_BTREE, VOIDSIZE);
     btr->ktype = ktype;
     btr->btype = btype;
     btr->num   = num;
@@ -171,7 +171,9 @@ static bool abt_del(bt *btr, aobj *akey) {
 
 static uint32 abt_insert(bt *btr, aobj *akey, void *val) {
     if (btr->numkeys == TRANSITION_ONE_MAX) {
-        btr = abt_resize(btr, TRANSITION_TWO_BTREE_BYTES);
+        uchar trans = INODE(btr) ? TRANSITION_TWO_INODEBT :
+                                   TRANSITION_TWO_BTREE;
+        btr         = abt_resize(btr, trans);
     }
     uint32 ssize;
     DECLARE_BT_KEY
@@ -182,11 +184,12 @@ static uint32 abt_insert(bt *btr, aobj *akey, void *val) {
 }
 
 bt *abt_resize(bt *obtr, int new_size) {
-     bt *nbtr         = bt_create(obtr->cmp, new_size);
-     nbtr->ktype      = obtr->ktype;
-     nbtr->btype      = obtr->btype;
-     nbtr->num        = obtr->num;
-     nbtr->data_size  = obtr->data_size;
+     bt *nbtr        = INODE(obtr) ? bt_create(obtr->cmp, new_size, UINTSIZE) :
+                                     bt_create(obtr->cmp, new_size, VOIDSIZE);
+     nbtr->ktype     = obtr->ktype;
+     nbtr->btype     = obtr->btype;
+     nbtr->num       = obtr->num;
+     nbtr->data_size = obtr->data_size;
     if (obtr->root) {
         bt_to_bt_insert(nbtr, obtr, obtr->root); /* 1.) copy from old to new */
         bt_release(obtr, obtr->root);            /* 2.) release old */
@@ -219,7 +222,6 @@ int  btIndNodeDelete(bt *nbtr, aobj *apk) {
 
 /* JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT */
 /* JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT JOIN_BT */
-#define INIT_JOIN_BTREE_BYTES 1024
 void btReleaseJoinRangeIterator(btIterator *iter);
 
 static int intJoinRowCmp(void *a, void *b) {
@@ -257,11 +259,11 @@ static int floatJoinRowCmp(void *a, void *b) {
 bt *createJoinResultSet(uchar pkt) {
     bt *btr = NULL; /* compiler warning */
     if (       pkt == COL_TYPE_INT) {
-        btr = bt_create(intJoinRowCmp,   INIT_JOIN_BTREE_BYTES);
+        btr = bt_create(intJoinRowCmp,   TRANSITION_TWO_BTREE, VOIDSIZE);
     } else if (pkt == COL_TYPE_STRING) {
-        btr = bt_create(strJoinRowCmp,   INIT_JOIN_BTREE_BYTES);
+        btr = bt_create(strJoinRowCmp,   TRANSITION_TWO_BTREE, VOIDSIZE);
     } else if (pkt == COL_TYPE_FLOAT) {
-        btr = bt_create(floatJoinRowCmp, INIT_JOIN_BTREE_BYTES);
+        btr = bt_create(floatJoinRowCmp, TRANSITION_TWO_BTREE, VOIDSIZE);
     }
     return btr;
 }
@@ -286,7 +288,7 @@ static void emptyJoinBtNode(bt   *jbtr,
                             bool  is_ob,
                             void (*freer)(list *s, int ncols, bool is_ob)) {
     for (int i = 0; i < n->n; i++) {
-        joinRowEntry *be  = KEYS(jbtr, n)[i];
+        joinRowEntry *be  = KEYS(jbtr, n, i);
         list         *val = be->val;
         freer(val, ncols, is_ob);      /* free list of ind_rows (cols,sizes) */
         decrRefCount(be->key);         /* free jk */

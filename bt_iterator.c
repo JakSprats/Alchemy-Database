@@ -79,9 +79,9 @@ static void iter_to_parent_recurse(btIterator *iter) {
     }
     iter->depth--;
     struct btree *btr = iter->btr;
-    void *child       = KEYS(btr, iter->bln->self)[iter->bln->ik];
+    void *child       = KEYS(btr, iter->bln->self, iter->bln->ik);
     iter->bln         = iter->bln->parent;                        // -> parent
-    void *parent      = KEYS(btr, iter->bln->self)[iter->bln->ik];
+    void *parent      = KEYS(btr, iter->bln->self, iter->bln->ik);
     int   x           = btr->cmp(child, parent);
     if (x > 0) {
         if (!advance_node(iter, 1)) {                        // right-most-leaf
@@ -116,7 +116,7 @@ static void iter_node(btIterator *iter) {
 void *btNext(btIterator *iter) {
     if (iter->finished) return NULL;
     struct btree *btr  = iter->btr;
-    void         *curr = KEYS(btr, iter->bln->self)[iter->bln->ik];
+    void         *curr = KEYS(btr, iter->bln->self, iter->bln->ik);
     if (iter->bln->self->leaf) (*iter->iLeaf)(iter);
     else                       (*iter->iNode)(iter);
     return curr;
@@ -125,7 +125,7 @@ void *btNext(btIterator *iter) {
 static int btIterInit(bt *btr, bt_data_t bkey, struct btIterator *iter) {
     int ret = bt_init_iterator(btr, bkey, iter);
     if (ret) { /* range queries, find nearest match */
-        int x = btr->cmp(bkey, KEYS(btr, iter->bln->self)[iter->bln->ik]);
+        int x = btr->cmp(bkey, KEYS(btr, iter->bln->self, iter->bln->ik));
         if (x > 0) {
             if (ret == RET_LEAF_EXIT)  { /* find next */
                 btNext(iter);
@@ -427,17 +427,3 @@ void btReleaseJoinRangeIterator(btIterator *iter) {
         iter->highs = NULL;
     }
 }
-
-#if 0
-/* used for DEBUGGING the Btrees innards */
-extern struct redisServer server;
-extern struct sharedObjectsStruct shared;
-extern r_tbl_t Tbl     [MAX_NUM_DB][MAX_NUM_TABLES];
-void btreeCommand(redisClient *c) {
-    TABLE_CHECK_OR_REPLY(c->argv[1]->ptr,)
-    robj *btt  = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
-    bt   *btr  = (bt *)btt->ptr;
-    bt_dumptree(btr, btr->ktype);
-    addReply(c, shared.ok);
-}
-#endif

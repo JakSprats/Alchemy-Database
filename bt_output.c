@@ -25,76 +25,56 @@
 #include "bt.h"
 #include "stream.h"
 
-#define RL4 redisLog(4,
+static void dumpnode(bt *btr, bt_n *n, int depth);
+int treeheight(bt *btr);
 
-static void dumpnode(bt *btr, bt_n *n, int ktype, int depth);
-int treeheight(struct btree *btr);
-
-void bt_dump_info(struct btree *btr, int ktype) {
-    RL4 "bt_dumptree: %p ktype: %d", btr, ktype);
-    RL4 "numkeys: %d numnodes: %d", btr->numkeys, btr->numnodes);
-    RL4 "keyoff: %d  nodeptroff: %d t: %d textra: %d height: %d",
+void bt_dump_info(bt *btr) {
+    printf("bt_dumptree: %p ktype: %d\n", (void *)btr, btr->ktype);
+    printf("numkeys: %d numnodes: %d\n",  btr->numkeys, btr->numnodes);
+    printf("keyoff: %d  nodeptroff: %d t: %d textra: %d height: %d\n",
          btr->keyoff, btr->nodeptroff, btr->t, btr->textra, treeheight(btr));
 }
 
-void bt_dumptree(struct btree *btr, int ktype) {
-    bt_dump_info(btr, ktype);
+void bt_dumptree(bt *btr) {
+    bt_dump_info(btr);
     //bt_treestats(btr);
-    if (btr->root && btr->numkeys > 0) dumpnode(btr, btr->root, ktype, 0);
+    if (btr->root && btr->numkeys > 0) dumpnode(btr, btr->root, 0);
 }
 
-static void dumpnode(bt *btr, bt_n *x, int ktype, int depth) {
+static void dumpnode(bt *btr, bt_n *x, int depth) {
     int i;
 
-    //RL4 "type: %d ptr: %p: leaf: %d, n: %d", ktype, (void *)x, x->leaf, x->n);
-    if (!x->leaf) {
-        RL4 "%d: NODE: %d", depth, x->n);
-    } else {
-        RL4 "%d: LEAF: %d", depth, x->n);
-    }
+    if (!x->leaf) printf("%d: NODE: %d\n", depth, x->n);
+    else          printf("%d: LEAF: %d\n", depth, x->n);
 
     for (i = 0; i < x->n; i++) {
-        //RL4 "key_n: %d: %p", i, KEYS(btr, x)[i]);
-        void *be = KEYS(btr, x)[i];
+        void *be = KEYS(btr, x, i);
         aobj  key;
         void *rrow;
         convertStream2Key(be, &key, btr);
         rrow = parseStream(be, btr);
-
-        //TODO (GARBAGE) needs to understand key & val have different types
-        if (ktype == COL_TYPE_STRING) {
-            sds k = sdsnewlen(key.s, key.len);
-            RL4 "  S: key: %s: val: %p slot: %d - %p", k, rrow, i, be);
-            sdsfree(k);
-        } else if (ktype == COL_TYPE_INT) {
-            RL4 "  I: key: %u: val: %p slot: %d - %p", key.i, rrow, i, be);
-        } else {
-            RL4 "  F: key: %f: val: %p slot: %d - %p", key.f, rrow, i, be);
-        }
+        printf("  key: "); dumpAobj(&key);
+        printf("  row: %p\n", rrow);
     }
 
     if (!x->leaf) {
         depth++;
         for (i = 0; i <= x->n; i++) {
-            dumpnode(btr, NODES(btr, x)[i], ktype, depth);
+            dumpnode(btr, NODES(btr, x)[i], depth);
         }
     }
 }
 
-void bt_treestats(struct btree *btr) {
-    RL4 "root: %p, keyoff: %d, nodeptroff: %d, " \
-        " t: %d, nbits: %d, textra: %d, height: %d, numkeys: %d, numnodes: %d",
+void bt_treestats(bt *btr) {
+    printf("root: %p, keyoff: %d, nodeptroff: %d, " \
+      " t: %d, nbits: %d, textra: %d, height: %d, numkeys: %d, numnodes: %d\n",
         (void *)btr->root, btr->keyoff,
          btr->nodeptroff, btr->t, btr->nbits, btr->textra, treeheight(btr),
          btr->numkeys, btr->numnodes);
 }
 
 
-static int checkbtreenode(struct btree     *btr,
-                          struct btreenode *x,
-                          void             *kmin,
-                          void             *kmax,
-                          int               isroot) {
+static int checkbtreenode(bt *btr, bt_n *x, void *kmin, void *kmax, int isrut) {
     int i;
 
     if (x == NULL)
@@ -102,48 +82,58 @@ static int checkbtreenode(struct btree     *btr,
         if (btr->cmp(kmin, kmax) >= 0) return 0;
         else                           return 1;
     else {
-        if (!isroot && (x->n < btr->t - 1 || x->n > 2 * btr->t - 1)) {
-            redisLog(REDIS_NOTICE,"node, to few or to many: %d\n", x->n);
-            bt_dumptree(btr, 0);
+        if (!isrut && (x->n < btr->t - 1 || x->n > 2 * btr->t - 1)) {
+            printf("node, to few or to many: %d\n", x->n);
+            bt_dumptree(btr);
             exit(1);
         }
         /* check subnodes */
         if (x->n == 0 && !x->leaf)
             if (!checkbtreenode(btr, NODES(btr, x)[0], kmin, kmax, 0)) return 0;
             else                                                       return 1;
-        else if (x->n == 0 && x->leaf && !isroot) {
-            redisLog(REDIS_NOTICE,"leaf with no keys!!\n");
-            bt_dumptree(btr, 0);
+        else if (x->n == 0 && x->leaf && !isrut) {
+            printf("leaf with no keys!!\n");
+            bt_dumptree(btr);
             if (!checkbtreenode(btr, NULL, kmin, kmax, 0)) return 0;
             else                                           return 1;
         }
-        if (!checkbtreenode(btr, NODES(btr, x)[0], kmin, KEYS(btr, x)[0], 0))
+        if (!checkbtreenode(btr, NODES(btr, x)[0], kmin, KEYS(btr, x, 0), 0))
             return 0;
         for (i = 1; i < x->n; i++)
             if (!checkbtreenode(btr, NODES(btr, x)[i],
-                                KEYS(btr, x)[i - 1], KEYS(btr, x)[i], 0))
+                                KEYS(btr, x, i - 1), KEYS(btr, x, i), 0))
                                     return 0;
-        if (!checkbtreenode(btr, NODES(btr, x)[i], KEYS(btr, x)[i - 1],
+        if (!checkbtreenode(btr, NODES(btr, x)[i], KEYS(btr, x, i - 1),
                             kmax, 0)) return 0;
     }
     return 1;
 }
 
-int bt_checktree(struct btree *btr, void *kmin, void *kmax) {
+int bt_checktree(bt *btr, void *kmin, void *kmax) {
     return checkbtreenode(btr, btr->root, kmin, kmax, 1);
 }
 
-int treeheight(struct btree *btr) {
-    struct btreenode *x;
-    int ret;
-
-    x = btr->root;
-    ret = 0;
-
+int treeheight(bt *btr) {
+    bt_n *x   = btr->root;
+    int   ret = 0;
     while (!x->leaf) {
         x = NODES(btr, x)[0];
         ret++;
     }
-
     return ++ret;
 }
+
+
+/* used for DEBUGGING the Btrees innards */
+#include "alsosql.h"
+extern struct redisServer server;
+extern struct sharedObjectsStruct shared;
+extern r_tbl_t Tbl     [MAX_NUM_DB][MAX_NUM_TABLES];
+void btreeCommand(redisClient *c) {
+    TABLE_CHECK_OR_REPLY(c->argv[1]->ptr,)
+    robj *btt  = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
+    bt   *btr  = (bt *)btt->ptr;
+    bt_dumptree(btr);
+    addReply(c, shared.ok);
+}
+

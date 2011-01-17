@@ -265,7 +265,7 @@ static void makeIndexFromStream(bt    *btr,
 /* CREATE INDEX on Table w/ Columns */
 int buildIndex(bt *btr, bt_n *x, bt *ibtr, int icol, int itbl, bool nrl) {
     for (int i = 0; i < x->n; i++) {
-        uchar *stream = KEYS(btr, x)[i];
+        uchar *stream = (uchar *)KEYS(btr, x, i);
         if (nrl) runNrlIndexFromStream(btr, stream, (d_l_t *)ibtr, itbl);
         else     makeIndexFromStream(  btr, stream, ibtr, icol,    itbl);
     }
