@@ -29,16 +29,18 @@ static void dumpnode(bt *btr, bt_n *n, int depth);
 int treeheight(bt *btr);
 
 void bt_dump_info(bt *btr) {
-    printf("bt_dumptree: %p ktype: %d\n", (void *)btr, btr->ktype);
-    printf("numkeys: %d numnodes: %d\n",  btr->numkeys, btr->numnodes);
-    printf("keyoff: %d  nodeptroff: %d t: %d textra: %d height: %d\n",
-         btr->keyoff, btr->nodeptroff, btr->t, btr->textra, treeheight(btr));
+    printf("bt_dumptree: %p numkeys: %d numnodes: %d\n",
+           (void *)btr, btr->numkeys, btr->numnodes);
+    printf("keyofst: %d  nodeofst: %d t: %d nbyte: %d kbyte: %d nbits: %d" \
+           " height: %d\n",
+            btr->keyofst, btr->nodeofst, btr->t,
+            btr->nbyte, btr->kbyte, btr->nbits, treeheight(btr));
 }
 
 void bt_dumptree(bt *btr) {
     bt_dump_info(btr);
-    //bt_treestats(btr);
     if (btr->root && btr->numkeys > 0) dumpnode(btr, btr->root, 0);
+    printf("\n");
 }
 
 static void dumpnode(bt *btr, bt_n *x, int depth) {
@@ -53,8 +55,8 @@ static void dumpnode(bt *btr, bt_n *x, int depth) {
         void *rrow;
         convertStream2Key(be, &key, btr);
         rrow = parseStream(be, btr);
+        printf("  row: %p\t", rrow);
         printf("  key: "); dumpAobj(&key);
-        printf("  row: %p\n", rrow);
     }
 
     if (!x->leaf) {
@@ -65,13 +67,6 @@ static void dumpnode(bt *btr, bt_n *x, int depth) {
     }
 }
 
-void bt_treestats(bt *btr) {
-    printf("root: %p, keyoff: %d, nodeptroff: %d, " \
-      " t: %d, nbits: %d, textra: %d, height: %d, numkeys: %d, numnodes: %d\n",
-        (void *)btr->root, btr->keyoff,
-         btr->nodeptroff, btr->t, btr->nbits, btr->textra, treeheight(btr),
-         btr->numkeys, btr->numnodes);
-}
 
 
 static int checkbtreenode(bt *btr, bt_n *x, void *kmin, void *kmax, int isrut) {
@@ -126,14 +121,29 @@ int treeheight(bt *btr) {
 
 /* used for DEBUGGING the Btrees innards */
 #include "alsosql.h"
+#include "index.h"
 extern struct redisServer server;
 extern struct sharedObjectsStruct shared;
 extern r_tbl_t Tbl     [MAX_NUM_DB][MAX_NUM_TABLES];
+extern r_ind_t Index   [MAX_NUM_DB][MAX_NUM_INDICES];
 void btreeCommand(redisClient *c) {
     TABLE_CHECK_OR_REPLY(c->argv[1]->ptr,)
+    MATCH_INDICES(tmatch)
     robj *btt  = lookupKeyRead(c->db, Tbl[server.dbid][tmatch].name);
     bt   *btr  = (bt *)btt->ptr;
     bt_dumptree(btr);
+    if (matches) {
+        for (int i = 0; i < matches; i++) {
+            int   j    = indices[i];
+            robj *ind  = Index[server.dbid][j].obj;
+            if (!Index[server.dbid][j].virt && !Index[server.dbid][j].nrl) {
+                robj *ibtt = lookupKey(c->db, ind);
+                printf("INDEX: %d\n", indices[i]);
+                bt   *ibtr = (bt *)ibtt->ptr;
+                bt_dumptree(ibtr);
+            }
+        }
+    }
     addReply(c, shared.ok);
 }
 

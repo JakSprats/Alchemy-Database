@@ -200,7 +200,7 @@ static void addSizeToInsertResponse(redisClient *c,
     char buf[128];
     ull  index_size = get_sum_all_index_size_for_table(c, tmatch);
     snprintf(buf, 127,
-          "INFO: BYTES: [ROW: %d BT-DATA: %lld BT-TOTAL: %lld INDEX: %lld]",
+          "INFO: BYTES: [ROW: %d BT-DATA: %ld BT-TOTAL: %ld INDEX: %lld]",
                len, btr->data_size, btr->malloc_size, index_size);
     buf[127] = '\0';
     robj *r  = _createStringObject(buf);                 /* DESTROY ME 025 */

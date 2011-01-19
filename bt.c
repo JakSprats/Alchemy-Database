@@ -60,7 +60,7 @@ robj *createEmptyBtreeObject() {                           /* Virtual indices */
     return createObject(REDIS_BTREE, NULL);
 }
 static bt *createInodeIntBt() {
-    bt *btr    = bt_create(intCmp, TRANSITION_ONE_INODEBT, UINTSIZE);
+    bt *btr    = bt_create(intCmp, TRANSITION_ONE_INODEBT, UINTSIZE, 1);
     btr->ktype = COL_TYPE_INT;
     btr->btype = BTREE_INDEX_NODE;
     btr->num   = -1;
@@ -126,7 +126,8 @@ static void bt_to_bt_insert(bt *nbtr, bt *obtr, bt_n *n) {
           
 /* ABSTRACT-BTREE ABSTRACT-BTREE ABSTRACT-BTREE ABSTRACT-BTREE ABSTRACT-BTREE */
 static bt *abt_create(uchar ktype, int num, uchar btype) {
-    bt *btr    = bt_create(btStreamCmp, TRANSITION_ONE_BTREE, VOIDSIZE);
+    uchar ainc = (btype == BTREE_INDEX) ? 0 : 1;
+    bt *btr    = bt_create(btStreamCmp, TRANSITION_ONE_BTREE, VOIDSIZE, ainc);
     btr->ktype = ktype;
     btr->btype = btype;
     btr->num   = num;
@@ -184,8 +185,8 @@ static uint32 abt_insert(bt *btr, aobj *akey, void *val) {
 }
 
 bt *abt_resize(bt *obtr, int new_size) {
-     bt *nbtr        = INODE(obtr) ? bt_create(obtr->cmp, new_size, UINTSIZE) :
-                                     bt_create(obtr->cmp, new_size, VOIDSIZE);
+     uchar ksize     = INODE(obtr) ? UINTSIZE : VOIDSIZE;
+     bt *nbtr        = bt_create(obtr->cmp, new_size, ksize, obtr->ainc);
      nbtr->ktype     = obtr->ktype;
      nbtr->btype     = obtr->btype;
      nbtr->num       = obtr->num;
@@ -259,11 +260,11 @@ static int floatJoinRowCmp(void *a, void *b) {
 bt *createJoinResultSet(uchar pkt) {
     bt *btr = NULL; /* compiler warning */
     if (       pkt == COL_TYPE_INT) {
-        btr = bt_create(intJoinRowCmp,   TRANSITION_TWO_BTREE, VOIDSIZE);
+        btr = bt_create(intJoinRowCmp,   TRANSITION_TWO_BTREE, VOIDSIZE, 1);
     } else if (pkt == COL_TYPE_STRING) {
-        btr = bt_create(strJoinRowCmp,   TRANSITION_TWO_BTREE, VOIDSIZE);
+        btr = bt_create(strJoinRowCmp,   TRANSITION_TWO_BTREE, VOIDSIZE, 1);
     } else if (pkt == COL_TYPE_FLOAT) {
-        btr = bt_create(floatJoinRowCmp, TRANSITION_TWO_BTREE, VOIDSIZE);
+        btr = bt_create(floatJoinRowCmp, TRANSITION_TWO_BTREE, VOIDSIZE, 1);
     }
     return btr;
 }

@@ -283,7 +283,7 @@ void descCommand(redisClient *c) {
         sds mins = sdsnewlen(minkey.s, (minkey.len > 64) ? 64 : minkey.len);
         sds maxs = sdsnewlen(maxkey.s, (minkey.len > 64) ? 64 : minkey.len);
         snprintf(buf, 255, "INFO: KEYS: [NUM: %d MIN: %s MAX: %s]"\
-                          " BYTES: [BT-DATA: %lld BT-TOTAL: %lld INDEX: %lld"\
+                          " BYTES: [BT-DATA: %ld BT-TOTAL: %ld INDEX: %lld"\
                             " COMBINED_TOTAL: %lld]",
                 btr->numkeys, mins, maxs, btr->data_size, btr->malloc_size,
                 index_size, tot);
@@ -292,7 +292,7 @@ void descCommand(redisClient *c) {
         sdsfree(maxs);
     } else {
         snprintf(buf, 255, "INFO: KEYS: [NUM: %d MIN: %u MAX: %u]"\
-                          " BYTES: [BT-DATA: %lld BT-TOTAL: %lld INDEX: %lld"\
+                          " BYTES: [BT-DATA: %ld BT-TOTAL: %ld INDEX: %lld"\
                             " COMBINED_TOTAL: %lld]",
                btr->numkeys, minkey.i, maxkey.i, btr->data_size,
                btr->malloc_size, index_size, tot);

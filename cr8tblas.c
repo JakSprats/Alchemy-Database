@@ -279,6 +279,7 @@ static void createTableAsSelect(redisClient *c, char *as_cmd, int axs) {
 
     int    rargc;
     robj **rargv = (*AccessCommands[axs].parse)(as_cmd, &rargc);
+    if (!rargv) goto cr8_tblassel_end;
     //TODO support CREATE TABLE AS SCANSELECT
     if (!strcmp(rargv[0]->ptr, "SCANSELECT")) {
         addReply(c, shared.cr8tbl_scan);

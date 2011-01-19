@@ -2,7 +2,7 @@ package.path = package.path .. ";;test/?.lua"
 require "is_external"
 
 local c    = 200;
-local req  = 10000000;
+local req  = 1000000;
 local tbl  = "memleak";
 
 function init_memleak_tbl()

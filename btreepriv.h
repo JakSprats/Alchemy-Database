@@ -29,35 +29,37 @@
 
 #include "btree.h"
 
-
-#define TRANSITION_ONE_MAX 31 // Does 32 make sense as TRANSITION_ONE_MAX?
+#define TRANSITION_ONE_MAX 64
 #define TRANSITION_ONE_BTREE   1
 #define TRANSITION_ONE_INODEBT 2
 #define TRANSITION_TWO_BTREE   3
 #define TRANSITION_TWO_INODEBT 4
 
-/* SIZE: 2ptr(16), 5shrt(10), 4uchar(4), 2LL(24) + 2int(8) -> 54bytes */
+/* SIZE: 2ptr(16), 2L(16), 2INT(8), 4Ushort(8),
+         1Ushort(2) 6uchar(6)                   -> 56bytes */
 typedef struct btree {
-    struct btreenode *root;
+    struct btreenode  *root;
     bt_cmp_t           cmp;
  
-    unsigned short     keyoff;
-    unsigned short     nodeptroff;
-    unsigned short     t;
-    unsigned short     textra;
-    unsigned char      nbits;
+    unsigned long      malloc_size;
+    unsigned long      data_size;
 
-    unsigned char      ktype; /* [STRING,INT,FLOAT] */
-    unsigned char      btype; /* [data,index,node] */
-    unsigned char      ksize; /* 4->INODE, sizeof(void *)->OTHER */
-    short              num;
+    unsigned int       numkeys;  /* --- 8 bytes | */
+    unsigned int       numnodes; /* ------------| */
 
-    unsigned long long malloc_size;
-    unsigned long long data_size;
+    unsigned short     keyofst;  /* --- 8 bytes | */
+    unsigned short     nodeofst; /*             | */
+    unsigned short     nbyte;    /*             | */
+    unsigned short     kbyte;    /* ------------| */
 
-    unsigned int       numkeys;
-    unsigned int       numnodes;
-} __attribute__ ((packed)) bt;
+    unsigned short     num;      /* --------------------------- 8 bytes | */
+    unsigned char      t;        /*                                     | */
+    unsigned char      nbits;    /*                                     | */
+    unsigned char      ktype;    /* [STRING,INT,FLOAT]                  | */
+    unsigned char      btype;    /* [data,index,node]                   | */
+    unsigned char      ksize;    /* 4->INODE, sizeof(void *)->OTHER     | */
+    unsigned char      ainc;     /* ------------------------------------| */
+}  __attribute__ ((packed)) bt;
 
 typedef struct btreenode { /* 2 bytes */
     int    n    : 31;      /* 2 billion entries */
@@ -65,6 +67,6 @@ typedef struct btreenode { /* 2 bytes */
 } bt_n;
 
 void *KEYS(bt *btr, bt_n *x, int i);
-#define NODES(btr, x)    ((bt_n **)((char *)x + btr->nodeptroff))
+#define NODES(btr, x) ((bt_n **)((char *)x + btr->nodeofst))
 
 #endif /* _BTREEPRIV_H_ */

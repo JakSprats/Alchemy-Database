@@ -486,12 +486,22 @@ function simple_test_btree_table_transition() {
   echo "simple_test_btree_table_transition"
   $CLI DROP TABLE bt_trans
   $CLI CREATE TABLE bt_trans "(id INT, t TEXT)"
-  LIM=40
-  I=0
+  LIM=64
+  I=1
   while [ $I -lt $LIM ]; do
     $CLI INSERT INTO bt_trans VALUES "($I,'TEXT_$I')"
     I=$[${I}+1];
   done
+  $CLI BTREE bt_trans
+  $CLI DESC bt_trans
+  echo "press enter to transition"
+  read
+  $CLI INSERT INTO bt_trans VALUES "($I,'TEXT_$I')"
+  I=$[${I}+1];
+  $CLI INSERT INTO bt_trans VALUES "($I,'TEXT_$I')"
+  I=$[${I}+1];
+  $CLI BTREE bt_trans
+  $CLI DESC bt_trans
 }
 
 function sql_test() {
@@ -1725,3 +1735,32 @@ function edge_test() {
 
 BENCH=./gen-benchmark
 MANY="taskset -c 1 $BENCH -q -c $C -n $REQ -s -A MULTI -Q"
+
+function insert_nine_into_bt_trans() {
+  $CLI CREATE TABLE bt_trans "(id INT, t TEXT)";
+  LIM=0;
+  ITER=9;
+  K=0;
+  while [ $K -lt $ITER ]; do
+    LIM=$[${LIM}+1];
+    $CLI INSERT INTO bt_trans VALUES "($LIM,'TEXT_$LIM')";
+     K=$[${K}+1];
+  done;
+}
+function all_delete_cases() {
+  $CLI FLUSHALL
+  insert_nine_into_bt_trans
+  ID=4;$CLI DELETE FROM bt_trans WHERE id = $ID; # 2B
+  ID=5;$CLI DELETE FROM bt_trans WHERE id = $ID;
+  ID=3;$CLI DELETE FROM bt_trans WHERE id = $ID; # 3B.2
+  insert_nine_into_bt_trans
+  ID=6;$CLI DELETE FROM bt_trans WHERE id = $ID; # 2A
+  ID=7;$CLI DELETE FROM bt_trans WHERE id = $ID; # 3A.1
+  ID=5;$CLI DELETE FROM bt_trans WHERE id = $ID; # 3B.1
+  insert_nine_into_bt_trans
+  ID=4;$CLI DELETE FROM bt_trans WHERE id = $ID;
+  ID=5;$CLI DELETE FROM bt_trans WHERE id = $ID;
+  ID=6;$CLI DELETE FROM bt_trans WHERE id = $ID; # 2C
+  insert_nine_into_bt_trans
+  ID=3;$CLI DELETE FROM bt_trans WHERE id = $ID; # 3A.2
+}

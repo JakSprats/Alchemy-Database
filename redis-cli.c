@@ -214,7 +214,7 @@ static struct redisCommand cmdTable[] = {
     {"denorm",        3,CMDFLAG_NONE},
 
     {"lua",          -1,CMDFLAG_NONE},
-    //{"btree",         2,CMDFLAG_NONE},
+    {"btree",         2,CMDFLAG_NONE},
 #endif
     {NULL,0,CMDFLAG_NONE}
 };
