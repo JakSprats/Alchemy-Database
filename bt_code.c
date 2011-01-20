@@ -47,6 +47,32 @@ extern size_t          used_memory;
 extern int             zmalloc_thread_safe;
 extern pthread_mutex_t used_memory_mutex;
 
+#define BT_MEM_PROFILE
+#ifdef BT_MEM_PROFILE
+static ulong tot_bt_data     = 0;
+static ulong tot_bt_data_mem = 0;
+static ulong tot_num_bt_ns   = 0;
+static ulong tnbtnmem        = 0;
+static ulong tot_num_bts     = 0;
+static ulong tot_num_bt_mem  = 0;
+void dump_bt_mem_profile(bt *btr) {
+    printf("BT: %d\n", btr->num);
+    printf("tot_bt_data:     %lu\n", tot_bt_data);
+    printf("tot_bt_data_mem: %lu\n", tot_bt_data_mem);
+    printf("tot_num_bts:     %lu\n", tot_num_bts);
+    printf("tot_bt_mem:      %lu\n", tot_num_bt_mem);
+    printf("tot_num_btn:     %lu\n", tot_num_bt_ns);
+    printf("tbtn_mem:        %lu\n", tnbtnmem);
+    fflush(NULL);
+}
+  #define BT_MEM_PROFILE_BT   {tot_num_bts++; tot_num_bt_mem += size;}
+  #define BT_MEM_PROFILE_MLC  {tot_bt_data++; tot_bt_data_mem += size;}
+  #define BT_MEM_PROFILE_NODE {tot_num_bt_ns++; tnbtnmem += size;}
+#else
+  #define BT_MEM_PROFILE_BT
+  #define BT_MEM_PROFILE
+  #define BT_MEM_PROFILE_NODE
+#endif
 /*
  * This is the real log2 function.  It is only called when we don't have
  * a value in the table. -> which is basically never
@@ -116,13 +142,16 @@ static void bt_decrement_used_memory(bt *btr, size_t size) {
 }
 
 void *bt_malloc(int size, bt *btr) {
+BT_MEM_PROFILE_MLC
     void *v         = malloc(size);
     bt_increment_used_memory(btr, size);
     btr->data_size += size;
     return v;
 }
 static bt_n *allocbtreenode(bt *btr, bool leaf) {
+    btr->numnodes++;
     size_t  size = leaf ? btr->kbyte : btr->nbyte;
+BT_MEM_PROFILE_NODE
     bt_n   *btn  = malloc(size);
     bt_increment_used_memory(btr, size);
     bzero(btn, size);
@@ -131,6 +160,7 @@ static bt_n *allocbtreenode(bt *btr, bool leaf) {
 }
 static bt *allocbtree(void) {
     int  size = sizeof(struct btree);
+BT_MEM_PROFILE_BT
     bt  *btr  = (bt *)malloc(size);                      /* FREE ME 035 */
     bzero(btr, size);
     bt_increment_used_memory(btr, size);
@@ -153,7 +183,7 @@ void bt_free_btree(void *v, bt *btr) {
     free(v);
 }
 
-bt *bt_create(bt_cmp_t cmp, uchar trans, int ksize, uchar ainc) {
+bt *bt_create(bt_cmp_t cmp, uchar trans, int ksize, uchar iainc) {
     /* the two BT node sizes are 128 and 4096 */
     int    n        = (trans < TRANSITION_TWO_BTREE) ? 7 : 255;
     uchar  t        = (uchar)((int)(n + 1) /2);
@@ -166,7 +196,7 @@ bt *bt_create(bt_cmp_t cmp, uchar trans, int ksize, uchar ainc) {
     uint32 nodeofst = btr->keyofst + n * ksize;
     btr->nodeofst   = (ushort)nodeofst;
     btr->t          = t;
-    btr->ainc       = ainc;
+    btr->iainc      = iainc;
     int nbits       = real_log2(n, sizeof(int) * 8) + 1;
     nbits           = 1 << (real_log2(nbits, sizeof(int) * 8) + 1);
     btr->nbits      = (uchar)nbits;
@@ -174,12 +204,7 @@ bt *bt_create(bt_cmp_t cmp, uchar trans, int ksize, uchar ainc) {
     btr->kbyte      = kbyte;
     btr->root       = allocbtreenode(btr, 1);
     btr->numnodes   = 1;
-#if 0
-    printf("BT n: %d t: %d nbits: %d nbyte: %d kbyte: %d "\
-           "ksize: %d koff: %d noff: %d\n",
-            n, btr->t, btr->nbits, btr->nbyte, btr->kbyte, btr->ksize,
-            btr->keyofst, btr->nodeofst);
-#endif
+    //bt_dump_info(btr);
     return btr;
 }
 
@@ -208,35 +233,43 @@ static int findkindex(bt *btr, bt_n *x, bt_data_t k, int *r, btIterator *iter) {
     return i;
 }
 
-static void btreesplitchild(bt *btr, bt_n *x, int i, bt_n *y) {
-    btr->numnodes++;
-    ushort  yt = btr->t;
-    bt_n   *z  = allocbtreenode(btr, y->leaf);
-    z->leaf    = y->leaf; /* duplicate leaf setting */
-
-#if 0
-    if (0 && y->leaf && btr->ainc) {
-        //TODO 1.) check 5-points for sequentiality
-        //     2.) merge-split
-    } else {
-#endif
-        for (int j = 0; j < yt - 1; j++) { // TODO single memcpy()
-            setKey(btr, AKEYS(btr, z, j), KEYS(btr, y, j + yt));
-        }
-        y->n = yt - 1; /* half num_nodes in Y */
-        z->n = yt - 1; /* half num_nodes in Z */
-    //}
+static bool split_leaf2left(bt *btr, bt_n *x, bt_n *y, bt_n *xp, int i) {
+    ushort  t  = btr->t;
+    int blocksize = (t - 1) * btr->ksize;
+    /* 1.) move x to xp_mid */
+    setKey(btr, AKEYS(btr, xp, t - 1), KEYS(btr, x, i - 1));
+    /* 2.) move y_mid to x */
+    setKey(btr, AKEYS(btr, x, i - 1), KEYS(btr, y, t - 1));
+    /* 3.) move begin(y) to mid(xp) */
+    memmove(AKEYS(btr, xp, t), AKEYS(btr, y, 0), blocksize);
+    xp->n += t;
+    /* 4.) move y back t keys */
+    memmove(AKEYS(btr, y, 0), AKEYS(btr, y, t), blocksize);
+    y->n = t - 1;
+    return 0;
+}
+static bool btreesplitchild(bt *btr, bt_n *x, int i, bt_n *y) {
+    ushort  t = btr->t;
+    if (i && y->leaf && btr->iainc) { /* AutoIncrementInteger split-left */
+        bt_n *xp = NODES(btr, x)[i - 1];
+        if ((xp->n <= t - 1)) return split_leaf2left(btr, x, y, xp, i);
+    }
+    bt_n   *z = allocbtreenode(btr, y->leaf);
+    z->leaf   = y->leaf; /* duplicate leaf setting */
+    for (int j = 0; j < t - 1; j++) { // TODO single memcpy()
+        setKey(btr, AKEYS(btr, z, j), KEYS(btr, y, j + t));
+    }
+    y->n = t - 1; /* half num_nodes in Y */
+    z->n = t - 1; /* half num_nodes in Z */
     if (!y->leaf) { /* if it's an internal node, copy the ptr's too */
-        for (int j = 0; j < btr->t; j++) {
-            NODES(btr, z)[j] = NODES(btr, y)[j + btr->t];
+        for (int j = 0; j < t; j++) {
+            NODES(btr, z)[j] = NODES(btr, y)[j + t];
         }
     }
-
-    /* move node ptrs in parent node down one, and store new node */
-    for (int j = x->n; j > i; j--) {
+    for (int j = x->n; j > i; j--) { /* move nodes in parent down one */
         NODES(btr, x)[j + 1] = NODES(btr, x)[j];
     }
-    NODES(btr, x)[i + 1] = z;
+    NODES(btr, x)[i + 1] = z; /* store new node */
 
     /* adjust the keys from previous move, and store new key */
     for (int j = x->n - 1; j >= i; j--) {
@@ -244,6 +277,7 @@ static void btreesplitchild(bt *btr, bt_n *x, int i, bt_n *y) {
     }
     setKey(btr, AKEYS(btr, x, i), KEYS(btr, y, y->n));
     x->n++;
+    return 1;
 }
 #define GETN(btr) ((2 * btr->t) - 1)
 static void btreeinsertnonfull(bt *btr, bt_n *x, bt_data_t k) {
@@ -260,27 +294,27 @@ static void btreeinsertnonfull(bt *btr, bt_n *x, bt_data_t k) {
         i = findkindex(btr, x, k, NULL, NULL) + 1;
         /* make sure that the next node isn't full */
         if (NODES(btr, x)[i]->n == GETN(btr)) {
-            btreesplitchild(btr, x, i, NODES(btr, x)[i]);
-            if (btr->cmp(k, KEYS(btr, x, i)) > 0) i++;
+            if (btreesplitchild(btr, x, i, NODES(btr, x)[i])) {
+                if (btr->cmp(k, KEYS(btr, x, i)) > 0) i++;
+            }
         }
         btreeinsertnonfull(btr, NODES(btr, x)[i], k);
     }
 }
 void bt_insert(bt *btr, bt_data_t k) {
-    bt_n *r, *s;
-    btr->numkeys++;
-    r = btr->root;
-    if (r->n == GETN(btr)) { /* NOTE: ONLY place tree can grown in height */
-        btr->numnodes++;
-        if ((s = allocbtreenode(btr, 0)) == NULL) exit(1);
+    bt_n *r = btr->root;
+    if (r->n == GETN(btr)) { /* NOTE: tree increase height */
+        bt_n *s          = allocbtreenode(btr, 0);
         btr->root        = s;
         s->leaf          = 0;
         s->n             = 0;
         NODES(btr, s)[0] = r;
         btreesplitchild(btr, s, 0, r);
         r                = s;
+        btr->numnodes++;
     }
     btreeinsertnonfull(btr, r, k);    /* finally insert the new node */
+    btr->numkeys++;
 }
 
 /* NOTE: case_2c_ptr retains the deleted pointer to be passed to the caller */
@@ -342,7 +376,6 @@ static bt_data_t nodedeletekey(bt *btr, bt_n *x, bt_data_t k, int s) {
              *   unwrapping of the delete function. */
             xp = NODES(btr, x)[i];
             kp = KEYS(btr, x, i);
-            //printf("2A\n");
             setKey(btr, AKEYS(btr, x, i), nodedeletekey(btr, xp, NULL, 1));
             return kp;
         }
@@ -355,7 +388,6 @@ static bt_data_t nodedeletekey(bt *btr, bt_n *x, bt_data_t k, int s) {
              *   See above for comment on single downward pass. */
             xp = NODES(btr, x)[i + 1];
             kp = KEYS(btr, x, i);
-            //printf("2B\n");
             setKey(btr, AKEYS(btr, x, i), nodedeletekey(btr, xp, NULL, 2));
             return kp;
         }
@@ -369,7 +401,6 @@ static bt_data_t nodedeletekey(bt *btr, bt_n *x, bt_data_t k, int s) {
             if (!case_2c_ptr) case_2c_ptr = KEYS(btr, x, i);
             y = NODES(btr, x)[i];
             z = NODES(btr, x)[i + 1];
-            //printf("2C\n");
             setKey(btr, AKEYS(btr, y, y->n++), k);
             memmove(AKEYS(btr, y, y->n), AKEYS(btr, z, 0), z->n * ks);
             if (!y->leaf) memmove(NODES(btr, y) + y->n, NODES(btr, z),
@@ -398,7 +429,6 @@ static bt_data_t nodedeletekey(bt *btr, bt_n *x, bt_data_t k, int s) {
          * left or right sibling up into x, and moving the
          * appropriate child from the sibling into x'. */
         if (i > 0 && (y = NODES(btr, x)[i - 1])->n >= btr->t) {
-            //printf("3A ONE\n");
             /* left sibling has t keys */
             memmove(AKEYS(btr, xp, 1), AKEYS(btr, xp, 0), xp->n * ks);
             if (!xp->leaf) memmove(NODES(btr, xp) + 1, NODES(btr, xp),
@@ -409,7 +439,6 @@ static bt_data_t nodedeletekey(bt *btr, bt_n *x, bt_data_t k, int s) {
             y->n--;
             xp->n++;
         } else if (i < x->n && (y = NODES(btr, x)[i + 1])->n >= btr->t) {
-            //printf("3A TWO\n");
             /* right sibling has t keys */
             setKey(btr, AKEYS(btr, xp, xp->n++), KEYS(btr, x, i));
             setKey(btr, AKEYS(btr, x, i), KEYS(btr, y, 0));
@@ -425,7 +454,6 @@ static bt_data_t nodedeletekey(bt *btr, bt_n *x, bt_data_t k, int s) {
          * down into the new merged node to become the median key
          * for that node.  */
         else if (i > 0 && (y = NODES(btr, x)[i - 1])->n == btr->t - 1) {
-            //printf("3B ONE\n");
             /* merge i with left sibling */
             setKey(btr, AKEYS(btr, y, y->n++), KEYS(btr, x, i - 1));
             memmove(AKEYS(btr, y, y->n), AKEYS(btr, xp, 0), xp->n * ks);
@@ -439,7 +467,6 @@ static bt_data_t nodedeletekey(bt *btr, bt_n *x, bt_data_t k, int s) {
             bt_free_btreenode(xp, btr);
             xp = y;
         } else if (i < x->n && (y = NODES(btr, x)[i + 1])->n == btr->t - 1) {
-            //printf("3B TWO\n");
             /* merge i with right sibling */
             setKey(btr, AKEYS(btr, xp, xp->n++), KEYS(btr, x, i));
             memmove(AKEYS(btr, xp, xp->n), AKEYS(btr, y, 0), y->n * ks);
@@ -461,17 +488,15 @@ bt_data_t bt_delete(bt *btr, bt_data_t k) {
     case_2c_ptr = NULL;
     bt_data_t r = nodedeletekey(btr, btr->root, k, 0);
 
-    /* remove an empty, non-leaf node from root,
-     * NOTE: ONLY place that a tree can decrease in height */
-    if (btr->root->n == 0 && btr->root->leaf == 0) {
+    /* remove empty non-leaf node from root, */
+    if (!btr->root->n && !btr->root->leaf) { /* NOTE: tree decrease height */
         btr->numnodes--;
         x         = btr->root;
         btr->root = NODES(btr, x)[0];
         bt_free_btreenode(x, btr);
     }
     btr->numkeys--;
-    if (case_2c_ptr) return case_2c_ptr;
-    else             return r;
+    return case_2c_ptr ? case_2c_ptr : r;
 }
 
 static bt_data_t findmaxnode(bt *btr, bt_n *x) {

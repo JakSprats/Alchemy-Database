@@ -54,6 +54,7 @@ void  bt_insert(struct btree *btr, bt_data_t k);
 void *bt_delete(struct btree *btr, bt_data_t k);
 void *bt_replace(struct btree *btr, bt_data_t k, bt_data_t val);
 
+void bt_dump_info(struct btree *btr);
 void  bt_dumptree(struct btree *btr);
 void  bt_treestats(struct btree *btr);
 int   bt_checktree(struct btree *btr, bt_data_t kmin, bt_data_t kmax);
@@ -67,4 +68,5 @@ struct btreenode;
 int  bt_init_iterator(struct btree *bre, bt_data_t k, struct btIterator *iter);
 int  bt_find_closest_slot(struct btree *btr, struct btreenode *x, bt_data_t k);
 
+void dump_bt_mem_profile(struct btree *btr);
 #endif /* _BTREE_H_ */

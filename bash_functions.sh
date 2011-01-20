@@ -1594,12 +1594,12 @@ function run_new_join_tests() {
 }
 
 function wait_on_proc_net_tcp() {
-  LIM=$1
+  MIN=$1
   SLEEP_TIME=2
   PROC_TCP=99999
-  while [ $PROC_TCP -gt $LIM ]; do
+  while [ $PROC_TCP -gt $MIN ]; do
     PROC_TCP=$(wc -l /proc/net/tcp | cut -f 1 -d \ )
-    if [ $PROC_TCP -lt $LIM ]; then
+    if [ $PROC_TCP -lt $MIN ]; then
         break;
     fi
     echo $0: sleep $SLEEP_TIME - PROC_TCP=$PROC_TCP
@@ -1763,4 +1763,14 @@ function all_delete_cases() {
   ID=6;$CLI DELETE FROM bt_trans WHERE id = $ID; # 2C
   insert_nine_into_bt_trans
   ID=3;$CLI DELETE FROM bt_trans WHERE id = $ID; # 3A.2
+}
+
+function amem_pre(){
+  MEMA=$(ps avx |grep redisql-server|grep -v grep | while read a b c d e f g h i j k; do echo $h; done)
+  MEMA_PRE=$MEMA
+}
+function amem_post(){
+  MEMA=$(ps avx |grep redisql-server|grep -v grep | while read a b c d e f g h i j k; do echo $h; done)
+  MEMA_POST=$MEMA
+  echo "mem_change: $[${MEMA_POST}-${MEMA_PRE}]  PRE: $MEMA_PRE PORT: $MEMA_POST"
 }

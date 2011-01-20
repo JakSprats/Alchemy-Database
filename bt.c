@@ -42,18 +42,19 @@ ALL RIGHTS RESERVED
 #include "common.h"
 
 /* Abstract-BTREE Prototypes */
-static bt   *abt_create(uchar ktype, int num, uchar btype);
+static bt   *abt_create(uchar ktype, int num, uchar btype, bool iainc);
 static void  abt_destroy(bt *nbtr, bt *btr);
 
 static int intCmp(void *s1, void *s2) {
     return (long)s1 - (long)s2;
 }
 
-bt *btCreate(uchar ktype, int num, uchar btype) {
-    return abt_create(ktype, num, btype);
+bt *btCreate(uchar ktype, int num, uchar btype, bool iainc) {
+    return abt_create(ktype, num, btype, iainc);
 }
 robj *createBtreeObject(uchar ktype, int num, uchar btype) { /* Data & Index */
-    bt *btr = btCreate(ktype, num, btype);
+    bool iainc = (btype == BTREE_TABLE && ktype == COL_TYPE_INT) ? 1 : 0;
+    bt *btr = btCreate(ktype, num, btype, iainc);
     return createObject(REDIS_BTREE, btr);
 }
 robj *createEmptyBtreeObject() {                           /* Virtual indices */
@@ -66,9 +67,9 @@ static bt *createInodeIntBt() {
     btr->num   = -1;
     return btr;
 }
-bt *createIndexNode(uchar pktype) {                          /* INODE_BT */
-    if (pktype == COL_TYPE_INT) return createInodeIntBt();
-    else                        return btCreate(pktype, -1, BTREE_INDEX_NODE);
+bt *createIndexNode(uchar pkt) {                             /* INODE_BT */
+    if (pkt == COL_TYPE_INT) return createInodeIntBt();
+    else                     return btCreate(pkt, -1, BTREE_INDEX_NODE, -1);
 }
 
 void btDestroy(bt *nbtr, bt *btr) {
@@ -125,12 +126,11 @@ static void bt_to_bt_insert(bt *nbtr, bt *obtr, bt_n *n) {
 }
           
 /* ABSTRACT-BTREE ABSTRACT-BTREE ABSTRACT-BTREE ABSTRACT-BTREE ABSTRACT-BTREE */
-static bt *abt_create(uchar ktype, int num, uchar btype) {
-    uchar ainc = (btype == BTREE_INDEX) ? 0 : 1;
-    bt *btr    = bt_create(btStreamCmp, TRANSITION_ONE_BTREE, VOIDSIZE, ainc);
-    btr->ktype = ktype;
-    btr->btype = btype;
-    btr->num   = num;
+static bt *abt_create(uchar ktype, int num, uchar btype, bool iainc) {
+    bt *btr     = bt_create(btStreamCmp, TRANSITION_ONE_BTREE, VOIDSIZE, iainc);
+    btr->ktype  = ktype;
+    btr->btype  = btype;
+    btr->num    = num;
     return btr;
 }
 
@@ -186,7 +186,7 @@ static uint32 abt_insert(bt *btr, aobj *akey, void *val) {
 
 bt *abt_resize(bt *obtr, int new_size) {
      uchar ksize     = INODE(obtr) ? UINTSIZE : VOIDSIZE;
-     bt *nbtr        = bt_create(obtr->cmp, new_size, ksize, obtr->ainc);
+     bt *nbtr        = bt_create(obtr->cmp, new_size, ksize, obtr->iainc);
      nbtr->ktype     = obtr->ktype;
      nbtr->btype     = obtr->btype;
      nbtr->num       = obtr->num;
@@ -260,11 +260,11 @@ static int floatJoinRowCmp(void *a, void *b) {
 bt *createJoinResultSet(uchar pkt) {
     bt *btr = NULL; /* compiler warning */
     if (       pkt == COL_TYPE_INT) {
-        btr = bt_create(intJoinRowCmp,   TRANSITION_TWO_BTREE, VOIDSIZE, 1);
+        btr = bt_create(intJoinRowCmp,   TRANSITION_TWO_BTREE, VOIDSIZE, 0);
     } else if (pkt == COL_TYPE_STRING) {
-        btr = bt_create(strJoinRowCmp,   TRANSITION_TWO_BTREE, VOIDSIZE, 1);
+        btr = bt_create(strJoinRowCmp,   TRANSITION_TWO_BTREE, VOIDSIZE, 0);
     } else if (pkt == COL_TYPE_FLOAT) {
-        btr = bt_create(floatJoinRowCmp, TRANSITION_TWO_BTREE, VOIDSIZE, 1);
+        btr = bt_create(floatJoinRowCmp, TRANSITION_TWO_BTREE, VOIDSIZE, 0);
     }
     return btr;
 }

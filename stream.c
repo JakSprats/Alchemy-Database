@@ -285,7 +285,6 @@ uint32 getStreamMallocSize(uchar *stream, bt *btr) {
 
 void *createStream(bt *btr, void *val, char *btkey,
                    uint32 ksize, uint32 *ssize) {
-//if (btr->btype == BTREE_INDEX && btr->ktype == COL_TYPE_INT) printf("INT INDEX ADD: ksize: %d\n", ksize);
     if INODE(btr) { /* simply echo btkey */
         *ssize = 0;
         return btkey;

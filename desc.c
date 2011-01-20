@@ -278,24 +278,21 @@ void descCommand(redisClient *c) {
     }
 
     char buf[256];
-    long long tot = btr->data_size + btr->malloc_size + index_size;
     if (minkey.type == COL_TYPE_STRING) {
         sds mins = sdsnewlen(minkey.s, (minkey.len > 64) ? 64 : minkey.len);
         sds maxs = sdsnewlen(maxkey.s, (minkey.len > 64) ? 64 : minkey.len);
-        snprintf(buf, 255, "INFO: KEYS: [NUM: %d MIN: %s MAX: %s]"\
-                          " BYTES: [BT-DATA: %ld BT-TOTAL: %ld INDEX: %lld"\
-                            " COMBINED_TOTAL: %lld]",
-                btr->numkeys, mins, maxs, btr->data_size, btr->malloc_size,
-                index_size, tot);
+        snprintf(buf, 255, "INFO: KEYS: [NUM: %d MIN: %s MAX: %s]" \
+                          " BYTES: [BT-TOTAL: %ld [BT-DATA: %ld INDEX: %lld]",
+                btr->numkeys, mins, maxs, btr->malloc_size, btr->data_size,
+                index_size);
         buf[255] = '\0';
         sdsfree(mins);
         sdsfree(maxs);
     } else {
-        snprintf(buf, 255, "INFO: KEYS: [NUM: %d MIN: %u MAX: %u]"\
-                          " BYTES: [BT-DATA: %ld BT-TOTAL: %ld INDEX: %lld"\
-                            " COMBINED_TOTAL: %lld]",
-               btr->numkeys, minkey.i, maxkey.i, btr->data_size,
-               btr->malloc_size, index_size, tot);
+        snprintf(buf, 255, "INFO: KEYS: [NUM: %d MIN: %u MAX: %u]" \
+                           " BYTES: [BT-TOTAL: %ld [BT-DATA: %ld INDEX: %lld]",
+               btr->numkeys, minkey.i, maxkey.i, btr->malloc_size,
+               btr->data_size, index_size);
         buf[255] = '\0';
     }
     robj *r = _createStringObject(buf);
@@ -303,4 +300,5 @@ void descCommand(redisClient *c) {
     decrRefCount(r);
     card++;
     lenobj->ptr = sdscatprintf(sdsempty(), "*%ld\r\n", card);
+    //dump_bt_mem_profile(btr);
 }

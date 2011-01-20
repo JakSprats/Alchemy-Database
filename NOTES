@@ -1,6 +1,21 @@
 
-LUA
+INSTALLATION TROUBLESHOOTING:
+
+LUA:
 1.) readline may need to be installed
 2.) for lua functions "connect_mysql(), etc..." install Luasql @ http://www.keplerproject.org/luasql/index.html
     A.) download and configure your platform in ./config
     B.) type "sudo make install"
+
+LUAJIT:
+1.) git clone https://github.com/tycho/luajit.git
+2.) cd luajit*
+3.) make install
+    NOTE: for 64-bit compilation, change line 28 in luajit/src/Makefile to
+           "CC= gcc -m64 -march=native"
+4.) export LD_LIBRARY_PATH=/usr/local/lib/
+5.) in Makfile, set LUAJIT= yes
+
+TCMALLOC:
+1.) google-perftools or tcmalloc-minimal needs to be installed
+    A.) sudo apt-get install libgoogle-perftools0

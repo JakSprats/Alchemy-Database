@@ -29,12 +29,11 @@ static void dumpnode(bt *btr, bt_n *n, int depth);
 int treeheight(bt *btr);
 
 void bt_dump_info(bt *btr) {
-    printf("bt_dumptree: %p numkeys: %d numnodes: %d\n",
-           (void *)btr, btr->numkeys, btr->numnodes);
-    printf("keyofst: %d  nodeofst: %d t: %d nbyte: %d kbyte: %d nbits: %d" \
-           " height: %d\n",
-            btr->keyofst, btr->nodeofst, btr->t,
-            btr->nbyte, btr->kbyte, btr->nbits, treeheight(btr));
+    printf("BT t: %d nbits: %d nbyte: %d kbyte: %d "\
+           "ksize: %d koff: %d noff: %d numkeys: %d numnodes: %d height: %d\n",
+            btr->t, btr->nbits, btr->nbyte, btr->kbyte, btr->ksize,
+            btr->keyofst, btr->nodeofst, btr->numkeys, btr->numnodes,
+            treeheight(btr));
 }
 
 void bt_dumptree(bt *btr) {
@@ -46,8 +45,8 @@ void bt_dumptree(bt *btr) {
 static void dumpnode(bt *btr, bt_n *x, int depth) {
     int i;
 
-    if (!x->leaf) printf("%d: NODE: %d\n", depth, x->n);
-    else          printf("%d: LEAF: %d\n", depth, x->n);
+    if (!x->leaf) printf("%d: NODE: %d -> (%p)\n", depth, x->n, (void *)x);
+    else          printf("%d: LEAF: %d -> (%p)\n", depth, x->n, (void *)x);
 
     for (i = 0; i < x->n; i++) {
         void *be = KEYS(btr, x, i);

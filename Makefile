@@ -21,8 +21,16 @@ PLATS= aix ansi bsd freebsd generic linux macosx mingw posix solaris
 # 5.) set LUAJIT= yes
 LUAJIT= no
 #LUAJIT= yes
-uname_S := $(shell sh -c 'uname -s 2>/dev/null || echo not')
+
+# STEPS FOR TCMALLOC compilation
+# 1.) google-perftools or tcmalloc-minimal needs to be installed
+#    in debian: sudo apt-get install libgoogle-perftools0
+USE_TCMALLOC=no
+#USE_TCMALLOC=yes
+
 OPTIMIZATION?=-O2
+
+uname_S := $(shell sh -c 'uname -s 2>/dev/null || echo not')
 ifeq ($(uname_S),SunOS)
   @echo "Sun not supported (no BigEndian support) - sorry"
   @exit
@@ -39,6 +47,11 @@ ifeq ($(LUAJIT),yes)
   EXTRA_LD= -lluajit
 else
   EXTRA_LD= -llua
+endif
+ifeq ($(USE_TCMALLOC),yes)
+  CCLINK+= /usr/lib/libtcmalloc.so.0
+  #CCLINK+= -ltcmalloc
+  CFLAGS+= -DUSE_TCMALLOC
 endif
 CCOPT= $(CFLAGS) $(CCLINK) $(ARCH) $(PROF)
 DEBUG?= -g -rdynamic -ggdb 

@@ -52,13 +52,13 @@ typedef struct btree {
     unsigned short     nbyte;    /*             | */
     unsigned short     kbyte;    /* ------------| */
 
-    unsigned short     num;      /* --------------------------- 8 bytes | */
-    unsigned char      t;        /*                                     | */
+    unsigned char      t;        /* --------------------------- 8 bytes | */
     unsigned char      nbits;    /*                                     | */
     unsigned char      ktype;    /* [STRING,INT,FLOAT]                  | */
     unsigned char      btype;    /* [data,index,node]                   | */
     unsigned char      ksize;    /* 4->INODE, sizeof(void *)->OTHER     | */
-    unsigned char      ainc;     /* ------------------------------------| */
+    unsigned char      iainc;    /* AutoIncrementInteger                | */
+    unsigned short     num;      /*-------------------------------------| */
 }  __attribute__ ((packed)) bt;
 
 typedef struct btreenode { /* 2 bytes */
