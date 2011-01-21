@@ -47,11 +47,6 @@
 
 #include "common.h"
 
-//#define ALCHEMY_LZO_COMPRESSION
-#ifdef ALCHEMY_LZO_COMPRESSION
-#include "minilzo.h"
-#endif
-
 #define REPLY_INT 0
 #define REPLY_RETCODE 1
 #define REPLY_BULK 2
@@ -296,16 +291,6 @@ processdata:
         }
     }
 }
-
-#ifdef ALCHEMY_LZO_COMPRESSION
-#define HEAP_ALLOC(var,size) \
-    lzo_align_t __LZO_MMODEL var [ ((size) + (sizeof(lzo_align_t) - 1)) / sizeof(lzo_align_t) ]
-
-static HEAP_ALLOC(wrkmem, LZO1X_1_MEM_COMPRESS);
-
-lzo_uint lzolen = 0;
-unsigned char lzobuf[4096];
-#endif
 
 static void writeHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     client c = privdata;
@@ -560,9 +545,6 @@ static void randomizeClientKey(client c) {
 
 int main(int argc, char **argv) {
     client c;
-#ifdef ALCHEMY_LZO_COMPRESSION
-    lzo_init();
-#endif
     signal(SIGHUP, SIG_IGN);
     signal(SIGPIPE, SIG_IGN);
 

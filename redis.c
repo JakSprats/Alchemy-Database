@@ -99,10 +99,6 @@
 #include "alsosql.h"         /* ALSOSQL */
 #include "aobj.h"            /* ALSOSQL's ROW object called AOBJ */
 #include "common.h"          /* ALSOSQL's common definitions */
-//#define ALCHEMY_LZO_COMPRESSION
-#ifdef ALCHEMY_LZO_COMPRESSION
-#include "minilzo.h"
-#endif
 
 lua_State   *Lua         = NULL;
 redisClient *LuaClient   = NULL; /* combine w/ CurrClient? */
@@ -2916,18 +2912,6 @@ again:
         }
     }
 }
-
-#ifdef ALSOSQL
-#ifdef ALCHEMY_LZO_COMPRESSION
-#define HEAP_ALLOC(var,size) \
-    lzo_align_t __LZO_MMODEL var [ ((size) + (sizeof(lzo_align_t) - 1)) / sizeof(lzo_align_t) ]
-
-static HEAP_ALLOC(wrkmem, LZO1X_1_MEM_COMPRESS);
-
-lzo_uint lzolen = 0;
-unsigned char lzobuf[REDIS_IOBUF_LEN + 64]; //64 bytes overhead per 1KB
-#endif
-#endif
 
 static void readQueryFromClient(aeEventLoop *el, int fd, void *privdata, int mask) {
     redisClient *c = (redisClient*) privdata;
@@ -11425,13 +11409,6 @@ static void usage() {
 
 int main(int argc, char **argv) {
     time_t start;
-
-#ifdef ALSOSQL
-#ifdef ALCHEMY_LZO_COMPRESSION
-    lzo_init();
-#endif
-#endif
-
     initServerConfig();
     if (argc == 2) {
         if (strcmp(argv[1], "-v") == 0 ||

@@ -2,15 +2,7 @@
 # Copyright (C) 2009 Salvatore Sanfilippo <antirez at gmail dot com>
 # This file is released under the BSD license, see the COPYING file
 
-# Your platform. See PLATS for possible values.
-PLAT= none
-#PLAT= linux
-
-# == END OF USER SETTINGS. NO NEED TO CHANGE ANYTHING BELOW THIS LINE =========
-
-# Convenience platforms targets.
-PLATS= aix ansi bsd freebsd generic linux macosx mingw posix solaris
-
+# =========================== USER SETTINGS ===================================
 # STEPS for LUAJIT compilation
 # 1.) git clone https://github.com/tycho/luajit.git
 # 2.) cd luajit*
@@ -27,6 +19,15 @@ LUAJIT= no
 #    in debian: sudo apt-get install libgoogle-perftools0
 USE_TCMALLOC=no
 #USE_TCMALLOC=yes
+
+# Your platform. See PLATS for possible values.
+PLAT= none
+#PLAT= linux
+
+# == END OF USER SETTINGS. NO NEED TO CHANGE ANYTHING BELOW THIS LINE =========
+
+# Convenience platforms targets.
+PLATS= aix ansi bsd freebsd generic linux macosx mingw posix solaris
 
 OPTIMIZATION?=-O2
 
@@ -191,7 +192,6 @@ sixbit.o: sixbit.h
 stream.o: aobj.h common.h
 wc.o: wc.h colparse.h bt_iterator.h cr8tblas.h rpipe.h redis.h common.h
 colparse.o: colparse.h alsosql.h redis.h common.h
-#minilzo.o: minilzo.h
 
 redisql-server: $(OBJ)
 	$(CC) -o $(PRGNAME) $(CCOPT) $(DEBUG) $(OBJ) $(EXTRA_LD)
