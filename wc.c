@@ -422,7 +422,7 @@ static uchar parseWC_IN(redisClient  *c,
                         list        **inl,
                         uchar         ctype,
                         char        **finish) {
-    char *end = str_next_unescaped_chr(token, token, ')');
+    char *end = str_matching_end_paren(token);
     if (!end || (*token != '(')) {
         addReply(c, shared.whereclause_in_err);
         return SQL_ERR_LOOKUP;

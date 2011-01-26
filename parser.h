@@ -51,6 +51,7 @@ void StaticRobjInit(robj *r, int type);
 char *rem_backticks(char *token, int *len);
 char *str_next_unescaped_chr(char *beg, char *s, int x);
 char *strn_next_unescaped_chr(char *beg, char *s, int x, int len);
+char *str_matching_end_paren(char *beg);
 
 #define SKIP_SPACES(tok) while (isblank(*tok)) tok++;
 

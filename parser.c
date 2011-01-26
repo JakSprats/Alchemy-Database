@@ -132,6 +132,17 @@ char *str_next_unescaped_chr(char *beg, char *s, int x) {
 char *strn_next_unescaped_chr(char *beg, char *s, int x, int len) {
     return _strn_next_unescaped_chr(beg, s, x, len);
 }
+char *str_matching_end_paren(char *beg) {
+    int   n_open_paren = 0;
+    char *x            = beg;
+    while (*x) {
+        if (     *x == '(') n_open_paren++;
+        else if (*x == ')') n_open_paren--;
+        if (x != beg && !n_open_paren) return x;
+        x++;
+    }
+    return NULL;
+}
 
 /* PARSER PARSER PARSER PARSER PARSER PARSER PARSER PARSER PARSER PARSER */
 /* PARSER PARSER PARSER PARSER PARSER PARSER PARSER PARSER PARSER PARSER */
