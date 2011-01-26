@@ -36,9 +36,9 @@ end
 
 function do_t_sp_cp()
     local x = 0;
-    for k = 1, 42 do
-        for l = 1, 28 do
-            for m = 1, 16 do
+    for k = 2, 42 do
+        for l = 2, 28 do
+            for m = 2, 16 do
                 local cnt = select("COUNT(*)", tbl,
                   'thread_id = ' .. k ..
                   ' AND subject_id = ' .. l ..
@@ -64,9 +64,9 @@ end
 
 function do_p_t_sp()
     local x = 0;
-    for j = 1, 60 do
-        for k = 1, 42 do
-            for l = 1, 28 do
+    for j = 2, 60 do
+        for k = 2, 42 do
+            for l = 2, 28 do
                 local cnt = select("COUNT(*)", tbl,
                   'page_id = ' .. j ..
                   ' AND thread_id = ' .. k ..
@@ -91,9 +91,9 @@ end
 
 function do_ps_p_c()
     local x = 0;
-    for i = 1, 126 do
-        for j = 1, 60 do
-            for m = 1, 16 do
+    for i = 2, 126 do
+        for j = 2, 60 do
+            for m = 2, 16 do
                 local cnt = select("COUNT(*)", tbl,
                   'page_sub_id = ' .. i ..
                   ' AND page_id = ' .. j ..
@@ -119,9 +119,9 @@ end
 
 function do_ps_p_sp()
     local x = 0;
-    for i = 1, 126 do
-        for j = 1, 60 do
-            for l = 1, 28 do
+    for i = 2, 126 do
+        for j = 2, 60 do
+            for l = 2, 28 do
                 local cnt = select("COUNT(*)", tbl,
                   'page_sub_id = ' .. i ..
                   ' AND page_id = ' .. j ..
@@ -146,9 +146,9 @@ end
 
 function do_ps_p_t()
     local x = 0;
-    for i = 1, 126 do
-        for j = 1, 60 do
-            for k = 1, 42 do
+    for i = 2, 126 do
+        for j = 2, 60 do
+            for k = 2, 42 do
                 local cnt = select("COUNT(*)", tbl,
                   'page_sub_id = ' .. i ..
                   ' AND page_id = ' .. j ..
@@ -195,17 +195,17 @@ end
 
 function validate_select_filter()
     local ocnt = select("COUNT(*)", tbl, "page_id = 1 AND thread_id = 1");
-    local cnt  = select("COUNT(*)", tbl, "page_id = 1 AND thread_id = 1 AND corr_id IN ( 0, 1, 2, 3, 4, 5, 6, 7, 8 , 9, 10 ,11, 12, 13, 14, 15, 16)");
+    local cnt  = select("COUNT(*)", tbl, "page_id = 1 AND thread_id = 1 AND corr_id IN ( 1, 2, 3, 4, 5, 6, 7, 8 , 9, 10 ,11, 12, 13, 14, 15, 16)");
     if (cnt ~= ocnt) then
-        print ('ERROR: expected ' .. ocnt .. ' from "page_id = 1 AND thread_id = 1 AND corr_id IN ( 0, 1, 2, 3, 4, 5, 6, 7, 8 , 9, 10 ,11, 12, 13, 14, 15, 16)", got: ' .. cnt)
+        print ('ERROR: expected ' .. ocnt .. ' from "page_id = 1 AND thread_id = 1 AND corr_id IN ( 1, 2, 3, 4, 5, 6, 7, 8 , 9, 10 ,11, 12, 13, 14, 15, 16)", got: ' .. cnt)
     end
-    local lcnt = select("COUNT(*)", tbl, "page_id = 1 AND thread_id = 1 AND corr_id = 0");
+    local lcnt = select("COUNT(*)", tbl, "page_id = 1 AND thread_id = 1 AND corr_id = 16");
     local ecnt = 0;
     local in_s = '';
-    for m = 0, 16 do
+    for m = 2, 16 do
         in_s = in_s .. m .. ', ';
         cnt  = select("COUNT(*)", tbl, "page_id = 1 AND thread_id = 1 AND corr_id IN ( " .. in_s .. ")");
-        if (cnt ~= (ecnt + lcnt) and cnt ~= (ecnt + lcnt + 1)) then
+        if (math.abs(cnt - (ecnt + lcnt)) > 2) then
             print ("ERROR: validate_select_filter: IN ( " .. in_s .. ") cnt: " .. cnt .. " ecnt: " .. ecnt .. " lcnt: " .. lcnt .. " (ecnt + lcnt): " .. (ecnt + lcnt));
         end
         ecnt = cnt;
@@ -215,19 +215,17 @@ end
 
 function validate_scan_filter()
     local ocnt = scanselect("COUNT(*)", tbl, "cp_name IN ( 'pagename_00000000000001', 'pagename_00000000000002')");
-    local cnt  = scanselect("COUNT(*)", tbl, "cp_name IN ( 'pagename_00000000000001', 'pagename_00000000000002') AND corr_id IN ( 0, 1, 2, 3, 4, 5, 6, 7, 8 , 9, 10 ,11, 12, 13, 14, 15, 16)");
+    local cnt  = scanselect("COUNT(*)", tbl, "cp_name IN ( 'pagename_00000000000001', 'pagename_00000000000002') AND corr_id IN ( 1, 2, 3, 4, 5, 6, 7, 8 , 9, 10 ,11, 12, 13, 14, 15, 16)");
     if (cnt ~= ocnt) then
-        print ('ERROR: expected ' .. ocnt .. ' from "cp_name IN ( \'pagename_00000000000001\', \'pagename_00000000000002\') AND corr_id IN ( 0, 1, 2, 3, 4, 5, 6, 7, 8 , 9, 10 ,11, 12, 13, 14, 15, 16)", got: ' .. cnt)
+        print ('ERROR: expected ' .. ocnt .. ' from "cp_name IN ( \'pagename_00000000000001\', \'pagename_00000000000002\') AND corr_id IN ( 1, 2, 3, 4, 5, 6, 7, 8 , 9, 10 ,11, 12, 13, 14, 15, 16)", got: ' .. cnt)
     end
-    local lcnt = scanselect("COUNT(*)", tbl, "cp_name IN ( 'pagename_00000000000001', 'pagename_00000000000002') AND corr_id = 0");
+    local lcnt = scanselect("COUNT(*)", tbl, "cp_name IN ( 'pagename_00000000000001', 'pagename_00000000000002') AND corr_id = 16");
     local ecnt = 0;
     local in_s = '';
-    for m = 0, 16 do
+    for m = 2, 16 do
         in_s = in_s .. m .. ', ';
         cnt  = scanselect("COUNT(*)", tbl, "cp_name IN ( 'pagename_00000000000001', 'pagename_00000000000002') AND corr_id IN ( " .. in_s .. ")");
-        if (cnt ~= (ecnt + lcnt)     and
-            cnt ~= (ecnt + lcnt + 1) and
-            cnt ~= (ecnt + lcnt - 1)) then
+        if (math.abs(cnt - (ecnt + lcnt)) > 2) then
             print ("ERROR: validate_scan_filter: IN ( " .. in_s .. ") cnt: " .. cnt .. " ecnt: " .. ecnt .. " lcnt: " .. lcnt .. " (ecnt + lcnt): " .. (ecnt + lcnt));
         end
         ecnt = cnt;
