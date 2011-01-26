@@ -327,14 +327,14 @@ long inOp(range_t *g, row_op *p) {
     return virt ? inOpPK(g, p) : inOpFK(g, p);
 }
 
-bool passFilters(bt *btr, void *rrow, list *flist, int tmatch) {
+bool passFilters(bt *btr, aobj *akey, void *rrow, list *flist, int tmatch) {
     if (!flist) return 1; /* no filters always passes */
     listNode *ln, *ln2;
     bool      ret = 1;
     listIter *li  = listGetIterator(flist, AL_START_HEAD);
     while((ln = listNext(li)) != NULL) {
         f_t *flt  = ln->value;
-        aobj a    = getRawCol(btr, rrow, flt->cmatch, NULL, tmatch, NULL, 0);
+        aobj a    = getRawCol(btr, rrow, flt->cmatch, akey, tmatch, NULL, 0);
         if (flt->inl) {
             listIter *li2 = listGetIterator(flt->inl, AL_START_HEAD);
             while((ln2 = listNext(li2)) != NULL) {
@@ -358,7 +358,8 @@ bool passFilters(bt *btr, void *rrow, list *flist, int tmatch) {
 /* SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS */
 /* SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS */
 static void select_op(range_t *g, aobj *akey, void *rrow, bool q, long *card) {
-    if (!passFilters(g->co.btr, rrow, g->co.w->flist, g->co.w->tmatch)) return;
+    if (!passFilters(g->co.btr, akey, rrow,
+                     g->co.w->flist, g->co.w->tmatch)) return;
     if (!g->se.cstar) {
         robj *r = outputRow(g->co.btr, rrow, g->se.qcols, g->se.cmatchs,
                             akey, g->co.w->tmatch, 0);
@@ -420,7 +421,8 @@ void iselectAction(redisClient *c,
 }
 
 static void dellist_op(range_t *g, aobj *akey, void *rrow, bool q, long *card) {
-    if (!passFilters(g->co.btr, rrow, g->co.w->flist, g->co.w->tmatch)) return;
+    if (!passFilters(g->co.btr, akey, rrow,
+                     g->co.w->flist, g->co.w->tmatch)) return;
     if (q) {
         addRow2OBList(g->co.ll, g->co.w, g->co.btr, akey, g->co.ofree,
                       rrow, akey);
@@ -489,7 +491,8 @@ void ideleteAction(redisClient *c, cswc_t *w) {
 }
 
 static void update_op(range_t *g, aobj *akey, void *rrow, bool q, long *card) {
-    if (!passFilters(g->co.btr, rrow, g->co.w->flist, g->co.w->tmatch)) return;
+    if (!passFilters(g->co.btr, akey, rrow,
+                     g->co.w->flist, g->co.w->tmatch)) return;
     if (q) {
         addRow2OBList(g->co.ll, g->co.w, g->co.btr, akey, g->co.ofree,
                       rrow, akey);

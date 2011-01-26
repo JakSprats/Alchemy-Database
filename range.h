@@ -84,7 +84,7 @@ typedef struct range {
 
 void setQueued(cswc_t *w, qr_t *q);
 
-bool passFilters(bt *btr, void *rrow, list *flist, int tmatch);
+bool passFilters(bt *btr, aobj *akey, void *rrow, list *flist, int tmatch);
 
 void opSelectOnSort(redisClient *c,
                     list        *ll,

@@ -86,7 +86,8 @@ static void init_filter_row(fr_t *fr, redisClient *c, bt *btr,
 static void condSelectReply(fr_t *fr, aobj *akey, void *rrow, long *card) {
     uchar hit = 0;
     if (fr->nowc) hit = 1;
-    else          hit = passFilters(fr->btr, rrow, fr->w->flist, fr->w->tmatch);
+    else          hit = passFilters(fr->btr, akey, rrow, 
+                                    fr->w->flist, fr->w->tmatch);
 
     if (hit) {
         *card = *card + 1;
