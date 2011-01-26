@@ -509,8 +509,8 @@ static void usage(char *arg) {
 
 static char *rand_replace(char *p, long r) {
     char buf[32];
-    p      += 4;
-    sprintf(buf, "%08ld", r);
+    p += 3;
+    sprintf(buf, "%011ld", r);
     memcpy(p, buf, strlen(buf));
     return p;
 }
@@ -531,9 +531,10 @@ static void randomizeClientKey(client c) {
         if (x == '(' || x == ',' || x == '_' || x == '=') {
             if (hits > 0 && config.num_modulo) {
                 int m = MIN((hits - 1), (config.num_modulo - 1));
-                //printf("m: %d r: %ld c.m: %ld\n", m, r, config.modulo[m]);
+                //printf("m: %d r: %ld c.m: %d\n", m, r, config.modulo[m]);
                 r %= config.modulo[m];
             }
+            if (!r) r = 1; /* 0 as a FK is BAD */
             p  = rand_replace(p, r);
             hits++;
         } else {

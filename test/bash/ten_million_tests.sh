@@ -16,7 +16,7 @@ function init_ten_mill_mod100_fk() {
 
 function insert_ten_mill_mod100_fk() {
   MOD=100
-  time T=$(taskset -c 1 ./gen-benchmark -q -c $C -n $REQ -s -m $MOD -A OK -Q INSERT INTO ten_mill_mod100_fk VALUES "(000000000001,000000000001,4)")
+  time T=$(taskset -c 1 ./gen-benchmark -q -c $C -n $REQ -s -m $MOD -A OK -Q INSERT INTO ten_mill_mod100_fk VALUES "(00000000000001,00000000000001,4)")
   GHZ_2_8_SPEED=50000
   luajit validate.lua SPEED "$GHZ_2_8_SPEED" "$T"
   validate_size ten_mill_mod100_fk 958456694
@@ -32,7 +32,7 @@ function init_ten_mill_modTEN_fk() {
 
 function insert_ten_mill_modTEN_fk() {
   MOD=10
-  time T=$(taskset -c 1 ./gen-benchmark -q -c $C -n $REQ -s -m $MOD -A OK -Q INSERT INTO ten_mill_modTEN_fk VALUES "(000000000001,000000000001,4)")
+  time T=$(taskset -c 1 ./gen-benchmark -q -c $C -n $REQ -s -m $MOD -A OK -Q INSERT INTO ten_mill_modTEN_fk VALUES "(00000000000001,00000000000001,4)")
   GHZ_2_8_SPEED=50000
   luajit validate.lua SPEED "$GHZ_2_8_SPEED" "$T"
   validate_size ten_mill_modTEN_fk 934273046
@@ -81,7 +81,7 @@ function make_tables_pks_even() {
     return;
   fi
   TBL="$1"
-  time taskset -c 1 ./gen-benchmark -q -c 200 -n 5000000 -i 2 -A OK -Q DELETE FROM "${TBL}" WHERE "id=000000000001"
+  time taskset -c 1 ./gen-benchmark -q -c 200 -n 5000000 -i 2 -A OK -Q DELETE FROM "${TBL}" WHERE "id=00000000000001"
   validate_pks "${TBL}" 2
   CNT=$($CLI SCANSELECT "COUNT(*)" FROM "${TBL}" | cut -f 2 -d \ )
   luajit validate.lua SIZE 5000000 "$CNT"
@@ -170,12 +170,12 @@ function init_fifty_mill_pk() {
 
 function insert_fifty_mill_pk() {
   REQ=50000000
-  time taskset -c 1 ./gen-benchmark -q -c $C -n $REQ -s -m $MOD -A OK -Q INSERT INTO fifty_mill_pk VALUES "(000000000001,000000000001)"
+  time taskset -c 1 ./gen-benchmark -q -c $C -n $REQ -s -m $MOD -A OK -Q INSERT INTO fifty_mill_pk VALUES "(00000000000001,00000000000001)"
 }
 
 # need test that delete (or updates) on key%mod ... this will stress the BT
 function makeeven_fifty_mill_pk() {
-  ./gen-benchmark -c 200 -n 25000000 -i 2 -A OK -Q DELETE FROM fifty_mill_pk WHERE "id=000000000001"
+  ./gen-benchmark -c 200 -n 25000000 -i 2 -A OK -Q DELETE FROM fifty_mill_pk WHERE "id=00000000000001"
 }
 
 

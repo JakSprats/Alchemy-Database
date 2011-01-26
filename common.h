@@ -77,6 +77,7 @@ ALL RIGHTS RESERVED
 #define NUM_ACCESS_TYPES              17
 
 #define MIN(A,B) ((A > B) ? B : A)
+#define MAX(A,B) ((A > B) ? A : B)
 
 #define MAX_ORDER_BY_COLS 16
 

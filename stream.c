@@ -35,6 +35,12 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "stream.h"
 
+int intCmp(void *s1, void *s2) {
+    return (long)s1 - (long)s2;
+}
+int uuCmp(void *s1, void *s2) {
+    return (int)(((long)s1 / UINT_MAX) - ((long)s2 / UINT_MAX));
+}
 
 /* TODO these flags should be #defines */
 /* TODO this should be a one-liner, not a nested if-else */
@@ -136,6 +142,7 @@ void destroyBTKey(char *btkey, bool med) {
 char *createBTKey(aobj *akey, bool *med, uchar *sflag, uint32 *ksize, bt *btr) {
     *med          = 0;
     if INODE(btr) return (char *)(long)akey->i;
+    if UU(btr)    return (char *)((long)akey->i * UINT_MAX);
     int     ktype = btr->ktype;
     char   *btkey = NULL; /* compiler warning */
     uint32  data  = 0;
@@ -223,8 +230,8 @@ uint32 skipToVal(uchar **stream) {
 }
 
 uchar *parseStream(uchar *stream, bt *btr) {
-    if (!stream)  return NULL;
-    if INODE(btr) return NULL;
+    if (!stream || INODE(btr)) return NULL;
+    if UU(btr)                 return (uchar *)((long)stream % UINT_MAX);
     skipToVal(&stream);
     if (     btr->btype == BTREE_TABLE)      return stream;
     else if (btr->btype == BTREE_INDEX_NODE) return NULL;
@@ -233,10 +240,11 @@ uchar *parseStream(uchar *stream, bt *btr) {
 
 void convertStream2Key(uchar *stream, aobj *key, bt *btr) {
     initAobj(key);
-    if INODE(btr) { /* stream is INT PK -> echo */
+    if (INODE(btr) || UU(btr)) { /* stream contains PK */
         key->type     = COL_TYPE_INT;
         key->enc      = COL_TYPE_INT;
-        key->i        = (int)(long)stream;
+        if INODE(btr) key->i = (int)(long)stream;
+        else /* UU */ key->i = (int)((long)stream / UINT_MAX);
         return;
     }
     uchar b1    = *stream;
@@ -270,6 +278,7 @@ void convertStream2Key(uchar *stream, aobj *key, bt *btr) {
 
 uint32 getStreamMallocSize(uchar *stream, bt *btr) {
     if INODE(btr) return 0;
+    if UU(btr)    return 8; /* used in rdbSaveAllRows() */
     uint32 vlen;
     uint32 klen = skipToVal(&stream);
 
@@ -285,10 +294,9 @@ uint32 getStreamMallocSize(uchar *stream, bt *btr) {
 
 void *createStream(bt *btr, void *val, char *btkey,
                    uint32 ksize, uint32 *ssize) {
-    if INODE(btr) { /* simply echo btkey */
-        *ssize = 0;
-        return btkey;
-    }
+    *ssize = 0;
+    if INODE(btr) return btkey;
+    if UU(btr)    return (void *)((long)btkey + (long)val); /* merge */
     *ssize         = ksize;
     uint32   vlen  = 0;;
     if (     btr->btype == BTREE_TABLE) vlen = getRowMallocSize(val);
@@ -307,8 +315,7 @@ void *createStream(bt *btr, void *val, char *btkey,
 }
 
 bool destroyStream(bt *btr, uchar *ostream) {
-    if (!ostream) return 0;
-    if INODE(btr) return 0;
+    if (!ostream || INODE(btr) || UU(btr)) return 0;
     uint32 ssize  = getStreamMallocSize(ostream, btr);
     bt_free(ostream, btr, ssize); /* memory bookkeeping in btr */
     return 1;

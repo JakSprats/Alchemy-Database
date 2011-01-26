@@ -14,7 +14,7 @@ function init_scanselect_test()
     local icmd = '../gen-benchmark -q -c ' .. c ..' -n ' .. req ..
                  ' -s -m ' .. mod .. ' -A OK ' .. 
                  ' -Q INSERT INTO ONEK_mod100 VALUES ' .. 
-                 '"(000000000001,000000000001,1,9.99,\'HI\')" > /dev/null';
+                 '"(00000000000001,00000000000001,1,9.99,\'HI\')" > /dev/null';
     os.execute(icmd);
     return "+OK";
 end

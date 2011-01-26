@@ -9042,7 +9042,7 @@ static bool appendOnlyDumpTable(FILE *fp, bt *btr, int tmatch) {
         while ((be = btRangeNext(bi)) != NULL) {
             aobj *apk  = be->key;
             void *rrow = be->val;
-            robj *r    = outputRow(rrow, qcols, cmatchs, apk, tmatch, 0);
+            robj *r    = outputRow(btr, rrow, qcols, cmatchs, apk, tmatch, 0);
             if (!fwrite(cmd2, sizeof(cmd2) - 1, 1, fp)) goto atwerr;
             if (fwriteBulkString(fp, tname, sdslen(tname)) == -1) goto atwerr;
             if (fwriteBulkString(fp, r->ptr, sdslen(r->ptr)) == -1) goto atwerr;

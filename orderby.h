@@ -38,9 +38,10 @@ typedef struct order_by_sort_element { /* INT(4) PTR*3(24) -> 28B */
 } obsl_t;
 obsl_t *create_obsl(void *row, int nob);
 
-void assignObKey(cswc_t *w, void *rrow, aobj *apk, int i, obsl_t *ob);
+void assignObKey(cswc_t *w, bt *btr, void *rrow, aobj *apk, int i, obsl_t *ob);
 void addRow2OBList(list    *ll,
                    cswc_t  *w,
+                   bt      *btr,
                    void    *r,
                    bool     is_robj,
                    void    *rrow,

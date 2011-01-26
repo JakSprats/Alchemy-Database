@@ -37,7 +37,7 @@ ALL RIGHTS RESERVED
 
 void freeNrlIndexObject(robj *o);
 
-void nrlIndexAdd(robj *o, aobj *apk, char *vals, uint32 cofsts[]);
+void nrlIndexAdd(bt *btr, d_l_t *nrlind, aobj *apk, char *vals, uint32 cofsts[]);
 
 bool parseNRLcmd(char *o_s, list *nrltoks, list *nrlcols, int tmatch);
 sds rebuildOrigNRLcmd(robj *o);

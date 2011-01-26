@@ -34,6 +34,7 @@ ALL RIGHTS RESERVED
 #include "redis.h"
 #include "adlist.h"
 
+#include "btree.h"
 #include "bt_iterator.h"
 #include "row.h"
 #include "wc.h"
@@ -59,15 +60,18 @@ typedef struct filter_row {
     int           *cmatchs;
     bool           cstar;
     redisClient   *c;
+    bt            *btr;
     cswc_t        *w;
     list          *ll;
     bool           ofree;
 } fr_t;
 
-static void init_filter_row(fr_t *fr, redisClient *c, cswc_t *w, qr_t *q,
+static void init_filter_row(fr_t *fr, redisClient *c, bt *btr,
+                            cswc_t *w, qr_t *q,
                             int qcols, int *cmatchs, bool nowc,
                             list *ll, bool cstar, bool ofree) {
     fr->c       = c;
+    fr->btr     = btr;
     fr->w       = w;
     fr->q       = q;
     fr->qcols   = qcols;
@@ -82,14 +86,15 @@ static void init_filter_row(fr_t *fr, redisClient *c, cswc_t *w, qr_t *q,
 static void condSelectReply(fr_t *fr, aobj *akey, void *rrow, long *card) {
     uchar hit = 0;
     if (fr->nowc) hit = 1;
-    else          hit = passFilters(rrow, fr->w->flist, fr->w->tmatch);
+    else          hit = passFilters(fr->btr, rrow, fr->w->flist, fr->w->tmatch);
 
     if (hit) {
         *card = *card + 1;
         if (fr->cstar) return; /* just counting */
-        robj *r = outputRow(rrow, fr->qcols, fr->cmatchs,
+        robj *r = outputRow(fr->btr, rrow, fr->qcols, fr->cmatchs,
                             akey, fr->w->tmatch, 0);
-        if (fr->q->qed) addRow2OBList(fr->ll, fr->w, r, fr->ofree, rrow, akey);
+        if (fr->q->qed) addRow2OBList(fr->ll, fr->w, fr->btr, r, fr->ofree,
+                                      rrow, akey);
         else            addReplyBulk(fr->c, r);
         decrRefCount(r);
     }
@@ -180,7 +185,7 @@ void tscanCommand(redisClient *c) {
     qr_t q;
     setQueued(&w, &q);
     ll = initOBsort(q.qed, &w);
-    init_filter_row(&fr, c, &w, &q, qcols, cmatchs, nowc,
+    init_filter_row(&fr, c, btr, &w, &q, qcols, cmatchs, nowc,
                     ll, cstar, OBY_FREE_ROBJ);
     //dumpW(&w, w.wtype);
     LEN_OBJ

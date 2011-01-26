@@ -95,7 +95,7 @@ void denormCommand(redisClient *c) {
         for (int i = 1; i < Tbl[server.dbid][tmatch].col_count; i++) {
             sds  tname  = Tbl[server.dbid][tmatch].col_name[i]->ptr;
             fc->argv[2] = createStringObject(tname, sdslen(tname));
-            aobj rcol   = getRawCol(rrow, i, apk, tmatch, NULL, 1);
+            aobj rcol   = getRawCol(btr, rrow, i, apk, tmatch, NULL, 1);
             fc->argv[3] = _createStringObject(rcol.s);
             releaseAobj(&rcol);
             rsql_resetFakeClient(fc);

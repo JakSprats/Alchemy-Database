@@ -66,9 +66,20 @@ void createIndex(redisClient *c);
 int buildIndex(bt *btr, bt_n *x, bt *ibtr, int icol, int itbl, bool nrl);
 
 
-void addToIndex(redisDb *db, aobj *apk, char *vals, uint32 cofsts[], int inum);
-void delFromIndex(redisDb *db, aobj *aopk, void *rrow, int inum, int tmatch);
+void addToIndex(redisDb *db,
+                bt      *btr,
+                aobj    *apk,
+                char    *vals,
+                uint32   cofsts[],
+                int      inum);
+void delFromIndex(redisDb *db,
+                  bt      *btr,
+                  aobj    *aopk,
+                  void    *rrow,
+                  int      inum,
+                  int      tmatch);
 void updateIndex(redisDb *db,
+                 bt      *btr,
                  aobj    *aopk,
                  aobj    *anpk,
                  aobj    *newval,
@@ -76,6 +87,7 @@ void updateIndex(redisDb *db,
                  int      inum,
                  int      tmatch);
 void updatePKIndex(redisDb *db,
+                   bt      *btr,
                    aobj    *aopk,
                    aobj    *anpk,
                    void    *rrow,

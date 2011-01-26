@@ -95,16 +95,16 @@ void dumpCommand(redisClient *c) {
 
     LEN_OBJ
 
-    bool  tomysql = 0;
-    bool  to_file  = 0;
+    bool  toms     = 0;
+    bool  tof      = 0;
     char *m_tname  = NULL;
     char *fname    = NULL;
     if (c->argc > 3 && !strcasecmp(c->argv[3]->ptr, "FILE")) {
-        to_file = 1;
-        fname   = c->argv[4]->ptr;
+        tof   = 1;
+        fname = c->argv[4]->ptr;
     } else if (c->argc > 3 && !strcasecmp(c->argv[3]->ptr, "MYSQL")) {
         robj *r;
-        tomysql = 1;
+        toms = 1;
         if (c->argc > 4) m_tname = c->argv[4]->ptr;
         else             m_tname = tname;
         snprintf(buf, 191, "DROP TABLE IF EXISTS `%s`;", m_tname);
@@ -134,7 +134,7 @@ void dumpCommand(redisClient *c) {
     ull   bytes = 0;
     if (btr->numkeys) {
         int cmatchs[MAX_COLUMN_PER_TABLE];
-        if (to_file) {
+        if (tof) {
             if((fp = fopen(fname, "w")) == NULL) {
                 lenobj->ptr = sdscatprintf(sdsempty(),
                                   "-ERR failed to open: %s\r\n", fname);
@@ -147,8 +147,8 @@ void dumpCommand(redisClient *c) {
         while ((be = btRangeNext(bi)) != NULL) {      // iterate btree
             aobj *apk  = be->key;
             void *rrow = be->val;
-            robj *r    = outputRow(rrow, qcols, cmatchs, apk, tmatch, tomysql);
-            if (tomysql) {
+            robj *r    = outputRow(btr, rrow, qcols, cmatchs, apk, tmatch, toms);
+            if (toms) {
                 snprintf(buf, 191, "INSERT INTO `%s` VALUES (", m_tname);
                 buf[191] = '\0';
                 robj *ins = _createStringObject(buf);
@@ -156,7 +156,7 @@ void dumpCommand(redisClient *c) {
                 ins->ptr  = sdscatlen(ins->ptr, ");", 2);
                 addReplyBulk(c, ins);
                 decrRefCount(ins);
-            } else if (to_file) {
+            } else if (tof) {
                 if ((fwrite(r->ptr, sdslen(r->ptr), 1, fp) == 0) ||
                     ((fwrite("\n", 1, 1, fp) == 0))) {
                     sds s       = sdscatprintf(sdsempty(), FILE_DUMP_FAILURE,
@@ -177,12 +177,12 @@ void dumpCommand(redisClient *c) {
         btReleaseRangeIterator(bi);
     }
 
-    if (tomysql) {
+    if (toms) {
         robj *r;
         char *buf2 = "UNLOCK TABLES;";
         ADD_REPLY_BULK(r, buf2)
     }
-    if (to_file) {
+    if (tof) {
         if (fp) {
             sds s       = sdscatprintf(sdsempty(), FILE_DUMP_SUCCESS,
                                                     bytes, card, fname);

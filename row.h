@@ -39,8 +39,8 @@ bool checkUIntReply(redisClient *c, long l, bool ispk);
 uint32 strToFloat(redisClient *c, char *start, uint32 len, float *f);
 uint32 strToInt(redisClient *c, char *start, uint32 len, uint32 *i);
 
-
 void *createRow(redisClient *c,
+                bt          *btr,
                 int          tmatch,
                 int          ncols,
                 char        *vals,
@@ -51,14 +51,16 @@ uint32 getRowMallocSize(uchar *stream);
 
 void sprintfOutputFloat(char *buf, int len, float f);
 
-aobj getRawCol(void *orow,
+aobj getRawCol(bt   *btr,
+               void *orow,
                int   cmatch,
                aobj *aopk,
                int   tmatch,
                flag *cflag,
                bool  force_string);
 
-robj *outputRow(void *row,
+robj *outputRow(bt   *btr,
+                void *row,
                 int   qcols,
                 int   cmatchs[],
                 aobj *aopk,

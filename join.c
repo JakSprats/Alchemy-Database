@@ -229,13 +229,14 @@ static void m_strcpy_len(char *src, int len, char **dest) {
 }
 
 /* makes Copy - must be freeD */
-static char *getCopyColStr(void   *rrow,
+static char *getCopyColStr(bt     *btr,
+                           void   *rrow,
                            int     cmatch,
                            aobj   *aopk,
                            int     tmatch,
                            uint32 *len) {
     char   *dest;
-    aobj    ao  = getRawCol(rrow, cmatch, aopk, tmatch, NULL, 1);
+    aobj    ao  = getRawCol(btr, rrow, cmatch, aopk, tmatch, NULL, 1);
     // force_string(INT) comes from a buffer, must be copied here
     char   *src = ao.s;
     m_strcpy_len(src, ao.len, &dest); /* freeD in freeIndRowEntries */
@@ -264,8 +265,8 @@ static void joinAddColsFromInd(join_add_cols_t *a, robj *rset[], cswc_t *w) {
     for (int i = 0; i < a->qcols; i++) {
         int tmatch = a->j_tbls[i];
         if (tmatch == a->itable) {
-            cresp[nresp].s  = getCopyColStr(a->rrow, a->j_cols[i], akey, tmatch,
-                                            &cresp[nresp].len);
+            cresp[nresp].s  = getCopyColStr(a->btr, a->rrow, a->j_cols[i],
+                                            akey, tmatch, &cresp[nresp].len);
             row_len        += cresp[nresp].len + 1; // +1 for OUTPUT_DELIM
             nresp++;
         }
@@ -290,7 +291,7 @@ static void joinAddColsFromInd(join_add_cols_t *a, robj *rset[], cswc_t *w) {
         list_val    = (char *)ob; /* in ORDER BY list_val -> obsl_t */
         OB_asc[0]   = w->asc[0];
         OB_ctype[0] = Tbl[server.dbid][w->tmatch].col_type[w->obc[0]];
-        assignObKey(w, a->rrow, akey, 0, ob);
+        assignObKey(w, a->btr, a->rrow, akey, 0, ob);
     }
 
     // TODO unify, refactor, etc..

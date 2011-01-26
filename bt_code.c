@@ -183,7 +183,7 @@ void bt_free_btree(void *v, bt *btr) {
     free(v);
 }
 
-bt *bt_create(bt_cmp_t cmp, uchar trans, int ksize, uchar iainc) {
+bt *bt_create(bt_cmp_t cmp, uchar trans, int ksize, uchar bflag) {
     /* the two BT node sizes are 128 and 4096 */
     int    n        = (trans < TRANSITION_TWO_BTREE) ? 7 : 255;
     uchar  t        = (uchar)((int)(n + 1) /2);
@@ -196,7 +196,7 @@ bt *bt_create(bt_cmp_t cmp, uchar trans, int ksize, uchar iainc) {
     uint32 nodeofst = btr->keyofst + n * ksize;
     btr->nodeofst   = (ushort)nodeofst;
     btr->t          = t;
-    btr->iainc      = iainc;
+    btr->bflag      = bflag;
     int nbits       = real_log2(n, sizeof(int) * 8) + 1;
     nbits           = 1 << (real_log2(nbits, sizeof(int) * 8) + 1);
     btr->nbits      = (uchar)nbits;
@@ -250,7 +250,7 @@ static bool split_leaf2left(bt *btr, bt_n *x, bt_n *y, bt_n *xp, int i) {
 }
 static bool btreesplitchild(bt *btr, bt_n *x, int i, bt_n *y) {
     ushort  t = btr->t;
-    if (i && y->leaf && btr->iainc) { /* AutoIncrementInteger split-left */
+    if (i && y->leaf && (btr->bflag & BTREE_FLAG_INT_AUTO_INC)) {
         bt_n *xp = NODES(btr, x)[i - 1];
         if ((xp->n <= t - 1)) return split_leaf2left(btr, x, y, xp, i);
     }

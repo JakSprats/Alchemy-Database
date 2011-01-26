@@ -43,10 +43,8 @@ extern struct redisServer server;
 
 extern int      Num_tbls     [MAX_NUM_TABLES];
 extern r_tbl_t  Tbl[MAX_NUM_DB][MAX_NUM_TABLES];
-
 extern int      Num_indx[MAX_NUM_DB];
 extern r_ind_t  Index   [MAX_NUM_DB][MAX_NUM_INDICES];
-
 extern char    *COLON;
 
 unsigned char VIRTUAL_INDEX_TYPE = 255;
@@ -130,10 +128,11 @@ robj *rdbLoadNRL(FILE *fp) {
 
 static int rdbSaveAllRows(FILE *fp, bt *btr, bt_n *x) {
     for (int i = 0; i < x->n; i++) {
-        uchar *stream = (uchar *)KEYS(btr, x, i);
-        int    ssize  = getStreamMallocSize(stream, btr);
+        uchar *stream  = (uchar *)KEYS(btr, x, i);
+        int    ssize   = getStreamMallocSize(stream, btr);
+        uchar *wstream = UU(btr) ? &stream : stream;
         if (rdbSaveLen(fp, ssize)        == -1) return -1;
-        if (fwrite(stream, ssize, 1, fp) == 0) return -1;
+        if (fwrite(wstream, ssize, 1, fp) == 0) return -1;
     }
 
     if (!x->leaf) {
@@ -188,14 +187,16 @@ int rdbSaveBT(FILE *fp, robj *o) {
 }
 
 static int rdbLoadRow(FILE *fp, bt *btr) {
-    unsigned int ssize;
+    void   *UUbuf;
+    uint32  ssize;
     if ((ssize = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR) return -1;
-    char *bt_val = bt_malloc(ssize, btr); // mem bookkeeping done in BT
+    void *bt_val = UU(btr) ? &UUbuf : bt_malloc(ssize, btr);
     if (fread(bt_val, ssize, 1, fp) == 0) return -1;
     if (btr->numkeys == TRANSITION_ONE_MAX) {
         btr = abt_resize(btr, TRANSITION_TWO_BTREE);
     }
-    bt_insert(btr, bt_val);
+    if UU(btr) bt_insert(btr, UUbuf);
+    else       bt_insert(btr, bt_val);
     return 0;
 }
 
@@ -248,7 +249,7 @@ robj *rdbLoadBT(FILE *fp, redisDb *db) {
         unsigned char ktype;
         if (fread(&ktype,    1, 1, fp) == 0) return NULL;
 
-        o = createBtreeObject(ktype, tmatch, btype);
+        o = createBtreeObject(ktype, tmatch, btype, tmatch);
         struct btree *btr  = (struct btree *)(o->ptr);
 
         unsigned int bt_nkeys; 
@@ -257,8 +258,6 @@ robj *rdbLoadBT(FILE *fp, redisDb *db) {
         for (int unsigned i = 0; i < bt_nkeys; i++) {
             if (rdbLoadRow(fp, btr) == -1) return NULL;
         }
-        //RL4 "load tmatch: %d name: %s inum: %d imatch: %s", tmatch,
-        //Tbl[dbid][tmatch].name->ptr, inum, Index[server.dbid][inum].obj->ptr);
         if (Num_tbls[dbid] < (tmatch + 1)) Num_tbls[dbid] = tmatch + 1;
     } else {                        /* INDEX */
         int imatch = tmatch;
@@ -273,13 +272,12 @@ robj *rdbLoadBT(FILE *fp, redisDb *db) {
         Index[server.dbid][imatch].type = (unsigned char)u;
         unsigned char ktype;
         if (fread(&ktype,    1, 1, fp) == 0) return NULL;
-        o = createBtreeObject(ktype, imatch, btype);
+        o = createBtreeObject(ktype, imatch, btype, -1);
         Index[server.dbid][imatch].virt = 0;
         if (Num_indx[dbid] < (imatch + 1)) Num_indx[dbid] = imatch + 1;
     }
     return o;
 }
-
 
 void rdbLoadFinished(redisDb *db) {
     for (int i = 0; i < Num_indx[server.dbid]; i++) {
@@ -291,13 +289,8 @@ void rdbLoadFinished(redisDb *db) {
         bt   *ibtr = (struct btree *)(ibt->ptr);
         int   itbl = Index[server.dbid][i].table;
         int   icol = Index[server.dbid][i].column;
-        robj *o    = lookupKey(db, Tbl[server.dbid][itbl].name);
-        bt   *btr  = (struct btree *)(o->ptr);
+        robj *btt  = lookupKey(db, Tbl[server.dbid][itbl].name);
+        bt   *btr  = (bt *)(btt->ptr);
         buildIndex(btr, btr->root, ibtr, icol, itbl, 0);
-#if 0
-        struct btree *ibtr  = (struct btree *)(ibt->ptr);
-        RL4 "INDEX: %d", ibtr->num);
-        bt_dumptree(ibtr, 0, 0);
-#endif
     }
 }

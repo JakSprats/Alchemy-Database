@@ -32,36 +32,33 @@ ALL RIGHTS RESERVED
 #include <ctype.h>
 #include <limits.h>
 
-//from redis.c
-#define RL4 redisLog(4,
-
-#define bool unsigned char 
+#include "common.h"
 
 char *sixbitchars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ _+-.,'\"#/\\";
 
-unsigned char to_six_bit_strings[256];
-unsigned char from_six_bit_strings[256];
+uchar to_six_bit_strings[256];
+uchar from_six_bit_strings[256];
 
 void init_six_bit_strings() {
     bzero(to_six_bit_strings, 256);
-    unsigned int len = strlen(sixbitchars);
-    for (unsigned int i = 0; i < len; i++) {
+    uint32 len = strlen(sixbitchars);
+    for (uint32 i = 0; i < len; i++) {
         to_six_bit_strings[(int)sixbitchars[i]]  = i + 1;
     }
 
     bzero(from_six_bit_strings, 256);
-    for (unsigned int i = 0; i < len; i++) {
+    for (uint32 i = 0; i < len; i++) {
         from_six_bit_strings[i + 1]  = sixbitchars[i];
     }
 }
 
-static bool six_bit_pack(char s_c, unsigned int s_i, unsigned char **dest) {
-    //unsigned char *o_dest = *dest;
+static bool six_bit_pack(char s_c, uint32 s_i, uchar **dest) {
+    //uchar *o_dest = *dest;
     char           s_p    = to_six_bit_strings[(int)s_c];
     if (!s_p) return 0;
     char           state  = s_i % 4;
-    unsigned char  b0     = s_p;
-    unsigned char  b1     = s_p;
+    uchar  b0     = s_p;
+    uchar  b1     = s_p;
     if      (state == 0) {
         b0 <<= 2;
         **dest += b0;
@@ -86,11 +83,11 @@ static bool six_bit_pack(char s_c, unsigned int s_i, unsigned char **dest) {
     return 1;
 }
 
-static unsigned char six_bit_unpack(unsigned int s_i, unsigned char **dest) {
-    //unsigned char *o_dest = *dest;
+static uchar six_bit_unpack(uint32 s_i, uchar **dest) {
+    //uchar *o_dest = *dest;
     char           state  = s_i % 4;
-    unsigned char  b1     = **dest;
-    unsigned char  b2     = 0;;
+    uchar  b1     = **dest;
+    uchar  b2     = 0;;
     if      (state == 0) {
         b1 >>= 2;
     } else if (state == 1) {
@@ -110,20 +107,18 @@ static unsigned char six_bit_unpack(unsigned int s_i, unsigned char **dest) {
         b1 >>= 2;
         *dest = *dest + 1;
     }
-    unsigned char b3 = b1 + b2;
+    uchar b3 = b1 + b2;
     //printf("unpack %d: (%u,%u) -> res(%u,%u) =>%u\n",
             //state, *o_dest, **dest, b1, b2, b3);
     return from_six_bit_strings[b3];
 }
 
-unsigned char *_createSixBitString(char         *src,
-                                   unsigned int  src_len,
-                                   unsigned int *new_len) {
-    unsigned char *dest    = malloc(src_len + 1);
-    //RL4 "_createSixBitString malloc");
+uchar *_createSixBit(char *src, uint32  src_len, uint32 *new_len) {
+    uchar *dest    = malloc(src_len + 1);
+    //printf("_createSixBit malloc\n");
     bzero(dest, src_len + 1);
-    unsigned char *o_dest  = dest;
-    for (unsigned int i = 0; i < src_len; i++) {
+    uchar *o_dest  = dest;
+    for (uint32 i = 0; i < src_len; i++) {
         if(!six_bit_pack(src[i], i, &dest)) {
             free(o_dest);
             *new_len = 0;
@@ -131,23 +126,23 @@ unsigned char *_createSixBitString(char         *src,
         }
     }
     *new_len = (dest - o_dest) + 1;
-    //RL4 "_createSixBitString: o_dest: %p len: %u", o_dest, *new_len);
+    //printf("_createSixBit: o_dest: %p len: %u\n", o_dest, *new_len);
     return o_dest;
 }
 
-unsigned char *createSixBitString(char *src, unsigned int *new_len) {
-    return _createSixBitString(src, strlen(src), new_len);
+uchar *createSixBit(char *src, uint32 *new_len) {
+    return _createSixBit(src, strlen(src), new_len);
 }
 
-unsigned char *unpackSixBitString(unsigned char *src, unsigned int *s_len) {
-    unsigned int    was_len = ((*s_len * 4) / 3);
-    //RL4 "unpackSixBitString: was_len: %u s_len: %d", was_len, *s_len);
-    //RL4 "unpackSixBitString malloc");
-    unsigned char *fdest   = malloc(was_len + 1);
-    unsigned char *o_fdest = fdest;
-    unsigned int   len     = 0;
-    for (unsigned int i = 0; i < was_len; i++) {
-        unsigned char u = six_bit_unpack(i, &src);
+uchar *unpackSixBit(uchar *src, uint32 *s_len) {
+    uint32    was_len = ((*s_len * 4) / 3);
+    //printf("unpackSixBit: was_len: %u s_len: %d\n", was_len, *s_len);
+    //printf("unpackSixBit malloc\n");
+    uchar *fdest   = malloc(was_len + 1);
+    uchar *o_fdest = fdest;
+    uint32   len     = 0;
+    for (uint32 i = 0; i < was_len; i++) {
+        uchar u = six_bit_unpack(i, &src);
         if (u) { /* final six-bit-char may be empty */
             fdest[i] = u;
             len++;
@@ -165,9 +160,9 @@ int main() {
 
     for (int i = 0; i < 2; i++) {
         int            s_len = 0;
-        unsigned char *dest  = createSixBitString(test, &s_len);
+        uchar *dest  = createSixBit(test, &s_len);
         printf("packed size: %d\n", s_len);
-        unsigned char *fdest = unpackSixBitString(dest, &s_len);
+        uchar *fdest = unpackSixBit(dest, &s_len);
         printf("original: (%s) len: %ld\n", test, strlen(test));
         printf("final:    (%s) len: %d strlen: %ld\n",
                 fdest, s_len, strlen(fdest));

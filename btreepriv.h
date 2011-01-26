@@ -35,8 +35,10 @@
 #define TRANSITION_TWO_BTREE   3
 #define TRANSITION_TWO_INODEBT 4
 
-/* SIZE: 2ptr(16), 2L(16), 2INT(8), 4Ushort(8),
-         1Ushort(2) 6uchar(6)                   -> 56bytes */
+#define BTREE_FLAG_INT_NONE     0
+#define BTREE_FLAG_INT_AUTO_INC 1
+#define BTREE_FLAG_UINT_UINT    2
+/* SIZE: 2ptr(16), 2L(16), 2INT(8), 4Ushort(8), 1Ushort(2) 6uchar(6)-> 56B */
 typedef struct btree {
     struct btreenode  *root;
     bt_cmp_t           cmp;
@@ -57,7 +59,7 @@ typedef struct btree {
     unsigned char      ktype;    /* [STRING,INT,FLOAT]                  | */
     unsigned char      btype;    /* [data,index,node]                   | */
     unsigned char      ksize;    /* 4->INODE, sizeof(void *)->OTHER     | */
-    unsigned char      iainc;    /* AutoIncrementInteger                | */
+    unsigned char      bflag;    /* [INT_AUTO_INC || UINT_UINT]         | */
     unsigned short     num;      /*-------------------------------------| */
 }  __attribute__ ((packed)) bt;
 

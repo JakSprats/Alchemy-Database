@@ -14,7 +14,7 @@ function init_thread_tbl()
     local icmd = '../gen-benchmark -q -c ' .. c ..' -n ' .. req ..
                  ' -s -A OK ' .. 
                  ' -Q INSERT INTO thread VALUES ' .. 
-                 '"(000000000001,1,\'pagename_000000000001\')"';
+                 '"(00000000000001,1,\'pagename_00000000000001\')"';
     local x   = socket.gettime()*1000;
     print ('executing: (' .. icmd .. ')');
     os.execute(icmd);

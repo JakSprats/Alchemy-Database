@@ -140,11 +140,11 @@ void createTableCommitReply(redisClient *c,
     for (int i = 0; i < ccount; i++) {
         Tbl[server.dbid][ntbls].col_name[i] = _createStringObject(cnames[i]);
     }
-    int   pktype = Tbl[server.dbid][ntbls].col_type[0];
-    robj *bt     = createBtreeObject(pktype, ntbls, BTREE_TABLE);
     robj *tbl    = createStringObject(tname, tlen);
     Tbl[server.dbid][ntbls].name      = tbl;
     Tbl[server.dbid][ntbls].col_count = ccount;
+    int   pktype = Tbl[server.dbid][ntbls].col_type[0];
+    robj *bt     = createBtreeObject(pktype, ntbls, BTREE_TABLE, ntbls);
     dictAdd(c->db->dict, tbl, bt);
 
     Num_tbls[server.dbid]++;
@@ -252,7 +252,7 @@ void insertCommitReply(redisClient *c,
         goto insert_commit_end;
     }
 
-    nrow = createRow(c, tmatch, ncols, vals, cofsts);
+    nrow = createRow(c, btr, tmatch, ncols, vals, cofsts);
     if (!nrow) goto insert_commit_end; /* value did not match cdef */
 
     EMPTY_LEN_OBJ
@@ -263,7 +263,7 @@ void insertCommitReply(redisClient *c,
                 if (!nrl) { INIT_LEN_OBJ }
                 nrl = 1;
             }
-            addToIndex(c->db, &apk, vals, cofsts, indices[i]);
+            addToIndex(c->db, btr, &apk, vals, cofsts, indices[i]);
         }
     }
     int len = btAdd(btr, &apk, nrow);
@@ -279,7 +279,7 @@ void insertCommitReply(redisClient *c,
     }
 
 insert_commit_end:
-    if (nrow) free(nrow);                                /* FREED 023 */
+    if (nrow && !UU(btr)) free(nrow);                    /* FREED 023 */
     if (pk)   free(pk);                                  /* FREED 021 */
     releaseAobj(&apk);
 }
@@ -343,7 +343,7 @@ static void selectOnePKReply(redisClient  *c,
     }
 
     addReply(c, shared.singlerow);
-    robj *r = outputRow(rrow, qcols, cmatchs, apk, tmatch, 0);
+    robj *r = outputRow(btr, rrow, qcols, cmatchs, apk, tmatch, 0);
     addReplyBulk(c, r);
     decrRefCount(r);
 }

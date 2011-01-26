@@ -35,7 +35,8 @@ struct btreenode;
 
 #define	BT_SIZEDEF	128
 
-#define VOIDSIZE sizeof(void *)
+//#define VOIDSIZE sizeof(void *) /* UU would not work on 32bit */
+#define VOIDSIZE 8
 #define UINTSIZE sizeof(unsigned int)
 
 typedef void * bt_data_t;

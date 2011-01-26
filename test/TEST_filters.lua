@@ -22,7 +22,7 @@ function init_customer_profile()
     local icmd = '../gen-benchmark -q -c ' .. c ..' -n ' .. req ..
                  ' -s -m ' .. mods .. ' -A OK ' .. 
                  ' -Q INSERT INTO customer_profile VALUES ' .. 
-                 '"(000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,\'pagename_000000000001\',0,0,0)"'; -- > /dev/null';
+                 '"(00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,\'pagename_00000000000001\',0,0,0)"'; -- > /dev/null';
     local x   = socket.gettime()*1000;
     print ('executing: (' .. icmd .. ')');
     os.execute(icmd);
@@ -214,17 +214,17 @@ function validate_select_filter()
 end
 
 function validate_scan_filter()
-    local ocnt = scanselect("COUNT(*)", tbl, "cp_name IN ( 'pagename_000000000001', 'pagename_000000000002')");
-    local cnt  = scanselect("COUNT(*)", tbl, "cp_name IN ( 'pagename_000000000001', 'pagename_000000000002') AND corr_id IN ( 0, 1, 2, 3, 4, 5, 6, 7, 8 , 9, 10 ,11, 12, 13, 14, 15, 16)");
+    local ocnt = scanselect("COUNT(*)", tbl, "cp_name IN ( 'pagename_00000000000001', 'pagename_00000000000002')");
+    local cnt  = scanselect("COUNT(*)", tbl, "cp_name IN ( 'pagename_00000000000001', 'pagename_00000000000002') AND corr_id IN ( 0, 1, 2, 3, 4, 5, 6, 7, 8 , 9, 10 ,11, 12, 13, 14, 15, 16)");
     if (cnt ~= ocnt) then
-        print ('ERROR: expected ' .. ocnt .. ' from "cp_name IN ( \'pagename_000000000001\', \'pagename_000000000002\') AND corr_id IN ( 0, 1, 2, 3, 4, 5, 6, 7, 8 , 9, 10 ,11, 12, 13, 14, 15, 16)", got: ' .. cnt)
+        print ('ERROR: expected ' .. ocnt .. ' from "cp_name IN ( \'pagename_00000000000001\', \'pagename_00000000000002\') AND corr_id IN ( 0, 1, 2, 3, 4, 5, 6, 7, 8 , 9, 10 ,11, 12, 13, 14, 15, 16)", got: ' .. cnt)
     end
-    local lcnt = scanselect("COUNT(*)", tbl, "cp_name IN ( 'pagename_000000000001', 'pagename_000000000002') AND corr_id = 0");
+    local lcnt = scanselect("COUNT(*)", tbl, "cp_name IN ( 'pagename_00000000000001', 'pagename_00000000000002') AND corr_id = 0");
     local ecnt = 0;
     local in_s = '';
     for m = 0, 16 do
         in_s = in_s .. m .. ', ';
-        cnt  = scanselect("COUNT(*)", tbl, "cp_name IN ( 'pagename_000000000001', 'pagename_000000000002') AND corr_id IN ( " .. in_s .. ")");
+        cnt  = scanselect("COUNT(*)", tbl, "cp_name IN ( 'pagename_00000000000001', 'pagename_00000000000002') AND corr_id IN ( " .. in_s .. ")");
         if (cnt ~= (ecnt + lcnt)     and
             cnt ~= (ecnt + lcnt + 1) and
             cnt ~= (ecnt + lcnt - 1)) then

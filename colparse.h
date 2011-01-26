@@ -82,7 +82,7 @@ int find_column_n(int tmatch, char *column, int len);
 int get_all_cols(int tmatch, int cmatchs[]);
 void incrOffsetVar(redisClient *c, cswc_t *w, long incr);
 
-char *parseRowVals(char    *vals,
+char *parseRowVals(sds      vals,
                    char   **pk,
                    int     *pklen,
                    int      ncols,

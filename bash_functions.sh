@@ -504,6 +504,37 @@ function simple_test_btree_table_transition() {
   $CLI DESC bt_trans
 }
 
+function init_uu() {
+  $CLI DROP TABLE uu
+  $CLI CREATE TABLE uu "(pk INT, i INT)"
+}
+function insert_uu() {
+  $CLI INSERT INTO uu VALUES "(1,2)" RETURN SIZE
+  $CLI INSERT INTO uu VALUES "(2,3)" RETURN SIZE
+  $CLI INSERT INTO uu VALUES "(3,4)" RETURN SIZE
+  $CLI INSERT INTO uu VALUES "(4,5)" RETURN SIZE
+  $CLI INSERT INTO uu VALUES "(5,6)" RETURN SIZE
+  $CLI INSERT INTO uu VALUES "(6,7)" RETURN SIZE
+  $CLI INSERT INTO uu VALUES "(7,8)" RETURN SIZE
+  $CLI INSERT INTO uu VALUES "(8,9)" RETURN SIZE
+}
+function test_uu() {
+  init_uu
+  insert_uu
+  echo DUMP uu
+  $CLI DUMP uu
+  $CLI update uu SET pk=11 WHERE pk =2
+  $CLI SELECT \* FROM uu  WHERE pk = 11
+  $CLI update uu SET i=10 WHERE pk = 4
+  $CLI SELECT \* FROM uu  WHERE pk =4
+  $CLI CREATE INDEX ind_uu_i ON uu "(i)"
+  $CLI update uu SET i=99 WHERE i = 2;
+  $CLI update uu SET i=99 WHERE i = 4
+  $CLI SELECT \* FROM uu WHERE i = 99
+  echo DUMP uu
+  $CLI DUMP uu
+}
+
 function sql_test() {
   dropper
   works
@@ -513,7 +544,7 @@ function sql_test() {
   select_counter
   sql_create_table_as_tester
   sql_float_tests
-  simple_test_btree_table_transition
+  test_uu
   init_test_table
   NUM=$(echo "math.randomseed(os.time()); print (math.random(1000));" | lua)
   ./redisql-benchmark -n $NUM -r $NUM -c 100 -T
@@ -523,7 +554,7 @@ function works() {
   populate
   selecter
   iselecter
-  #updater
+  updater
   iselecter_employee
   deleter
   iselecter
@@ -1106,6 +1137,7 @@ function all_tests() {
   works
   dropper
 
+  test_uu
   float_tests
   populate
   $CLI DEBUG RELOAD
@@ -1637,7 +1669,7 @@ function large_update() {
 
 function lots_of_cols_test () {
   $CLI CREATE TABLE cols "(id INT,col_0 INT, col_1 INT, col_2 INT, col_3 INT, col_4 INT, col_5 INT, col_6 INT, col_7 INT, col_8 INT, col_9 INT, col_10 INT, col_11 INT, col_12 INT, col_13 INT, col_14 INT, col_15 INT, col_16 INT, col_17 INT, col_18 INT, col_19 INT, col_20 INT, col_21 INT, col_22 INT, col_23 INT, col_24 INT, col_25 INT, col_26 INT, col_27 INT, col_28 INT, col_29 INT, col_30 INT, col_31 INT, col_32 INT, col_33 INT, col_34 INT, col_35 INT, col_36 INT, col_37 INT, col_38 INT, col_39 INT, col_40 INT, col_41 INT, col_42 INT, col_43 INT, col_44 INT, col_45 INT, col_46 INT, col_47 INT, col_48 INT, col_49 INT, col_50 INT, col_51 INT, col_52 INT, col_53 INT, col_54 INT, col_55 INT, col_56 INT, col_57 INT, col_58 INT, col_59 INT, col_60 INT, col_61 INT, col_62 INT)"
-  time taskset -c 1 ./gen-benchmark -q -c $C -n $REQ -s -A OK -Q INSERT INTO cols VALUES "(000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001,000000000001)"
+  time taskset -c 1 ./gen-benchmark -q -c $C -n $REQ -s -A OK -Q INSERT INTO cols VALUES "(00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001)"
 }
 
 function run_lua_tests() {
@@ -1674,7 +1706,7 @@ function mem_leak_tests() {
   $CLI CREATE INDEX ind_t_p ON thread "(page_no)"
   $CLI CREATE INDEX int_t_nri ON thread "DELETE FROM thread WHERE page_no = \$page_no ORDER BY id LIMIT 1"
   echo "NRI LIM 1"
-  taskset -c 1 $BENCH -c $C -n $REQ -s -A OK -Q INSERT INTO thread VALUES "(000000000001,1,'pagename_000000000001')"
+  taskset -c 1 $BENCH -c $C -n $REQ -s -A OK -Q INSERT INTO thread VALUES "(00000000000001,1,'pagename_00000000000001')"
 
   $CLI LUA "function cap_per_fk(max, tbl, fkname, fkval, pkname)
                 wc    = fkname .. '=' .. fkval;
@@ -1694,7 +1726,7 @@ function mem_leak_tests() {
   $CLI CREATE INDEX int_t_nri ON thread "LUA return cap_per_fk(100,'thread','page_no',\$page_no,'id');"
 
   echo "NRI LIM 100"
-  time taskset -c 1 $BENCH -c $C -n $REQ -s -A OK -Q INSERT INTO thread VALUES "(000000000001,1,'pagename_000000000001')"
+  time taskset -c 1 $BENCH -c $C -n $REQ -s -A OK -Q INSERT INTO thread VALUES "(00000000000001,1,'pagename_00000000000001')"
 
 }
 
@@ -1774,3 +1806,24 @@ function amem_post(){
   MEMA_POST=$MEMA
   echo "mem_change: $[${MEMA_POST}-${MEMA_PRE}]  PRE: $MEMA_PRE PORT: $MEMA_POST"
 }
+function init_longcol() {
+  $CLI DROP TABLE longcol
+  $CLI CREATE TABLE longcol "(id INT, t TEXT, t2 TEXT)"
+}
+function insert_longcol() {
+  echo "1,aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,x" | wc -m
+  $CLI INSERT INTO longcol VALUES "(1,aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,x)" RETURN SIZE
+  echo "2,aaaaaaaaaabbbbbbbbbbbbbbbbbcccccccccccccc,y" | wc -m
+  $CLI INSERT INTO longcol VALUES "(2,aaaaaaaaaabbbbbbbbbbbbbbbbbcccccccccccccc,y)" RETURN SIZE
+  echo "3,aaaaaaaaaabbbbbbbbbbbbbbbbbccccccccccccccddddddddddeeeeeeeeeeeeeee,z" | wc -m
+  $CLI INSERT INTO longcol VALUES "(3,aaaaaaaaaabbbbbbbbbbbbbbbbbccccccccccccccddddddddddeeeeeeeeeeeeeee,z)" RETURN SIZE
+  echo "4,aaaaaaaaaabbbbbbbbbbbbbbbbbccccccccccccccddddddddddeeeeeeeeeeeeeeeffffffffffffffggggggggggggg,w" | wc -m
+  $CLI INSERT INTO longcol VALUES "(4,aaaaaaaaaabbbbbbbbbbbbbbbbbccccccccccccccddddddddddeeeeeeeeeeeeeeeffffffffffffffggggggggggggg,w)" RETURN SIZE
+  echo "5,aaaaaaaaaabbbbbbbbbbbbbbbbbccccccccccccccddddddddddeeeeeeeeeeeeeeeffffffffffffffggggggggggggghhhhhhhhhhhhhhiiiiiiiiiii,u" | wc -m
+  $CLI INSERT INTO longcol VALUES "(5,aaaaaaaaaabbbbbbbbbbbbbbbbbccccccccccccccddddddddddeeeeeeeeeeeeeeeffffffffffffffggggggggggggghhhhhhhhhhhhhhiiiiiiiiiii,u)" RETURN SIZE
+  echo "6,a123456789xyzabcdefghi,x" | wc -m
+  $CLI INSERT INTO longcol VALUES "(6,a123456789xyzabcdefghi,x)" RETURN SIZE
+  echo "7,ABCDEFGHIJxyzabcdefghi,x" | wc -m
+  $CLI INSERT INTO longcol VALUES "(7,ABCDEFGHIJxyzabcdefghi,x)" RETURN SIZE
+}
+

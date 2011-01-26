@@ -28,7 +28,7 @@ ALL RIGHTS RESERVED
 
 #include "redis.h"
 
-#include "btreepriv.h"
+#include "btree.h"
 #include "row.h"
 #include "parser.h"
 #include "alsosql.h"
@@ -69,6 +69,7 @@ typedef struct range_update {
 #define OBY_FREE_AOBJ 2
 typedef struct range_common {
     redisClient *c;
+    bt          *btr;
     cswc_t      *w;
     list        *ll;
     uchar        ofree; /* order by sorting needs to free [robj,aobj] */
@@ -83,7 +84,7 @@ typedef struct range {
 
 void setQueued(cswc_t *w, qr_t *q);
 
-bool passFilters(void *rrow, list *flist, int tmatch);
+bool passFilters(bt *btr, void *rrow, list *flist, int tmatch);
 
 void opSelectOnSort(redisClient *c,
                     list        *ll,

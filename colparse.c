@@ -131,36 +131,32 @@ void incrOffsetVar(redisClient *c, cswc_t *w, long incr) {
 
 /* PARSE PARSE PARSE PARSE PARSE PARSE PARSE PARSE PARSE PARSE PARSE */
 /* PARSE PARSE PARSE PARSE PARSE PARSE PARSE PARSE PARSE PARSE PARSE */
-char *parseRowVals(char    *vals,
-                   char   **pk,
-                   int     *pklen,
-                   int      ncols,
-                   uint32   cofsts[]) {
+char *parseRowVals(sds vals, char **pk, int *plen, int ncols, uint32 cofsts[]) {
     if (vals[sdslen(vals) - 1] != ')' || *vals != '(') return NULL;
-    vals++;
+    char *mvals = vals + 1;
 
     int   fieldnum = 0;
-    char *token    = vals;
-    char *nextc    = vals;
-    while ((nextc = str_next_unescaped_chr(vals, nextc, ','))) {
+    char *token    = mvals;
+    char *nextc    = mvals;
+    while ((nextc = str_next_unescaped_chr(mvals, nextc, ','))) {
         if (!*pk) {
-            *pklen    = (nextc - vals);
-            if (!*pklen) return NULL;
-            char *s   = malloc(*pklen + 1);              /* FREE ME 021 */
-            memcpy(s, vals, *pklen);
-            s[*pklen] = '\0';
-            *pk       = s;
+            *plen    = (nextc - mvals);
+            if (!*plen) return NULL;
+            char *s  = malloc(*plen + 1);              /* FREE ME 021 */
+            memcpy(s, mvals, *plen);
+            s[*plen] = '\0';
+            *pk      = s;
         }
         nextc++;
         token            = nextc;
-        cofsts[fieldnum] = token - vals;
+        cofsts[fieldnum] = token - mvals;
         fieldnum++;
     }
     int len          = strlen(token);
-    cofsts[fieldnum] = (token - vals) + len; // points 2 NULL terminatr
+    cofsts[fieldnum] = (token - mvals) + len; // points 2 NULL terminatr
     fieldnum++;
     if (fieldnum != ncols) return NULL;
-    return vals;
+    return mvals;
 }
 
 bool parseSelectCol(int   tmatch,

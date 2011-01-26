@@ -36,6 +36,8 @@ uint32 skipToVal(uchar **stream);
 
 uint32 getStreamMallocSize(uchar *stream, bt *btr);
 
+int intCmp(void *s1, void *s2);
+int uuCmp(void *s1, void *s2);
 int btStreamCmp(void *a, void *b);
 
 char *createBTKey(aobj *key, bool *med, uchar *sflag, uint32 *ksize, bt *btr);

@@ -1,8 +1,9 @@
 package.path = package.path .. ";;test/?.lua"
 require "is_external"
 
-local req  = 1000000;
-local tbl  = "memleak";
+local req    = 1000000;
+local tbl    = "memleak";
+local pkname = "id";
 
 function lua_init_memleak_tbl()
     drop_table(tbl);
@@ -14,9 +15,9 @@ function lua_init_memleak_tbl()
     end
     return "+OK";
 end
-function lua_check_memleak_tbl()
+function lua_check_tbl(req, tbl, pkname)
     for i= 1, req do
-        local res = select('id', tbl, 'id = ' .. i);
+        local res = select(pkname, tbl, pkname .. ' = ' .. i);
         if (res == nil) then
             print (tbl .. ' missing: ' .. i);
         else
@@ -26,11 +27,11 @@ function lua_check_memleak_tbl()
             end
         end
     end
-    return "+OK";
+    return "Table: " .. tbl .. " OK: 1-" .. req .. " rows";
 end
 
 if is_external.yes == 1 then
     print (lua_init_memleak_tbl());
-    print (lua_check_memleak_tbl());
+    print (lua_check_tbl(req, tbl, pkname));
 end
 

@@ -124,6 +124,7 @@ static long rangeOpPK(range_t *g, row_op *p) {
     robj    *tname = Tbl[server.dbid][w->tmatch].name;
     robj    *btt   = lookupKeyRead(g->co.c->db, tname); // TODO pass into func
     bt      *btr   = (bt *)btt->ptr;
+    g->co.btr      = btr;
     long     loops = -1;
     long     card  =  0;
     btSIter *bi    = q->pk_lo ? btGetIteratorXth(btr, w->low, w->high, w->ofst):
@@ -153,12 +154,10 @@ typedef struct inner_bt_data {
     uchar    pktype;
     bool    *brkr;
 } ibtd_t;
-static void init_ibtd(ibtd_t *d, row_op *p, range_t *g, qr_t *q,
-                      bt *btr, bt *nbtr,
-                      long *ofst, long *card, long *loops,
-                      uchar pktype, bool *brkr) {
-    d->p      = p;      d->g    = g;    d->q = q;
-    d->btr    = btr;    d->nbtr = nbtr;
+static void init_ibtd(ibtd_t *d,    row_op *p,    range_t *g, qr_t *q, bt *nbtr,
+                      long *ofst,   long   *card, long    *loops,
+                      uchar pktype, bool   *brkr) {
+    d->p      = p;      d->g    = g;    d->q = q;         d->nbtr = nbtr;
     d->ofst   = ofst;   d->card = card; d->loops = loops;
     d->pktype = pktype; d->brkr = brkr;
 }
@@ -178,7 +177,7 @@ static void innerBT_Op(ibtd_t *d) {
                 continue;
             if (w->lim == *d->card) break; /* ORDRBY FK LIM */
         }
-        void *rrow = btFindVal(d->btr, nbe->key);
+        void *rrow = btFindVal(d->g->co.btr, nbe->key);
         (*d->p)(d->g, nbe->key, rrow, q->fk, d->card);
     }
     btReleaseRangeIterator(nbi);
@@ -197,7 +196,7 @@ static long rangeOpFK(range_t *g, row_op *p) {
     bool     pktype = Tbl[server.dbid][w->tmatch].col_type[0];
     robj    *tname  = Tbl[server.dbid][w->tmatch].name;
     robj    *btt    = lookupKeyRead(g->co.c->db, tname); // TODO pass into func
-    bt      *btr    = (bt *)btt->ptr;
+    g->co.btr       = (bt *)btt->ptr;
     robj    *ind    = Index[server.dbid][w->imatch].obj;
     robj    *ibtt   = lookupKey(g->co.c->db, ind);       // TODO pass into func
     bt      *ibtr   = (bt *)ibtt->ptr;
@@ -206,7 +205,7 @@ static long rangeOpFK(range_t *g, row_op *p) {
     long     card   =  0;
     btSIter *bi     = q->pk_lo ? btGetIteratorXth(ibtr, w->low, w->high, ofst) :
                                  btGetRangeIterator(ibtr, w->low, w->high);
-    init_ibtd(&d, p, g, q, btr, NULL, &ofst, &card, &loops, pktype, &brkr);
+    init_ibtd(&d, p, g, q, NULL, &ofst, &card, &loops, pktype, &brkr);
     while ((be = btRangeNext(bi)) != NULL) {
         d.nbtr = be->val;
         if (g->se.cstar && !g->co.w->flist) { /* FK cstar w/o filters */
@@ -235,7 +234,7 @@ static long singleOpFK(range_t *g, row_op *p) {
     bool      pktype  = Tbl[server.dbid][w->tmatch].col_type[0];
     robj     *tname   = Tbl[server.dbid][w->tmatch].name;
     robj     *btt     = lookupKeyRead(g->co.c->db, tname); //TODO pass into func
-    bt       *btr     = (bt *)btt->ptr;
+    g->co.btr         = (bt *)btt->ptr;
     robj     *ind     = Index[server.dbid][w->imatch].obj;
     robj     *ibtt    = lookupKey(g->co.c->db, ind);      //TODO pass into func
     bt       *ibtr    = (bt *)ibtt->ptr;
@@ -246,7 +245,7 @@ static long singleOpFK(range_t *g, row_op *p) {
     long      ofst    = w->ofst;
     long      loops   = -1;
     long      card    =  0;
-    init_ibtd(&d, p, g, q, btr, nbtr, &ofst, &card, &loops, pktype, &brkr);
+    init_ibtd(&d, p, g, q, nbtr, &ofst, &card, &loops, pktype, &brkr);
     if (nbtr) {
         if (g->se.cstar && !g->co.w->flist) card += nbtr->numkeys;
         else                                innerBT_Op(&d);
@@ -272,13 +271,13 @@ static long inOpPK(range_t *g, row_op *p) {
     qr_t      *q      = g->q;
     robj     *tname   = Tbl[server.dbid][w->tmatch].name;
     robj      *btt    = lookupKeyRead(g->co.c->db, tname); //TODO pass into func
-    bt        *btr    = (bt *)btt->ptr;
+    g->co.btr         = (bt *)btt->ptr;
     long      card    =  0;
     listIter *li      = listGetIterator(w->inl, AL_START_HEAD);
     while((ln = listNext(li)) != NULL) {
         if (q->pk_lim && w->lim == card) break; /* ORDRBY PK LIM */
         aobj *apk  = ln->value;
-        void *rrow = btFindVal(btr, apk);
+        void *rrow = btFindVal(g->co.btr, apk);
         if (rrow) {
             (*p)(g, apk, rrow, q->pk, &card);
         }
@@ -295,7 +294,7 @@ static long inOpFK(range_t *g, row_op *p) {
     qr_t     *q       = g->q;
     robj     *tname   = Tbl[server.dbid][w->tmatch].name;
     robj     *btt     = lookupKeyRead(g->co.c->db, tname); //TODO pass into func
-    bt       *btr     = (bt *)btt->ptr;
+    g->co.btr         = (bt *)btt->ptr;
     robj     *ind     = Index[server.dbid][w->imatch].obj;
     robj     *ibtt    = lookupKey(g->co.c->db, ind);       //TODO pass into func
     bt       *ibtr    = (bt *)ibtt->ptr;
@@ -311,7 +310,7 @@ static long inOpFK(range_t *g, row_op *p) {
                 btSIter *nbi = btGetFullRangeIterator(nbtr);
                 while ((nbe = btRangeNext(nbi)) != NULL) {
                     if (q->fk_lim && w->lim == card) break;
-                    void *rrow  = btFindVal(btr, nbe->key);
+                    void *rrow  = btFindVal(g->co.btr, nbe->key);
                     (*p)(g, nbe->key, rrow, q->fk, &card);
                 }
                 btReleaseRangeIterator(nbi);
@@ -328,14 +327,14 @@ long inOp(range_t *g, row_op *p) {
     return virt ? inOpPK(g, p) : inOpFK(g, p);
 }
 
-bool passFilters(void *rrow, list *flist, int tmatch) {
+bool passFilters(bt *btr, void *rrow, list *flist, int tmatch) {
     if (!flist) return 1; /* no filters always passes */
     listNode *ln, *ln2;
     bool      ret = 1;
     listIter *li  = listGetIterator(flist, AL_START_HEAD);
     while((ln = listNext(li)) != NULL) {
         f_t *flt  = ln->value;
-        aobj a    = getRawCol(rrow, flt->cmatch, NULL, tmatch, NULL, 0);
+        aobj a    = getRawCol(btr, rrow, flt->cmatch, NULL, tmatch, NULL, 0);
         if (flt->inl) {
             listIter *li2 = listGetIterator(flt->inl, AL_START_HEAD);
             while((ln2 = listNext(li2)) != NULL) {
@@ -359,11 +358,12 @@ bool passFilters(void *rrow, list *flist, int tmatch) {
 /* SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS */
 /* SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS */
 static void select_op(range_t *g, aobj *akey, void *rrow, bool q, long *card) {
-    if (!passFilters(rrow, g->co.w->flist, g->co.w->tmatch)) return;
+    if (!passFilters(g->co.btr, rrow, g->co.w->flist, g->co.w->tmatch)) return;
     if (!g->se.cstar) {
-        robj *r = outputRow(rrow, g->se.qcols, g->se.cmatchs,
+        robj *r = outputRow(g->co.btr, rrow, g->se.qcols, g->se.cmatchs,
                             akey, g->co.w->tmatch, 0);
-        if (q) addRow2OBList(g->co.ll, g->co.w, r, g->co.ofree, rrow, akey);
+        if (q) addRow2OBList(g->co.ll, g->co.w, g->co.btr, r, g->co.ofree,
+                             rrow, akey);
         else   addReplyBulk(g->co.c, r);
         decrRefCount(r);
     }
@@ -420,9 +420,10 @@ void iselectAction(redisClient *c,
 }
 
 static void dellist_op(range_t *g, aobj *akey, void *rrow, bool q, long *card) {
-    if (!passFilters(rrow, g->co.w->flist, g->co.w->tmatch)) return;
+    if (!passFilters(g->co.btr, rrow, g->co.w->flist, g->co.w->tmatch)) return;
     if (q) {
-        addRow2OBList(g->co.ll, g->co.w, akey, g->co.ofree, rrow, akey);
+        addRow2OBList(g->co.ll, g->co.w, g->co.btr, akey, g->co.ofree,
+                      rrow, akey);
     } else {
         aobj *cln  = cloneAobj(akey);
         listAddNodeTail(g->co.ll, cln); /* UGLY: build list of PKs to delete */
@@ -488,9 +489,10 @@ void ideleteAction(redisClient *c, cswc_t *w) {
 }
 
 static void update_op(range_t *g, aobj *akey, void *rrow, bool q, long *card) {
-    if (!passFilters(rrow, g->co.w->flist, g->co.w->tmatch)) return;
+    if (!passFilters(g->co.btr, rrow, g->co.w->flist, g->co.w->tmatch)) return;
     if (q) {
-        addRow2OBList(g->co.ll, g->co.w, akey, g->co.ofree, rrow, akey);
+        addRow2OBList(g->co.ll, g->co.w, g->co.btr, akey, g->co.ofree,
+                      rrow, akey);
     } else {
         updateRow(g->co.c, g->up.btr, akey, rrow, g->co.w->tmatch, g->up.ncols,
                   g->up.matches, g->up.indices, g->up.vals, g->up.vlens,

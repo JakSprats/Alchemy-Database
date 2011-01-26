@@ -35,7 +35,7 @@ ALL RIGHTS RESERVED
 
 bt *abt_resize(bt *obtr, int new_size);
 
-robj *createBtreeObject(uchar ktype, int num, uchar btype);
+robj *createBtreeObject(uchar ktype, int num, uchar btype, int tmatch);
 robj *createEmptyBtreeObject(); /*used for virtual indices */
 void freeBtreeObject(robj *o);
 
@@ -48,6 +48,9 @@ void freeBtreeObject(robj *o);
 /* INT Indexes have been optimised */
 #define INODE(btr) \
   (btr->btype == BTREE_INDEX_NODE && btr->ktype == COL_TYPE_INT)
+
+/* tables containing ONLY[ PK=INT,col1=INT] have been optimised */
+#define UU(btr) (btr->bflag & BTREE_FLAG_UINT_UINT)
 
 void btDestroy(bt *nbtr, bt *btr);
 int   btAdd(    bt *btr, aobj *apk, void *val);

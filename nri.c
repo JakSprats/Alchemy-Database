@@ -54,7 +54,8 @@ extern r_tbl_t Tbl  [MAX_NUM_DB][MAX_NUM_TABLES];
 extern r_ind_t Index[MAX_NUM_DB][MAX_NUM_INDICES];
 
 /* creates text for trigger's command */
-static sds genNRL_Cmd(d_l_t  *nrlind,
+static sds genNRL_Cmd(bt     *btr,
+                      d_l_t  *nrlind,
                       aobj   *apk,
                       char   *vals,
                       uint32  cofsts[],
@@ -91,7 +92,7 @@ static sds genNRL_Cmd(d_l_t  *nrlind,
                 cmd = sdscatlen(cmd, x, xlen);
                 if (!cmatch) free(x);                    /* FREED 015 */
             } else { /* not from INSERT -> fetch row */
-                aobj rcol = getRawCol(rrow, cmatch, apk, tmatch, NULL, 1);
+                aobj rcol = getRawCol(btr, rrow, cmatch, apk, tmatch, NULL, 1);
                 x         = rcol.s;
                 xlen      = rcol.len;
                 cmd = sdscatlen(cmd, x, xlen);
@@ -179,8 +180,12 @@ run_cmd_end:
     zfree(argv);                                         /* FREED 017 */
 }
 
-void nrlIndexAdd(robj *o, aobj *apk, char *vals, uint32 cofsts[]) {
-    sds cmd = genNRL_Cmd((d_l_t *)o->ptr, apk, vals, cofsts, NULL, -1);
+void nrlIndexAdd(bt     *btr,
+                 d_l_t  *nrlind,
+                 aobj   *apk,
+                 char   *vals,
+                 uint32  cofsts[]) {
+    sds cmd = genNRL_Cmd(btr, nrlind, apk, vals, cofsts, NULL, -1);
     //printf("nri: cmd: %s\n", cmd);
     runCmdInFakeClient(cmd);
     sdsfree(cmd);                                        /* DESTROYED 016 */
@@ -192,7 +197,7 @@ void runNrlIndexFromStream(bt *btr, uchar *stream, d_l_t *nrlind, int itbl) {
     convertStream2Key(stream, &akey, btr);
     void *rrow = parseStream(stream, btr);
     /* create command and run it */
-    sds cmd    = genNRL_Cmd(nrlind, &akey, NULL, NULL, rrow, itbl);
+    sds cmd    = genNRL_Cmd(btr, nrlind, &akey, NULL, NULL, rrow, itbl);
     //printf("run_nri: cmd: %s\n", cmd);
     runCmdInFakeClient(cmd);
     sdsfree(cmd);                                        /* DESTROYED 016 */

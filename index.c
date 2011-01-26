@@ -130,16 +130,21 @@ static void iRem(bt *ibtr, aobj *acol, aobj *apk) {
     }
 }
 
-void addToIndex(redisDb *db, aobj *apk, char *vals, uint32 cofsts[], int inum) {
+void addToIndex(redisDb *db,
+                bt      *btr,
+                aobj    *apk,
+                char    *vals,
+                uint32   cofsts[],
+                int      inum) {
     if (Index[server.dbid][inum].virt) return;
     bool  nrl     = Index[server.dbid][inum].nrl;
     robj *ind     = Index[server.dbid][inum].obj;
     robj *ibtt    = lookupKey(db, ind);
+    bt   *ibtr    = (bt *)(ibtt->ptr);
     if (nrl) {
-        nrlIndexAdd(ibtt, apk, vals, cofsts);
+        nrlIndexAdd(btr, (d_l_t *)ibtr, apk, vals, cofsts);
         return;
     }
-    bt   *ibtr    = (bt *)(ibtt->ptr);
     int   itm     = Index[server.dbid][inum].table;
     int   pktype  = Tbl[server.dbid][itm].col_type[0];
     int   icol    = Index[server.dbid][inum].column;
@@ -152,7 +157,12 @@ void addToIndex(redisDb *db, aobj *apk, char *vals, uint32 cofsts[], int inum) {
     iAdd(ibtr, &acol, apk, pktype);
 }
 
-void delFromIndex(redisDb *db, aobj *apk, void *rrow, int inum, int tmatch) {
+void delFromIndex(redisDb *db,
+                  bt      *btr,
+                  aobj    *apk,
+                  void    *rrow,
+                  int      inum,
+                  int      tmatch) {
     if (Index[server.dbid][inum].virt) return;
     bool  nrl     = Index[server.dbid][inum].nrl;
     if (nrl) { /* TODO add in nrldel */ return; }
@@ -160,12 +170,13 @@ void delFromIndex(redisDb *db, aobj *apk, void *rrow, int inum, int tmatch) {
     robj *ind     = Index[server.dbid][inum].obj;
     robj *ibtt    = lookupKey(db, ind);
     bt   *ibtr    = (bt *)(ibtt->ptr);
-    aobj  acol    = getRawCol(rrow, cmatch, apk, tmatch, NULL, 0);
+    aobj  acol    = getRawCol(btr, rrow, cmatch, apk, tmatch, NULL, 0);
     iRem(ibtr, &acol, apk);
     releaseAobj(&acol);
 }
 
 static void _updateIndex(redisDb *db,
+                         bt      *btr,
                          aobj    *aopk,
                          aobj    *anpk,
                          aobj    *ncol,
@@ -182,28 +193,19 @@ static void _updateIndex(redisDb *db,
     int   pktype  = Tbl[server.dbid][itm].col_type[0];
     robj *ibtt    = lookupKey(db, ind);
     bt   *ibtr    = (bt *)(ibtt->ptr);
-    aobj  acol    = getRawCol(rrow, cmatch, aopk, tmatch, NULL, 0);
+    aobj  acol    = getRawCol(btr, rrow, cmatch, aopk, tmatch, NULL, 0);
     iRem(ibtr, &acol, aopk);
     if (pkup) iAdd(ibtr, &acol, anpk, pktype);
     else      iAdd(ibtr, ncol,  anpk, pktype);
     releaseAobj(&acol);
 }
-void updateIndex(redisDb *db,
-                 aobj    *aopk,
-                 aobj    *anpk,
-                 aobj    *newval,
-                 void    *rrow,
-                 int      inum,
-                 int      tmatch) {
-    _updateIndex(db, aopk, anpk, newval, rrow, inum, 0, tmatch);
+void updateIndex(redisDb *db,     bt   *btr,  aobj *aopk, aobj *anpk,
+                 aobj    *newval, void *rrow, int   inum, int   tmatch) {
+    _updateIndex(db, btr, aopk, anpk, newval, rrow, inum, 0, tmatch);
 }
-void updatePKIndex(redisDb *db,
-                   aobj    *aopk,
-                   aobj    *anpk,
-                   void    *rrow,
-                   int      inum,
-                   int      tmatch) {
-    _updateIndex(db, aopk, anpk, NULL, rrow, inum, 1, tmatch);
+void updatePKIndex(redisDb *db,   bt   *btr,  aobj *aopk, aobj    *anpk,
+                   void    *rrow, int   inum, int   tmatch) {
+    _updateIndex(db, btr, aopk, anpk, NULL, rrow, inum, 1, tmatch);
 }
 
 /* CREATE_INDEX  CREATE_INDEX  CREATE_INDEX  CREATE_INDEX  CREATE_INDEX */
@@ -239,7 +241,7 @@ bool newIndexReply(redisClient *c,
         ibt         = createObject(REDIS_NRL_INDEX, nrlind);
     } else {
         int ctype   = Tbl[server.dbid][tmatch].col_type[cmatch];
-        ibt         = createBtreeObject(ctype, imatch, BTREE_INDEX);
+        ibt         = createBtreeObject(ctype, imatch, BTREE_INDEX, -1);
     }
     //store BtreeObject in HashTable key: indexname
     dictAdd(c->db->dict, ind, ibt);
@@ -256,7 +258,7 @@ static void makeIndexFromStream(bt    *btr,
     aobj akey;
     convertStream2Key(stream, &akey, btr);
     void *rrow   = parseStream(stream, btr);
-    aobj  acol   = getRawCol(rrow, icol, &akey, itbl, NULL, 0);
+    aobj  acol   = getRawCol(btr, rrow, icol, &akey, itbl, NULL, 0);
     uchar pktype = Tbl[server.dbid][itbl].col_type[0];
     iAdd(ibtr, &acol, &akey, pktype);
     releaseAobj(&acol);

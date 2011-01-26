@@ -12,7 +12,7 @@ function init_memleak_tbl()
     local icmd = '../gen-benchmark -q -c ' .. c ..' -n ' .. req ..
                  ' -s -A OK ' .. 
                  ' -Q INSERT INTO memleak VALUES ' .. 
-                 '"(000000000001,1,\'pagename_000000000001\')"';
+                 '"(00000000000001,1,\'pagename_00000000000001\')"';
     local x   = socket.gettime()*1000;
     print ('executing: (' .. icmd .. ')');
     os.execute(icmd);
@@ -23,7 +23,7 @@ end
 function delete_memleak_tbl()
     local icmd = '../gen-benchmark -q -c ' .. c ..' -n ' .. req ..
                  ' -s -A INT ' .. 
-                 ' -Q DELETE FROM memleak WHERE id=000000000001';
+                 ' -Q DELETE FROM memleak WHERE id=00000000000001';
     local x   = socket.gettime()*1000;
     print ('executing: (' .. icmd .. ')');
     os.execute(icmd);

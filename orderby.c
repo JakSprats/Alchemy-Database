@@ -134,11 +134,11 @@ static void destroy_obsl(obsl_t *ob, bool ofree) {
     free(ob);                                            /* FREED 001 */
 }
 
-void assignObKey(cswc_t *w, void *rrow, aobj *apk, int i, obsl_t *ob) {
+void assignObKey(cswc_t *w, bt *btr, void *rrow, aobj *apk, int i, obsl_t *ob) {
     flag   cflag;
     void  *key;
     uchar  ctype = Tbl[server.dbid][w->tmatch].col_type[w->obc[i]];
-    aobj   ao    = getRawCol(rrow, w->obc[i], apk, w->tmatch, &cflag, 0);
+    aobj   ao    = getRawCol(btr, rrow, w->obc[i], apk, w->tmatch, &cflag, 0);
     if (ctype == COL_TYPE_INT) {
         key = (void *)(long)ao.i;
     } else if (ctype == COL_TYPE_FLOAT) {
@@ -154,6 +154,7 @@ void assignObKey(cswc_t *w, void *rrow, aobj *apk, int i, obsl_t *ob) {
 }
 void addRow2OBList(list   *ll,
                    cswc_t *w,
+                   bt     *btr,
                    void   *r,
                    bool    ofree,
                    void   *rrow,
@@ -164,7 +165,7 @@ void addRow2OBList(list   *ll,
     //else assert(!"OBY_FREE not defined");
     obsl_t *ob  = create_obsl(row, w->nob);              /* FREE ME 001 */
     for (int i = 0; i < w->nob; i++) {
-        assignObKey(w, rrow, apk, i, ob);
+        assignObKey(w, btr, rrow, apk, i, ob);
     }
     listAddNodeTail(ll, ob);
 }

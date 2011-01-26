@@ -19,7 +19,7 @@ function init_ten_mill_mod100()
     local icmd = '../gen-benchmark -q -c ' .. c ..' -n ' .. req ..
                  ' -s -m ' .. mod .. ' -A OK ' .. 
                  ' -Q INSERT INTO ten_mill_mod100 VALUES ' .. 
-                 '"(000000000001,000000000001,1)" > /dev/null';
+                 '"(00000000000001,00000000000001,1)" > /dev/null';
     local x   = socket.gettime()*1000;
     print ('executing: (' .. icmd .. ')');
     os.execute(icmd);

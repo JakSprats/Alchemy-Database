@@ -41,26 +41,34 @@ ALL RIGHTS RESERVED
 #include "aobj.h"
 #include "common.h"
 
+/* FROM redis.c */
+extern struct redisServer server;
+
+/* GLOBALS */
+extern r_tbl_t Tbl     [MAX_NUM_DB][MAX_NUM_TABLES];
+
 /* Abstract-BTREE Prototypes */
-static bt   *abt_create(uchar ktype, int num, uchar btype, bool iainc);
+static bt   *abt_create(uchar ktype, int num, uchar btype, bool bflag);
 static void  abt_destroy(bt *nbtr, bt *btr);
 
-static int intCmp(void *s1, void *s2) {
-    return (long)s1 - (long)s2;
+bt *btCreate(uchar ktype, int num, uchar btype, bool bflag) {
+    return abt_create(ktype, num, btype, bflag);
 }
-
-bt *btCreate(uchar ktype, int num, uchar btype, bool iainc) {
-    return abt_create(ktype, num, btype, iainc);
-}
-robj *createBtreeObject(uchar ktype, int num, uchar btype) { /* Data & Index */
-    bool iainc = (btype == BTREE_TABLE && ktype == COL_TYPE_INT) ? 1 : 0;
-    bt *btr = btCreate(ktype, num, btype, iainc);
+robj *createBtreeObject(uchar ktype, int num, uchar btype, int tmatch) {
+    bool bflag = BTREE_FLAG_INT_NONE;
+    if (btype == BTREE_TABLE && ktype == COL_TYPE_INT) {
+        bflag = BTREE_FLAG_INT_AUTO_INC;
+        if (Tbl[server.dbid][tmatch].col_count == 2 &&
+            Tbl[server.dbid][tmatch].col_type[1] == COL_TYPE_INT)
+                bflag += BTREE_FLAG_UINT_UINT;
+    }
+    bt *btr = btCreate(ktype, num, btype, bflag);
     return createObject(REDIS_BTREE, btr);
 }
-robj *createEmptyBtreeObject() {                           /* Virtual indices */
+robj *createEmptyBtreeObject() {                             /* Virtual index */
     return createObject(REDIS_BTREE, NULL);
 }
-static bt *createInodeIntBt() {
+static bt *createInodeIntBt() {                              /* INODE_BT INT */
     bt *btr    = bt_create(intCmp, TRANSITION_ONE_INODEBT, UINTSIZE, 1);
     btr->ktype = COL_TYPE_INT;
     btr->btype = BTREE_INDEX_NODE;
@@ -93,7 +101,7 @@ static void destroy_bt_node(bt *btr, bt_n *n) {
             destroy_bt_node(*nbtr, (*nbtr)->root);
             bt_free_btree(*nbtr, btr);      /* memory management in btr(Index)*/
         }
-        if (!INODE(btr)) bt_free(be, btr, ssize);
+        if (!INODE(btr) && !UU(btr)) bt_free(be, btr, ssize);
     }
     if (!n->leaf) {
         for (int i = 0; i <= n->n; i++) {
@@ -126,11 +134,13 @@ static void bt_to_bt_insert(bt *nbtr, bt *obtr, bt_n *n) {
 }
           
 /* ABSTRACT-BTREE ABSTRACT-BTREE ABSTRACT-BTREE ABSTRACT-BTREE ABSTRACT-BTREE */
-static bt *abt_create(uchar ktype, int num, uchar btype, bool iainc) {
-    bt *btr     = bt_create(btStreamCmp, TRANSITION_ONE_BTREE, VOIDSIZE, iainc);
-    btr->ktype  = ktype;
-    btr->btype  = btype;
-    btr->num    = num;
+static bt *abt_create(uchar ktype, int num, uchar btype, bool bflag) {
+    bt_cmp_t cmp = btStreamCmp;
+    if (bflag & BTREE_FLAG_UINT_UINT) cmp = uuCmp;
+    bt *btr      = bt_create(cmp, TRANSITION_ONE_BTREE, VOIDSIZE, bflag);
+    btr->ktype   = ktype;
+    btr->btype   = btype;
+    btr->num     = num;
     return btr;
 }
 
@@ -186,7 +196,7 @@ static uint32 abt_insert(bt *btr, aobj *akey, void *val) {
 
 bt *abt_resize(bt *obtr, int new_size) {
      uchar ksize     = INODE(obtr) ? UINTSIZE : VOIDSIZE;
-     bt *nbtr        = bt_create(obtr->cmp, new_size, ksize, obtr->iainc);
+     bt *nbtr        = bt_create(obtr->cmp, new_size, ksize, obtr->bflag);
      nbtr->ktype     = obtr->ktype;
      nbtr->btype     = obtr->btype;
      nbtr->num       = obtr->num;
