@@ -416,18 +416,23 @@ static bool parseWC_IN_NRI(redisClient *c, list **inl, char *s, int slen) {
     return !err;
 }
 
+static char *checkIN_Clause(redisClient *c, char *token) {
+    char *end = str_matching_end_paren(token);
+    if (!end || (*token != '(')) {
+        addReply(c, shared.whereclause_in_err);
+        return NULL;
+    }
+    return end;
+}
 /* SYNTAX: IN (a,b,c) OR IN($redis_command arg1 arg2) */
 static uchar parseWC_IN(redisClient  *c,
                         char         *token,
                         list        **inl,
                         uchar         ctype,
                         char        **finish) {
-    char *end = str_matching_end_paren(token);
-    if (!end || (*token != '(')) {
-        addReply(c, shared.whereclause_in_err);
-        return SQL_ERR_LOOKUP;
-    }
 
+    char *end = checkIN_Clause(c, token);
+    if (!end) return SQL_ERR_LOOKUP;
     *inl       = listCreate();
     bool piped = 0;
     token++;
@@ -680,9 +685,19 @@ void parseWCReply(redisClient *c, cswc_t *w, uchar sop, bool is_scan) {
         initFilter(&flt);
         //TODO needs to be str_case_unescaped_quotes_str(" AND ")
         char *tokfin = NULL;
+        char *in     = strcasestr(finish, " IN ");
         char *and    = strcasestr(finish, " AND ");
-        char *btwn   = strcasestr(finish, " BETWEEN ");
-        if (and && btwn && btwn < and) and = strcasestr(and + 5, " AND ");
+        if (and && in && in < and) { /* include "IN (..........) */
+            and = in + 4;
+            SKIP_SPACES(and)
+            if (!*and) goto p_wd_end;
+            and = checkIN_Clause(c, and); /* and now @ ')' */
+            if (!and) goto p_wd_end;
+            and = strcasestr(and, " AND ");
+        } else {                     /* include "BETWEEN x AND y" */
+            char *btwn = strcasestr(finish, " BETWEEN ");
+            if (and && btwn && btwn < and) and = strcasestr(and + 5, " AND ");
+        }
         int   tlen   = and ? and - finish : (int)strlen(finish);
         if (token) sdsfree(token);
         token         = sdsnewlen(finish, tlen);
@@ -693,16 +708,14 @@ void parseWCReply(redisClient *c, cswc_t *w, uchar sop, bool is_scan) {
         if (is_scan) {
             w->wtype = t_wtype;
             if (!w->flist) w->flist = listCreate();
-            if (w->wtype == SQL_RANGE_QUERY) {
-                addLowHighToFlist(w); /* convert -> "x >= low AND x <= high" */
-            } else {
-                listAddNodeTail(w->flist, cloneFilt(&flt));
-            }
+            if (w->wtype == SQL_RANGE_QUERY) addLowHighToFlist(w);
+            else                     listAddNodeTail(w->flist, cloneFilt(&flt));
             releaseFilter(&flt);
         } else {
             if (ifound) { /* index first token, then filters  */
                 if (!w->flist) w->flist = listCreate();
-                listAddNodeTail(w->flist, cloneFilt(&flt));
+                if (t_wtype == SQL_RANGE_QUERY) addLowHighToFlist(w);
+                else                 listAddNodeTail(w->flist, cloneFilt(&flt));
                 releaseFilter(&flt);
             } else {
                 w->wtype = t_wtype;
