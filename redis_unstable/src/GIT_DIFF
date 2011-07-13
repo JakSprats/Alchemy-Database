@@ -1,0 +1,741 @@
+diff --git a/redis.conf b/redis.conf
+index 87d34ee..7a27c33 100644
+--- a/redis.conf
++++ b/redis.conf
+@@ -395,3 +395,30 @@ activerehashing yes
+ #
+ # include /path/to/local.conf
+ # include /path/to/other.conf
++
++############################## ALCHEMY_DATABASE ###############################
++
++# include_lua will include lua functions from the specified file
++include_lua example.lua
++
++# whitelist.lus defines the "whitelist" module used in webservermode
++whitelist_lua whitelist.lua
++
++# the file internal.lua is part of the server's core
++# basedir must be set so this file can be loaded on startup
++basedir ./
++
++# outputmode determines how the line protocol looks on replies
++# the default value is "normal" and will return comma delimited rows
++# the value "pure_redis" will return columns delimited as redis items
++#outputmode pure_redis
++
++# WARNING: luacronfunc IS VERY DANGEROUS
++# luacronfunc when defined will be run every second and
++#  will BLOCK the server during its execution
++# it should be used for very light weight cleanup or stat gathering
++#luacronfunc lua_cron
++
++#webservermode yes
++#webserver_whitelist_address 192.168.1.1
++#webserver_whitelist_netmask 255.255.255.0
+diff --git a/src/Makefile b/src/Makefile
+index 292255c..7b4c5d9 100644
+--- a/src/Makefile
++++ b/src/Makefile
+@@ -2,6 +2,9 @@
+ # Copyright (C) 2009 Salvatore Sanfilippo <antirez at gmail dot com>
+ # This file is released under the BSD license, see the COPYING file
+ 
++#LUAJIT= yes
++#USE_TCMALLOC=yes
++
+ release_hdr := $(shell sh -c './mkreleasehdr.sh')
+ uname_S := $(shell sh -c 'uname -s 2>/dev/null || echo not')
+ OPTIMIZATION?=-O2
+@@ -13,14 +16,12 @@ ifeq ($(uname_S),Linux)
+ endif
+ 
+ ifeq ($(uname_S),SunOS)
+-  CFLAGS?=-std=c99 -pedantic $(OPTIMIZATION) -Wall -W -D__EXTENSIONS__ -D_XPG6
+-  CCLINK?=-ldl -lnsl -lsocket -lm -lpthread
+-  DEBUG?=-g -ggdb 
+-else
+-  CFLAGS?=-std=c99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF)
+-  CCLINK?=-lm -pthread
+-  DEBUG?=-g -rdynamic -ggdb 
++  @echo "Sun not supported (no BigEndian support) - sorry"
++  @exit
+ endif
++CFLAGS?= -std=c99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF) -DALCHEMY_DATABASE
++CCLINK?= -lm -pthread -ldl
++DEBUG?= -g -rdynamic -ggdb
+ 
+ ifeq ($(USE_TCMALLOC),yes)
+   ALLOD_DEPS=
+@@ -40,6 +41,14 @@ ifeq ($(USE_JEMALLOC),yes)
+   ALLOC_FLAGS=-DUSE_JEMALLOC -I../deps/jemalloc/include
+ endif
+ 
++ifeq ($(LUAJIT),yes)
++  LUAINC := "../deps/luajit/src/"
++  LUALIB := "../deps/luajit/src/libluajit.a"
++else
++  LUAINC := "../deps/lua/src/"
++  LUALIB := "../deps/lua/src/liblua.a"
++endif
++
+ CCLINK+= $(ALLOC_LINK)
+ CFLAGS+= $(ALLOC_FLAGS)
+ 
+@@ -57,23 +66,25 @@ MAKECOLOR="\033[32;1m"
+ ENDCOLOR="\033[0m"
+ 
+ ifndef V
+-QUIET_CC = @printf '    %b %b\n' $(CCCOLOR)CC$(ENDCOLOR) $(SRCCOLOR)$@$(ENDCOLOR);
+-QUIET_LINK = @printf '    %b %b\n' $(LINKCOLOR)LINK$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR);
++#QUIET_CC = @printf '    %b %b\n' $(CCCOLOR)CC$(ENDCOLOR) $(SRCCOLOR)$@$(ENDCOLOR);
++#QUIET_LINK = @printf '    %b %b\n' $(LINKCOLOR)LINK$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR);
+ endif
+ 
+-OBJ = adlist.o ae.o anet.o dict.o redis.o sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o zipmap.o sha1.o ziplist.o release.o networking.o util.o object.o db.o replication.o rdb.o t_string.o t_list.o t_set.o t_zset.o t_hash.o config.o aof.o dscache.o pubsub.o multi.o debug.o sort.o intset.o syncio.o diskstore.o cluster.o crc16.o endian.o
++OBJ = adlist.o ae.o anet.o dict.o redis.o sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o zipmap.o sha1.o ziplist.o release.o networking.o util.o object.o db.o replication.o rdb.o t_string.o t_list.o t_set.o t_zset.o t_hash.o config.o aof.o dscache.o pubsub.o multi.o debug.o sort.o intset.o syncio.o diskstore.o cluster.o crc16.o endian.o scripting.o
+ BENCHOBJ = ae.o anet.o redis-benchmark.o sds.o adlist.o zmalloc.o
+ CLIOBJ = anet.o sds.o adlist.o redis-cli.o zmalloc.o release.o
+ CHECKDUMPOBJ = redis-check-dump.o lzf_c.o lzf_d.o
+ CHECKAOFOBJ = redis-check-aof.o
++GENBENCHOBJ = ae.o anet.o gen-benchmark.o sds.o adlist.o zmalloc.o
+ 
+-PRGNAME = redis-server
+-BENCHPRGNAME = redis-benchmark
+-CLIPRGNAME = redis-cli
+-CHECKDUMPPRGNAME = redis-check-dump
+-CHECKAOFPRGNAME = redis-check-aof
++PRGNAME = alchemy-server
++BENCHPRGNAME = alchemy-benchmark
++CLIPRGNAME = alchemy-cli
++CHECKDUMPPRGNAME = alchemy-check-dump
++CHECKAOFPRGNAME = alchemy-check-aof
++GENBENCHPRGNAME = alchemy-gen-benchmark
+ 
+-all: redis-benchmark redis-cli redis-check-dump redis-check-aof redis-server
++all: alchemy-lib alchemy-benchmark alchemy-cli alchemy-check-dump alchemy-check-aof alchemy-server alchemy-gen-benchmark
+ 	@echo ""
+ 	@echo "Hint: To run 'make test' is a good idea ;)"
+ 	@echo ""
+@@ -158,48 +169,62 @@ dependencies:
+ 	@cd ../deps/hiredis && $(MAKE) static ARCH="$(ARCH)"
+ 	@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)linenoise$(ENDCOLOR)
+ 	@cd ../deps/linenoise && $(MAKE) ARCH="$(ARCH)"
++	@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)lua$(ENDCOLOR)
++	@cd ../deps/lua && $(MAKE) ARCH="$(ARCH)" ansi
++	@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)luajit$(ENDCOLOR)
++	@cd ../deps/luajit && $(MAKE)
+ 
+ ../deps/jemalloc/lib/libjemalloc.a:
+ 	cd ../deps/jemalloc && ./configure $(JEMALLOC_CFLAGS) --with-jemalloc-prefix=je_ --enable-cc-silence && $(MAKE) lib/libjemalloc.a
+ 
+-redis-server: $(OBJ)
+-	$(QUIET_CC)$(CC) -o $(PRGNAME) $(CCOPT) $(DEBUG) $(OBJ) $(CCLINK) $(ALLOC_LINK)
++alchemy-server: $(OBJ)
++	$(QUIET_CC)$(CC) -o $(PRGNAME) $(CCOPT) $(DEBUG) $(OBJ) $(CCLINK) $(ALLOC_LINK) -L../../DB/ -lx_db $(LUALIB)
+ 
+-redis-benchmark: dependencies $(BENCHOBJ)
++alchemy-benchmark: dependencies $(BENCHOBJ)
+ 	@cd ../deps/hiredis && $(MAKE) static
+ 	$(QUIET_LINK)$(CC) -o $(BENCHPRGNAME) $(CCOPT) $(DEBUG) $(BENCHOBJ) ../deps/hiredis/libhiredis.a $(CCLINK) $(ALLOC_LINK)
+ 
+ redis-benchmark.o:
+-	$(QUIET_CC)$(CC) -c $(CFLAGS) -I../deps/hiredis $(DEBUG) $(COMPILE_TIME) $<
++	$(CC) -c $(CFLAGS) -I../deps/hiredis $(DEBUG) $(COMPILE_TIME) $<
++	#$(QUIET_CC)$(CC) -c $(CFLAGS) -I../deps/hiredis $(DEBUG) $(COMPILE_TIME) $<
++
++alchemy-gen-benchmark: $(GENBENCHOBJ)
++	@cd ../deps/hiredis && $(MAKE) static
++	$(QUIET_LINK)$(CC) -o $(GENBENCHPRGNAME) $(CCOPT) $(DEBUG) $(GENBENCHOBJ) ../deps/hiredis/libhiredis.a $(CCLINK) $(ALLOC_LINK)
++	#$(CC) -o $(GENBENCHPRGNAME) $(CCOPT) $(DEBUG) $(GENBENCHOBJ)
+ 
+-redis-cli: dependencies $(CLIOBJ)
+-	$(QUIET_LINK)$(CC) -o $(CLIPRGNAME) $(CCOPT) $(DEBUG) $(CLIOBJ) ../deps/hiredis/libhiredis.a ../deps/linenoise/linenoise.o $(CCLINK) $(ALLOC_LINK)
++alchemy-cli: dependencies $(CLIOBJ)
++	$(QUIET_LINK)$(CC) -o $(CLIPRGNAME) $(CCOPT) $(DEBUG) $(CLIOBJ) ../deps/hiredis/libhiredis.a ../deps/linenoise/linenoise.o $(CCLINK) $(ALLOC_LINK) ../../DB/xdb_client_hooks.o
+ 
+ redis-cli.o:
+ 	$(QUIET_CC)$(CC) -c $(CFLAGS) -I../deps/hiredis -I../deps/linenoise $(DEBUG) $(COMPILE_TIME) $<
+ 
+-redis-check-dump: $(CHECKDUMPOBJ)
++alchemy-check-dump: $(CHECKDUMPOBJ)
+ 	$(QUIET_LINK)$(CC) -o $(CHECKDUMPPRGNAME) $(CCOPT) $(DEBUG) $(CHECKDUMPOBJ) $(CCLINK) $(ALLOC_LINK)
+ 
+-redis-check-aof: $(CHECKAOFOBJ)
++alchemy-check-aof: $(CHECKAOFOBJ)
+ 	$(QUIET_LINK)$(CC) -o $(CHECKAOFPRGNAME) $(CCOPT) $(DEBUG) $(CHECKAOFOBJ) $(CCLINK) $(ALLOC_LINK)
+ 
++alchemy-lib:
++	(cd ../../DB; make redis3)
++
+ # Because the jemalloc.h header is generated as a part of the jemalloc build
+ # process, building it should complete before building any other object.
+ %.o: %.c $(ALLOC_DEP)
+-	$(QUIET_CC)$(CC) -c $(CFLAGS) $(DEBUG) $(COMPILE_TIME) $<
++	$(QUIET_CC)$(CC) -c $(CFLAGS) $(DEBUG) $(COMPILE_TIME) -I$(LUAINC) $<
+ 
+ clean:
++	(cd ../../DB; make clean)
+ 	rm -rf $(PRGNAME) $(BENCHPRGNAME) $(CLIPRGNAME) $(CHECKDUMPPRGNAME) $(CHECKAOFPRGNAME) *.o *.gcda *.gcno *.gcov
+ 
+ dep:
+ 	$(CC) -MM *.c -I ../deps/hiredis -I ../deps/linenoise
+ 
+-test: redis-server
++test: alchemy-server
+ 	(cd ..; tclsh8.5 tests/test_helper.tcl --tags "${TAGS}" --file "${FILE}")
+ 
+ bench:
+-	./redis-benchmark
++	./alchemy-benchmark
+ 
+ log:
+ 	git log '--pretty=format:%ad %s (%cn)' --date=short > ../Changelog
+diff --git a/src/anet.c b/src/anet.c
+index 692cef1..07c7e67 100644
+--- a/src/anet.c
++++ b/src/anet.c
+@@ -46,6 +46,11 @@
+ 
+ #include "anet.h"
+ 
++#ifdef ALCHEMY_DATABASE
++  struct sockaddr_in AcceptedClientSA;
++  void DXDB_setSA(struct sockaddr_in sa) { AcceptedClientSA = sa; }
++#endif
++
+ static void anetSetError(char *err, const char *fmt, ...)
+ {
+     va_list ap;
+@@ -333,6 +338,9 @@ int anetTcpAccept(char *err, int s, char *ip, int *port) {
+ 
+     if (ip) strcpy(ip,inet_ntoa(sa.sin_addr));
+     if (port) *port = ntohs(sa.sin_port);
++#ifdef ALCHEMY_DATABASE
++    DXDB_setSA(sa);
++#endif
+     return fd;
+ }
+ 
+diff --git a/src/aof.c b/src/aof.c
+index dbd0468..7508e17 100644
+--- a/src/aof.c
++++ b/src/aof.c
+@@ -1,3 +1,6 @@
++#ifdef ALCHEMY_DATABASE
++  #include "xdb_hooks.h"
++#endif
+ #include "redis.h"
+ 
+ #include <signal.h>
+@@ -337,6 +340,9 @@ int rewriteAppendOnlyFile(char *filename) {
+         redisLog(REDIS_WARNING, "Failed rewriting the append only file: %s", strerror(errno));
+         return REDIS_ERR;
+     }
++#ifdef ALCHEMY_DATABASE
++    if (DXDB_rewriteAppendOnlyFile(fp) == -1) goto werr;
++#endif
+     for (j = 0; j < server.dbnum; j++) {
+         char selectcmd[] = "*2\r\n$6\r\nSELECT\r\n";
+         redisDb *db = server.db+j;
+diff --git a/src/config.c b/src/config.c
+index 9d30d98..9d315ce 100644
+--- a/src/config.c
++++ b/src/config.c
+@@ -1,3 +1,6 @@
++#ifdef ALCHEMY_DATABASE
++  #include "xdb_hooks.h"
++#endif
+ #include "redis.h"
+ 
+ /*-----------------------------------------------------------------------------
+@@ -309,7 +312,16 @@ void loadServerConfig(char *filename) {
+             zfree(server.cluster.configfile);
+             server.cluster.configfile = zstrdup(argv[1]);
+         } else {
++#ifdef ALCHEMY_DATABASE
++            int ret = DXDB_loadServerConfig(argc, argv);
++            if (ret == -1) return;
++            if (ret) {
++                err = "Bad directive or wrong number of arguments";
++                goto loaderr;
++            }
++#else
+             err = "Bad directive or wrong number of arguments"; goto loaderr;
++#endif
+         }
+         for (j = 0; j < argc; j++)
+             sdsfree(argv[j]);
+@@ -479,6 +491,11 @@ void configSetCommand(redisClient *c) {
+         if (getLongLongFromObject(o,&ll) == REDIS_ERR || ll < 0) goto badfmt;
+         server.zset_max_ziplist_value = ll;
+     } else {
++#ifdef ALCHEMY_DATABASE
++        int ret = DXDB_configSetCommand(c, o);
++        if (ret == -1) return;
++        if (!ret) { addReply(c,shared.ok); return; }
++#endif
+         addReplyErrorFormat(c,"Unsupported CONFIG parameter: %s",
+             (char*)c->argv[2]->ptr);
+         return;
+@@ -649,6 +666,9 @@ void configGetCommand(redisClient *c) {
+         addReplyBulkLongLong(c,server.zset_max_ziplist_value);
+         matches++;
+     }
++#ifdef ALCHEMY_DATABASE
++    DXDB_configGetCommand(c, pattern, &matches);
++#endif
+     setDeferredMultiBulkLength(c,replylen,matches*2);
+ }
+ 
+@@ -669,6 +689,11 @@ void configCommand(redisClient *c) {
+         resetCommandTableStats();
+         addReply(c,shared.ok);
+     } else {
++#ifdef ALCHEMY_DATABASE
++        int ret = DXDB_configCommand(c);
++        if (ret == -1) goto badarity;
++        if (ret)
++#endif
+         addReplyError(c,
+             "CONFIG subcommand must be one of GET, SET, RESETSTAT");
+     }
+diff --git a/src/config.h b/src/config.h
+index f38ce87..90a0bac 100644
+--- a/src/config.h
++++ b/src/config.h
+@@ -48,6 +48,16 @@
+ /* Byte ordering detection */
+ #include <sys/types.h> /* This will likely define BYTE_ORDER */
+ 
++#ifdef REDIS3
++  #include <endian.h>
++  #ifndef BYTE_ORDER
++    #define BYTE_ORDER LITTLE_ENDIAN
++  #endif
++#endif
++#ifdef ALCHEMY_DATABASE
++  #undef HAVE_BACKTRACE
++#endif
++
+ #ifndef BYTE_ORDER
+ #if (BSD >= 199103)
+ # include <machine/endian.h>
+diff --git a/src/db.c b/src/db.c
+index af237a0..3e02c5f 100644
+--- a/src/db.c
++++ b/src/db.c
+@@ -1,3 +1,6 @@
++#ifdef ALCHEMY_DATABASE
++  #include "xdb_hooks.h"
++#endif
+ #include "redis.h"
+ 
+ #include <signal.h>
+@@ -218,6 +221,9 @@ int dbDelete(redisDb *db, robj *key) {
+ /* Empty the whole database.
+  * If diskstore is enabled this function will just flush the in-memory cache. */
+ long long emptyDb() {
++#ifdef ALCHEMY_DATABASE
++    DXDB_emptyDb();
++#endif
+     int j;
+     long long removed = 0;
+ 
+diff --git a/src/networking.c b/src/networking.c
+index 8f2e6d8..9d2b843 100644
+--- a/src/networking.c
++++ b/src/networking.c
+@@ -1,3 +1,6 @@
++#ifdef ALCHEMY_DATABASE
++  #include "xdb_hooks.h"
++#endif
+ #include "redis.h"
+ #include <sys/uio.h>
+ 
+@@ -14,6 +17,7 @@ redisClient *createClient(int fd) {
+     redisClient *c = zmalloc(sizeof(redisClient));
+     c->bufpos = 0;
+ 
++    if (fd != -1) {
+     anetNonBlock(NULL,fd);
+     anetTcpNoDelay(NULL,fd);
+     if (aeCreateFileEvent(server.el,fd,AE_READABLE,
+@@ -23,6 +27,7 @@ redisClient *createClient(int fd) {
+         zfree(c);
+         return NULL;
+     }
++    }
+ 
+     selectDb(c,0);
+     c->fd = fd;
+@@ -393,6 +398,9 @@ static void acceptCommonHandler(int fd) {
+         close(fd); /* May be already closed, just ingore errors */
+         return;
+     }
++#ifdef ALCHEMY_DATABASE
++    DXDB_setClientSA(c);
++#endif
+     /* If maxclient directive is set and this is one client more... close the
+      * connection. Note that we create the client instead to check before
+      * for this condition, since now the socket is already set in nonblocking
+diff --git a/src/rdb.c b/src/rdb.c
+index d019d94..f09ddd9 100644
+--- a/src/rdb.c
++++ b/src/rdb.c
+@@ -1,3 +1,6 @@
++#ifdef ALCHEMY_DATABASE
++  #include "xdb_hooks.h"
++#endif
+ #include "redis.h"
+ #include "lzf.h"    /* LZF compression library */
+ 
+@@ -426,6 +429,9 @@ int rdbSave(char *filename) {
+         return REDIS_ERR;
+     }
+     if (fwrite("REDIS0002",9,1,fp) == 0) goto werr;
++#ifdef ALCHEMY_DATABASE
++    if (DXDB_rdbSave(fp) == -1) goto werr;
++#endif
+     for (j = 0; j < server.dbnum; j++) {
+         redisDb *db = server.db+j;
+         dict *d = db->dict;
+@@ -941,6 +947,9 @@ int rdbLoad(char *filename) {
+     }
+ 
+     startLoading(fp);
++#ifdef ALCHEMY_DATABASE
++    if (DXDB_rdbLoad(fp) == -1) goto eoferr;
++#endif
+     while(1) {
+         robj *key, *val;
+         expiretime = -1;
+diff --git a/src/redis-cli.c b/src/redis-cli.c
+index d0c9d97..5384328 100644
+--- a/src/redis-cli.c
++++ b/src/redis-cli.c
+@@ -1,3 +1,6 @@
++#ifdef ALCHEMY_DATABASE
++  #include "xdb_client_hooks.h"
++#endif
+ /* Redis CLI (command line interface)
+  *
+  * Copyright (c) 2009-2010, Salvatore Sanfilippo <antirez at gmail dot com>
+@@ -487,6 +490,9 @@ static int cliSendCommand(int argc, char **argv, int repeat) {
+     if (!strcasecmp(command,"monitor")) config.monitor_mode = 1;
+     if (!strcasecmp(command,"subscribe") ||
+         !strcasecmp(command,"psubscribe")) config.pubsub_mode = 1;
++#ifdef ALCHEMY_DATABASE
++    DXDB_cliSendCommand(&argc, argv);
++#endif
+ 
+     /* Setup argument length */
+     argvlen = malloc(argc*sizeof(size_t));
+diff --git a/src/redis.c b/src/redis.c
+index 1a1f84f..b3fc0d5 100644
+--- a/src/redis.c
++++ b/src/redis.c
+@@ -1,3 +1,6 @@
++#ifdef ALCHEMY_DATABASE
++  #include "xdb_hooks.h"
++#endif
+ /*
+  * Copyright (c) 2009-2010, Salvatore Sanfilippo <antirez at gmail dot com>
+  * All rights reserved.
+@@ -52,6 +55,7 @@
+ #include <math.h>
+ #include <pthread.h>
+ #include <sys/resource.h>
++#include <unistd.h>
+ 
+ /* Our shared "common" objects */
+ 
+@@ -150,7 +154,9 @@ struct redisCommand redisCommandTable[] = {
+     {"mset",msetCommand,-3,REDIS_CMD_DENYOOM,NULL,1,-1,2,0,0},
+     {"msetnx",msetnxCommand,-3,REDIS_CMD_DENYOOM,NULL,1,-1,2,0,0},
+     {"randomkey",randomkeyCommand,1,0,NULL,0,0,0,0,0},
++#ifndef ALCHEMY_DATABASE
+     {"select",selectCommand,2,0,NULL,0,0,0,0,0},
++#endif
+     {"move",moveCommand,3,0,NULL,1,1,1,0,0},
+     {"rename",renameCommand,3,0,renameGetKeys,1,2,1,0,0},
+     {"renamenx",renamenxCommand,3,0,renameGetKeys,1,2,1,0,0},
+@@ -191,7 +197,11 @@ struct redisCommand redisCommandTable[] = {
+     {"cluster",clusterCommand,-2,0,NULL,0,0,0,0,0},
+     {"restore",restoreCommand,4,0,NULL,0,0,0,0,0},
+     {"migrate",migrateCommand,6,0,NULL,0,0,0,0,0},
++#ifdef ALCHEMY_DATABASE
++    {"cdump",dumpCommand,2,0,NULL,0,0,0,0,0},
++#else
+     {"dump",dumpCommand,2,0,NULL,0,0,0,0,0},
++#endif
+     {"object",objectCommand,-2,0,NULL,0,0,0,0,0},
+     {"client",clientCommand,-2,0,NULL,0,0,0,0,0}
+ };
+@@ -780,6 +790,9 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
+ /* =========================== Server initialization ======================== */
+ 
+ void createSharedObjects(void) {
++#ifdef ALCHEMY_DATABASE
++    DXDB_createSharedObjects();
++#endif
+     int j;
+ 
+     shared.crlf = createObject(REDIS_STRING,sdsnew("\r\n"));
+@@ -834,6 +847,9 @@ void createSharedObjects(void) {
+ }
+ 
+ void initServerConfig() {
++#ifdef ALCHEMY_DATABASE
++    DXDB_initServerConfig();
++#endif
+     server.port = REDIS_SERVERPORT;
+     server.bindaddr = NULL;
+     server.unixsocket = NULL;
+@@ -841,6 +857,9 @@ void initServerConfig() {
+     server.sofd = -1;
+     server.dbnum = REDIS_DEFAULT_DBNUM;
+     server.verbosity = REDIS_VERBOSE;
++#ifdef ALCHEMY_DATABASE //NOTE not needed, this just annoys me
++    server.verbosity = REDIS_WARNING;
++#endif
+     server.maxidletime = REDIS_MAXIDLETIME;
+     server.saveparams = NULL;
+     server.loading = 0;
+@@ -1010,14 +1029,21 @@ void initServer() {
+         }
+     }
+ 
++    scriptingInit();
+     if (server.ds_enabled) dsInit();
+     if (server.cluster_enabled) clusterInit();
+     srand(time(NULL)^getpid());
++#ifdef ALCHEMY_DATABASE
++    DXDB_initServer();
++#endif
+ }
+ 
+ /* Populates the Redis Command Table starting from the hard coded list
+  * we have on top of redis.c file. */
+ void populateCommandTable(void) {
++#ifdef ALCHEMY_DATABASE
++    DXDB_populateCommandTable(server.commands);
++#endif
+     int j;
+     int numcommands = sizeof(redisCommandTable)/sizeof(struct redisCommand);
+ 
+@@ -1045,7 +1071,11 @@ void resetCommandTableStats(void) {
+ /* ====================== Commands lookup and execution ===================== */
+ 
+ struct redisCommand *lookupCommand(sds name) {
++#ifdef ALCHEMY_DATABASE
++    return DXDB_lookupCommand(name);
++#else
+     return dictFetchValue(server.commands, name);
++#endif
+ }
+ 
+ struct redisCommand *lookupCommandByCString(char *s) {
+@@ -1086,6 +1116,9 @@ void call(redisClient *c, struct redisCommand *cmd) {
+  * and other operations can be performed by the caller. Otherwise
+  * if 0 is returned the client was destroied (i.e. after QUIT). */
+ int processCommand(redisClient *c) {
++#ifdef ALCHEMY_DATABASE
++    DXDB_processCommand(c);
++#endif
+     struct redisCommand *cmd;
+ 
+     /* The QUIT command is handled separately. Normal command procs will
+@@ -1298,6 +1331,9 @@ sds genRedisInfoString(char *section) {
+         if (sections++) info = sdscat(info,"\r\n");
+         info = sdscatprintf(info,
+             "# Server\r\n"
++#ifdef ALCHEMY_DATABASE
++            "ALCHEMY_DATABASE version:%s\r\n"
++#endif
+             "redis_version:%s\r\n"
+             "redis_git_sha1:%s\r\n"
+             "redis_git_dirty:%d\r\n"
+@@ -1308,6 +1344,9 @@ sds genRedisInfoString(char *section) {
+             "uptime_in_seconds:%ld\r\n"
+             "uptime_in_days:%ld\r\n"
+             "lru_clock:%ld\r\n",
++#ifdef ALCHEMY_DATABASE
++            X_DB_VERSION,
++#endif
+             REDIS_VERSION,
+             redisGitSHA1(),
+             strtol(redisGitDirty(),NULL,10) > 0,
+@@ -1575,6 +1614,9 @@ sds genRedisInfoString(char *section) {
+         server.cluster_enabled);
+     }
+ 
++#ifdef ALCHEMY_DATABASE
++    DBXD_genRedisInfoString(info);
++#endif
+     /* Key space */
+     if (allsections || defsections || !strcasecmp(section,"keyspace")) {
+         if (sections++) info = sdscat(info,"\r\n");
+diff --git a/src/redis.h b/src/redis.h
+index cab7607..3570c70 100644
+--- a/src/redis.h
++++ b/src/redis.h
+@@ -19,6 +19,7 @@
+ #include <pthread.h>
+ #include <syslog.h>
+ #include <netinet/in.h>
++#include <lua.h>
+ 
+ #include "ae.h"     /* Event driven programming library */
+ #include "sds.h"    /* Dynamic safe strings */
+@@ -32,6 +33,13 @@
+ #include "version.h"
+ #include "util.h"
+ 
++#ifdef ALCHEMY_DATABASE
++  #include "xdb_common.h"
++  #include <sys/socket.h>
++  #include <netinet/tcp.h>
++  #include <arpa/inet.h>
++#endif
++
+ /* Error codes */
+ #define REDIS_OK                0
+ #define REDIS_ERR               -1
+@@ -148,6 +156,7 @@
+ #define REDIS_CLOSE_AFTER_REPLY 128 /* Close after writing entire reply. */
+ #define REDIS_UNBLOCKED 256 /* This client was unblocked and is stored in
+                                server.unblocked_clients */
++#define REDIS_LUA_CLIENT 512 /* This is a non connected client used by Lua */
+ 
+ /* Client request types */
+ #define REDIS_REQ_INLINE 1
+@@ -324,6 +333,9 @@ typedef struct blockingState {
+ /* With multiplexing we need to take per-clinet state.
+  * Clients are taken in a liked list. */
+ typedef struct redisClient {
++#ifdef ALCHEMY_DATABASE
++    struct sockaddr_in sa;
++#endif
+     int fd;
+     redisDb *db;
+     int dictid;
+@@ -362,6 +374,9 @@ struct saveparam {
+ };
+ 
+ struct sharedObjectsStruct {
++#ifdef ALCHEMY_DATABASE
++    SHARED_OBJ_DECLARATION
++#endif
+     robj *crlf, *ok, *err, *emptybulk, *czero, *cone, *cnegone, *pong, *space,
+     *colon, *nullbulk, *nullmultibulk, *queued,
+     *emptymultibulk, *wrongtypeerr, *nokeyerr, *syntaxerr, *sameobjecterr,
+@@ -667,6 +682,11 @@ struct redisServer {
+     /* Cluster */
+     int cluster_enabled;
+     clusterState cluster;
++    /* Scripting */
++    lua_State *lua;
++    redisClient *lua_client;
++    long long lua_time_limit;
++    long long lua_time_start;
+ };
+ 
+ typedef struct pubsubPattern {
+@@ -1089,6 +1109,9 @@ int clusterAddNode(clusterNode *node);
+ void clusterCron(void);
+ clusterNode *getNodeByQuery(redisClient *c, struct redisCommand *cmd, robj **argv, int argc, int *hashslot, int *ask);
+ 
++/* Scripting */
++void scriptingInit(void);
++
+ /* Git SHA1 */
+ char *redisGitSHA1(void);
+ char *redisGitDirty(void);
+@@ -1218,11 +1241,13 @@ void dumpCommand(redisClient *c);
+ void objectCommand(redisClient *c);
+ void clientCommand(redisClient *c);
+ 
++#ifndef ALCHEMY_DATABASE
+ #if defined(__GNUC__)
+ void *calloc(size_t count, size_t size) __attribute__ ((deprecated));
+ void free(void *ptr) __attribute__ ((deprecated));
+ void *malloc(size_t size) __attribute__ ((deprecated));
+ void *realloc(void *ptr, size_t size) __attribute__ ((deprecated));
+ #endif
++#endif
+ 
+ #endif
+diff --git a/src/sds.c b/src/sds.c
+index 6350700..4ab77ae 100644
+--- a/src/sds.c
++++ b/src/sds.c
+@@ -43,6 +43,13 @@
+ #include "sds.h"
+ #include "zmalloc.h"
+ 
++#ifdef ALCHEMY_DATABASE
++size_t sdslen(const sds s) {
++    struct sdshdr *sh = (void*)(s-(sizeof(struct sdshdr)));
++    return sh->len;
++}
++#endif
++
+ static void sdsOomAbort(void) {
+     fprintf(stderr,"SDS: Out Of Memory (SDS_ABORT_ON_OOM defined)\n");
+     abort();
+diff --git a/src/sds.h b/src/sds.h
+index ea43f86..01665b6 100644
+--- a/src/sds.h
++++ b/src/sds.h
+@@ -42,10 +42,14 @@ struct sdshdr {
+     char buf[];
+ };
+ 
++#ifdef ALCHEMY_DATABASE
++size_t sdslen(const sds s);
++#else
+ static inline size_t sdslen(const sds s) {
+     struct sdshdr *sh = (void*)(s-(sizeof(struct sdshdr)));
+     return sh->len;
+ }
++#endif
+ 
+ static inline size_t sdsavail(const sds s) {
+     struct sdshdr *sh = (void*)(s-(sizeof(struct sdshdr)));
+diff --git a/src/zmalloc.c b/src/zmalloc.c
+index 428951a..7b7d727 100644
+--- a/src/zmalloc.c
++++ b/src/zmalloc.c
+@@ -91,6 +91,15 @@ pthread_mutex_t used_memory_mutex = PTHREAD_MUTEX_INITIALIZER;
+ /* Note that malloc_allocations elements are initialized to zero by C */
+ size_t zmalloc_allocations[ZMALLOC_MAX_ALLOC_STAT+1];
+ 
++#ifdef ALCHEMY_DATABASE
++void increment_used_memory(size_t size) {
++    update_zmalloc_stat_alloc(size, size);
++}
++void decrement_used_memory(size_t size) {
++    update_zmalloc_stat_free(size);
++}
++#endif
++
+ static void zmalloc_oom(size_t size) {
+     fprintf(stderr, "zmalloc: Out of memory trying to allocate %zu bytes\n",
+         size);
+diff --git a/src/zmalloc.h b/src/zmalloc.h
+index 4979279..84c3e76 100644
+--- a/src/zmalloc.h
++++ b/src/zmalloc.h
+@@ -66,6 +66,11 @@
+ #define ZMALLOC_LIB "libc"
+ #endif
+ 
++#ifdef ALCHEMY_DATABASE
++void increment_used_memory(size_t size);
++void decrement_used_memory(size_t size);
++#endif
++
+ void *zmalloc(size_t size);
+ void *zcalloc(size_t size);
+ void *zrealloc(void *ptr, size_t size);

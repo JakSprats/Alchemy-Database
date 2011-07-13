@@ -1,0 +1,566 @@
+diff -rupN ARCHIVE/redis-2.2.107-scripting/src/aof.c redis/src/aof.c
+--- ARCHIVE/redis-2.2.107-scripting/src/aof.c	2011-05-11 02:51:27.000000000 -0600
++++ redis/src/aof.c	2011-06-07 19:18:17.744914443 -0600
+@@ -1,3 +1,7 @@
++#ifdef THE_X_DB
++  #include "xdb_hooks.h"
++#endif
++
+ #include "redis.h"
+ 
+ #include <signal.h>
+@@ -235,6 +239,9 @@ int loadAppendOnlyFile(char *filename) {
+     server.appendonly = 0;
+ 
+     fakeClient = createFakeClient();
++#ifdef THE_X_DB
++    DXDB_setCurrClient(fakeClient);
++#endif
+     startLoading(fp);
+ 
+     while(1) {
+@@ -516,6 +523,9 @@ int rewriteAppendOnlyFile(char *filename
+             if (swapped) decrRefCount(o);
+         }
+         dictReleaseIterator(di);
++#ifdef THE_X_DB
++        if (DXDB_rewriteAppendOnlyFile(fp, j) == -1) goto werr;
++#endif
+     }
+ 
+     /* Make sure data will not remain on the OS's output buffers */
+diff -rupN ARCHIVE/redis-2.2.107-scripting/src/config.c redis/src/config.c
+--- ARCHIVE/redis-2.2.107-scripting/src/config.c	2011-05-11 02:51:27.000000000 -0600
++++ redis/src/config.c	2011-06-07 21:00:04.336182047 -0600
+@@ -1,3 +1,7 @@
++#ifdef THE_X_DB
++  #include "xdb_hooks.h"
++#endif
++
+ #include "redis.h"
+ 
+ /*-----------------------------------------------------------------------------
+@@ -291,7 +295,12 @@ void loadServerConfig(char *filename) {
+         } else if (!strcasecmp(argv[0],"lua-time-limit") && argc == 2) {
+             server.lua_time_limit = strtoll(argv[1],NULL,10);
+         } else {
+-            err = "Bad directive or wrong number of arguments"; goto loaderr;
++#ifdef THE_X_DB
++            int ret = DXDB_loadServerConfig(argc, argv);
++            if (ret == -1) return;
++            if (ret) 
++#endif
++            { err = "Bad directive or wrong number of arguments"; goto loaderr;}
+         }
+         for (j = 0; j < argc; j++)
+             sdsfree(argv[j]);
+@@ -452,6 +461,11 @@ void configSetCommand(redisClient *c) {
+         if (getLongLongFromObject(o,&ll) == REDIS_ERR || ll < 0) goto badfmt;
+         server.lua_time_limit = ll;
+     } else {
++#ifdef THE_X_DB
++        int ret = DXDB_configSetCommand(c, o);
++        if (ret == -1) return;
++        if (!ret) { addReply(c,shared.ok); return; }
++#endif
+         addReplyErrorFormat(c,"Unsupported CONFIG parameter: %s",
+             (char*)c->argv[2]->ptr);
+         return;
+@@ -607,6 +621,9 @@ void configGetCommand(redisClient *c) {
+         addReplyBulkLongLong(c,server.lua_time_limit);
+         matches++;
+     }
++#ifdef THE_X_DB
++    DXDB_configGetCommand(c, pattern, &matches);
++#endif
+     setDeferredMultiBulkLength(c,replylen,matches*2);
+ }
+ 
+@@ -626,6 +643,11 @@ void configCommand(redisClient *c) {
+         server.stat_expiredkeys = 0;
+         addReply(c,shared.ok);
+     } else {
++#ifdef THE_X_DB
++        int ret = DXDB_configCommand(c);
++        if (ret == -1) goto badarity;
++        if (ret)
++#endif
+         addReplyError(c,
+             "CONFIG subcommand must be one of GET, SET, RESETSTAT");
+     }
+diff -rupN ARCHIVE/redis-2.2.107-scripting/src/config.h redis/src/config.h
+--- ARCHIVE/redis-2.2.107-scripting/src/config.h	2011-05-11 02:51:27.000000000 -0600
++++ redis/src/config.h	2011-06-07 01:41:57.361520890 -0600
+@@ -11,10 +11,10 @@
+  * either tcmalloc or OSX's malloc_size()! */
+ #if defined(USE_TCMALLOC)
+ #include <google/tcmalloc.h>
+-#if TC_VERSION_MAJOR >= 1 && TC_VERSION_MINOR >= 6
++//#if TC_VERSION_MAJOR >= 1 && TC_VERSION_MINOR >= 6
+ #define HAVE_MALLOC_SIZE 1
+ #define redis_malloc_size(p) tc_malloc_size(p)
+-#endif
++//#endif
+ #elif defined(__APPLE__)
+ #include <malloc/malloc.h>
+ #define HAVE_MALLOC_SIZE 1
+diff -rupN ARCHIVE/redis-2.2.107-scripting/src/db.c redis/src/db.c
+--- ARCHIVE/redis-2.2.107-scripting/src/db.c	2011-05-11 02:51:27.000000000 -0600
++++ redis/src/db.c	2011-06-07 18:59:42.014945616 -0600
+@@ -1,3 +1,6 @@
++#ifdef THE_X_DB
++  #include "xdb_hooks.h"
++#endif
+ #include "redis.h"
+ 
+ #include <signal.h>
+@@ -142,6 +145,9 @@ int dbDelete(redisDb *db, robj *key) {
+ 
+ /* Empty the whole database */
+ long long emptyDb() {
++#ifdef THE_X_DB
++    DXDB_emptyDb();
++#endif
+     int j;
+     long long removed = 0;
+ 
+@@ -157,6 +163,9 @@ int selectDb(redisClient *c, int id) {
+     if (id < 0 || id >= server.dbnum)
+         return REDIS_ERR;
+     c->db = &server.db[id];
++#ifdef THE_X_DB
++    DXDB_setDbid(id);
++#endif
+     return REDIS_OK;
+ }
+ 
+@@ -165,6 +174,9 @@ int selectDb(redisClient *c, int id) {
+  *----------------------------------------------------------------------------*/
+ 
+ void flushdbCommand(redisClient *c) {
++#ifdef THE_X_DB
++    DXDB_flushdbCommand(c);
++#endif
+     server.dirty += dictSize(c->db->dict);
+     touchWatchedKeysOnFlush(c->db->id);
+     dictEmpty(c->db->dict);
+diff -rupN ARCHIVE/redis-2.2.107-scripting/src/google/tcmalloc.h redis/src/google/tcmalloc.h
+--- ARCHIVE/redis-2.2.107-scripting/src/google/tcmalloc.h	1969-12-31 17:00:00.000000000 -0700
++++ redis/src/google/tcmalloc.h	2011-06-07 01:40:33.912770840 -0600
+@@ -0,0 +1,108 @@
++/* Copyright (c) 2003, Google Inc.
++ * All rights reserved.
++ * 
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions are
++ * met:
++ * 
++ *     * Redistributions of source code must retain the above copyright
++ * notice, this list of conditions and the following disclaimer.
++ *     * Redistributions in binary form must reproduce the above
++ * copyright notice, this list of conditions and the following disclaimer
++ * in the documentation and/or other materials provided with the
++ * distribution.
++ *     * Neither the name of Google Inc. nor the names of its
++ * contributors may be used to endorse or promote products derived from
++ * this software without specific prior written permission.
++ * 
++ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
++ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
++ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
++ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
++ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
++ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
++ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
++ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
++ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
++ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++ *
++ * ---
++ * Author: Sanjay Ghemawat <opensource@google.com>
++ *         .h file by Craig Silverstein <opensource@google.com>
++ */
++
++#ifndef TCMALLOC_TCMALLOC_H_
++#define TCMALLOC_TCMALLOC_H_
++
++// __THROW is defined in glibc systems.  It means, counter-intuitively,
++// "This function will never throw an exception."  It's an optional
++// optimization tool, but we may need to use it to match glibc prototypes.
++#ifndef __THROW    /* I guess we're not on a glibc system */
++# define __THROW   /* __THROW is just an optimization, so ok to make it "" */
++#endif
++
++// Define the version number so folks can check against it
++#define TC_VERSION_MAJOR  @TC_VERSION_MAJOR@
++#define TC_VERSION_MINOR  @TC_VERSION_MINOR@
++#define TC_VERSION_PATCH  "@TC_VERSION_PATCH@"
++#define TC_VERSION_STRING "google-perftools @TC_VERSION_MAJOR@.@TC_VERSION_MINOR@@TC_VERSION_PATCH@"
++
++#include <stdlib.h>   // for struct mallinfo, if it's defined
++
++// Annoying stuff for windows -- makes sure clients can import these functions
++#ifndef PERFTOOLS_DLL_DECL
++# ifdef _WIN32
++#   define PERFTOOLS_DLL_DECL  __declspec(dllimport)
++# else
++#   define PERFTOOLS_DLL_DECL
++# endif
++#endif
++
++#ifdef __cplusplus
++#include <new>  // for nothrow_t
++extern "C" {
++#endif
++  // Returns a human-readable version string.  If major, minor,
++  // and/or patch are not NULL, they are set to the major version,
++  // minor version, and patch-code (a string, usually "").
++  PERFTOOLS_DLL_DECL const char* tc_version(int* major, int* minor,
++                                            const char** patch) __THROW;
++
++  PERFTOOLS_DLL_DECL void* tc_malloc(size_t size) __THROW;
++  PERFTOOLS_DLL_DECL void tc_free(void* ptr) __THROW;
++  PERFTOOLS_DLL_DECL void* tc_realloc(void* ptr, size_t size) __THROW;
++  PERFTOOLS_DLL_DECL void* tc_calloc(size_t nmemb, size_t size) __THROW;
++  PERFTOOLS_DLL_DECL void tc_cfree(void* ptr) __THROW;
++
++  PERFTOOLS_DLL_DECL void* tc_memalign(size_t __alignment,
++                                       size_t __size) __THROW;
++  PERFTOOLS_DLL_DECL int tc_posix_memalign(void** ptr,
++                                           size_t align, size_t size) __THROW;
++  PERFTOOLS_DLL_DECL void* tc_valloc(size_t __size) __THROW;
++  PERFTOOLS_DLL_DECL void* tc_pvalloc(size_t __size) __THROW;
++
++  PERFTOOLS_DLL_DECL void tc_malloc_stats(void) __THROW;
++  PERFTOOLS_DLL_DECL int tc_mallopt(int cmd, int value) __THROW;
++//#if @ac_cv_have_struct_mallinfo@
++ // PERFTOOLS_DLL_DECL struct mallinfo tc_mallinfo(void) __THROW;
++//#endif
++
++#ifdef __cplusplus
++  PERFTOOLS_DLL_DECL void* tc_new(size_t size);
++  PERFTOOLS_DLL_DECL void tc_delete(void* p) __THROW;
++  PERFTOOLS_DLL_DECL void* tc_newarray(size_t size);
++  PERFTOOLS_DLL_DECL void tc_deletearray(void* p) __THROW;
++
++  PERFTOOLS_DLL_DECL void* tc_new_nothrow(size_t size,
++                                          const std::nothrow_t&) __THROW;
++  PERFTOOLS_DLL_DECL void* tc_newarray_nothrow(size_t size,
++                                               const std::nothrow_t&) __THROW;
++  PERFTOOLS_DLL_DECL void tc_delete_nothrow(void* p,
++                                            const std::nothrow_t&) __THROW;
++  PERFTOOLS_DLL_DECL void tc_deletearray_nothrow(void* p,
++                                                 const std::nothrow_t&) __THROW;
++}
++#endif
++
++#endif  // #ifndef TCMALLOC_TCMALLOC_H_
+diff -rupN ARCHIVE/redis-2.2.107-scripting/src/Makefile redis/src/Makefile
+--- ARCHIVE/redis-2.2.107-scripting/src/Makefile	2011-05-11 02:51:27.000000000 -0600
++++ redis/src/Makefile	2011-06-08 02:14:28.224952895 -0600
+@@ -6,14 +6,12 @@ release_hdr := $(shell sh -c './mkreleas
+ uname_S := $(shell sh -c 'uname -s 2>/dev/null || echo not')
+ OPTIMIZATION?=-O2
+ ifeq ($(uname_S),SunOS)
+-  CFLAGS?= -std=c99 -pedantic $(OPTIMIZATION) -Wall -W -D__EXTENSIONS__ -D_XPG6
+-  CCLINK?= -ldl -lnsl -lsocket -lm -lpthread
+-  DEBUG?= -g -ggdb 
+-else
+-  CFLAGS?= -std=c99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF)
+-  CCLINK?= -lm -pthread
+-  DEBUG?= -g -rdynamic -ggdb 
++  @echo "Sun not supported (no BigEndian support) - sorry"
++  @exit
+ endif
++CFLAGS?= -std=c99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF) -I./ -I../../DB/ -DTHE_X_DB
++CCLINK?= -lm -pthread
++DEBUG?= -g -rdynamic -ggdb 
+ 
+ ifeq ($(USE_TCMALLOC),yes)
+   CCLINK+= -ltcmalloc
+@@ -30,14 +28,16 @@ BENCHOBJ = ae.o anet.o redis-benchmark.o
+ CLIOBJ = anet.o sds.o adlist.o redis-cli.o zmalloc.o release.o
+ CHECKDUMPOBJ = redis-check-dump.o lzf_c.o lzf_d.o
+ CHECKAOFOBJ = redis-check-aof.o
++GENBENCHOBJ = ae.o anet.o ../../DB/gen-benchmark.o sds.o adlist.o zmalloc.o
+ 
+-PRGNAME = redis-server
+-BENCHPRGNAME = redis-benchmark
+-CLIPRGNAME = redis-cli
+-CHECKDUMPPRGNAME = redis-check-dump
+-CHECKAOFPRGNAME = redis-check-aof
++PRGNAME = xdb-server
++BENCHPRGNAME = xdb-benchmark
++CLIPRGNAME = xdb-cli
++CHECKDUMPPRGNAME = xdb-check-dump
++CHECKAOFPRGNAME = xdb-check-aof
++GENBENCHPRGNAME = xdb-gen-benchmark
+ 
+-all: redis-benchmark redis-cli redis-check-dump redis-check-aof redis-server
++all: x-dbb-lib redis-benchmark redis-cli redis-check-dump redis-check-aof redis-server xdb-gen-benchmark
+ 	@echo ""
+ 	@echo "Hint: To run 'make test' is a good idea ;)"
+ 	@echo ""
+@@ -112,7 +112,7 @@ dependencies:
+ 	cd ../deps/lua && $(MAKE) ARCH="$(ARCH)" ansi
+ 
+ redis-server: $(OBJ)
+-	$(CC) -o $(PRGNAME) $(CCOPT) $(DEBUG) $(OBJ) ../deps/lua/src/liblua.a
++	$(CC) -o $(PRGNAME) $(CCOPT) $(DEBUG) $(OBJ) ../deps/lua/src/liblua.a  -L../../DB/ -lx_db
+ 
+ redis-benchmark: dependencies $(BENCHOBJ)
+ 	cd ../deps/hiredis && $(MAKE) static
+@@ -133,6 +133,12 @@ redis-check-dump: $(CHECKDUMPOBJ)
+ redis-check-aof: $(CHECKAOFOBJ)
+ 	$(CC) -o $(CHECKAOFPRGNAME) $(CCOPT) $(DEBUG) $(CHECKAOFOBJ)
+ 
++xdb-gen-benchmark: $(GENBENCHOBJ)
++	$(CC) -o $(GENBENCHPRGNAME) $(CCOPT) $(DEBUG) $(GENBENCHOBJ)
++
++x-dbb-lib:
++	(cd ../../DB; make)
++
+ .c.o:
+ 	$(CC) -c $(CFLAGS) $(DEBUG) $(COMPILE_TIME) -I../deps/lua/src $<
+ 
+diff -rupN ARCHIVE/redis-2.2.107-scripting/src/rdb.c redis/src/rdb.c
+--- ARCHIVE/redis-2.2.107-scripting/src/rdb.c	2011-05-11 02:51:27.000000000 -0600
++++ redis/src/rdb.c	2011-06-08 00:26:31.324951571 -0600
+@@ -1,3 +1,7 @@
++#ifdef THE_X_DB
++  #include "xdb_hooks.h"
++#endif
++
+ #include "redis.h"
+ #include "lzf.h"    /* LZF compression library */
+ 
+@@ -423,6 +427,9 @@ int rdbSave(char *filename) {
+         return REDIS_ERR;
+     }
+     if (fwrite("REDIS0001",9,1,fp) == 0) goto werr;
++#ifdef THE_X_DB
++    if (DXDB_rdbSave(fp) == -1) goto werr;
++#endif
+     for (j = 0; j < server.dbnum; j++) {
+         redisDb *db = server.db+j;
+         dict *d = db->dict;
+@@ -692,6 +699,7 @@ int rdbLoadDoubleValue(FILE *fp, double 
+ /* Load a Redis object of the specified type from the specified file.
+  * On success a newly allocated object is returned, otherwise NULL. */
+ robj *rdbLoadObject(int type, FILE *fp) {
++printf("rdbLoadObject\n");
+     robj *o, *ele, *dec;
+     size_t len;
+     unsigned int i;
+@@ -897,6 +905,9 @@ int rdbLoad(char *filename) {
+     }
+ 
+     startLoading(fp);
++#ifdef THE_X_DB
++    if (DXDB_rdbLoad(fp) == -1) goto eoferr;
++#endif
+     while(1) {
+         robj *key, *val;
+         int force_swapout;
+@@ -932,6 +943,7 @@ int rdbLoad(char *filename) {
+         if ((key = rdbLoadStringObject(fp)) == NULL) goto eoferr;
+         /* Read value */
+         if ((val = rdbLoadObject(type,fp)) == NULL) goto eoferr;
++
+         /* Check if the key already expired */
+         if (expiretime != -1 && expiretime < now) {
+             decrRefCount(key);
+diff -rupN ARCHIVE/redis-2.2.107-scripting/src/redis.c redis/src/redis.c
+--- ARCHIVE/redis-2.2.107-scripting/src/redis.c	2011-05-11 02:51:27.000000000 -0600
++++ redis/src/redis.c	2011-06-08 01:02:52.154953075 -0600
+@@ -1,3 +1,7 @@
++#ifdef THE_X_DB
++  #include "xdb_hooks.h"
++#endif
++
+ /*
+  * Copyright (c) 2009-2010, Salvatore Sanfilippo <antirez at gmail dot com>
+  * All rights reserved.
+@@ -150,7 +154,9 @@ struct redisCommand readonlyCommandTable
+     {"mset",msetCommand,-3,REDIS_CMD_DENYOOM,NULL,1,-1,2},
+     {"msetnx",msetnxCommand,-3,REDIS_CMD_DENYOOM,NULL,1,-1,2},
+     {"randomkey",randomkeyCommand,1,0,NULL,0,0,0},
++#ifndef THE_X_DB
+     {"select",selectCommand,2,0,NULL,0,0,0},
++#endif
+     {"move",moveCommand,3,0,NULL,1,1,1},
+     {"rename",renameCommand,3,0,NULL,1,1,1},
+     {"renamenx",renamenxCommand,3,0,NULL,1,1,1},
+@@ -704,6 +710,9 @@ void beforeSleep(struct aeEventLoop *eve
+ /* =========================== Server initialization ======================== */
+ 
+ void createSharedObjects(void) {
++#ifdef THE_X_DB
++    DXDB_createSharedObjects();
++#endif
+     int j;
+ 
+     shared.crlf = createObject(REDIS_STRING,sdsnew("\r\n"));
+@@ -758,6 +767,9 @@ void createSharedObjects(void) {
+ }
+ 
+ void initServerConfig() {
++#ifdef THE_X_DB
++    DXDB_initServerConfig();
++#endif
+     server.port = REDIS_SERVERPORT;
+     server.bindaddr = NULL;
+     server.unixsocket = NULL;
+@@ -921,11 +933,18 @@ void initServer() {
+     if (server.vm_enabled) vmInit();
+     scriptingInit();
+     srand(time(NULL)^getpid());
++#ifdef THE_X_DB
++    DXDB_initServer();
++#endif
+ }
+ 
+ /* Populates the Redis Command Table starting from the hard coded list
+  * we have on top of redis.c file. */
+ void populateCommandTable(void) {
++#ifdef THE_X_DB
++    DXDB_populateCommandTable(server.commands);
++#endif
++
+     int j;
+     int numcommands = sizeof(readonlyCommandTable)/sizeof(struct redisCommand);
+ 
+@@ -941,7 +960,11 @@ void populateCommandTable(void) {
+ /* ====================== Commands lookup and execution ===================== */
+ 
+ struct redisCommand *lookupCommand(sds name) {
++#ifdef THE_X_DB
++    return DXDB_lookupCommand(name);
++#else
+     return dictFetchValue(server.commands, name);
++#endif
+ }
+ 
+ struct redisCommand *lookupCommandByCString(char *s) {
+@@ -955,6 +978,10 @@ struct redisCommand *lookupCommandByCStr
+ 
+ /* Call() is the core of Redis execution of a command */
+ void call(redisClient *c, struct redisCommand *cmd) {
++#ifdef THE_X_DB
++    DXDB_call(c);
++#endif
++
+     long long dirty;
+ 
+     dirty = server.dirty;
+@@ -1159,6 +1186,9 @@ sds genRedisInfoString(void) {
+ 
+     bytesToHuman(hmem,zmalloc_used_memory());
+     info = sdscatprintf(sdsempty(),
++#ifdef THE_X_DB
++        "X-DB version:%s\r\n"
++#endif
+         "redis_version:%s\r\n"
+         "redis_git_sha1:%s\r\n"
+         "redis_git_dirty:%d\r\n"
+@@ -1200,6 +1230,9 @@ sds genRedisInfoString(void) {
+         "pubsub_patterns:%u\r\n"
+         "vm_enabled:%d\r\n"
+         "role:%s\r\n"
++#ifdef THE_X_DB
++        ,X_DB_VERSION
++#endif
+         ,REDIS_VERSION,
+         redisGitSHA1(),
+         strtol(redisGitDirty(),NULL,10) > 0,
+@@ -1341,6 +1374,10 @@ sds genRedisInfoString(void) {
+     }
+     info = sdscat(info,"\r\n");
+ 
++#ifdef THE_X_DB
++    DBXD_genRedisInfoString(info);
++#endif
++
+     for (j = 0; j < server.dbnum; j++) {
+         long long keys, vkeys;
+ 
+diff -rupN ARCHIVE/redis-2.2.107-scripting/src/redis.h redis/src/redis.h
+--- ARCHIVE/redis-2.2.107-scripting/src/redis.h	2011-05-11 02:51:27.000000000 -0600
++++ redis/src/redis.h	2011-06-07 21:09:23.094870647 -0600
+@@ -1,6 +1,10 @@
+ #ifndef __REDIS_H
+ #define __REDIS_H
+ 
++#ifdef THE_X_DB
++  #include "xdb_common.h"
++#endif
++
+ #include "fmacros.h"
+ #include "config.h"
+ 
+@@ -349,6 +353,9 @@ struct saveparam {
+ };
+ 
+ struct sharedObjectsStruct {
++#ifdef THE_X_DB
++  SHARED_OBJ_DECLARATION
++#endif
+     robj *crlf, *ok, *err, *emptybulk, *czero, *cone, *cnegone, *pong, *space,
+     *colon, *nullbulk, *nullmultibulk, *queued,
+     *emptymultibulk, *wrongtypeerr, *nokeyerr, *syntaxerr, *sameobjecterr,
+@@ -1027,11 +1034,13 @@ void unwatchCommand(redisClient *c);
+ void objectCommand(redisClient *c);
+ void evalCommand(redisClient *c);
+ 
++#if 0
+ #if defined(__GNUC__)
+ void *calloc(size_t count, size_t size) __attribute__ ((deprecated));
+ void free(void *ptr) __attribute__ ((deprecated));
+ void *malloc(size_t size) __attribute__ ((deprecated));
+ void *realloc(void *ptr, size_t size) __attribute__ ((deprecated));
+ #endif
++#endif
+ 
+ #endif
+diff -rupN ARCHIVE/redis-2.2.107-scripting/src/zmalloc.c redis/src/zmalloc.c
+--- ARCHIVE/redis-2.2.107-scripting/src/zmalloc.c	2011-05-11 02:51:27.000000000 -0600
++++ redis/src/zmalloc.c	2011-06-07 21:05:15.294869255 -0600
+@@ -80,12 +80,22 @@
+     } \
+ } while(0)
+ 
++
+ static size_t used_memory = 0;
+ static int zmalloc_thread_safe = 0;
+ pthread_mutex_t used_memory_mutex = PTHREAD_MUTEX_INITIALIZER;
+ /* Note that malloc_allocations elements are initialized to zero by C */
+ size_t zmalloc_allocations[ZMALLOC_MAX_ALLOC_STAT+1];
+ 
++#ifdef THE_X_DB
++void increment_used_memory(size_t size) {
++    update_zmalloc_stat_alloc(size, size);
++}
++void decrement_used_memory(size_t size) {
++    update_zmalloc_stat_free(size);
++}
++#endif
++
+ static void zmalloc_oom(size_t size) {
+     fprintf(stderr, "zmalloc: Out of memory trying to allocate %zu bytes\n",
+         size);
+diff -rupN ARCHIVE/redis-2.2.107-scripting/src/zmalloc.h redis/src/zmalloc.h
+--- ARCHIVE/redis-2.2.107-scripting/src/zmalloc.h	2011-05-11 02:51:27.000000000 -0600
++++ redis/src/zmalloc.h	2011-06-07 17:47:51.624870549 -0600
+@@ -31,6 +31,11 @@
+ #ifndef _ZMALLOC_H
+ #define _ZMALLOC_H
+ 
++#ifdef THE_X_DB
++void increment_used_memory(size_t size);
++void decrement_used_memory(size_t size);
++#endif
++
+ void *zmalloc(size_t size);
+ void *zcalloc(size_t size);
+ void *zrealloc(void *ptr, size_t size);
