@@ -5,12 +5,12 @@
 <head>
 	<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
 
-	<title>JakSprats/Alsosql @ GitHub</title>
+	<title>JakSprats/Alchemy-Database @ GitHub</title>
 	
 	<style type="text/css">
 		body {
   		margin-top: 1.0em;
-  		background-color: #c7aeb6;
+  		background-color: #FFFFFF;
 		  font-family: "Helvetica,Arial,FreeSans";
   		color: #000000;
     }
@@ -18,11 +18,11 @@
       margin: 0 auto;
       width: 700px;
     }
-		h1 { font-size: 3.8em; color: #385149; margin-bottom: 3px; }
+		h1 { font-size: 3.8em; color: #000000; margin-bottom: 3px; }
 		h1 .small { font-size: 0.4em; }
 		h1 a { text-decoration: none }
-		h2 { font-size: 1.5em; color: #385149; }
-    h3 { text-align: center; color: #385149; }
+		h2 { font-size: 1.5em; color: #000000; }
+    h3 { text-align: center; color: #000000; }
     a { color: #385149; }
     .description { font-size: 1.2em; margin-bottom: 30px; margin-top: 30px; font-style: italic;}
     .download { float: right; }
@@ -34,72 +34,66 @@
 </head>
 
 <body>
-  <a href="http://github.com/JakSprats/Alsosql"><img style="position: absolute; top: 0; right: 0; border: 0;" src="http://s3.amazonaws.com/github/ribbons/forkme_right_darkblue_121621.png" alt="Fork me on GitHub" /></a>
+  <a href="http://github.com/JakSprats/Alchemy-Database"><img style="position: absolute; top: 0; right: 0; border: 0;" src="http://s3.amazonaws.com/github/ribbons/forkme_right_darkblue_121621.png" alt="Fork me on GitHub" /></a>
 
   <div id="container">
 
     <div class="download">
-      <a href="http://github.com/JakSprats/Alsosql/zipball/master">
+      <a href="http://github.com/JakSprats/Alchemy-Database/zipball/master">
         <img border="0" width="90" src="http://github.com/images/modules/download/zip.png"></a>
-      <a href="http://github.com/JakSprats/Alsosql/tarball/master">
+      <a href="http://github.com/JakSprats/Alchemy-Database/tarball/master">
         <img border="0" width="90" src="http://github.com/images/modules/download/tar.png"></a>
     </div>
 
-    <h1><a href="http://github.com/JakSprats/Alsosql">Alsosql</a>
+    <h1><a href="http://github.com/JakSprats/Alchemy-Database">Alchemy-Database</a>
       <span class="small">by <a href="http://github.com/JakSprats">JakSprats</a></span></h1>
 
     <div class="description">
-      Hybrid Relational-Database/NOSQL-Datastore
+Alchemy Database: A Hybrid Relational-Database/NOSQL-Datastore<a href="#Alchemy_Database:_A_Hybrid_Relational-Database/NOSQL-Datastore" class="section_anchor"></a>
     </div>
 
-    <p>SQL Tables, SQL Statements and SQL Data-types are supported. Alsosql is built on top of the NOSQL datastore redis and supports normalisation/denormalisation of redis data structures (lists,sets,hash-tables) into/from Alsosql tables, as well as import/export of tables to/from Mysql. It is a data storage Swiss army knife.</p>
-<p>Storing Data in NOSQL and/or SQL and converting to and fro can be done w/ a few straightforward SQL-esque commands. Alsosql is optimised for a OLTP workload and is both extremely fast and extremely memory efficient. Alsosql attains its speed by storing ALL of its data in RAM, periodically snapshot-saving the data to disk and by optimising to the SQL statements commonly used in OLTP workloads.</p>
 <p>
-* FAST (on commodity hardware): Client/Server using 1GbE LAN to/from a single core running at 3.0GHz w/ RAM at 400MHz (PC3200):
-  84K INSERT/sec, 81K SELECT/sec, 75K UPDATE/sec, 85K DELETE/sec
-  RangeQuery returning 10 rows:    38K/sec
-  2  Table Join returning 10 rows: 18K/sec
-  3  Table Join returning 10 rows: 12.5K/sec
-  10 Table Join returning 10 rows:  4.5K/sec
-* MEMORY EFFICIENT:
-  Each row has approx. 48 bytes of overhead when stored.
-  Benchmarks:
-    Rows w/ 16 bytes of data,  17 million fit in 1GB RAM.
-    Rows w/ 36 bytes of data,  13 million fit in 1GB RAM.
-    Rows w/ 100 bytes of data,  7 million fit in 1GB RAM 
-      (*NOTE: row-size was 130 bytes pre compression, storage has only 18% memory overhead).
-  Additionally both INT and TEXT data are packed/compressed using algorithms w/ negligible performance hits.
-* EASY:
-  Its SQL ... you already know it :) And redis commands are even easier to learn :)
-</p>
+<a name="Alchemy_Database_is_a_full_RDBMS_and_a_full_NOSQL_datastore_in_a"></a>Alchemy Database is a full RDBMS and a full NOSQL datastore in a single server<a href="#Alchemy_Database_is_a_full_RDBMS_and_a_full_NOSQL_datastore_in_a" class="section_anchor"></a></p>
+
+<p>Alchemy Database is a lightweight SQL server that is built on top of the NOSQL datastore <a href="http://redis.io/" rel="nofollow">redis</a>, w/ full support for redis data-structures/commands. <a href="http://www.lua.org/about.html" rel="nofollow">Lua</a> is deeply embedded and lua scripts can be run internally on Alchemy&#x27;s data objects. Alchemy Database is also blazingly fast and extremely memory efficient. </p><ul><li>Speed is achieved by being an event driven network server that stores ALL data in RAM and achieves disk persistence by using a spare cpu-core to periodically log data changes (i.e. no threads, no locks, no undo-logs, no disk-seeks, serving data over a network at RAM speed) </li><li>Storage data structures w/ very low memory overhead and data compression, via algorithms w/ insignificant performance hits, greatly increase the amount of data you can fit in RAM </li><li>Optimising to the <a href="http://code.google.com/p/alchemydatabase/wiki/CommandReference#Supported_SQL" rel="nofollow">SQL statements</a> most commonly used in OLTP workloads yields a lightweight SQL server designed for low latency at high concurrency (i.e. mindblowing speed). </li></ul><p>The Philosophy of Alchemy Database is that RAM is now affordable enough to be able to store ENTIRE OLTP Databases in a single machine&#x27;s RAM (e.g. <a href="http://en.wikipedia.org/wiki/Wikipedia:Database_download" rel="nofollow">Wikipedia&#x27;s English DB</a> is 30GB and a  <a href="http://configure.us.dell.com/dellstore/config.aspx?oc=becwek1&amp;c=us&amp;l=en&amp;s=bsd&amp;cs=04&amp;model_id=poweredge-t610" rel="nofollow">Dell T610</a> w/ 32GB RAM costs $2100), as long as the data is made persistent to disk and can be replicated asynchronously over the wire. So Alchemy Database provides a non-blocking event-driven network-I/O-based relational-database, with very little memory overhead, that does the most common OLTP SQL statements amazingly fast and then throws in the NOSQL Data-store redis to create fantastic optimisation possibilities. </p>
+
 <h2>Dependencies</h2>
 <p>none. ANSI C</p>
+
+<h2>Project Home Page</h2>
+<p><a href="http://code.google.com/p/alchemydatabase/" rel="nofollow">http://code.google.com/p/alchemydatabase/</a></p>
+
 <h2>Install</h2>
-<p>1.) download the code and type "make"</p>
-<p>2.) edit "redis.conf" as needed</p>
-<p>3.) run "./redis-server"</p>
+<p>1.) Download the code from git via "git clone git://github.com/JakSprats/Alchemy-Database.git" </p>
+<p>1.) type "cd Alchemy=Database"</p>
+<p>1.) type "make"</p>
+<p>3.) run "./alchemy-server"</p>
+
 <h2>License</h2>
-<p>MIT License</p>
+<p>AGPL License</p>
+
 <h2>Authors</h2>
 <p>JakSprats</p>
+
 <h2>Contact</h2>
 <p>JakSprats (jaksprats@gmail.com)
+
 <br/>      </p>
 
 
     <h2>Download</h2>
     <p>
       You can download this project in either
-      <a href="http://github.com/JakSprats/Alsosql/zipball/master">zip</a> or
-      <a href="http://github.com/JakSprats/Alsosql/tarball/master">tar</a> formats.
+      <a href="http://github.com/JakSprats/Alchemy-Database/zipball/master">zip</a> or
+      <a href="http://github.com/JakSprats/Alchemy-Database/tarball/master">tar</a> formats.
     </p>
     <p>You can also clone the project with <a href="http://git-scm.com">Git</a>
       by running:
-      <pre>$ git clone git://github.com/JakSprats/Alsosql</pre>
+      <pre>$ git clone git://github.com/JakSprats/Alchemy-Database</pre>
     </p>
 
     <div class="footer">
-      get the source code on GitHub : <a href="http://github.com/JakSprats/Alsosql">JakSprats/Alsosql</a>
+      get the source code on GitHub : <a href="http://github.com/JakSprats/Alchemy-Database">JakSprats/Alchemy-Database</a>
     </div>
 
   </div>
