@@ -81,9 +81,11 @@ extern int      LastJTAmatch;    // TODO move to redisClient
 
 extern bool     InternalRequest; // TODO move to redisClient
 
+robj           *HTTPFile  = NULL; // TODO: move to redisClient
 bool            HTTP_Mode = 0;    // TODO: move to redisClient
-robj           *HTTPFile = NULL; // TODO: move to redisClient
 bool            HTTP_KA   = 0;    // TODO: move to redisClient
+bool            HTTP_GET  = 0;    // TODO: move to redisClient
+bool            HTTP_HEAD = 0;    // TODO: move to redisClient
 
 struct in_addr  WS_WL_Addr;
 struct in_addr  WS_WL_Mask;
@@ -292,6 +294,18 @@ int DXDB_loadServerConfig(int argc, sds *argv) {
     return 1;
 }
 
+#define SEND_REPLY_FROM_STRING(s)                 \
+  { robj *r = createStringObject(s, sdslen(s));   \
+    addReply(c, r);                               \
+    decrRefCount(r); }
+
+#define SEND_404                                  \
+  { sds s = sdsnew("HTTP/1.0 404 Not Found\r\n"); \
+  SEND_REPLY_FROM_STRING(s) }
+#define SEND_405                                  \
+  { sds s = sdsnew("HTTP/1.0 405 Method Not Allowed\r\n"); \
+  SEND_REPLY_FROM_STRING(s) }
+
 int   DXDB_processCommand(redisClient *c) { //printf("DXDB_processCommand\n");
     if (HTTP_Mode) {
         if (!strcasecmp(c->argv[0]->ptr, "Connection:")) {
@@ -303,20 +317,23 @@ int   DXDB_processCommand(redisClient *c) { //printf("DXDB_processCommand\n");
     Operations++;
     CurrCard       =  0;
     CurrClient     = c;
-    NumJTAlias     =  0; // TODO: move to redisClient
-    LastJTAmatch   = -1; // TODO: move to redisClient
-    LruColInSelect =  0; // TODO: move to redisClient
-    HTTP_Mode      =  0; // TODO: move to redisClient
-    HTTP_KA        =  0; // TODO: move to redisClient
+    NumJTAlias     =  0;   // TODO: move to redisClient
+    LastJTAmatch   = -1;   // TODO: move to redisClient
+    LruColInSelect =  0;   // TODO: move to redisClient
+    HTTPFile       = NULL; // TODO: move to redisClient
+    HTTP_Mode = HTTP_KA = HTTP_GET = HTTP_HEAD =  0; // TODO: move 2 redisClient
     sds arg2       = c->argc > 2 ? c->argv[2]->ptr : NULL;
-    if (c->argc == 3 && !strcasecmp(c->argv[0]->ptr, "GET") && // HTTP REQ
+    if (c->argc == 3 && 
         (!strcasecmp(arg2, "HTTP/1.0") || !strcasecmp(arg2, "HTTP/1.1"))) {
         if (!strcasecmp(arg2, "HTTP/1.1")) HTTP_KA = 1; /* Default: ON in 1.1 */
-        HTTP_Mode    = 1; // TODO: move to redisClient
+        if      (!strcasecmp(c->argv[0]->ptr, "GET"))  HTTP_GET  = 1;
+        else if (!strcasecmp(c->argv[0]->ptr, "HEAD")) HTTP_HEAD = 1;
+        else                                           { SEND_405; return 1; }
+        HTTP_Mode = 1; // TODO: move to redisClient
         char *fname = c->argv[1]->ptr;
         int   fnlen = sdslen(c->argv[1]->ptr);
         if (*fname == '/') { fname++; fnlen--; }
-        HTTPFile   = createStringObject(fname, fnlen);// TODO: move2redisClient
+        HTTPFile    = createStringObject(fname, fnlen);// TODO: move2redisClient
         return 1;
     } else return 0;
 }
@@ -380,15 +397,6 @@ static robj *luaReplyToHTTPReply(lua_State *lua) {
     return r;
 }
 
-#define SEND_REPLY_FROM_STRING(s)                 \
-  { robj *r = createStringObject(s, sdslen(s));   \
-    addReply(c, r);                               \
-    decrRefCount(r); }
-
-#define SEND_404                                  \
-  { sds s = sdsnew("HTTP/1.0 404 Not Found\r\n"); \
-  SEND_REPLY_FROM_STRING(s) }
-
 sds create_http_reponse_header(robj *resp) {
     return sdscatprintf(sdsempty(), 
                         "HTTP/1.0 200 OK\r\nContent-length: %ld\r\n%s\r\n",
@@ -400,42 +408,44 @@ bool  DXDB_processInputBuffer_ZeroArgs(redisClient *c) {//HTTP Request End-Delim
     //printf("DXDB_procInputBufr_ZeroArgs: qb_len: %d\n", sdslen(c->querybuf));
     bool ret = 0;
     if (HTTP_Mode) {
-        if (!strncasecmp(HTTPFile->ptr, "STATIC/", 7)) {
-            robj *o;
-            sds f = sdscatlen(sdsempty(), HTTPFile->ptr, sdslen(HTTPFile->ptr));
-            sdsfree(HTTPFile->ptr); HTTPFile->ptr = f;
-            if      ((o = lookupKeyRead(c->db, HTTPFile)) == NULL) SEND_404
-            else if (o->type != REDIS_STRING)                      SEND_404
-            else {
-                sds s = create_http_reponse_header(o);
-                SEND_REPLY_FROM_STRING(s)
-                addReply(c, o);
-            }
-        } else {
-            int argc; robj **rargv = NULL;
+        if ((HTTP_GET || HTTP_HEAD)) {
             sds  file = HTTPFile->ptr;
-            if (!sdslen(file)) {
-                argc      = 2; //NOTE: rargv[0] is ignored
-                rargv     = zmalloc(sizeof(robj *) * argc);
-                rargv[1]  = _createStringObject(WebServerIndexFunc);
-            } else {
-                sds *argv = sdssplitlen(file, strlen(file), "/", 1, &argc);
-                if (argc < 1)                                      SEND_404
-                rargv     = zmalloc(sizeof(robj *) * (argc + 1));
-                for (int i = 0; i < argc; i++) {
-                    rargv[i + 1] = createStringObject(argv[i], sdslen(argv[i]));
+            if (!strncasecmp(file, "STATIC/", 7)) {
+                robj *o;
+                if      ((o = lookupKeyRead(c->db, HTTPFile)) == NULL) SEND_404
+                else if (o->type != REDIS_STRING)                      SEND_404
+                else {
+                    sds s = create_http_reponse_header(o);
+                    SEND_REPLY_FROM_STRING(s)
+                    addReply(c, o);
                 }
-                argc++; //NOTE: rargv[0] is ignored
+            } else {
+                int argc; robj **rargv = NULL;
+                if (!sdslen(file)) {
+                    argc      = 2; //NOTE: rargv[0] is ignored
+                    rargv     = zmalloc(sizeof(robj *) * argc);
+                    rargv[1]  = _createStringObject(WebServerIndexFunc);
+                } else {
+                    sds *argv = sdssplitlen(file, strlen(file), "/", 1, &argc);
+                    if (argc < 1)                                      SEND_404
+                    rargv     = zmalloc(sizeof(robj *) * (argc + 1));
+                    for (int i = 0; i < argc; i++) {
+                        rargv[i + 1] = createStringObject(argv[i],
+                                                          sdslen(argv[i]));
+                    }
+                    argc++; //NOTE: rargv[0] is ignored
+                }
+                luafunc_call(c, argc, rargv);
+                robj *resp = luaReplyToHTTPReply(server.lua);
+                sds   s    = create_http_reponse_header(resp);
+                SEND_REPLY_FROM_STRING(s)
+                if (HTTP_GET) addReply(c, resp);
+                decrRefCount(resp);
+                for (int i = 1; i < argc; i++) decrRefCount(rargv[i]);
+                zfree(rargv);
             }
-            luafunc_call(c, argc, rargv);
-            robj *resp = luaReplyToHTTPReply(server.lua);
-            sds   s    = create_http_reponse_header(resp);
-            SEND_REPLY_FROM_STRING(s)
-            for (int i = 1; i < argc; i++) decrRefCount(rargv[i]);
-            zfree(rargv);
-            addReply(c, resp); decrRefCount(resp);
         }
-        decrRefCount(HTTPFile); HTTPFile = NULL;
+        if (HTTPFile) { decrRefCount(HTTPFile); HTTPFile = NULL; }
         if (!HTTP_KA && !sdslen(c->querybuf)) { // not KeepAlive, not Pipelined
             c->flags |= REDIS_CLOSE_AFTER_REPLY;
         }

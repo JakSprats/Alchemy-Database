@@ -3,6 +3,7 @@ module("whitelist", package.seeall);
 function index_page() 
   return '<html>HI I AM THE INDEX PAGE</html>\n';
 end
+
 function register(user, passwd) 
   exists = redis('get', 'user_' .. user);
   if (exists ~= nil) then
@@ -12,6 +13,7 @@ function register(user, passwd)
     return '<html>USER: "' .. user .. '" REGISTERED</html>\n';
   end
 end
+
 function login(user, passwd) 
   ok     = 0;
   exists = redis('get', 'user_' .. user);
@@ -23,14 +25,4 @@ function login(user, passwd)
   else
     return '<html>ERROR: USER: "' .. user .. '" login error</html>\n';
   end
-end
-
---TESTING
-function set(key, val)
-  --print ('set');
-  return redis('set', key, val);
-end
-function get(key)
-  --print ('get');
-  return redis('get', key);
 end
