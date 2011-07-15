@@ -74,6 +74,7 @@ extern ulong    Operations;
 
 extern uchar    OutputMode;
 extern int      WebServerMode;
+extern char    *WebServerIndexFunc = NULL;
 
 extern int      NumJTAlias;      // TODO move to redisClient
 extern int      LastJTAmatch;    // TODO move to redisClient
@@ -81,7 +82,7 @@ extern int      LastJTAmatch;    // TODO move to redisClient
 extern bool     InternalRequest; // TODO move to redisClient
 
 bool            HTTP_Mode = 0;    // TODO: move to redisClient
-robj           *HTTP_File = NULL; // TODO: move to redisClient
+robj           *HTTPFile = NULL; // TODO: move to redisClient
 bool            HTTP_KA   = 0;    // TODO: move to redisClient
 
 struct in_addr  WS_WL_Addr;
@@ -175,17 +176,18 @@ void DXDB_populateCommandTable(dict *server_commands) {
 }
 
 void DXDB_initServerConfig() { //printf("DXDB_initServerConfig\n");
-    LuaIncludeFile  = NULL;
-    WhiteListLua    = NULL;
-    LuaCronFunc     = NULL;
-    Basedir         = zstrdup("./");
-    WebServerMode   = -1;
-    InternalRequest =  0;
+    LuaIncludeFile     = NULL;
+    WhiteListLua       = NULL;
+    LuaCronFunc        = NULL;
+    Basedir            = zstrdup("./");
+    WebServerMode      = -1;
+    WebServerIndexFunc = NULL;
+    InternalRequest    =  0;
 
+    WS_WL_Broadcast    =  0;
+    WS_WL_Subnet       =  0;
     bzero(&WS_WL_Addr, sizeof(struct in_addr));
     bzero(&WS_WL_Mask, sizeof(struct in_addr));
-    WS_WL_Broadcast =  0;
-    WS_WL_Subnet    =  0;
 }
 
 void DXDB_initServer() { //printf("DXDB_initServer\n");
@@ -259,12 +261,16 @@ int DXDB_loadServerConfig(int argc, sds *argv) {
             return -1;
         }
         return 0;
-    } else if (!strcasecmp(argv[0], "webservermode") && argc == 2) {
+    } else if (!strcasecmp(argv[0], "webserver_mode") && argc == 2) {
         if ((WebServerMode = yesnotoi(argv[1])) == -1) {
             char *err = "argument must be 'yes' or 'no'";
             fprintf(stderr, "%s\n", err);
             return -1;
         }
+        return 0;
+    } else if (!strcasecmp(argv[0], "webserver_index_function") && argc == 2) {
+        if (WebServerIndexFunc) zfree(WebServerIndexFunc);
+        WebServerIndexFunc = zstrdup(argv[1]);
         return 0;
     } else if (!strcasecmp(argv[0], "webserver_whitelist_address") &&
                 argc == 2) {
@@ -310,7 +316,7 @@ int   DXDB_processCommand(redisClient *c) { //printf("DXDB_processCommand\n");
         char *fname = c->argv[1]->ptr;
         int   fnlen = sdslen(c->argv[1]->ptr);
         if (*fname == '/') { fname++; fnlen--; }
-        HTTP_File   = createStringObject(fname, fnlen);// TODO: move2redisClient
+        HTTPFile   = createStringObject(fname, fnlen);// TODO: move2redisClient
         return 1;
     } else return 0;
 }
@@ -383,52 +389,53 @@ static robj *luaReplyToHTTPReply(lua_State *lua) {
   { sds s = sdsnew("HTTP/1.0 404 Not Found\r\n"); \
   SEND_REPLY_FROM_STRING(s) }
 
+sds create_http_reponse_header(robj *resp) {
+    return sdscatprintf(sdsempty(), 
+                        "HTTP/1.0 200 OK\r\nContent-length: %ld\r\n%s\r\n",
+                         sdslen(resp->ptr), 
+                         HTTP_KA ? "Connection: Keep-Alive\r\n": "");
+}
+
 bool  DXDB_processInputBuffer_ZeroArgs(redisClient *c) {//HTTP Request End-Delim
     //printf("DXDB_procInputBufr_ZeroArgs: qb_len: %d\n", sdslen(c->querybuf));
     bool ret = 0;
-    if (HTTP_Mode) { /* URL: LUA/vshard/fname/arg1/arg2/..../argN */
-        if (!strncasecmp(HTTP_File->ptr, "LUA/", 4)) {
-            int argc;
-            clusterNode *n    = NULL;
-            sds          file = HTTP_File->ptr;
-            sds         *argv = sdssplitlen(file, strlen(file), "/", 1, &argc);
-            if (argc < 3)                                      SEND_404
-            int          slot  = atoi(argv[1]);
-            if (slot < 0 || slot >= REDIS_CLUSTER_SLOTS)       SEND_404
-            if (server.cluster_enabled) {
-                n = server.cluster.slots[slot]; redisAssert(n != NULL);
-                //TODO check this is myself, else HTTP 302 to correct node
-            }
-            robj **rargv = zmalloc(sizeof(robj *) * (argc - 1));
-            for (int i = 1; i < argc; i++) { //NOTE: rargv[0] is ignored
-                rargv[i - 1] = createStringObject(argv[i], sdslen(argv[i]));
-            }
-            luafunc_call(c, argc - 1, rargv);
-            robj *resp = luaReplyToHTTPReply(server.lua);
-            sds   s    = sdscatprintf(sdsempty(), 
-                             "HTTP/1.0 200 OK\r\nContent-length: %ld\r\n%s\r\n",
-                              sdslen(resp->ptr), 
-                              HTTP_KA ? "Connection: Keep-Alive\r\n": "");
-            SEND_REPLY_FROM_STRING(s)
-            for (int i = 0; i < argc - 1; i++) decrRefCount(rargv[i]);
-            zfree(rargv);
-            addReply(c, resp); decrRefCount(resp);
-        } else { /* URL: STATIC/dir/file */
+    if (HTTP_Mode) {
+        if (!strncasecmp(HTTPFile->ptr, "STATIC/", 7)) {
             robj *o;
-            sds f = sdsnewlen("STATIC/", 7);/* prepend "STATIC/" to fname */
-            f     = sdscatlen(f, HTTP_File->ptr, sdslen(HTTP_File->ptr));
-            sdsfree(HTTP_File->ptr); HTTP_File->ptr = f;
-            if ((o = lookupKeyRead(c->db, HTTP_File)) == NULL) SEND_404
-            else if (o->type != REDIS_STRING)                  SEND_404
+            sds f = sdscatlen(sdsempty(), HTTPFile->ptr, sdslen(HTTPFile->ptr));
+            sdsfree(HTTPFile->ptr); HTTPFile->ptr = f;
+            if      ((o = lookupKeyRead(c->db, HTTPFile)) == NULL) SEND_404
+            else if (o->type != REDIS_STRING)                      SEND_404
             else {
-                sds s = sdscatprintf(sdsempty(),
-                             "HTTP/1.0 200 OK\r\nContent-length: %lu\r\n\r\n",
-                             sdslen(o->ptr));
+                sds s = create_http_reponse_header(o);
                 SEND_REPLY_FROM_STRING(s)
                 addReply(c, o);
             }
+        } else {
+            int argc; robj **rargv = NULL;
+            sds  file = HTTPFile->ptr;
+            if (!sdslen(file)) {
+                argc      = 2; //NOTE: rargv[0] is ignored
+                rargv     = zmalloc(sizeof(robj *) * argc);
+                rargv[1]  = _createStringObject(WebServerIndexFunc);
+            } else {
+                sds *argv = sdssplitlen(file, strlen(file), "/", 1, &argc);
+                if (argc < 1)                                      SEND_404
+                rargv     = zmalloc(sizeof(robj *) * (argc + 1));
+                for (int i = 0; i < argc; i++) {
+                    rargv[i + 1] = createStringObject(argv[i], sdslen(argv[i]));
+                }
+                argc++; //NOTE: rargv[0] is ignored
+            }
+            luafunc_call(c, argc, rargv);
+            robj *resp = luaReplyToHTTPReply(server.lua);
+            sds   s    = create_http_reponse_header(resp);
+            SEND_REPLY_FROM_STRING(s)
+            for (int i = 1; i < argc; i++) decrRefCount(rargv[i]);
+            zfree(rargv);
+            addReply(c, resp); decrRefCount(resp);
         }
-        decrRefCount(HTTP_File); HTTP_File = NULL;
+        decrRefCount(HTTPFile); HTTPFile = NULL;
         if (!HTTP_KA && !sdslen(c->querybuf)) { // not KeepAlive, not Pipelined
             c->flags |= REDIS_CLOSE_AFTER_REPLY;
         }
@@ -438,7 +445,7 @@ bool  DXDB_processInputBuffer_ZeroArgs(redisClient *c) {//HTTP Request End-Delim
     return ret;
 }
 
-//TODO webservermode, webserver_whitelist_address, webserver_whitelist_netmask
+//TODO webserver_mode, webserver_whitelist_address, webserver_whitelist_netmask, webserver_index_function
 int DXDB_configSetCommand(cli *c, robj *o) {
     if (!strcasecmp(c->argv[2]->ptr, "include_lua")) {
         if (LuaIncludeFile) zfree(LuaIncludeFile);
@@ -583,10 +590,12 @@ void DBXD_genRedisInfoString(sds info) {
             "luacronfunc:%s\r\n"
             "basedir:%s\r\n"
             "outputmode:%s\r\n"
-            "webservermode:%s\r\n",
+            "webserver_mode:%s\r\n"
+            "webserver_index_function:%s\r\n",
              LuaIncludeFile, WhiteListLua, LuaCronFunc, Basedir,
              (OREDIS) ? "pure_redis" : "normal",
-             (WebServerMode == -1) ? "no" : "yes");
+             (WebServerMode == -1) ? "no" : "yes",
+             WebServerIndexFunc);
 }
 
 #define WHITELIST_ERR \
@@ -596,11 +605,11 @@ static bool luafunc_call(redisClient *c, int argc, robj **argv) {
     char *fname = argv[1]->ptr;
     if (WebServerMode > 0) {
         lua_getglobal(server.lua, "whitelist");
-        if (lua_type(server.lua, -1) != LUA_TTABLE) { //TODO HTTP VERSION
+        if (lua_type(server.lua, -1) != LUA_TTABLE) { //TODO HTTP ERROR
             addReplySds(c,sdsnew(WHITELIST_ERR)); return 1;
         }
         lua_getfield(server.lua, -1, fname);
-        if (lua_type(server.lua, -1) != LUA_TFUNCTION) { //TODO HTTP VERSION
+        if (lua_type(server.lua, -1) != LUA_TFUNCTION) { //TODO HTTP ERROR
             addReplySds(c,sdsnew(WHITELIST_ERR)); return 1;
         }
         lua_replace(server.lua, -2); // removes "whitelist" table from the stack
@@ -621,6 +630,7 @@ static bool luafunc_call(redisClient *c, int argc, robj **argv) {
         lua_pop(server.lua, 1);
         return 1;
     }
+    return 0;
 }
 void luafuncCommand(redisClient *c) {
     if (luafunc_call(c, c->argc, c->argv)) return;

@@ -22,7 +22,7 @@ pidfile /var/run/redis.pid
 
 # Accept connections on the specified port, default is 6379.
 # If port 0 is specified Redis will not listen on a TCP socket.
-port 6379
+port 8080
 
 # If you want you can bind a single interface, if the bind option is not
 # specified all the interfaces will listen for incoming connections.
@@ -44,7 +44,7 @@ timeout 300
 # verbose (many rarely useful info, but not a mess like the debug level)
 # notice (moderately verbose, what you want in production probably)
 # warning (only very important / critical messages are logged)
-loglevel verbose
+loglevel warning
 
 # Specify the log file name. Also 'stdout' can be used to force
 # Redis to log on the standard output. Note that if you use standard
@@ -401,8 +401,6 @@ activerehashing yes
 # include_lua will include lua functions from the specified file
 include_lua example.lua
 
-# whitelist.lus defines the "whitelist" module used in webserver_mode
-whitelist_lua whitelist.lua
 
 # the file internal.lua is part of the server's core
 # basedir must be set so this file can be loaded on startup
@@ -419,7 +417,9 @@ basedir ./
 # it should be used for very light weight cleanup or stat gathering
 #luacronfunc lua_cron
 
-#webserver_mode yes
-#webserver_index_function index_page
-#webserver_whitelist_address 192.168.1.1
-#webserver_whitelist_netmask 255.255.255.0
+# whitelist.lus defines the "whitelist" module used in webserver_mode
+whitelist_lua whitelist.lua
+webserver_mode yes
+webserver_index_function index_page
+webserver_whitelist_address 192.168.1.1
+webserver_whitelist_netmask 255.255.255.0

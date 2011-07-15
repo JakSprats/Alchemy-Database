@@ -46,6 +46,8 @@ char        *LuaIncludeFile  = NULL;
 char        *WhiteListLua    = NULL;
 #define LUA_INTERNAL_FILE "internal.lua"
 
+//TODO move this entire thing into xdb_hooks.c as static funcs
+
 /* PROTOTYPES */
 void scriptingInit();
 
