@@ -59,13 +59,10 @@ extern r_ind_t  Index[MAX_NUM_INDICES];
 extern stor_cmd AccessCommands[];
 
 extern cli     *CurrClient;
-extern ulong    CurrCard;        // TODO remove
+extern ulong    CurrCard;        // TODO remove - after no update on MCI cols
 
-//TODO if a SELECT is bigger than MTU,
-//       it may be read in separate event-loop calls
-//       so any variables that may be in separate event-loop calls
-//       MUST be in redisClient and NOT global-vars
-extern bool     LruColInSelect;  // TODO move to redisClient
+//TODO move globals to "struct redisClient" - it is cleaner
+extern bool     LruColInSelect;  // MOVE2redisClient
 
 extern char    *Basedir;
 extern char    *LuaIncludeFile;
@@ -77,18 +74,19 @@ extern uchar    OutputMode;
 extern int      WebServerMode;
 char           *WebServerIndexFunc = NULL;
 
-extern int      NumJTAlias;      // TODO move to redisClient
-extern int      LastJTAmatch;    // TODO move to redisClient
+extern int      NumJTAlias;      // MOVE2redisClient
+extern int      LastJTAmatch;    // MOVE2redisClient
 
-extern bool     InternalRequest; // TODO move to redisClient
+extern bool     InternalRequest; // MOVE2redisClient
 
-robj           *HTTPFile  = NULL; // TODO: move to redisClient
-bool            HTTP_Mode = 0;    // TODO: move to redisClient
-bool            HTTP_KA   = 0;    // TODO: move to redisClient
-bool            HTTP_GET  = 0;    // TODO: move to redisClient
-bool            HTTP_HEAD = 0;    // TODO: move to redisClient
-list           *HTTP_Request_Header  = NULL; // TODO: move to redisClient
-list           *HTTP_Response_Header = NULL; // TODO: move to redisClient
+ // MOVE2redisClient all HTTP*
+robj           *HTTPFile  = NULL;
+bool            HTTP_Mode = 0;
+bool            HTTP_KA   = 0;
+bool            HTTP_GET  = 0;
+bool            HTTP_HEAD = 0;
+list           *HTTP_Request_Header  = NULL;
+list           *HTTP_Response_Header = NULL;
 
 struct in_addr  WS_WL_Addr;
 struct in_addr  WS_WL_Mask;
@@ -331,10 +329,10 @@ two_sds *init_two_sds(sds a, sds b) {
   { sds s = sdsnew("HTTP/1.0 405 Method Not Allowed\r\n\r\n"); \
   SEND_REPLY_FROM_STRING(s) }
 
-sds create_http_200_reponse_header(robj *resp) {
+void send_http_200_reponse_header(cli *c, sds body) {
     sds s = sdscatprintf(sdsempty(), 
                         "HTTP/1.0 200 OK\r\nContent-length: %ld\r\n%s",
-                         sdslen(resp->ptr), 
+                         sdslen(body), 
                          HTTP_KA ? "Connection: Keep-Alive\r\n": "");
     if (HTTP_Response_Header) {
         listNode *ln;
@@ -345,7 +343,7 @@ sds create_http_200_reponse_header(robj *resp) {
          }
     }
     s = sdscatlen(s, "\r\n", 2);
-    return s;
+    SEND_REPLY_FROM_STRING(s)
 }
 
 int luaSetHttpResponseHeaderCommand(lua_State *lua) {
@@ -378,11 +376,11 @@ int   DXDB_processCommand(redisClient *c) { //printf("DXDB_processCommand\n");
     Operations++;
     CurrCard       =  0;
     CurrClient     = c;
-    NumJTAlias     =  0;   // TODO: move to redisClient
-    LastJTAmatch   = -1;   // TODO: move to redisClient
-    LruColInSelect =  0;   // TODO: move to redisClient
-    HTTPFile       = NULL; // TODO: move to redisClient
-    HTTP_Mode = HTTP_KA = HTTP_GET = HTTP_HEAD =  0; // TODO: move 2 redisClient
+    NumJTAlias     =  0;
+    LastJTAmatch   = -1;
+    LruColInSelect =  0;
+    HTTPFile       = NULL;
+    HTTP_Mode = HTTP_KA = HTTP_GET = HTTP_HEAD =  0;
     sds arg2       = c->argc > 2 ? c->argv[2]->ptr : NULL;
     if (c->argc == 3 && 
         (!strcasecmp(arg2, "HTTP/1.0") || !strcasecmp(arg2, "HTTP/1.1"))) {
@@ -390,8 +388,8 @@ int   DXDB_processCommand(redisClient *c) { //printf("DXDB_processCommand\n");
         if      (!strcasecmp(c->argv[0]->ptr, "GET"))  HTTP_GET  = 1;
         else if (!strcasecmp(c->argv[0]->ptr, "HEAD")) HTTP_HEAD = 1;
         else                                           { SEND_405; return 1; }
-        HTTP_Mode = 1;                    // TODO: move to redisClient
-        { // TODO: move HTTP_Re*_Header to redisClient
+        HTTP_Mode = 1;
+        {
             if (HTTP_Request_Header)  listRelease(HTTP_Request_Header);
             if (HTTP_Response_Header) {
                 listRelease(HTTP_Response_Header);
@@ -403,7 +401,7 @@ int   DXDB_processCommand(redisClient *c) { //printf("DXDB_processCommand\n");
         char *fname = c->argv[1]->ptr;
         int   fnlen = sdslen(c->argv[1]->ptr);
         if (*fname == '/') { fname++; fnlen--; }
-        HTTPFile    = createStringObject(fname, fnlen);// TODO: move2redisClient
+        HTTPFile    = createStringObject(fname, fnlen);
         return 1;
     } else return 0;
 }
@@ -418,8 +416,7 @@ bool  DXDB_processInputBuffer_ZeroArgs(redisClient *c) {//HTTP Request End-Delim
                 if      ((o = lookupKeyRead(c->db, HTTPFile)) == NULL) SEND_404
                 else if (o->type != REDIS_STRING)                      SEND_404
                 else {
-                    sds s = create_http_200_reponse_header(o);
-                    SEND_REPLY_FROM_STRING(s)
+                    send_http_200_reponse_header(c, o->ptr);
                     addReply(c, o);
                 }
             } else {
@@ -439,8 +436,7 @@ bool  DXDB_processInputBuffer_ZeroArgs(redisClient *c) {//HTTP Request End-Delim
                 }
                 if (!luafunc_call(c, argc, rargv)) {
                     robj *resp = luaReplyToHTTPReply(server.lua);
-                    sds   s    = create_http_200_reponse_header(resp);
-                    SEND_REPLY_FROM_STRING(s)
+                    send_http_200_reponse_header(c, resp->ptr);
                     if (HTTP_GET) addReply(c, resp);
                     decrRefCount(resp);
                 }
@@ -670,21 +666,30 @@ void DBXD_genRedisInfoString(sds info) {
              WebServerIndexFunc);
 }
 
-#define WHITELIST_ERR \
+#define WHITELIST_REDIS_ERR \
   addReplySds(c, sdsnew(\
-   "module \"whitelist\" must be defined in file: whitelist.lua"));
+   "-ERR module \"whitelist\" must be defined via config option \"whitelist_lua\""));
+#define WHITELIST_FUNCTION_REDIS_ERR \
+  addReplySds(c, sdsnew(\
+   "-ERR function not found in module \"whitelist\""));
 
 static bool luafunc_call(redisClient *c, int argc, robj **argv) {
     char *fname = argv[1]->ptr;
     if (WebServerMode > 0) {
         lua_getglobal(server.lua, "whitelist");
-        if (lua_type(server.lua, -1) != LUA_TTABLE) { //TODO HTTP VERSION
-            lua_pop(server.lua, 2); WHITELIST_ERR; return 1;
+        if (lua_type(server.lua, -1) != LUA_TTABLE) {
+            lua_pop(server.lua, 2); 
+            if (HTTP_Mode) SEND_404
+            else           WHITELIST_REDIS_ERR
+            return 1;
         }
         lua_getfield(server.lua, -1, fname);
         int type = lua_type(server.lua, -1);
         if (type != LUA_TFUNCTION) {
-            lua_pop(server.lua, 2); SEND_404; return 1;
+            lua_pop(server.lua, 2);
+            if (HTTP_Mode) SEND_404
+            else           WHITELIST_FUNCTION_REDIS_ERR
+            return 1;
         }
         lua_replace(server.lua, -2); // remove "whitelist" from stack
     } else {
@@ -731,9 +736,17 @@ static bool luafunc_call(redisClient *c, int argc, robj **argv) {
     InternalRequest = 1;
     int ret = lua_pcall(server.lua, (argc - 2), 1, 0);
     InternalRequest = 0;
-    if (ret) { //TODO HTTP VERSION
-        addReplyErrorFormat(c, "Error running script (%s): %s\n",
-            fname, lua_tostring(server.lua,-1));
+    if (ret) {
+        sds err = sdscatprintf(sdsempty(), "Error running script (%s): %s\n",
+                                            fname, lua_tostring(server.lua,-1));
+        if (HTTP_Mode) {
+            send_http_200_reponse_header(c, err);
+            robj *r = createObject(REDIS_STRING, err);
+            addReply(c, r);
+            decrRefCount(r);
+        } else {
+            addReplyErrorFormat(c, "%s", err);
+        }
         lua_pop(server.lua, 1);
         return 1;
     }
