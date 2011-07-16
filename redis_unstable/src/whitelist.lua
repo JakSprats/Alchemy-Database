@@ -4,8 +4,17 @@ function index_page()
   return '<html>HI I AM THE INDEX PAGE</html>\n';
 end
 
+function debug() 
+  local text = '';
+  text = text .. 'User-Agent: ' .. HTTP_HEADER['User-Agent:'] .. '   ';
+  text = text .. 'Cookie: mycookie: ' .. COOKIE['mycookie'];
+  SetHttpResponseHeader('Set-Cookie', 'mycookie=NEW');
+  SetHttpResponseHeader('Set-Cookie', 'cookie2=NEWER');
+  return '<html>DEBUG: ' .. text .. '</html>\n';
+end
+
 function register(user, passwd) 
-  exists = redis('get', 'user_' .. user);
+  local exists = redis('get', 'user_' .. user);
   if (exists ~= nil) then
     return '<html>ERROR: USER: "' .. user .. '" already exists</html>\n';
   else
@@ -15,8 +24,8 @@ function register(user, passwd)
 end
 
 function login(user, passwd) 
-  ok     = 0;
-  exists = redis('get', 'user_' .. user);
+  local ok     = 0;
+  local exists = redis('get', 'user_' .. user);
   if (exists ~= nil and exists == passwd) then
     ok = 1;
   end

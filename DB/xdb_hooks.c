@@ -34,6 +34,7 @@ ALL RIGHTS RESERVED
 
 #include "redis.h"
 #include "dict.h"
+#include "adlist.h"
 #include "rdb.h"
 
 // FOR override_getKeysFromComm()
@@ -74,7 +75,7 @@ extern ulong    Operations;
 
 extern uchar    OutputMode;
 extern int      WebServerMode;
-extern char    *WebServerIndexFunc = NULL;
+char           *WebServerIndexFunc = NULL;
 
 extern int      NumJTAlias;      // TODO move to redisClient
 extern int      LastJTAmatch;    // TODO move to redisClient
@@ -86,6 +87,8 @@ bool            HTTP_Mode = 0;    // TODO: move to redisClient
 bool            HTTP_KA   = 0;    // TODO: move to redisClient
 bool            HTTP_GET  = 0;    // TODO: move to redisClient
 bool            HTTP_HEAD = 0;    // TODO: move to redisClient
+list           *HTTP_Request_Header  = NULL; // TODO: move to redisClient
+list           *HTTP_Response_Header = NULL; // TODO: move to redisClient
 
 struct in_addr  WS_WL_Addr;
 struct in_addr  WS_WL_Mask;
@@ -95,10 +98,13 @@ unsigned int    WS_WL_Subnet    = 0;
 /* PROTOTYPES */
 int  yesnotoi(char *s);
 sds override_getKeysFromComm(rcommand *cmd, robj **argv, int argc, bool *err);
-int *getKeysUsingCommandTable(rcommand *cmd, robj **argv, int argc,
-                              int *numkeys);
-void luaReplyToRedisReply(redisClient *c, lua_State *lua); // from scripting.c
+int *getKeysUsingCommandTable(rcommand *cmd, robj **argv, int argc, int *nkeys);
+ // from scripting.c
+void luaReplyToRedisReply(redisClient *c, lua_State *lua);
+void luaPushError(lua_State *lua, char *error);
+
 static bool luafunc_call(redisClient *c, int argc, robj **argv);
+static robj *luaReplyToHTTPReply(lua_State *lua);
 
 void showCommand     (redisClient *c);
 
@@ -294,25 +300,80 @@ int DXDB_loadServerConfig(int argc, sds *argv) {
     return 1;
 }
 
+typedef struct two_sds {
+  sds a;
+  sds b;
+} two_sds;
+
+void free_two_sds(void *v) {
+    if (!v) return;
+    two_sds *ss = (two_sds *)v;
+    sdsfree(ss->a);
+    sdsfree(ss->b);
+    free(ss);
+}
+two_sds *init_two_sds(sds a, sds b) {
+    two_sds *ss = malloc(sizeof(two_sds));
+    ss->a       = sdsdup(a);
+    ss->b       = sdsdup(b);
+    return ss;
+}
+
 #define SEND_REPLY_FROM_STRING(s)                 \
   { robj *r = createStringObject(s, sdslen(s));   \
     addReply(c, r);                               \
     decrRefCount(r); }
 
 #define SEND_404                                  \
-  { sds s = sdsnew("HTTP/1.0 404 Not Found\r\n"); \
+  { sds s = sdsnew("HTTP/1.0 404 Not Found\r\nContent-Length: 0\r\n\r\n"); \
   SEND_REPLY_FROM_STRING(s) }
 #define SEND_405                                  \
-  { sds s = sdsnew("HTTP/1.0 405 Method Not Allowed\r\n"); \
+  { sds s = sdsnew("HTTP/1.0 405 Method Not Allowed\r\n\r\n"); \
   SEND_REPLY_FROM_STRING(s) }
 
+sds create_http_200_reponse_header(robj *resp) {
+    sds s = sdscatprintf(sdsempty(), 
+                        "HTTP/1.0 200 OK\r\nContent-length: %ld\r\n%s",
+                         sdslen(resp->ptr), 
+                         HTTP_KA ? "Connection: Keep-Alive\r\n": "");
+    if (HTTP_Response_Header) {
+        listNode *ln;
+        listIter *li   = listGetIterator(HTTP_Response_Header, AL_START_HEAD);
+        while((ln = listNext(li)) != NULL) {// POPULATE Lua Global HTTP_HEADER[]
+            two_sds *ss = ln->value;
+            s = sdscatprintf(s, "%s: %s\r\n", ss->a, ss->b);
+         }
+    }
+    s = sdscatlen(s, "\r\n", 2);
+    return s;
+}
+
+int luaSetHttpResponseHeaderCommand(lua_State *lua) {
+    int argc = lua_gettop(lua);
+    if (argc != 2 || !lua_isstring(lua, 1) || !lua_isstring(lua, 2)) {
+        luaPushError(lua, "Lua SetHttpResponseHeader() takes 2 string args");
+        return 1;
+    }
+    if (!HTTP_Response_Header) {
+        HTTP_Response_Header       = listCreate(); 
+        HTTP_Response_Header->free = free_two_sds;
+    }
+    sds      a  = sdsnew(lua_tostring(lua, 1));
+    sds      b  = sdsnew(lua_tostring(lua, 2));
+    two_sds *ss = init_two_sds(a, b);
+    listAddNodeTail(HTTP_Response_Header, ss); // Store Headers in List
+    return 0;
+}
 int   DXDB_processCommand(redisClient *c) { //printf("DXDB_processCommand\n");
     if (HTTP_Mode) {
+        if (c->argc < 2) return 1; // IGNORE Headers w/ no values
         if (!strcasecmp(c->argv[0]->ptr, "Connection:")) {
             if (!strcasecmp(c->argv[1]->ptr, "Keep-Alive")) HTTP_KA = 1;
             if (!strcasecmp(c->argv[1]->ptr, "Close"))      HTTP_KA = 0;
         }
-        return 1; /* NOTE: this effectively skips HTTP headers */
+        two_sds *ss = init_two_sds(c->argv[0]->ptr, c->argv[1]->ptr);
+        listAddNodeTail(HTTP_Request_Header, ss); // Store Headers in List
+        return 1;
     }
     Operations++;
     CurrCard       =  0;
@@ -329,13 +390,72 @@ int   DXDB_processCommand(redisClient *c) { //printf("DXDB_processCommand\n");
         if      (!strcasecmp(c->argv[0]->ptr, "GET"))  HTTP_GET  = 1;
         else if (!strcasecmp(c->argv[0]->ptr, "HEAD")) HTTP_HEAD = 1;
         else                                           { SEND_405; return 1; }
-        HTTP_Mode = 1; // TODO: move to redisClient
+        HTTP_Mode = 1;                    // TODO: move to redisClient
+        { // TODO: move HTTP_Re*_Header to redisClient
+            if (HTTP_Request_Header)  listRelease(HTTP_Request_Header);
+            if (HTTP_Response_Header) {
+                listRelease(HTTP_Response_Header);
+                HTTP_Response_Header = NULL;
+            }
+            HTTP_Request_Header       = listCreate(); 
+            HTTP_Request_Header->free = free_two_sds;
+        }
         char *fname = c->argv[1]->ptr;
         int   fnlen = sdslen(c->argv[1]->ptr);
         if (*fname == '/') { fname++; fnlen--; }
         HTTPFile    = createStringObject(fname, fnlen);// TODO: move2redisClient
         return 1;
     } else return 0;
+}
+
+bool  DXDB_processInputBuffer_ZeroArgs(redisClient *c) {//HTTP Request End-Delim
+    bool ret = 0;
+    if (HTTP_Mode) {
+        if ((HTTP_GET || HTTP_HEAD)) {
+            sds  file = HTTPFile->ptr;
+            if (!strncasecmp(file, "STATIC/", 7)) {
+                robj *o;
+                if      ((o = lookupKeyRead(c->db, HTTPFile)) == NULL) SEND_404
+                else if (o->type != REDIS_STRING)                      SEND_404
+                else {
+                    sds s = create_http_200_reponse_header(o);
+                    SEND_REPLY_FROM_STRING(s)
+                    addReply(c, o);
+                }
+            } else {
+                int argc; robj **rargv = NULL;
+                if (!sdslen(file) || !strcmp(file, "/")) {
+                    argc      = 2; //NOTE: rargv[0] is ignored
+                    rargv     = zmalloc(sizeof(robj *) * argc);
+                    rargv[1]  = _createStringObject(WebServerIndexFunc);
+                } else {
+                    sds *argv = sdssplitlen(file, strlen(file), "/", 1, &argc);
+                    rargv     = zmalloc(sizeof(robj *) * (argc + 1));
+                    for (int i = 0; i < argc; i++) {
+                        rargv[i + 1] = createStringObject(argv[i],
+                                                          sdslen(argv[i]));
+                    }
+                    argc++; //NOTE: rargv[0] is ignored
+                }
+                if (!luafunc_call(c, argc, rargv)) {
+                    robj *resp = luaReplyToHTTPReply(server.lua);
+                    sds   s    = create_http_200_reponse_header(resp);
+                    SEND_REPLY_FROM_STRING(s)
+                    if (HTTP_GET) addReply(c, resp);
+                    decrRefCount(resp);
+                }
+                for (int i = 1; i < argc; i++) decrRefCount(rargv[i]);
+                zfree(rargv);
+            }
+        }
+        if (HTTPFile) { decrRefCount(HTTPFile); HTTPFile = NULL; }
+        if (!HTTP_KA && !sdslen(c->querybuf)) { // not KeepAlive, not Pipelined
+            c->flags |= REDIS_CLOSE_AFTER_REPLY;
+        }
+        ret = 1;
+    }
+    HTTP_Mode = 0;
+    return ret;
 }
 
 static robj *luaReplyToHTTPReply(lua_State *lua) {
@@ -395,64 +515,6 @@ static robj *luaReplyToHTTPReply(lua_State *lua) {
     }
     lua_pop(lua, 1);
     return r;
-}
-
-sds create_http_reponse_header(robj *resp) {
-    return sdscatprintf(sdsempty(), 
-                        "HTTP/1.0 200 OK\r\nContent-length: %ld\r\n%s\r\n",
-                         sdslen(resp->ptr), 
-                         HTTP_KA ? "Connection: Keep-Alive\r\n": "");
-}
-
-bool  DXDB_processInputBuffer_ZeroArgs(redisClient *c) {//HTTP Request End-Delim
-    //printf("DXDB_procInputBufr_ZeroArgs: qb_len: %d\n", sdslen(c->querybuf));
-    bool ret = 0;
-    if (HTTP_Mode) {
-        if ((HTTP_GET || HTTP_HEAD)) {
-            sds  file = HTTPFile->ptr;
-            if (!strncasecmp(file, "STATIC/", 7)) {
-                robj *o;
-                if      ((o = lookupKeyRead(c->db, HTTPFile)) == NULL) SEND_404
-                else if (o->type != REDIS_STRING)                      SEND_404
-                else {
-                    sds s = create_http_reponse_header(o);
-                    SEND_REPLY_FROM_STRING(s)
-                    addReply(c, o);
-                }
-            } else {
-                int argc; robj **rargv = NULL;
-                if (!sdslen(file)) {
-                    argc      = 2; //NOTE: rargv[0] is ignored
-                    rargv     = zmalloc(sizeof(robj *) * argc);
-                    rargv[1]  = _createStringObject(WebServerIndexFunc);
-                } else {
-                    sds *argv = sdssplitlen(file, strlen(file), "/", 1, &argc);
-                    if (argc < 1)                                      SEND_404
-                    rargv     = zmalloc(sizeof(robj *) * (argc + 1));
-                    for (int i = 0; i < argc; i++) {
-                        rargv[i + 1] = createStringObject(argv[i],
-                                                          sdslen(argv[i]));
-                    }
-                    argc++; //NOTE: rargv[0] is ignored
-                }
-                luafunc_call(c, argc, rargv);
-                robj *resp = luaReplyToHTTPReply(server.lua);
-                sds   s    = create_http_reponse_header(resp);
-                SEND_REPLY_FROM_STRING(s)
-                if (HTTP_GET) addReply(c, resp);
-                decrRefCount(resp);
-                for (int i = 1; i < argc; i++) decrRefCount(rargv[i]);
-                zfree(rargv);
-            }
-        }
-        if (HTTPFile) { decrRefCount(HTTPFile); HTTPFile = NULL; }
-        if (!HTTP_KA && !sdslen(c->querybuf)) { // not KeepAlive, not Pipelined
-            c->flags |= REDIS_CLOSE_AFTER_REPLY;
-        }
-        ret = 1;
-    }
-    HTTP_Mode = 0;
-    return ret;
 }
 
 //TODO webserver_mode, webserver_whitelist_address, webserver_whitelist_netmask, webserver_index_function
@@ -609,26 +671,61 @@ void DBXD_genRedisInfoString(sds info) {
 }
 
 #define WHITELIST_ERR \
-  "module \"whitelist\" must be defined in file: whitelist.lua"
+  addReplySds(c, sdsnew(\
+   "module \"whitelist\" must be defined in file: whitelist.lua"));
 
 static bool luafunc_call(redisClient *c, int argc, robj **argv) {
     char *fname = argv[1]->ptr;
     if (WebServerMode > 0) {
         lua_getglobal(server.lua, "whitelist");
-        if (lua_type(server.lua, -1) != LUA_TTABLE) { //TODO HTTP ERROR
-            addReplySds(c,sdsnew(WHITELIST_ERR)); return 1;
+        if (lua_type(server.lua, -1) != LUA_TTABLE) { //TODO HTTP VERSION
+            lua_pop(server.lua, 2); WHITELIST_ERR; return 1;
         }
         lua_getfield(server.lua, -1, fname);
-        if (lua_type(server.lua, -1) != LUA_TFUNCTION) { //TODO HTTP ERROR
-            addReplySds(c,sdsnew(WHITELIST_ERR)); return 1;
+        int type = lua_type(server.lua, -1);
+        if (type != LUA_TFUNCTION) {
+            lua_pop(server.lua, 2); SEND_404; return 1;
         }
-        lua_replace(server.lua, -2); // removes "whitelist" table from the stack
+        lua_replace(server.lua, -2); // remove "whitelist" from stack
     } else {
         lua_getglobal(server.lua, fname);
     }
     for (int i = 2; i < argc; i++) {
         sds arg = argv[i]->ptr;
         lua_pushlstring(server.lua, arg, sdslen(arg));
+    }
+
+    if (WebServerMode > 0) { // POPULATE Lua Global HTTP Tables
+        listNode *ln;
+        bool      cook = 0;
+        lua_newtable(server.lua);
+        int       top  = lua_gettop(server.lua);
+        listIter *li   = listGetIterator(HTTP_Request_Header, AL_START_HEAD);
+        while((ln = listNext(li)) != NULL) {// POPULATE Lua Global HTTP_HEADER[]
+            two_sds *ss = ln->value;
+            lua_pushstring(server.lua, ss->a);
+            if (!strcasecmp(ss->a, "cookie:")) cook = 1;
+            lua_pushstring(server.lua, ss->b);
+            lua_settable(server.lua, top);
+        }
+        lua_setglobal(server.lua, "HTTP_HEADER");
+        if (cook) { // POPULATE Lua Global COOKIE[]
+            lua_newtable(server.lua);
+            top   = lua_gettop(server.lua);
+            li    = listGetIterator(HTTP_Request_Header, AL_START_HEAD);
+            while((ln = listNext(li)) != NULL) {
+                two_sds *ss = ln->value;
+                if (!strcasecmp(ss->a, "cookie:")) {
+                    char *eq = strchr(ss->b, '=');
+                    if (eq) {
+                        *eq = '\0'; lua_pushstring(server.lua, ss->b);
+                        eq++;       lua_pushstring(server.lua, eq);
+                        lua_settable(server.lua, top);
+                    }
+                }
+            }
+            lua_setglobal(server.lua, "COOKIE");
+        }
     }
 
     InternalRequest = 1;

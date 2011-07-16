@@ -49,7 +49,8 @@ char        *WhiteListLua    = NULL;
 //TODO move this entire thing into xdb_hooks.c as static funcs
 
 /* PROTOTYPES */
-void scriptingInit();
+int luaSetHttpResponseHeaderCommand(lua_State *lua);
+void scriptingInit(); // from scripting.c
 
 void init_Tbl_and_Index() {
     Num_tbls = 0;
@@ -73,6 +74,8 @@ static bool loadLuaHelperFile(cli *c, char *fname) {
     return 1;
 }
 bool initLua(cli *c) {
+    lua_pushcfunction(server.lua, luaSetHttpResponseHeaderCommand);
+    lua_setglobal(server.lua, "SetHttpResponseHeader");
     if                    (!loadLuaHelperFile(c, LUA_INTERNAL_FILE)) return 0;
     if (WhiteListLua    && !loadLuaHelperFile(c, WhiteListLua))      return 0;
     if (LuaIncludeFile  && !loadLuaHelperFile(c, LuaIncludeFile))    return 0;
