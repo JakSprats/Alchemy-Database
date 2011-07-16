@@ -42,14 +42,15 @@ char *strcasestr(const char *haystack, const char *needle); /*compiler warning*/
 #include "common.h"
 #include "colparse.h"
 
+extern cli     *CurrClient;
+
 // GLOBALS
-ja_t JTAlias[MAX_JOIN_COLS];
-int  NumJTAlias   = 0;
-int  LastJTAmatch = -1;
+ja_t JTAlias[MAX_JOIN_COLS]; // TODO MOVE to JoinBlock
 
 int     Num_tbls;
 r_tbl_t Tbl[MAX_NUM_TABLES];/* ALCHEMY_DATABASE table info stored here */
 
+// CONSTANT GLOBALS
 char   *Ignore_keywords[]   = {"PRIMARY", "CONSTRAINT", "UNIQUE", "KEY",
                                "FOREIGN" };
 int     Ignore_keywords_lens[] = {7, 10, 6, 3, 7};
@@ -65,18 +66,19 @@ int find_table(char *tname) { /* NOTE does not use JTAlias[] */
     return -1;
 }
 int find_table_n(char *tname, int len) {
-    LastJTAmatch = -1;
-    for (int i = 0; i < NumJTAlias; i++) {     /* first check Join Aliases */
+    CurrClient->LastJTAmatch = -1;
+    for (int i = 0; i < CurrClient->NumJTAlias; i++) {// 1st check Join Aliases
         sds x = JTAlias[i].alias;
         if (((int)sdslen(x) == len) && !strncmp(tname, x, len)) {
-            LastJTAmatch = i; return JTAlias[i].tmatch;
+            CurrClient->LastJTAmatch = i; return JTAlias[i].tmatch;
         }
     }
     for (int i = 0; i < Num_tbls; i++) { /* then check TableNames */
         if (Tbl[i].name) {
             sds x = Tbl[i].name->ptr;
             if (((int)sdslen(x) == len) && !strncmp(tname, x, len)) {
-                LastJTAmatch = i + USHRT_MAX; /* DONT collide w/ NumJTAlias */
+                /* DONT collide w/ NumJTAlias */
+                CurrClient->LastJTAmatch = i + USHRT_MAX;
                 return i;
             }
         }
@@ -85,8 +87,8 @@ int find_table_n(char *tname, int len) {
 }
 sds getJoinAlias(int jan) {
     if (jan == -1) return NULL;
-    return (jan < NumJTAlias) ? JTAlias[jan].alias :
-                                Tbl[(jan - USHRT_MAX)].name->ptr;
+    return (jan < CurrClient->NumJTAlias) ? JTAlias[jan].alias :
+                                            Tbl[(jan - USHRT_MAX)].name->ptr;
 }
 int find_column(int tmatch, char *column) {
     if (!Tbl[tmatch].name) return -1;
@@ -261,7 +263,7 @@ static bool parseJCols(cli   *c,   char *y,     int  len,  int *numt,
     int   tlen   = nextp - y;
     int   tmatch = find_table_n(tname, tlen);
     if (tmatch == -1) { addReply(c,shared.nonexistenttable); return 0; }
-    int   jan    = LastJTAmatch;
+    int   jan    = CurrClient->LastJTAmatch;
     char *cname  = nextp + 1;
     int   clen   = len - tlen - 1;
     if (clen == 1 && *cname == '*') {
@@ -282,15 +284,16 @@ static bool parseJCols(cli   *c,   char *y,     int  len,  int *numt,
     return 1;
 }
 static bool addJoinAlias(redisClient *c, char *tkn, char *space, int len) {
-    if (NumJTAlias == MAX_JOIN_COLS) {
+    if (CurrClient->NumJTAlias == MAX_JOIN_COLS) {
         addReply(c, shared.toomanyindicesinjoin); return 0;
     }
     int tlen                   = space - tkn;
     SKIP_SPACES(space);
-    JTAlias[NumJTAlias].alias  = sdsnewlen(space, (tkn + len - space));//DEST049
-    JTAlias[NumJTAlias].tmatch = find_table_n(tkn, tlen);
-    LastJTAmatch               = NumJTAlias; /* NOTE: needed on JoinColParse */
-    NumJTAlias++;
+    int nja                  = CurrClient->NumJTAlias;
+    JTAlias[nja].alias       = sdsnewlen(space, (tkn + len - space)); //DEST049
+    JTAlias[nja].tmatch      = find_table_n(tkn, tlen);
+    CurrClient->LastJTAmatch = nja; /* NOTE: needed on JoinColParse */
+    CurrClient->NumJTAlias++;
     return 1;
 }
 bool parseCommaSpaceList(cli  *c,         char *tkn,
@@ -319,11 +322,11 @@ bool parseCommaSpaceList(cli  *c,         char *tkn,
             if (alias) {
                 if (!addJoinAlias(c, tkn, alias, len)) return 0;
                 len = alias - tkn;
-                jan = LastJTAmatch;         /* from addJoinAlias() */
+                jan = CurrClient->LastJTAmatch;      /* from addJoinAlias() */
             }
             int tm = find_table_n(tkn, len);
             if (tm == -1) { addReply(c, shared.nonexistenttable); return 0; }
-            if (!alias) jan = LastJTAmatch; /* from find_table_n() */
+            if (!alias) jan = CurrClient->LastJTAmatch;/* from find_table_n() */
             ts  [*numt] = tm;
             jans[*numt] = jan;
             INCR(*numt);

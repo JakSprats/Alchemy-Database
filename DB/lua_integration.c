@@ -42,13 +42,10 @@ ALL RIGHTS RESERVED
 #include "alsosql.h"
 #include "lua_integration.h"
 
-extern struct sharedObjectsStruct shared;
-extern struct redisServer server;
-
 extern r_tbl_t Tbl[MAX_NUM_TABLES];
 extern r_ind_t Index[MAX_NUM_INDICES];
-extern bool    InternalRequest;
 
+// GLOBALS
 ulong  Operations  = 0;
 char  *LuaCronFunc = NULL;
 

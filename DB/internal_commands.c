@@ -34,6 +34,7 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "internal_commands.h"
 
+// CONSTANT GLOBALS
 stor_cmd AccessCommands[NUM_ACCESS_TYPES];
 
 void initAccessCommands() { //printf("initAccessCommands\n");

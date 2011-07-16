@@ -41,9 +41,10 @@ extern r_tbl_t    Tbl[MAX_NUM_TABLES];
 extern int        Num_indx;
 extern r_ind_t    Index[MAX_NUM_INDICES];
 
-char        *Basedir         = "./";
-char        *LuaIncludeFile  = NULL;
-char        *WhiteListLua    = NULL;
+extern char      *Basedir;
+extern char      *LuaIncludeFile;
+extern char      *WhiteListLua;
+
 #define LUA_INTERNAL_FILE "internal.lua"
 
 //TODO move this entire thing into xdb_hooks.c as static funcs

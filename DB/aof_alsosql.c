@@ -38,7 +38,6 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "aof_alsosql.h"
 
-
 extern int      Num_tbls     [MAX_NUM_TABLES];
 extern r_tbl_t  Tbl[MAX_NUM_TABLES];
 extern int      Num_indx;

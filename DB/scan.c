@@ -42,13 +42,7 @@ ALL RIGHTS RESERVED
 #include "alsosql.h"
 #include "aobj.h"
 
-// FROM redis.c
-extern struct sharedObjectsStruct shared;
-
-
 extern r_tbl_t  Tbl[MAX_NUM_TABLES];
-extern bool     Explain;
-extern bool     LruColInSelect;
 
 static void scanJoin(cli *c) {
     aobj aL, aH;
@@ -81,12 +75,12 @@ static void scanJoin(cli *c) {
     }
     bool ok = optimiseJoinPlan(c, &jb) && validateChain(c, &jb);
     if (ok) {
-        if (Explain) explainJoin(c, &jb); 
-        else         executeJoin(c, &jb);
+        if (c->Explain) explainJoin(c, &jb); 
+        else            executeJoin(c, &jb);
     }
 
 sj_end:
-    destroy_join_block(&jb);
+    destroy_join_block(c, &jb);
 }
 /* SYNTAX
    1.) SCAN * FROM tbl
@@ -112,7 +106,7 @@ void tscanCommand(redisClient *c) { //printf("tscanCommand\n");
     if (!nowc && !wc) { addReply(c, shared.scansyntax);       return; }
     if (join) { scanJoin(c);                                  return ; }
 
-    LruColInSelect = initLRUCS(tmatch, cmatchs, qcols);
+    c->LruColInSelect = initLRUCS(tmatch, cmatchs, qcols);
     cswc_t w; wob_t wb;
     init_check_sql_where_clause(&w, tmatch, wc); /* on error: GOTO tscan_end */
     init_wob(&wb);
@@ -154,7 +148,7 @@ void tscanCommand(redisClient *c) { //printf("tscanCommand\n");
     w.wf.cmatch = 0; /* PK RangeQuery */
     w.wtype     = SQL_RANGE_LKP; //dumpW(printf, &w);
     convertFilterListToAobj(w.flist);
-    if (Explain) explainRQ(c, &w, &wb);
+    if (c->Explain) explainRQ(c, &w, &wb);
     else         iselectAction(c, &w, &wb, cmatchs, qcols, cstar);
 
 tscan_end:

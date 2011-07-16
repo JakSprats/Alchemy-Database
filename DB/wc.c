@@ -47,24 +47,16 @@ char *strcasestr(const char *haystack, const char *needle); /*compiler warning*/
 #include "common.h"
 #include "wc.h"
 
-// FROM redis.c
-extern struct sharedObjectsStruct shared;
-extern struct redisServer server;
-
-
 extern int      Num_tbls;
 extern r_tbl_t  Tbl[MAX_NUM_TABLES];
 extern r_ind_t  Index[MAX_NUM_INDICES];
 
 extern ja_t     JTAlias[MAX_JOIN_COLS];
-extern int      NumJTAlias;
-extern int      LastJTAmatch;
 
 extern stor_cmd AccessCommands[];
 extern uchar    OP_len[NOP];
 
-extern bool Explain;
-
+// CONSTANT GLOBALS
 static char CLT = '<';
 static char CGT = '>';
 static char CEQ = '=';
@@ -390,7 +382,7 @@ static bool parseInumTblCol(cli *c, char *token, int tlen, f_t *flt) {
     char *nextp = _strnchr(token, '.', tlen);
     if (!nextp) { addReply(c, shared.badindexedcolumnsyntax); return 0; }
     flt->tmatch = find_table_n(token, nextp - token);
-    flt->jan    = LastJTAmatch;
+    flt->jan    = c->LastJTAmatch;
     if (flt->tmatch == -1) { addReply(c, shared.nonexistenttable); return 0; }
     nextp++;
     flt->cmatch = find_column_n(flt->tmatch, nextp, tlen - (nextp - token));
@@ -580,7 +572,7 @@ static void releaseIJ(ijp_t *ij) {
     releaseFilterR_KL(&ij->rhs);
     releaseFlist( &ij->flist); /* flist is referential, dont destroy */
 }
-void destroy_join_block(jb_t *jb) {
+void destroy_join_block(cli *c, jb_t *jb) {
     if (jb->lvr) sdsfree(jb->lvr);                       /* DESTROYED 050 */
     destroyFlist(&jb->mciflist);                         /* DESTROYED 069 */
     destroy_wob(&jb->wb);                                /* DESTROYED 066 */
@@ -588,7 +580,7 @@ void destroy_join_block(jb_t *jb) {
     releaseFlist(&jb->fflist); /* flist is referential, dont destroy */
     releaseFlist(&jb->fklist); /* klist is referential, dont destroy */
     if (jb->ob) destroy_obsl(jb->ob, OBY_FREE_ROBJ);     /* DESTROYED 057 */
-    for (int i = 0; i < NumJTAlias; i++) sdsfree(JTAlias[i].alias); // DEST 049
+    for (int i = 0; i < c->NumJTAlias; i++) sdsfree(JTAlias[i].alias);//DEST 049
 }
 
 bool parseJoinReply(cli *c, jb_t *jb, char *clist, char *tlist, char *wc) {
@@ -632,9 +624,9 @@ void joinReply(redisClient *c) {
     parseJoinReply(c, &jb, c->argv[1]->ptr, c->argv[3]->ptr, c->argv[5]->ptr) &&
     optimiseJoinPlan(c, &jb) && validateChain(c, &jb);
     if (ok) {
-        if (Explain) explainJoin(c, &jb);
-        else         executeJoin(c, &jb);
+        if (c->Explain) explainJoin(c, &jb);
+        else            executeJoin(c, &jb);
     }
-    destroy_join_block(&jb);
+    destroy_join_block(c, &jb);
     return;
 }

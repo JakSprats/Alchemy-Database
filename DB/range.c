@@ -45,15 +45,13 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "range.h"
 
+// CONSTANT GLOBALS
 extern char     *Col_type_defs[];
 extern aobj_cmp *OP_CMP[7];
 extern r_tbl_t   Tbl[MAX_NUM_TABLES];
 extern r_ind_t   Index[MAX_NUM_INDICES];
-extern uchar     OutputMode;
 
-ulong  CurrCard = 0;
-
-aobj  *JoinKey  = NULL; /* HACK - only needed for LeftJoins ??? */
+ulong  CurrCard = 0; // TODO remove - after no update on MCI cols FIX
 
 static bool Bdum; /* dummy variable */
 
@@ -144,7 +142,6 @@ void setQueued(cswc_t *w, wob_t *wb, qr_t *q) { /* NOTE: NOT for JOINS */
 
 static bool pk_row_op(aobj  *apk, void *rrow, range_t *g,    row_op *p,
                       qr_t *q,    long    *card) {
-    JoinKey    = apk;
     if (rrow && !(*p)(g, apk, rrow, q->qed, card)) return 0;
     else                                           return 1;
 }
@@ -168,7 +165,6 @@ static long singleOpPK(range_t *g, row_op *p) {               //DEBUG_SINGLE_PK
     aobj    *apk   = &w->wf.akey;
     g->co.btr      = getBtr(w->wf.tmatch);
     void    *rrow  = btFind(g->co.btr, apk);
-    JoinKey        = apk;
     long     card  =  0;
     if (!pk_row_op(apk, rrow, g, p, q, &card)) return -1;
     else                                       return card;
@@ -226,7 +222,6 @@ static bool nodeBT_Op(ibtd_t *d) {                              //DEBUG_NODE_BT
     qr_t    *q        = d->g->q;     /* code compaction */
     wob_t   *wb       = d->g->co.wb; /* code compaction */
     *d->brkr          = 0;
-    aobj    *oJoinKey = JoinKey;/* FIXME JoinKey is global can change in (*p) */
     bool     gox      = (q->fk_lo && *d->ofst > 0);
     btSIter *nbi      = gox ? btGetFullXthIter(d->nbtr, *d->ofst) :
                               btGetFullRangeIter(d->nbtr);
@@ -237,7 +232,6 @@ static bool nodeBT_Op(ibtd_t *d) {                              //DEBUG_NODE_BT
             else if (wb->lim == *d->card)               break;
         }
         void *rrow = btFind(d->g->co.btr, nbe->key);
-        JoinKey    = oJoinKey;
         if (!(*d->p)(d->g, nbe->key, rrow, q->qed, d->card)) { ret = 0; break; }
     } btReleaseRangeIterator(nbi);
     if (q->fk_lo)                         *d->ofst = 0; /* OFFSET fulfilled */
@@ -341,7 +335,6 @@ static long rangeOpFK(range_t *g, row_op *p) {                 //DEBUG_RANGE_FK
     init_ibtd(&d, p, g, q, NULL, &ofst, &card, &loops, &brkr);
     while ((be = btRangeNext(bi)) != NULL) {
         uint32 nmatch = 0;
-        JoinKey       = be->key;
         d.nbtr        = btMCIFindVal(w, be->val, &nmatch, ri);
         if (d.nbtr) {
             uint32 diff = nexpc - nmatch;
@@ -369,7 +362,6 @@ static long singleOpFK(range_t *g, row_op *p) {               //DEBUG_SINGLE_FK
     long      ofst   = wb->ofst;
     long      loops  = -1;
     long      card   =  0;
-    JoinKey          = afk;
     init_ibtd(&d, p, g, q, nbtr, &ofst, &card, &loops, &Bdum);
     if (d.nbtr) {
         uint32 diff = nexpc - nmatch;
@@ -426,7 +418,6 @@ static long inOpFK(range_t *g, row_op *p) {                //printf("inOpFK\n");
     while((ln = listNext(li)) != NULL) {
         uint32  nmatch = 0;
         aobj   *afk    = ln->value;
-        JoinKey        = afk;
         d.nbtr         = btMCIFindVal(w, btIndFind(ibtr, afk), &nmatch, ri);
         if (d.nbtr) {
             uint32 diff = nexpc - nmatch;

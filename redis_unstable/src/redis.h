@@ -333,11 +333,15 @@ typedef struct blockingState {
                              * for BRPOPLPUSH. */
 } blockingState;
 
+#ifdef ALCHEMY_DATABASE
+  DEFINE_ALCHEMY_HTTP_INFO
+#endif
+
 /* With multiplexing we need to take per-clinet state.
  * Clients are taken in a liked list. */
 typedef struct redisClient {
 #ifdef ALCHEMY_DATABASE
-    struct sockaddr_in sa;
+    ALCHEMY_CLIENT_EXTENSIONS
 #endif
     int fd;
     redisDb *db;

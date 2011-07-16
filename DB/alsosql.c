@@ -52,25 +52,15 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "alsosql.h"
 
-// FROM redis.c
-extern struct sharedObjectsStruct shared;
-extern struct redisServer         server;
-
-// GLOBALS
 extern int     Num_tbls;
 extern r_tbl_t Tbl[MAX_NUM_TABLES];
 extern int     Num_indx;
 extern r_ind_t Index[MAX_NUM_INDICES];
 
-lua_State   *Lua             = NULL;
-redisClient *CurrClient      = NULL;
-uchar        OutputMode      = OUTPUT_NORMAL;
-bool         Explain         =  0;
-bool         LruColInSelect  =  0;
-int          WebServerMode   = -1;
-bool         WebSocketGet    =  0;
-bool         InternalRequest =  0;
+// GLOBALS
+uchar  OutputMode = OUTPUT_NORMAL;
 
+// CONSTANT GLOBALS
 char *EMPTY_STRING = "";
 char  OUTPUT_DELIM = ',';
 
@@ -87,7 +77,7 @@ aobj_cmp *OP_CMP[NOP] = {NULL, aobjEQ, aobjNE, aobjLT, aobjLE, aobjGT, aobjGE,
 
 char *RangeType[5] = {"ERROR", "SINGLE_PK", "RANGE", "IN", "SINGLE_FK"};
 
-/* PROTOTYPE */
+/* PROTOTYPES */
 static int updateAction(cli *c, char *u_vallist, aobj *u_apk, int u_tmatch);
 
 static bool checkRepeatCnames(cli *c, int tmatch, sds cname) {
@@ -397,7 +387,7 @@ bool leftoverParsingReply(redisClient *c, char *x) {
 }
 
 void explainCommand(redisClient *c) {
-    Explain = 1;
+    c->Explain  = 1;
     int   oargc = c->argc;
     void *argv0 = c->argv[0];
     c->argc--;
@@ -407,8 +397,8 @@ void explainCommand(redisClient *c) {
     c->argv[oargc - 1] = argv0;         /* push first argv onto end */
     if      (!strcasecmp(c->argv[0]->ptr, "SCAN"))   tscanCommand(c);
     else if (!strcasecmp(c->argv[0]->ptr, "SELECT")) sqlSelectCommand(c);
-    c->argc = oargc;                    /* so all argv[] get freed */
-    Explain = 0;
+    c->argc    = oargc;                    /* so all argv[] get freed */
+    c->Explain = 0;
 }
 void addReplyRow(cli *c, robj *r, int tmatch, aobj *apk, uchar *lruc) {
     updateLru(c, tmatch, apk, lruc); /* NOTE: updateLRU (SELECT) */
@@ -448,7 +438,7 @@ void sqlSelectCommand(redisClient *c) {
                           tlist, c->argv[4]->ptr)) return;
     if (join) { joinReply(c);                      return; }
 
-    LruColInSelect = initLRUCS(tmatch, cmatchs, qcols);
+    c->LruColInSelect = initLRUCS(tmatch, cmatchs, qcols);
     cswc_t w; wob_t wb;
     init_check_sql_where_clause(&w, tmatch, c->argv[5]->ptr);
     init_wob(&wb);
@@ -458,13 +448,13 @@ void sqlSelectCommand(redisClient *c) {
     if (cstar && wb.nob) { /* SELECT COUNT(*) ORDER BY -> stupid */
         addReply(c, shared.orderby_count);                  goto sel_cmd_end;
     }
-    if (Explain) { explainRQ(c, &w, &wb);                   goto sel_cmd_end; }
+    if (c->Explain) { explainRQ(c, &w, &wb);                goto sel_cmd_end; }
     //dumpW(printf, &w); dumpWB(printf, &wb);
     if (w.wtype != SQL_SINGLE_LKP) { /* FK, RQ, IN */
         if (w.wf.imatch == -1) {
             addReply(c, shared.rangequery_index_not_found); goto sel_cmd_end;
         }
-        if (w.wf.imatch == Tbl[tmatch].lrui) LruColInSelect = 1;
+        if (w.wf.imatch == Tbl[tmatch].lrui) c->LruColInSelect = 1;
         iselectAction(c, &w, &wb, cmatchs, qcols, cstar);
     } else {                                /* SQL_SINGLE_LKP */
         bt    *btr   = getBtr(w.wf.tmatch);

@@ -43,20 +43,14 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "desc.h"
 
-// FROM redis.c
-extern struct sharedObjectsStruct shared;
-extern struct redisServer server;
-
-
 extern char    *Col_type_defs[];
+
 extern int      Num_tbls;
 extern r_tbl_t  Tbl[MAX_NUM_TABLES];
+extern int      Num_indx;
+extern r_ind_t  Index[MAX_NUM_INDICES];
 
 extern uchar    OutputMode;
-
-// GLOBALS
-int     Num_indx;
-r_ind_t Index[MAX_NUM_INDICES];
 
 #define ADD_REPLY_BULK(r, buf)    \
     r = _createStringObject(buf); \

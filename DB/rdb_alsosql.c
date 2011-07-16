@@ -40,15 +40,15 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "rdb_alsosql.h"
 
-
 extern int      Num_tbls;
 extern r_tbl_t  Tbl[MAX_NUM_TABLES];
 extern int      Num_indx;
 extern r_ind_t  Index[MAX_NUM_INDICES];
 
-uchar VIRTUAL_INDEX_TYPE = 255;
-uchar LUAT_JUST_ADD      = 0;
-uchar LUAT_WITH_DEL      = 1;
+// CONSTANT GLOBALS
+static uchar VIRTUAL_INDEX_TYPE = 255;
+static uchar LUAT_JUST_ADD      = 0;
+static uchar LUAT_WITH_DEL      = 1;
 
 /* PROTOTYPES */
 int rdbSaveRawString(FILE *fp, sds s, size_t len);

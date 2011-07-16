@@ -191,7 +191,7 @@ void destroyFlist(list **flist);
 void destroy_check_sql_where_clause(cswc_t *w);
 
 void init_join_block(jb_t *jb);
-void destroy_join_block(jb_t *jb);
+void destroy_join_block(cli *c, jb_t *jb);
 
 typedef struct string_and_length {
     char *s;

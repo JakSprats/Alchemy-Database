@@ -1,0 +1,14 @@
+
+TODO LIST:
+  A.) GLOBAL VARIABLES -> Per Client Structures
+        1.) OB_asc [MAX_ORDER_BY_COLS]    -> push into cswc_t
+        2.) OB_ctype[MAX_ORDER_BY_COLS]   -> push into cswc_t
+        3.) JTAlias[MAX_JOIN_COLS]        -> push into JoinBlock
+
+  B.) Prohibit updates on Uniquely Indexed Columns -> Constraint Violation
+
+
+FIX:
+  A.) Joins are broken - happened during redis_unstable port
+  B.) Cursers are broken - happened during redis_unstable port
+

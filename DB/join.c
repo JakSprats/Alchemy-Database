@@ -43,26 +43,20 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "join.h"
 
-// FROM redis.c
-extern struct sharedObjectsStruct shared;
-extern struct redisServer server;
-
 // GLOBALS
-
 extern r_tbl_t  Tbl[MAX_NUM_TABLES];
 extern r_ind_t  Index[MAX_NUM_INDICES];
-extern uchar    OutputMode;
-extern bool     Explain;
-extern bool     LruColInSelect;
+
+extern uchar    OutputMode; // NOTE: used by OREDIS
 
 extern bool  OB_asc  [MAX_ORDER_BY_COLS];
 extern uchar OB_ctype[MAX_ORDER_BY_COLS];
 
+// CONSTANT GLOBALS
 extern char *EMPTY_STRING;
 extern char  OUTPUT_DELIM;
-extern aobj *JoinKey;
 
-bool JoinErr   =  0;
+bool JoinErr   =  0; // TODO push into JoinBlock
 long JoinCard  =  0;
 long JoinLoops =  0;
 long JoinLim   = -1;
@@ -139,7 +133,7 @@ bool validateJoinOrderBy(cli *c, jb_t *jb) {
   printf("PRE RECURSE: join_op\n"); dumpW(printf, g2.co.w);
 #define DEBUG_JOIN_GEN \
     printf("joinGeneric W\n"); dumpW(printf, w); dumpWB(printf, &jb->wb); \
-    printf("joinGeneric JB\n"); dumpJB(printf, jb);
+    printf("joinGeneric JB\n"); dumpJB(c, printf, jb);
 #define DUMP_JOIN_QED \
   (*prn)("\t\tJoinQed: %d JoinLim: %ld JoinOfst: %ld\n", \
          JoinQed, JoinLim, JoinOfst);
@@ -233,7 +227,7 @@ static bool join_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
     for (int i = 0; i < g->se.qcols; i++) {
         if (jb->js[i].jan == w->wf.jan) {
             Resp = getSCol(g->co.btr, rrow, jb->js[i].c, /* FREE ME 037 */
-                             rrow ? apk : JoinKey, jb->js[i].t);
+                             apk, jb->js[i].t);
             Jcols[i].len    = Resp.len;
             Jcols[i].freeme = 0; /* freed via freeme[] */
             Jcols[i].type   = Tbl[jb->js[i].t].col_type[jb->js[i].c];
@@ -284,7 +278,7 @@ static bool join_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
         else     nk = getCol(g->co.btr, rrow, ij->lhs.cmatch,
                              apk, ij->lhs.tmatch);
         cswc_t w2; range_t g2; qr_t q2;                            //JOP_DEBUG_3
-        r_ind_t *ri = &Index[nimatch];                       //JOP_DEBUG_4
+        r_ind_t *ri = &Index[nimatch];                             //JOP_DEBUG_4
         init_check_sql_where_clause(&w2, ri->table, NULL);
         if (ok) {
             init_range(&g2, g->co.c, &w2, &jb->wb, &q2, g->co.ll,
@@ -336,18 +330,18 @@ void joinGeneric(redisClient *c, jb_t *jb) {
     qr_t q; bzero(&q, sizeof(qr_t)); //TODO make GLOBAL
     cswc_t w; setupFirstJoinStep(jb, &w);
     if (w.wf.imatch == -1) { addReply(c, shared.join_qo_err); return; }
-    LruColInSelect = initLRUCS_J(jb);
-    list *ll       = initOBsort(JoinQed, &jb->wb);
+    c->LruColInSelect = initLRUCS_J(jb);
+    list *ll          = initOBsort(JoinQed, &jb->wb);
     range_t g;
     init_range(&g, c, &w, &jb->wb, &q, ll, OBY_FREE_ROBJ, jb);
-    g.se.qcols     = jb->qcols;
-    JoinLoops      = -1; JoinCard = 0; JoinErr = 0;
-    void *rlen     = addDeferredMultiBulkLength(c);
-    long  card     = 0;
+    g.se.qcols        = jb->qcols;
+    JoinLoops         = -1; JoinCard = 0; JoinErr = 0;
+    void *rlen        = addDeferredMultiBulkLength(c);
+    long  card        = 0;
     Op(&g, join_op); /* NOTE Op() retval ignored as SELECTs can NOT FAIL */
     if (JoinErr) { addReply(c, shared.join_qo_err); return; }
-    card           = JoinCard;
-    long sent      =  0;
+    card              = JoinCard;
+    long sent         =  0;
     if (card) {
         if (JoinQed) opSelectOnSort(c, ll, &jb->wb, g.co.ofree, &sent, -1);
         else         sent = card;
@@ -364,7 +358,7 @@ void joinGeneric(redisClient *c, jb_t *jb) {
 
 /* DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG */
 //TODO move to explain.c
-void dumpIJ(printer *prn, int i, ijp_t *ij, ijp_t *nij) {
+void dumpIJ(cli *c, printer *prn, int i, ijp_t *ij, ijp_t *nij) {
     int lt = ij->lhs.tmatch; int lc = ij->lhs.cmatch;
     int lj = ij->lhs.jan;    int li = ij->lhs.imatch;
     if (ij->rhs.tmatch != -1) {
@@ -382,7 +376,7 @@ void dumpIJ(printer *prn, int i, ijp_t *ij, ijp_t *nij) {
                   ri, (ri == -1) ? "" : (char *)Index[ri].obj->ptr,
                   rj, (rj == -1) ? "" : getJoinAlias(rj),
                   ij->nrows);
-        if (Explain) {
+        if (c->Explain) {
             if (nij) {
                 dumpFL(prn, "\t\t\t\t", "KLIST", nij->lhs.klist);
                 dumpFL(prn, "\t\t\t\t", "FLIST", nij->flist);
@@ -422,10 +416,10 @@ void explainJoin(cli *c, jb_t *jb) {
     for (int i = 0; i < c->argc; i++) {
         (*queueOutput)("%s ", (char *)c->argv[i]->ptr);
     } (*queueOutput)("\n");
-    dumpJB(queueOutput, jb);
+    dumpJB(c, queueOutput, jb);
     dumpQueueOutput(c);
 }
-void dumpJB(printer *prn, jb_t *jb) {
+void dumpJB(cli *c, printer *prn, jb_t *jb) {
     (*prn)("\tSTART dumpJB\n");
     (*prn)("\t\tqcols:         %d\n", jb->qcols);
     for (int i = 0; i < jb->qcols; i++) {
@@ -436,7 +430,7 @@ void dumpJB(printer *prn, jb_t *jb) {
                  (lt == -1) ? "" : (char *)Tbl[lt].name->ptr,
                  (lc == -1) ? "" : (char *)Tbl[lt].col_name[lc]->ptr);
     }
-    if (Explain) {
+    if (c->Explain) {
         cswc_t  w; setupFirstJoinStep(jb, &w);
         dumpFilter(prn, &w.wf, "\t");
         dumpFL(prn, "\t\t\t\t", "FLIST", jb->ij[0].flist);
@@ -446,11 +440,11 @@ void dumpJB(printer *prn, jb_t *jb) {
         (*prn)("\t\thw:     %d\n", jb->hw);
         for (int k = 0; k < jb->hw; k++) {
             ijp_t *nij = (k == jb->hw -1) ? NULL : &jb->ij[k + 1];
-            dumpIJ(prn, k, &jb->ij[k], nij);
+            dumpIJ(c, prn, k, &jb->ij[k], nij);
         }
     } else {
         for (uint32 i = 0; i < jb->n_jind; i++) {
-            dumpIJ(prn, i, &jb->ij[i], NULL);
+            dumpIJ(c, prn, i, &jb->ij[i], NULL);
         }
     }
     if (jb->fklist) {
@@ -461,11 +455,11 @@ void dumpJB(printer *prn, jb_t *jb) {
         (*prn)("\t\tfflist: fnrows: %u\n", jb->fnrows);
         dumpFL(prn, "\t\t\t", "JB-FFLIST", jb->fflist);
     }
-    if (!Explain) {
+    if (!c->Explain) {
         if (jb->hw != -1) {
             (*prn)("\t\tn_filters:     %d\n", (jb->n_jind - jb->hw));
             for (int j = jb->hw; j < (int)jb->n_jind; j++) {
-                dumpIJ(prn, j, &jb->ij[j], NULL);
+                dumpIJ(c, prn, j, &jb->ij[j], NULL);
             }
         }
     }

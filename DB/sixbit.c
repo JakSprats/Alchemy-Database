@@ -33,11 +33,12 @@ ALL RIGHTS RESERVED
 
 #include "common.h"
 
-char *sixbitchars = \
-    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ _+-.,'\"#/\\";
+// CONSTANT GLOBALS
+static char *sixbitchars = \
+           "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ _+-.,'\"#/\\";
 
-uchar to_six_bit_strings[256];
-uchar from_six_bit_strings[256];
+static uchar to_six_bit_strings  [256];
+static uchar from_six_bit_strings[256];
 
 void init_six_bit_strings() {
     bzero(to_six_bit_strings, 256);

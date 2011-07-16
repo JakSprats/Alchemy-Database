@@ -38,13 +38,8 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "qo.h"
 
-// FROM redis.c
-extern struct sharedObjectsStruct shared;
-
-
 extern r_tbl_t  Tbl[MAX_NUM_TABLES];
 extern r_ind_t  Index[MAX_NUM_INDICES];
-extern bool     Explain;
 
 static int Idum; /* dummy variable */
 
@@ -65,28 +60,28 @@ void dumpMCIHits(printer *prn, int i, mh_t *m);
   if (klist) dumpFL(printf, "\t\t", "KLIST", *klist);                          \
   dumpFL(printf, "\t\t", "FLIST", *flist);
 #define DEBUG_MID_assignFiltersToJoinPairs                                     \
-printf("MID assignFiltersToJoinPairs\n"); dumpJB(printf, jb);
+printf("MID assignFiltersToJoinPairs\n"); dumpJB(c, printf, jb);
 
 #define DEBUG_START_SORT_JP                                             \
-  printf("PRE JOINPLAN\n"); dumpJB(printf, jb);
+  printf("PRE JOINPLAN\n"); dumpJB(c, printf, jb);
 #define DEBUG_POST_LHSLESS_SORT                                         \
-  printf("POST LHSLESS JOINPLAN\n"); dumpJB(printf, jb);
+  printf("POST LHSLESS JOINPLAN\n"); dumpJB(c, printf, jb);
 #define DEBUG_JPLEFTJAN                                                 \
-  printf("POST LTUPSORT JOINPLAN\n"); dumpJB(printf, jb);
+  printf("POST LTUPSORT JOINPLAN\n"); dumpJB(c, printf, jb);
 #define DEBUG_JINDTOP                                                   \
-  printf("POST JINDSORT JOINPLAN\n"); dumpJB(printf, jb);
+  printf("POST JINDSORT JOINPLAN\n"); dumpJB(c, printf, jb);
 #define DEBUG_BUILD_JCHAIN                                              \
-  printf("POST buildJoinChain: ord: %d\n", oed); dumpJB(printf, jb);
+  printf("POST buildJoinChain: ord: %d\n", oed); dumpJB(c, printf, jb);
 #define DEBUG_MCI_JI_ADD                                                \
-  printf("post addMCIJoinedIndexAsFilter\n"); dumpJB(printf, jb);
+  printf("post addMCIJoinedIndexAsFilter\n"); dumpJB(c, printf, jb);
 #define DEBUG_ASSIGN_FILTERS                                            \
-  printf("POST assignFiltersToJoinPairs\n"); dumpJB(printf, jb);
+  printf("POST assignFiltersToJoinPairs\n"); dumpJB(c, printf, jb);
 #define DEBUG_DET_CHEAD                                                 \
-  printf("POST determineChainHead\n"); dumpJB(printf, jb);
+  printf("POST determineChainHead\n"); dumpJB(c, printf, jb);
 #define DEBUG_OPT_SELFJ                                                 \
-  printf("FINAL\n"); dumpJB(printf, jb);
+  printf("FINAL\n"); dumpJB(c, printf, jb);
 #define DEBUG_VALIDATE_CHAIN                                            \
-  printf("POST validateChain\n"); dumpJB(printf, jb);
+  printf("POST validateChain\n"); dumpJB(c, printf, jb);
 #define DEBUG_VAL_KLIST                                                 \
   printf("START: validateKlist\n");                                     \
   dumpFL(printf, "\t", "KLIST", *klist); dumpFL(printf, "\t", "FLIST", *flist);
@@ -207,7 +202,7 @@ static bool buildJoinChain(jb_t *jb) {
     li      = listGetIterator(cl, AL_START_HEAD);
     while ((ln = listNext(li)) != NULL) {
         ijp_t *ij = ln->value;
-        memcpy(&newij[i], ij, sizeof(ijp_t)); //dumpIJ(printf, i, ln->value); 
+        memcpy(&newij[i], ij, sizeof(ijp_t));//dumpIJ(c, printf, i, ln->value); 
         i++;
     } listReleaseIterator(li); 
     listRelease(cl);

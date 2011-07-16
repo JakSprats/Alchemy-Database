@@ -39,6 +39,8 @@ void  DXDB_initServerConfig();
 
 void  DXDB_initServer();
 
+void  DXDB_createClient(redisClient *c);
+
 void  DXDB_emptyDb();
 
 rcommand *DXDB_lookupCommand(sds name);

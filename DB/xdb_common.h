@@ -14,6 +14,29 @@
 #define REDIS_BTREE           5
 #define REDIS_LUA_TRIGGER     6
 
+#define bool unsigned char
+
+#define DEFINE_ALCHEMY_HTTP_INFO     \
+  typedef struct alchemy_http_info { \
+      robj *file;                    \
+      bool  mode;                    \
+      bool  ka;                      \
+      bool  get;                     \
+      bool  head;                    \
+      list *req_hdr;                 \
+      list *resp_hdr;                \
+  } alchemy_http_info;
+
+//TODO move this into a single struct, that can be memset(0)ed
+#define ALCHEMY_CLIENT_EXTENSIONS           \
+    struct sockaddr_in  sa;                 \
+    bool                Explain;            \
+    bool                LruColInSelect;     \
+    bool                InternalRequest;    \
+    alchemy_http_info   http;               \
+    int                 LastJTAmatch;       \
+    int                 NumJTAlias;
+
 #define SHARED_OBJ_DECLARATION \
     robj \
     *singlerow,           *inserted,               *upd8ed, \

@@ -50,14 +50,12 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "row.h"
 
-// FROM redis.c
-extern struct redisServer server;
-
-
 extern r_tbl_t  Tbl[MAX_NUM_TABLES];
 extern r_ind_t  Index[MAX_NUM_INDICES];
-extern uchar    OutputMode;
 
+extern uchar    OutputMode; // NOTE: used by OREDIS
+
+// CONSTANT GLOBALS
 extern char OUTPUT_DELIM;
 extern char PLUS;  extern char MINUS;
 extern char MULT;  extern char DIVIDE;

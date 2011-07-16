@@ -42,7 +42,6 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "aobj.h"
 
-
 extern r_tbl_t  Tbl[MAX_NUM_TABLES];
 
 void initAobj(aobj *a) {

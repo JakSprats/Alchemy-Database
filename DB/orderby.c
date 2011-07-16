@@ -41,13 +41,12 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "orderby.h"
 
-/* GLOBALS */
-
 extern r_tbl_t  Tbl[MAX_NUM_TABLES];
 
-uint32 OB_nob   = 0;
-bool   OB_asc  [MAX_ORDER_BY_COLS];
-uchar  OB_ctype[MAX_ORDER_BY_COLS];
+//GLOBALS
+uint32 OB_nob   = 0;                 // TODO push into cswc_t
+bool   OB_asc  [MAX_ORDER_BY_COLS];  // TODO push into cswc_t
+uchar  OB_ctype[MAX_ORDER_BY_COLS];  // TODO push into cswc_t
 
 static float  Fmin = FLT_MIN;
 #define FSIZE sizeof(float)

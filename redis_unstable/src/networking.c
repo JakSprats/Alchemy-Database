@@ -58,6 +58,9 @@ redisClient *createClient(int fd) {
     listSetMatchMethod(c->pubsub_patterns,listMatchObjects);
     listAddNodeTail(server.clients,c);
     initClientMultiState(c);
+#ifdef ALCHEMY_DATABASE
+    DXDB_createClient(c);
+#endif
     return c;
 }
 

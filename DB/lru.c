@@ -44,16 +44,10 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "lru.h"
 
-// FROM redis.c
-extern struct sharedObjectsStruct shared;
-extern struct redisServer server;
-
 // GLOBALS
-
 extern r_tbl_t  Tbl[MAX_NUM_TABLES];
 extern int      Num_indx;
 extern r_ind_t  Index[MAX_NUM_INDICES];
-extern bool     LruColInSelect;
 
 #define DEBUG_GET_LRU \
   printf("t: %u tmod: %u A: %d B: %d\n", \
@@ -107,9 +101,9 @@ void createLruIndex(cli *c) {
     addReply(c, shared.ok);
 }
 void updateLru(cli *c, int tmatch, aobj *apk, uchar *lruc) {
-    if (tmatch == -1)            return; /* from JOIN opSelectOnSort */
+    if (tmatch == -1)      return; /* from JOIN opSelectOnSort */
     if (!Tbl[tmatch].lrud) return;
-    if (LruColInSelect)          return; /* NOTE: otherwise TOO cyclical */
+    if (c->LruColInSelect) return; /* NOTE: otherwise TOO cyclical */
     r_tbl_t *rt = &Tbl[tmatch];
     if (lruc) {
         uint32  oltime = streamLRUToUInt(lruc);

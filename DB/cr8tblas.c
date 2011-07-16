@@ -42,11 +42,11 @@ ALL RIGHTS RESERVED
 #include "colparse.h"
 #include "cr8tblas.h"
 
-
 extern int      Num_tbls       [MAX_NUM_TABLES];
 extern r_tbl_t  Tbl[MAX_NUM_TABLES];
 extern char    *Col_type_defs[];
 
+// CONSTANT GLOBALS
 stor_cmd AccessCommands[NUM_ACCESS_TYPES];
 
 static int  AIdum[1]; /* dummy array of int */
@@ -162,7 +162,7 @@ void createTableSelect(redisClient *c) {
         if (replyIfNestedErr(c, rfc, msg)) {
             ok = createTableFromJoin(c, rfc, qcols, jb.js);
         }
-        destroy_join_block(&jb);
+        destroy_join_block(c, &jb);
     } else  {   /* CREATE TABLE AS SELECT RANGE QUERY */
         cswc_t w; wob_t wb;
         init_check_sql_where_clause(&w, tmatch, wc);

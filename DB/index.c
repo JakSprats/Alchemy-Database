@@ -49,16 +49,10 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "index.h"
 
-// FROM redis.c
-extern struct sharedObjectsStruct shared;
-extern struct redisServer server;
-
 // GLOBALS
-
 extern char    *Col_type_defs[];
 extern r_tbl_t  Tbl[MAX_NUM_TABLES];
 extern ulong    CurrCard;
-extern bool     LruColInSelect;
 
 int     Num_indx;
 r_ind_t Index[MAX_NUM_INDICES];
