@@ -14,17 +14,20 @@
 #define REDIS_BTREE           5
 #define REDIS_LUA_TRIGGER     6
 
-#define bool unsigned char
+#define bool   unsigned char
+#define uint32 unsigned int
 
 #define DEFINE_ALCHEMY_HTTP_INFO     \
   typedef struct alchemy_http_info { \
-      robj *file;                    \
-      bool  mode;                    \
-      bool  ka;                      \
-      bool  get;                     \
-      bool  head;                    \
-      list *req_hdr;                 \
-      list *resp_hdr;                \
+      robj   *file;                  \
+      bool    mode;                  \
+      bool    ka;                    \
+      bool    get;                   \
+      bool    head;                  \
+      uint32  retcode;               \
+      sds     redir;                 \
+      list   *req_hdr;               \
+      list   *resp_hdr;              \
   } alchemy_http_info;
 
 //TODO move this into a single struct, that can be memset(0)ed

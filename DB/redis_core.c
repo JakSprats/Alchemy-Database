@@ -51,6 +51,7 @@ extern char      *WhiteListLua;
 
 /* PROTOTYPES */
 int luaSetHttpResponseHeaderCommand(lua_State *lua);
+int luaSetHttpRedirectCommand(lua_State *lua);
 void scriptingInit(); // from scripting.c
 
 void init_Tbl_and_Index() {
@@ -62,7 +63,7 @@ void init_Tbl_and_Index() {
 
 static bool loadLuaHelperFile(cli *c, char *fname) {
     sds fwpath = sdscatprintf(sdsempty(), "%s%s", Basedir, fname);
-    printf("loadLuaHelperFile: %s\n", fwpath);
+    //printf("loadLuaHelperFile: %s\n", fwpath);
     if (luaL_loadfile(server.lua, fwpath) || lua_pcall(server.lua, 0, 0, 0)) {
         const char *lerr = lua_tostring(server.lua, -1);
         if (c) addReplySds(c, sdscatprintf(sdsempty(),
@@ -77,6 +78,8 @@ static bool loadLuaHelperFile(cli *c, char *fname) {
 bool initLua(cli *c) {
     lua_pushcfunction(server.lua, luaSetHttpResponseHeaderCommand);
     lua_setglobal(server.lua, "SetHttpResponseHeader");
+    lua_pushcfunction(server.lua, luaSetHttpRedirectCommand);
+    lua_setglobal(server.lua, "SetHttpRedirect");
     if                    (!loadLuaHelperFile(c, LUA_INTERNAL_FILE)) return 0;
     if (WhiteListLua    && !loadLuaHelperFile(c, WhiteListLua))      return 0;
     if (LuaIncludeFile  && !loadLuaHelperFile(c, LuaIncludeFile))    return 0;

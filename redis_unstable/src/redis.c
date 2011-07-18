@@ -572,6 +572,8 @@ void updateLRUClock(void) {
 }
 
 int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
+//HACK TODO FIX
+return 100;
     int j, loops = server.cronloops;
     REDIS_NOTUSED(eventLoop);
     REDIS_NOTUSED(id);

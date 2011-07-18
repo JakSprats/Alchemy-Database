@@ -1,0 +1,24 @@
+USERS
+
+User data
+---------
+
+incr global:nextUserId => 1000
+
+username:antirez:id (the numeric ID of the user)
+uid:1000:username (the username of the user)
+uid:1000:password (password of course)
+uid:1000:auth 9458sd893448dfd
+auth:9458sd893448dfd => 1000
+uid:1000:following (set of user ids)
+uid:1000:followers (set of user ids)
+uid:1000:posts (list of posts ids)
+
+UPDATES
+
+incr global:nextPostId => 134
+update:134 id|time|message...
+
+TIMELINE
+
+Just a list of post IDs in global:timeline

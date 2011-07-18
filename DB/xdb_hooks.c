@@ -201,6 +201,7 @@ void DXDB_emptyDb() { //printf("DXDB_emptyDb\n");
 rcommand *DXDB_lookupCommand(sds name) {
     struct redisCommand *cmd = dictFetchValue(server.commands, name);
     if (WebServerMode > 0) {
+        if (!CurrClient) return cmd; // called during load in whitelist
         if (!CurrClient->InternalRequest) {
             if (WS_WL_Broadcast) { // check WHITELISTED IPs
                 unsigned int saddr     = CurrClient->sa.sin_addr.s_addr;
@@ -312,11 +313,7 @@ two_sds *init_two_sds(sds a, sds b) {
   { sds s = sdsnew("HTTP/1.0 405 Method Not Allowed\r\n\r\n"); \
   SEND_REPLY_FROM_STRING(s) }
 
-void send_http_200_reponse_header(cli *c, sds body) {
-    sds s = sdscatprintf(sdsempty(), 
-                        "HTTP/1.0 200 OK\r\nContent-length: %ld\r\n%s",
-                         sdslen(body), 
-                         c->http.ka ? "Connection: Keep-Alive\r\n": "");
+static void send_http_response_header_extended(cli *c, sds s) {
     if (c->http.resp_hdr) {
         listNode *ln;
         listIter *li = listGetIterator(c->http.resp_hdr, AL_START_HEAD);
@@ -327,6 +324,24 @@ void send_http_200_reponse_header(cli *c, sds body) {
     }
     s = sdscatlen(s, "\r\n", 2);
     SEND_REPLY_FROM_STRING(s)
+}
+static void send_http_200_reponse_header(cli *c, sds body) {
+    sds s = sdscatprintf(sdsempty(), 
+                        "HTTP/1.0 200 OK\r\nContent-length: %ld\r\n%s",
+                         sdslen(body), 
+                         c->http.ka ? "Connection: Keep-Alive\r\n": "");
+    send_http_response_header_extended(c, s);
+}
+static void send_http_302_reponse_header(cli *c) {
+    sds s = sdscatprintf(sdsempty(), 
+                        "HTTP/1.0 302 Found\r\nLocation: %s\r\n%s",
+                         c->http.redir,
+                         c->http.ka ? "Connection: Keep-Alive\r\n": "");
+    send_http_response_header_extended(c, s);
+}
+void send_http_reponse_header(cli *c, sds body) {
+  if (c->http.retcode == 200) send_http_200_reponse_header(c, body);
+  else                        send_http_302_reponse_header(c);
 }
 
 static void addHttpResponseHeader(sds name, sds value) {
@@ -348,6 +363,15 @@ int luaSetHttpResponseHeaderCommand(lua_State *lua) {
     addHttpResponseHeader(a, b);
     return 0;
 }
+int luaSetHttpRedirectCommand(lua_State *lua) {
+    int argc = lua_gettop(lua);
+    if (argc != 1 || !lua_isstring(lua, 1)) {
+        luaPushError(lua, "Lua SetHttpRedirect() takes 1 string arg");
+        return 1;
+    }
+    CurrClient->http.retcode = 302;
+    CurrClient->http.redir   = sdsnew(lua_tostring(lua, 1));
+}
 
 void DXDB_createClient(redisClient *c) { //printf("DXDB_createClient\n");
     c->NumJTAlias      =  0;
@@ -356,6 +380,7 @@ void DXDB_createClient(redisClient *c) { //printf("DXDB_createClient\n");
     c->Explain         =  0;
     c->InternalRequest =  0;
     memset(&c->http, 0, sizeof(alchemy_http_info));
+    c->http.retcode    = 200; // DEFAULT to HTTP 200 OK
 }
 
 int   DXDB_processCommand(redisClient *c) { //printf("DXDB_processCommand\n");
@@ -404,8 +429,10 @@ bool  DXDB_processInputBuffer_ZeroArgs(redisClient *c) {//HTTP Request End-Delim
                 if ((o = lookupKeyRead(c->db, c->http.file)) == NULL) SEND_404
                 else if (o->type != REDIS_STRING)                     SEND_404
                 else { //NOTE: STATIC expire in 10 years (HARDCODED)
-                    addHttpResponseHeader(sdsnew("ExpiresDefault"),
-                                          sdsnew("access plus 10 years"));
+                    addHttpResponseHeader(sdsnew("Expires"),
+                             sdsnew("Expires=Wed, 09 Jun 2021 10:18:14 GMT;"));
+                    //addHttpResponseHeader(sdsnew("ExpiresDefault"),
+                                          //sdsnew("access plus 10 years"));
                     send_http_200_reponse_header(c, o->ptr);
                     addReply(c, o);
                 }
@@ -426,7 +453,7 @@ bool  DXDB_processInputBuffer_ZeroArgs(redisClient *c) {//HTTP Request End-Delim
                 }
                 if (!luafunc_call(c, argc, rargv)) {
                     robj *resp = luaReplyToHTTPReply(server.lua);
-                    send_http_200_reponse_header(c, resp->ptr);
+                    send_http_reponse_header(c, resp->ptr);
                     if (c->http.get) addReply(c, resp);
                     decrRefCount(resp);
                 }
@@ -704,8 +731,8 @@ static bool luafunc_call(redisClient *c, int argc, robj **argv) {
             lua_settable(server.lua, top);
         }
         lua_setglobal(server.lua, "HTTP_HEADER");
+        lua_newtable(server.lua);
         if (cook) { // POPULATE Lua Global COOKIE[]
-            lua_newtable(server.lua);
             top   = lua_gettop(server.lua);
             li    = listGetIterator(c->http.req_hdr, AL_START_HEAD);
             while((ln = listNext(li)) != NULL) {
@@ -719,8 +746,8 @@ static bool luafunc_call(redisClient *c, int argc, robj **argv) {
                     }
                 }
             }
-            lua_setglobal(server.lua, "COOKIE");
         }
+        lua_setglobal(server.lua, "COOKIE");
     }
 
     c->InternalRequest = 1;

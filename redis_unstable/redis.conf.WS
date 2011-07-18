@@ -417,8 +417,8 @@ basedir ./external/
 #luacronfunc lua_cron
 
 # whitelist.lus defines the "whitelist" module used in webserver_mode
-whitelist_lua whitelist.lua
+whitelist_lua retwis_whitelist.lua
 webserver_mode yes
 webserver_index_function index_page
-webserver_whitelist_address 192.168.1.1
+webserver_whitelist_address 127.0.0.1
 webserver_whitelist_netmask 255.255.255.0
