@@ -171,7 +171,7 @@ void DXDB_initServerConfig() { //printf("DXDB_initServerConfig\n");
     LuaIncludeFile     = NULL;
     WhiteListLua       = NULL;
     LuaCronFunc        = NULL;
-    Basedir            = zstrdup("./");
+    Basedir            = zstrdup("./external/"); // DEFAULT dir for Alchemy
     WebServerMode      = -1;
     WebServerIndexFunc = NULL;
 

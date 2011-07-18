@@ -401,10 +401,9 @@ activerehashing yes
 # include_lua will include lua functions from the specified file
 include_lua example.lua
 
-
 # the file internal.lua is part of the server's core
 # basedir must be set so this file can be loaded on startup
-basedir ./
+basedir ./external/
 
 # outputmode determines how the line protocol looks on replies
 # the default value is "normal" and will return comma delimited rows

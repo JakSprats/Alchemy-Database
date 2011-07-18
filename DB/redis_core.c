@@ -62,7 +62,7 @@ void init_Tbl_and_Index() {
 
 static bool loadLuaHelperFile(cli *c, char *fname) {
     sds fwpath = sdscatprintf(sdsempty(), "%s%s", Basedir, fname);
-    //printf("loadLuaHelperFile: %s\n", fwpath);
+    printf("loadLuaHelperFile: %s\n", fwpath);
     if (luaL_loadfile(server.lua, fwpath) || lua_pcall(server.lua, 0, 0, 0)) {
         const char *lerr = lua_tostring(server.lua, -1);
         if (c) addReplySds(c, sdscatprintf(sdsempty(),
