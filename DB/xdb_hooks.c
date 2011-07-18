@@ -329,20 +329,23 @@ void send_http_200_reponse_header(cli *c, sds body) {
     SEND_REPLY_FROM_STRING(s)
 }
 
+static void addHttpResponseHeader(sds name, sds value) {
+    if (!CurrClient->http.resp_hdr) {
+        CurrClient->http.resp_hdr       = listCreate(); 
+        CurrClient->http.resp_hdr->free = free_two_sds;
+    }
+    two_sds *ss = init_two_sds(name, value);
+    listAddNodeTail(CurrClient->http.resp_hdr, ss);// Store RESP Headers in List
+}
 int luaSetHttpResponseHeaderCommand(lua_State *lua) {
     int argc = lua_gettop(lua);
     if (argc != 2 || !lua_isstring(lua, 1) || !lua_isstring(lua, 2)) {
         luaPushError(lua, "Lua SetHttpResponseHeader() takes 2 string args");
         return 1;
     }
-    if (!CurrClient->http.resp_hdr) {
-        CurrClient->http.resp_hdr       = listCreate(); 
-        CurrClient->http.resp_hdr->free = free_two_sds;
-    }
-    sds      a  = sdsnew(lua_tostring(lua, 1));
-    sds      b  = sdsnew(lua_tostring(lua, 2));
-    two_sds *ss = init_two_sds(a, b);
-    listAddNodeTail(CurrClient->http.resp_hdr, ss);// Store RESP Headers in List
+    sds a    = sdsnew(lua_tostring(lua, 1));
+    sds b    = sdsnew(lua_tostring(lua, 2));
+    addHttpResponseHeader(a, b);
     return 0;
 }
 
@@ -400,7 +403,9 @@ bool  DXDB_processInputBuffer_ZeroArgs(redisClient *c) {//HTTP Request End-Delim
                 robj *o;
                 if ((o = lookupKeyRead(c->db, c->http.file)) == NULL) SEND_404
                 else if (o->type != REDIS_STRING)                     SEND_404
-                else {
+                else { //NOTE: STATIC expire in 10 years (HARDCODED)
+                    addHttpResponseHeader(sdsnew("ExpiresDefault"),
+                                          sdsnew("access plus 10 years"));
                     send_http_200_reponse_header(c, o->ptr);
                     addReply(c, o);
                 }

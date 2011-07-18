@@ -35,3 +35,12 @@ function login(user, passwd)
     return '<html>ERROR: USER: "' .. user .. '" login error</html>\n';
   end
 end
+
+function show_keys() 
+  local keys = redis('keys', '*');
+  local html = '';
+  for k,v in pairs(keys) do
+    html = html .. "key: " .. k .. " value: " .. v .. "\n";
+  end
+  return html;
+end
