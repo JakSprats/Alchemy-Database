@@ -730,10 +730,14 @@ static bool luafunc_call(redisClient *c, int argc, robj **argv) {
         listIter *li   = listGetIterator(c->http.req_hdr, AL_START_HEAD);
         while((ln = listNext(li)) != NULL) {// POPULATE Lua Global HTTP_HEADER[]
             two_sds *ss = ln->value;
-            lua_pushstring(server.lua, ss->a);
-            if (!strcasecmp(ss->a, "cookie:")) cook = 1;
-            lua_pushstring(server.lua, ss->b);
-            lua_settable(server.lua, top);
+            char *cln = strchr(ss->a, ':');
+            if (cln) { // no colon -> IGNORE, dont include colon
+                *cln = '\0';
+                if (!strcasecmp(ss->a, "cookie")) cook = 1;
+                lua_pushstring(server.lua, ss->a);
+                lua_pushstring(server.lua, ss->b);
+                lua_settable(server.lua, top);
+            }
         }
         lua_setglobal(server.lua, "HTTP_HEADER");
         lua_newtable(server.lua);
@@ -742,7 +746,7 @@ static bool luafunc_call(redisClient *c, int argc, robj **argv) {
             li    = listGetIterator(c->http.req_hdr, AL_START_HEAD);
             while((ln = listNext(li)) != NULL) {
                 two_sds *ss = ln->value;
-                if (!strcasecmp(ss->a, "cookie:")) {
+                if (!strcasecmp(ss->a, "cookie")) {
                     char *eq = strchr(ss->b, '=');
                     if (eq) {
                         *eq = '\0'; lua_pushstring(server.lua, ss->b);

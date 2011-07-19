@@ -6,7 +6,7 @@ end
 
 function debug() 
   local text = '';
-  text = text .. 'User-Agent: ' .. HTTP_HEADER['User-Agent:'] .. '   ';
+  text = text .. 'User-Agent: ' .. HTTP_HEADER['User-Agent'] .. '   ';
   text = text .. 'Cookie: mycookie: ' .. COOKIE['mycookie'];
   SetHttpResponseHeader('Set-Cookie', 'mycookie=NEW');
   SetHttpResponseHeader('Set-Cookie', 'cookie2=NEWER');
