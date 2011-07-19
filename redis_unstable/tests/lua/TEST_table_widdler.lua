@@ -16,7 +16,7 @@ function init_ten_mill_mod100()
     drop_index(indx);
     create_table(tbl, "id INT, fk INT, i INT");
     create_index(indx, tbl, 'fk');
-    local icmd = 'taskset -c  1  ../../src/xdb-gen-benchmark -q -c ' .. c ..
+    local icmd = 'taskset -c  1  ../../src/alchemy-gen-benchmark -q -c ' .. c ..
                  ' -n ' .. req ..  ' -s 1 -m ' .. mod .. ' -A OK ' .. 
                  ' -Q INSERT INTO ten_mill_mod100 VALUES ' .. 
                  '"(00000000000001,00000000000001,1)" > /dev/null';
@@ -33,11 +33,11 @@ end
 
 function widdle_delete_pk()
     print ('RUNNING TEST: widdle_delete_pk');
-    local cnt = scanselect_count(tbl);
+    local cnt = scan_count(tbl);
     print ('table cnt: ' .. cnt);
     while (cnt > 0) do
         math.randomseed(socket.gettime()*10000)
-        local res = scanselect("id", tbl, "ORDER BY id LIMIT 1");
+        local res = scan("id", tbl, "ORDER BY id LIMIT 1");
         local pks = res[1];
         local r   = math.floor(math.random() * cnt);
         local pke = pks + r;
@@ -48,7 +48,7 @@ function widdle_delete_pk()
         delete(tbl, wc);
         is_external.print_diff_time('delete: (' .. wc .. ')', x);
         local new_cnt = cnt - (pke - pks) - 1;
-        cnt = scanselect_count(tbl);
+        cnt = scan_count(tbl);
         if (cnt ~= new_cnt) then
             print ('expected: ' .. new_cnt .. ' got: ' .. cnt);
         end
@@ -57,7 +57,7 @@ end
 
 function widdle_update_FK()
     print ('RUNNING TEST: widdle_update_FK');
-    local cnt        = scanselect_count(tbl);
+    local cnt        = scan_count(tbl);
     print ('table cnt: ' .. cnt);
     local val_list   = "i = 1";
     local wc         = "id BETWEEN 1 AND " .. cnt; -- ENTIRE TABLE
@@ -82,8 +82,8 @@ function widdle_update_FK()
 
         local ncnt = cnt - (((fke - fks) + 1) * cnt_per_fk);
         x          = socket.gettime()*1000;
-        cnt        = scanselect_count(tbl, "i = 1");  -- not-UPDATEd rows
-        is_external.print_diff_time('SCANSELECT: (i = 99)', x);
+        cnt        = scan_count(tbl, "i = 1");  -- not-UPDATEd rows
+        is_external.print_diff_time('SCAN: (i = 99)', x);
         if ((ncnt - cnt) > variance) then
             print ('expected: ' .. ncnt .. ' got: ' .. cnt);
         end
@@ -94,7 +94,7 @@ end
 
 function widdle_delete_FK()
     print ('RUNNING TEST: widdle_delete_FK');
-    local cnt        = scanselect_count(tbl);
+    local cnt        = scan_count(tbl);
     print ('table cnt: ' .. cnt);
     local cnt_per_fk = math.floor(cnt / mod);
     -- cnt never == req, Btree not 100% balanced, some FKs have more PKs
@@ -114,7 +114,7 @@ function widdle_delete_FK()
         delete(tbl, wc);
         is_external.print_diff_time('delete: (' .. wc .. ')', x);
         local new_cnt = cnt - (((fke - fks) + 1) * cnt_per_fk);
-        cnt = scanselect_count(tbl);
+        cnt = scan_count(tbl);
         if ((new_cnt - cnt) > variance) then
             print ('expected: ' .. new_cnt .. ' got: ' .. cnt);
         end

@@ -21,7 +21,7 @@ function init_ten_mill_mod100()
     drop_index(indx);
     create_table(tbl, "id INT, fk INT, i INT");
     create_index(indx, tbl, 'fk');
-    local icmd = 'taskset -c  1  ../../src/xdb-gen-benchmark -q -c ' .. c ..
+    local icmd = 'taskset -c  1  ../../src/alchemy-gen-benchmark -q -c ' .. c ..
                  ' -n ' .. req ..  ' -s 1 -m ' .. mod .. ' -A OK ' ..
                  ' -Q INSERT INTO ten_mill_mod100 VALUES ' ..
                  '"(00000000000001,00000000000001,1)" > /dev/null';
@@ -37,9 +37,9 @@ function init_ten_mill_mod100()
 end
 
 function validate_updated_row_count()
-    local nrows = scanselect_count(tbl, "i = 1"); 
+    local nrows = scan_count(tbl, "i = 1"); 
     _print ('nrows: (WHERE fk=1) i = 4: ' .. nrows);
-    nrows       = scanselect_count(tbl, "i = 99"); 
+    nrows       = scan_count(tbl, "i = 99"); 
     _print ('nrows: (WHERE fk=1) i = 99: ' .. nrows);
 end
 
@@ -52,17 +52,19 @@ function large_update_test()
     _print ('nrows: TOTAL: (WHERE fk=1): ' .. nrows .. "\n");
     
     print ("set i back to 1");
-    updated_rows       = update(tbl, "i = 1", wc_oby);
+    updated_rows       = update(tbl, "i = 1", wc);
+    validate_updated_row_count()
 
     local x            = socket.gettime()*1000;
     _print ('SINGLE UPDATE: set i=99 WHERE fk = 1');
-    local updated_rows = update(tbl, "i = 99", wc_oby);
+    local updated_rows = update(tbl, "i = 99", wc);
     is_external.print_diff_time('SINGLE UPDATE: set i=99 WHERE fk = 1', x);
     
     validate_updated_row_count()
     
     print ("set i back to 1");
     updated_rows       = update(tbl, "i = 1", wc_oby);
+    validate_updated_row_count()
 
     updated_rows       = lim;
     unique_cursor_name = "update_cursor_for_ten_mill_modTEN_fk";
@@ -107,7 +109,7 @@ function large_delete_test()
 end
 
 if is_external.yes == 1 then
-    init_ten_mill_mod100();
+    --init_ten_mill_mod100();
     large_update_test();
-    large_delete_test();
+    --large_delete_test();
 end

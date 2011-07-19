@@ -384,7 +384,7 @@ void DXDB_createClient(redisClient *c) { //printf("DXDB_createClient\n");
     c->LruColInSelect  =  0;
     c->Explain         =  0;
     c->InternalRequest =  0;
-    memset(&c->http, 0, sizeof(alchemy_http_info));
+    bzero(&c->http, sizeof(alchemy_http_info));
     c->http.retcode    = 200; // DEFAULT to "HTTP 200 OK"
 }
 

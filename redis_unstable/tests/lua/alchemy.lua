@@ -78,23 +78,23 @@ function select_count(...)
   return redis('SELECT', 'COUNT(*)', "FROM", args[1], "WHERE", args[2]);
 end
 
-function scanselect(...)
+function scan(...)
   local args = {...};
   argCount = #args;
   if (argCount == 2) then
-    return redis('SCANSELECT', args[1], "FROM", args[2]);
+    return redis('SCAN', args[1], "FROM", args[2]);
   else
-    return redis('SCANSELECT', args[1], "FROM", args[2], "WHERE", args[3]);
+    return redis('SCAN', args[1], "FROM", args[2], "WHERE", args[3]);
   end
 end
-function scanselect_count(...)
+function scan_count(...)
   local args = {...};
   argCount = #args;
   local cnt;
   if (argCount == 1) then
-    return redis('SCANSELECT', "COUNT(*)", "FROM", args[1]);
+    return redis('SCAN', "COUNT(*)", "FROM", args[1]);
   else
-    return redis('SCANSELECT', "COUNT(*)", "FROM", args[1], "WHERE", args[2]);
+    return redis('SCAN', "COUNT(*)", "FROM", args[1], "WHERE", args[2]);
   end
 end
 

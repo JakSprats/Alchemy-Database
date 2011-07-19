@@ -8,8 +8,3 @@ TODO LIST:
   B.) Prohibit updates on Uniquely Indexed Columns -> Constraint Violation
 
   C.) ShortStack, enable gzip response compression (... but adds bloat)
-
-FIX:
-  A.) Joins are broken - happened during redis_unstable port
-  B.) Cursers are broken - happened during redis_unstable port
-

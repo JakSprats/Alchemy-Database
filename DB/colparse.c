@@ -128,8 +128,7 @@ void incrOffsetVar(redisClient *c, wob_t *wb, long incr) {
         lolo  value = (wb->ofst == -1) ? (lolo)incr :
                                          (lolo)wb->ofst + (lolo)incr;
         robj *val   = createStringObjectFromLongLong(value);
-        int   ret   = dictAdd(c->db->dict, ovar, val);
-        if (ret == DICT_ERR) dictReplace(c->db->dict, ovar, val);
+        setKey(c->db, ovar, val);
     }
     server.dirty++;
 }

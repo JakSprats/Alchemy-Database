@@ -61,11 +61,11 @@ function basic_test()
     local t     = select('*', 'logical_test_fk', 'fk = 4');
     for i,v in ipairs(t) do _print(i,v); end
     
-    _print ('SCANSELECT * FROM logical_test_fk');
-    local t     = scanselect('*', 'logical_test_fk');
+    _print ('SCAN * FROM logical_test_fk');
+    local t     = scan('*', 'logical_test_fk');
     for i,v in ipairs(t) do _print(i,v); end
-    _print ('SCANSELECT * FROM logical_test_fk WHERE count = 33');
-    local t     = scanselect('*', 'logical_test_fk', 'count = 33');
+    _print ('SCAN * FROM logical_test_fk WHERE count = 33');
+    local t     = scan('*', 'logical_test_fk', 'count = 33');
     for i,v in ipairs(t) do _print(i,v); end
     
     -- UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE
@@ -73,8 +73,8 @@ function basic_test()
     _print ('UPDATE logical_test_fk SET count = 99 WHERE fk=4')
     local t     = update('logical_test_fk', 'count = 99', 'fk=4');
     _print (t);
-    _print ('SCANSELECT * FROM logical_test_fk');
-    local t     = scanselect('*', 'logical_test_fk');
+    _print ('SCAN * FROM logical_test_fk');
+    local t     = scan('*', 'logical_test_fk');
     for i,v in ipairs(t) do _print(i,v); end
     
     -- DELETE DELETE DELETE DELETE DELETE DELETE DELETE DELETE
@@ -82,8 +82,8 @@ function basic_test()
     _print ('DELETE FROM logical_test_fk WHERE fk=5')
     local t     = delete('logical_test_fk', 'fk=5');
     _print (t);
-    _print ('SCANSELECT * FROM logical_test_fk');
-    local t     = scanselect('*', 'logical_test_fk');
+    _print ('SCAN * FROM logical_test_fk');
+    local t     = scan('*', 'logical_test_fk');
     for i,v in ipairs(t) do _print(i,v); end
     
     -- DUMP DUMP DUMP DUMP DUMP DUMP DUMP DUMP DUMP DUMP DUMP

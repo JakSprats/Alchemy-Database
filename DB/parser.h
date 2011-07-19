@@ -59,6 +59,8 @@ char *str_next_unescaped_chr(char *beg, char *s, int x);
 char *strn_next_unescaped_chr(char *beg, char *s, int x, int len);
 char *str_matching_end_paren(char *beg);
 
+#define ISDIGIT(c) (c >= 48 && c <= 57)
+#define ISALPHA(c) ((c >= 65 && c <= 90) || (c >= 97 && c <= 122))
 #define ISBLANK(c) (c == 32 || c == 9)
 #define SKIP_SPACES(tok)     while (ISBLANK(*tok)) tok++;
 #define REV_SKIP_SPACES(tok) while (ISBLANK(*tok) || !*tok) tok--;

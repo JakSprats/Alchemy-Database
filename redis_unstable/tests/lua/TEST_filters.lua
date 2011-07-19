@@ -19,7 +19,7 @@ function init_customer_profile()
     create_index("index_tsub_subj", tbl, "subject_id");
     create_index("index_tsub_corp", tbl, "corr_id");
 
-    local icmd = 'taskset -c  1 ../../src/xdb-gen-benchmark -q -c ' .. c ..
+    local icmd = 'taskset -c  1 ../../src/alchemy-gen-benchmark -q -c ' .. c ..
                  ' -n ' .. req ..
                  ' -s 1 -m ' .. mods .. ' -A OK ' .. 
                  ' -Q INSERT INTO customer_profile VALUES ' .. 
@@ -215,17 +215,17 @@ function validate_select_filter()
 end
 
 function validate_scan_filter()
-    local ocnt = scanselect_count(tbl, "cp_name IN ( 'pagename_00000000000001', 'pagename_00000000000002')");
-    local cnt  = scanselect_count(tbl, "cp_name IN ( 'pagename_00000000000001', 'pagename_00000000000002') AND corr_id IN ( 1, 2, 3, 4, 5, 6, 7, 8 , 9, 10 ,11, 12, 13, 14, 15, 16)");
+    local ocnt = scan_count(tbl, "cp_name IN ( 'pagename_00000000000001', 'pagename_00000000000002')");
+    local cnt  = scan_count(tbl, "cp_name IN ( 'pagename_00000000000001', 'pagename_00000000000002') AND corr_id IN ( 1, 2, 3, 4, 5, 6, 7, 8 , 9, 10 ,11, 12, 13, 14, 15, 16)");
     if (cnt ~= ocnt) then
         print ('ERROR: expected ' .. ocnt .. ' from "cp_name IN ( \'pagename_00000000000001\', \'pagename_00000000000002\') AND corr_id IN ( 1, 2, 3, 4, 5, 6, 7, 8 , 9, 10 ,11, 12, 13, 14, 15, 16)", got: ' .. cnt)
     end
-    local lcnt = scanselect_count(tbl, "cp_name IN ( 'pagename_00000000000001', 'pagename_00000000000002') AND corr_id = 16");
+    local lcnt = scan_count(tbl, "cp_name IN ( 'pagename_00000000000001', 'pagename_00000000000002') AND corr_id = 16");
     local ecnt = 0;
     local in_s = '';
     for m = 2, 16 do
         in_s = in_s .. m .. ', ';
-        cnt  = scanselect_count(tbl, "cp_name IN ( 'pagename_00000000000001', 'pagename_00000000000002') AND corr_id IN ( " .. in_s .. ")");
+        cnt  = scan_count(tbl, "cp_name IN ( 'pagename_00000000000001', 'pagename_00000000000002') AND corr_id IN ( " .. in_s .. ")");
         if (math.abs(cnt - (ecnt + lcnt)) > 2) then
             print ("ERROR: validate_scan_filter: IN ( " .. in_s .. ") cnt: " .. cnt .. " ecnt: " .. ecnt .. " lcnt: " .. lcnt .. " (ecnt + lcnt): " .. (ecnt + lcnt));
         end

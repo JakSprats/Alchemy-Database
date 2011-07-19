@@ -9,7 +9,7 @@ function init_memleak_tbl()
     drop_table(tbl);
     create_table(tbl, "id INT, fk INT, msg TEXT");
     create_index("ind_ml_p", tbl, "fk");
-    local icmd = 'taskset -c  1 ../../src/xdb-gen-benchmark -q -c ' .. c ..
+    local icmd = 'taskset -c  1 ../../src/alchemy-gen-benchmark -q -c ' .. c ..
                  ' -n ' .. req ..
                  ' -s 1 -A OK ' .. 
                  ' -Q INSERT INTO memleak VALUES ' .. 

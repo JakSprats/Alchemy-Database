@@ -19,7 +19,7 @@ function init_ten_mill_mod100()
     drop_index(indx);
     create_table(tbl, "id INT, fk INT, i INT");
     create_index(indx, tbl, 'fk');
-    local icmd = 'taskset -c  1  ../../src/xdb-gen-benchmark -q -c ' .. c ..
+    local icmd = 'taskset -c  1  ../../src/alchemy-gen-benchmark -q -c ' .. c ..
                  ' -n ' .. req ..  ' -s 1 -m ' .. mod .. ' -A OK ' ..
                  ' -Q INSERT INTO ten_mill_mod100 VALUES ' ..
                  '"(00000000000001,00000000000001,1)" > /dev/null';

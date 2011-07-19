@@ -34,7 +34,7 @@ end
 
 function test_mult_i_k()
     local i_k = {1,2,3,4,6,7,8,9,5};
-    local res = scanselect('id', tbl, 'ORDER BY i,k');
+    local res = scan('id', tbl, 'ORDER BY i,k');
     if (check_equals(i_k, res)) then
         print ("TEST: test_mult_i_k: OK");
     end
@@ -42,7 +42,7 @@ end
 
 function test_mult_k_l()
     local i_k = {7,8,9,6,5,3,4,1,2};
-    local res = scanselect('id', tbl, 'ORDER BY k,l');
+    local res = scan('id', tbl, 'ORDER BY k,l');
     if (check_equals(i_k, res)) then
         print ("TEST: test_mult_K_l: OK");
     end
@@ -50,7 +50,7 @@ end
 
 function test_mult_kdesc_l()
     local i_k = {5,3,4,1,2,7,8,9,6};
-    local res = scanselect('id', tbl, 'ORDER BY k DESC,l');
+    local res = scan('id', tbl, 'ORDER BY k DESC,l');
     if (check_equals(i_k, res)) then
         print ("TEST: test_mult_Kdesc_l: OK");
     end
@@ -58,7 +58,7 @@ end
 
 function test_mult_kdesc_jdesc()
     local i_k = {5,3,4,1,2,7,8,9,6};
-    local res = scanselect('id', tbl, 'ORDER BY k DESC,j DESC');
+    local res = scan('id', tbl, 'ORDER BY k DESC,j DESC');
     if (check_equals(i_k, res)) then
         print ("TEST: test_mult_Kdesc_jdesc: OK");
     end
@@ -66,7 +66,7 @@ end
 
 function test_mult_i_j_m()
     local i_k = {1,2,3,4,6,5,7,8,9};
-    local res = scanselect('id', tbl, 'ORDER BY i,j,m');
+    local res = scan('id', tbl, 'ORDER BY i,j,m');
     if (check_equals(i_k, res)) then
         print ("TEST: test_mult_i_j_m: OK");
     end
@@ -74,7 +74,7 @@ end
 
 function test_mult_j_mdesc()
     local i_k = {2,1,4,3,5,6,9,8,7};
-    local res = scanselect('id', tbl, 'ORDER BY j,m DESC');
+    local res = scan('id', tbl, 'ORDER BY j,m DESC');
     if (check_equals(i_k, res)) then
         print ("TEST: test_mult_j_mdesc: OK");
     end

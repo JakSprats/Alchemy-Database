@@ -107,7 +107,7 @@ static enum OP findOperator(char *val, uint32 vlen, char **spot) {
 
 /* "OFFSET M" if M is a redis variable, this is a cursor call */
 static bool setOffsetReply(cli *c, wob_t *wb, char *nextp) {
-    if (isalpha(*nextp)) { /* OFFSET "var" - used in cursors */
+    if (ISALPHA(*nextp)) { /* OFFSET "var" - used in cursors */
         int   len  = get_token_len(nextp);
         robj *ovar = createStringObject(nextp, len);
         wb->ovar   = sdsdup(ovar->ptr);
@@ -333,7 +333,7 @@ static bool parseWC_IN(cli *c, char *tok, list **inl, uchar ctype, char **fin) {
     bool piped = 0;
     tok++;
     SKIP_SPACES(tok)
-    if (*tok != '\'' && !isdigit(*tok)) piped = 1;
+    if (*tok != '\'' && !ISDIGIT(*tok)) piped = 1;
     if (piped) {
         char *s    = tok;
         int   slen = end - s;
@@ -449,7 +449,7 @@ static uchar parseWCTokRelation(cli *c,   cswc_t *w,   char  *token, char **fin,
 
 static bool addIndexes2Join(redisClient *c, f_t *flt, jb_t *jb) {
     init_ijp(&jb->ij[jb->n_jind]);
-    if (flt->key && !flt->iss && isalpha(*flt->key)) {   /* JOIN INDEX */
+    if (flt->key && !flt->iss && ISALPHA(*flt->key)) {   /* JOIN INDEX */
         if (flt->op != EQ) { addReply(c, shared.join_noteq); return 0; }
         f_t f2; initFilter(&f2); /* NOTE f2 does not need to be released */
         if (!parseInumTblCol(c, flt->key, sdslen(flt->key), &f2)) return 0;

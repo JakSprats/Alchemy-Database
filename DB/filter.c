@@ -52,7 +52,6 @@ void initFilter(f_t *flt) {
     flt->tmatch = -1;
     flt->cmatch = -1;
     flt->op     = NONE;
-    flt->iss    = 0;
     initAobj(&flt->akey);
     initAobj(&flt->alow);
     initAobj(&flt->ahigh);

@@ -88,11 +88,11 @@ Redis.define_command('select', {
     client.requests.multibulk(client, command, arguments)
   end
 })
-Redis.define_command('scanselect', {
+Redis.define_command('scan', {
   request = function(client, command, ...)
     local args, arguments = {...}, {}
     if #args < 2 then
-      print ('Usage: scanselect(cols, tables, whereclause)');
+      print ('Usage: scan(cols, tables, whereclause)');
       return false;
     end
     table.insert(arguments, args[1]);
@@ -212,11 +212,11 @@ end
 function select_count(...)
   return redis:select('COUNT(*)', ...);
 end
-function scanselect(...)
-  return redis:scanselect(...);
+function scan(...)
+  return redis:scan(...);
 end
-function scanselect_count(...)
-  return redis:scanselect('COUNT(*)', ...);
+function scan_count(...)
+  return redis:scan('COUNT(*)', ...);
 end
 
 function delete(tname, where_clause)
