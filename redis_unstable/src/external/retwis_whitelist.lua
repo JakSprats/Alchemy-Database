@@ -55,7 +55,7 @@ end
 function create_navbar()
   output('<div id="navbar"> <a href="/index_page">home</a> | <a href="/timeline">timeline</a>');
   if (isLoggedIn()) then
-    output('| <a href="logout">logout</a>');
+    output('| <a href="/logout">logout</a>');
   end
   output('</div>');
 end
@@ -73,7 +73,7 @@ output([[<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR
 <body>
 <div id="page">
 <div id="header">
-<a href="/"><img style="border:none" src="/STATIC/logo.png" width="192" height="85" alt="Retwis"></a>]]);
+<img style="border:none" src="/STATIC/logo.png" width="192" height="85" alt="Retwis">]]);
 create_navbar();
 output('</div>');
 end
@@ -136,7 +136,7 @@ function showPost(id)
   local elapsed  = strElapsed(time);
   local userlink = 
   output('<div class="post">' ..
-         "<a class=\"username\" href=\"profile/" .. username .. "\">" ..
+         "<a class=\"username\" href=\"/profile/" .. username .. "\">" ..
            username .. "</a>" ..
          ' ' .. post .."<br>" .. '<i>posted '..
          elapsed ..' ago via web</i></div>');
@@ -181,7 +181,7 @@ function showLastUsers()
   local users = redis("sort", "global:users", "GET", "uid:*:username", "DESC", "LIMIT", 0, 10);
   output("<div>");
   for k,v in pairs(users) do
-    output("<a class=\"username\" href=\"profile/" .. v .. "\">" .. v .. "</a> ");
+    output("<a class=\"username\" href=\"/profile/" .. v .. "\">" .. v .. "</a> ");
   end
   output("</div><br>");
 end

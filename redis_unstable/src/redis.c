@@ -572,8 +572,6 @@ void updateLRUClock(void) {
 }
 
 int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
-//HACK TODO FIX
-return 100;
     int j, loops = server.cronloops;
     REDIS_NOTUSED(eventLoop);
     REDIS_NOTUSED(id);
@@ -1881,6 +1879,9 @@ int main(int argc, char **argv) {
         if (rdbLoad(server.dbfilename) == REDIS_OK)
             redisLog(REDIS_NOTICE,"DB loaded from disk: %.3f seconds",(float)(ustime()-start)/1000000);
     }
+#ifdef ALCHEMY_DATABASE
+    DXDB_main();
+#endif
     if (server.ipfd > 0)
         redisLog(REDIS_NOTICE,"The server is now ready to accept connections on port %d", server.port);
     if (server.sofd > 0)

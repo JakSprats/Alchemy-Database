@@ -195,6 +195,9 @@ int luaRedisCommand(lua_State *lua) {
     for (j = 0; j < c->argc; j++)
         decrRefCount(c->argv[j]);
     zfree(c->argv);
+#ifdef ALCHEMY_DATABASE
+    c->argc = 0;
+#endif
 
     return 1;
 }

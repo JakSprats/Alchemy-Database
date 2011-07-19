@@ -86,6 +86,7 @@ int *getKeysUsingCommandTable(rcommand *cmd, robj **argv, int argc, int *nkeys);
  // from scripting.c
 void luaReplyToRedisReply(redisClient *c, lua_State *lua);
 void luaPushError(lua_State *lua, char *error);
+void luaMaskCountHook(lua_State *lua, lua_Debug *ar);
 
 static bool luafunc_call(redisClient *c, int argc, robj **argv);
 static robj *luaReplyToHTTPReply(lua_State *lua);
@@ -187,10 +188,13 @@ void DXDB_initServer() { //printf("DXDB_initServer\n");
     initAccessCommands();
     init_six_bit_strings();
     init_Tbl_and_Index();
-    if (!initLua(NULL)) exit(-1);
     CurrClient     = NULL;
     CurrCard       = 0;
     Operations     = 0;
+}
+
+void DXDB_main() { //NOTE: must come after rdbLoad()
+    if (!initLua(NULL)) exit(-1);
 }
 
 void DXDB_emptyDb() { //printf("DXDB_emptyDb\n");
@@ -286,19 +290,18 @@ typedef struct two_sds {
   sds a;
   sds b;
 } two_sds;
-
+two_sds *init_two_sds(sds a, sds b) {
+    two_sds *ss = malloc(sizeof(two_sds));
+    ss->a       = sdsdup(a);
+    ss->b       = sdsdup(b);
+    return ss;
+}
 void free_two_sds(void *v) {
     if (!v) return;
     two_sds *ss = (two_sds *)v;
     sdsfree(ss->a);
     sdsfree(ss->b);
     free(ss);
-}
-two_sds *init_two_sds(sds a, sds b) {
-    two_sds *ss = malloc(sizeof(two_sds));
-    ss->a       = sdsdup(a);
-    ss->b       = sdsdup(b);
-    return ss;
 }
 
 #define SEND_REPLY_FROM_STRING(s)                 \
@@ -338,8 +341,9 @@ static void send_http_302_reponse_header(cli *c) {
                          c->http.redir,
                          c->http.ka ? "Connection: Keep-Alive\r\n": "");
     send_http_response_header_extended(c, s);
+    sdsfree(c->http.redir); c->http.redir = NULL; // DESTROYED 079
 }
-void send_http_reponse_header(cli *c, sds body) {
+static void send_http_reponse_header(cli *c, sds body) {
   if (c->http.retcode == 200) send_http_200_reponse_header(c, body);
   else                        send_http_302_reponse_header(c);
 }
@@ -370,7 +374,8 @@ int luaSetHttpRedirectCommand(lua_State *lua) {
         return 1;
     }
     CurrClient->http.retcode = 302;
-    CurrClient->http.redir   = sdsnew(lua_tostring(lua, 1));
+    CurrClient->http.redir   = sdsnew(lua_tostring(lua, 1)); // DESTROY ME 079
+    return 0;
 }
 
 void DXDB_createClient(redisClient *c) { //printf("DXDB_createClient\n");
@@ -380,7 +385,7 @@ void DXDB_createClient(redisClient *c) { //printf("DXDB_createClient\n");
     c->Explain         =  0;
     c->InternalRequest =  0;
     memset(&c->http, 0, sizeof(alchemy_http_info));
-    c->http.retcode    = 200; // DEFAULT to HTTP 200 OK
+    c->http.retcode    = 200; // DEFAULT to "HTTP 200 OK"
 }
 
 int   DXDB_processCommand(redisClient *c) { //printf("DXDB_processCommand\n");
@@ -430,7 +435,7 @@ bool  DXDB_processInputBuffer_ZeroArgs(redisClient *c) {//HTTP Request End-Delim
                 else if (o->type != REDIS_STRING)                     SEND_404
                 else { //NOTE: STATIC expire in 10 years (HARDCODED)
                     addHttpResponseHeader(sdsnew("Expires"),
-                             sdsnew("Expires=Wed, 09 Jun 2021 10:18:14 GMT;"));
+                             sdsnew("Wed, 09 Jun 2021 10:18:14 GMT;"));
                     //addHttpResponseHeader(sdsnew("ExpiresDefault"),
                                           //sdsnew("access plus 10 years"));
                     send_http_200_reponse_header(c, o->ptr);
@@ -750,17 +755,28 @@ static bool luafunc_call(redisClient *c, int argc, robj **argv) {
         lua_setglobal(server.lua, "COOKIE");
     }
 
+    // Set hook to stop script execution if it takes too long
+    // NOTE: hooks degrade performance
+    if (server.lua_time_limit > 0) {
+        lua_sethook(server.lua, luaMaskCountHook, LUA_MASKCOUNT, 100000);
+        server.lua_time_start = ustime() / 1000;
+    } else {
+        lua_sethook(server.lua,luaMaskCountHook, 0, 0);
+    }
+
+    /* Select the right DB in the context of the Lua client */
+    selectDb(server.lua_client, c->db->id);
     c->InternalRequest = 1;
     int ret = lua_pcall(server.lua, (argc - 2), 1, 0);
     c->InternalRequest = 0;
+    selectDb(c, server.lua_client->db->id); /* set DB ID from Lua client */
     if (ret) {
         sds err = sdscatprintf(sdsempty(), "Error running script (%s): %s\n",
                                             fname, lua_tostring(server.lua,-1));
         if (c->http.mode) {
             send_http_200_reponse_header(c, err);
-            robj *r = createObject(REDIS_STRING, err);
-            addReply(c, r);
-            decrRefCount(r);
+            SEND_REPLY_FROM_STRING(err);
+            sdsfree(err);
         } else {
             addReplyErrorFormat(c, "%s", err);
         }
@@ -771,7 +787,6 @@ static bool luafunc_call(redisClient *c, int argc, robj **argv) {
 }
 void luafuncCommand(redisClient *c) {
     if (luafunc_call(c, c->argc, c->argv)) return;
-    selectDb(c, server.lua_client->db->id); /* set DB ID from Lua client */
     luaReplyToRedisReply(c, server.lua);
 }
 
