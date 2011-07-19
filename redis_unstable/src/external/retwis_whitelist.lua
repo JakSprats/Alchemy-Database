@@ -1,4 +1,4 @@
-
+-- Retwis for Alchemy's Short Stack - about 400 lines
 function load_image(ifile, name)
   local inp = assert(io.open(ifile, "rb"))
   local data = inp:read("*all")
@@ -19,43 +19,49 @@ function getrand() -- NOTE: this is lazy, should be more random
 end
 
 function explode(div,str) -- credit: http://richard.warburton.it
-  if (div=='') then return false end
+  if (div == '') then return false end
   local pos,arr = 0,{}
   -- for each divider found
   for st,sp in function() return string.find(str,div,pos,true) end do
-    table.insert(arr,string.sub(str,pos,st-1)) -- Attach chars left of current divider
+    table.insert(arr,string.sub(str,pos,st-1)) -- Attach chars left of curr div
     pos = sp + 1 -- Jump past current divider
   end
   table.insert(arr,string.sub(str,pos)) -- Attach chars right of last divider
   return arr
 end
 
-function dump(o)
-  if type(o) == 'table' then
-    local s = '{ '
-    for k,v in pairs(o) do
-      if type(k) ~= 'number' then k = '"'..k..'"' end
-      s = s .. '['..k..'] = ' .. dump(v) .. ','
-    end
-    return s .. '} '
-  else
-    return tostring(o)
-  end
+function is_empty(var)
+  if (var == nil or string.len(var) == 0) then return true;
+  else                                         return false; end
+end
+-- STRINGS STRINGS STRINGS STRINGS STRINGS STRINGS STRINGS STRINGS
+-- this approach is explained here: http://www.lua.org/pil/11.6.html
+-- the 3 functions [init_output, output, flush_output] could be 
+--   1.) written in C
+--   2.) pushed up into the server (i.e. OutputBuffer append to c->reply)
+OutputBuffer = {};
+function init_output()
+  OutputBuffer = {};
+end
+function output(line)
+  table.insert(OutputBuffer, line)
+end
+function flush_output()
+  return table.concat(OutputBuffer);
 end
 
 -- RETWIS RETWIS RETWIS RETWIS RETWIS RETWIS RETWIS RETWIS
 -- RETWIS RETWIS RETWIS RETWIS RETWIS RETWIS RETWIS RETWIS
 function create_navbar()
-  local html = '<div id="navbar"> <a href="/index_page">home</a> | <a href="/timeline">timeline</a>';
+  output('<div id="navbar"> <a href="/index_page">home</a> | <a href="/timeline">timeline</a>');
   if (isLoggedIn()) then
-    html = html .. '| <a href="logout">logout</a>';
+    output('| <a href="logout">logout</a>');
   end
-  html = html .. '</div>';
-  return html;
+  output('</div>');
 end
 
 function create_header()
-return [[<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+output([[<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
 <html lang="it">
 <head>
 <script src="/STATIC/helper.js"></script>
@@ -67,15 +73,17 @@ return [[<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR
 <body>
 <div id="page">
 <div id="header">
-<a href="/"><img style="border:none" src="/STATIC/logo.png" width="192" height="85" alt="Retwis"></a>]] .. create_navbar() .. '</div>';
+<a href="/"><img style="border:none" src="/STATIC/logo.png" width="192" height="85" alt="Retwis"></a>]]);
+create_navbar();
+output('</div>');
 end
 
 function create_footer()
-  return '<div id="footer"> <a href="http://code.google.com/p/alchemydatabase/">Alchemy Database</a> is a A Hybrid Relational-Database/NOSQL-Datastore</div> </div> </body> </html>';
+  output('<div id="footer"> <a href="http://code.google.com/p/alchemydatabase/">Alchemy Database</a> is a A Hybrid Relational-Database/NOSQL-Datastore</div> </div> </body> </html>');
 end
 
 function create_welcome()
-  return [[ 
+  output([[ 
 <div id="welcomebox">
 <div id="registerbox">
 <h2>Register!</h2>
@@ -99,7 +107,7 @@ function create_welcome()
 </div>
 Hello! Retwis is a very simple clone of <a href="http://twitter.com">Twitter</a>, as a demo for the <a href="http://code.google.com/p/alchemydatabase/wiki/ShortStack">Alchemy's Short-Stack</a>
 </div>
-]];
+]]);
 end
 
 function strElapsed(t)
@@ -119,30 +127,29 @@ end
 
 function showPost(id)
   local postdata = redis("get", "post:" .. id);
-  if (postdata == nil) then return ""; end
+  if (postdata == nil) then return false; end
   local aux      = explode("|", postdata);
   local uid      = aux[1];
   local time     = aux[2];
   local username = redis("get", "uid:" .. uid .. ":username");
   local post     = aux[3]; -- TODO: more
   local elapsed  = strElapsed(time);
-  local userlink = "<a class=\"username\" href=\"profile/" .. username .. "\">" .. username .. "</a>";
-  return '<div class="post">' .. userlink .. ' ' .. post .."<br>" .. '<i>posted '.. elapsed ..' ago via web</i></div>';
+  local userlink = 
+  output('<div class="post">' ..
+         "<a class=\"username\" href=\"profile/" .. username .. "\">" ..
+           username .. "</a>" ..
+         ' ' .. post .."<br>" .. '<i>posted '..
+         elapsed ..' ago via web</i></div>');
+  return true;
 end
 
 function showUserPosts(key, start, count)
   local posts = redis("lrange", key, start, (start + count));
   local c     = 0;
-  local html  = "";
   for k,v in pairs(posts) do
-      local snippet = showPost(v);
-      if (string.len(snippet) > 0) then
-          html = html .. snippet;
-          c    = c + 1;
-      end
+      if (showPost(v)) then c = c + 1; end
       if (c == count) then break; end
   end
-  return html;
 end
 
 function showUserPostsWithPagination(thispage, username, userid, start, count)
@@ -157,9 +164,8 @@ function showUserPostsWithPagination(thispage, username, userid, start, count)
   else               u = ""; end
 
   local key    = "uid:" .. userid .. ":posts";
-  local html   = showUserPosts(key, start, count);
+  showUserPosts(key, start, count);
   local nposts = redis("llen", key);
-
   if (nposts ~= nil and nposts > start + count) then
       nextlink = "<a href=\"" .. thispage .. "/" .. nextc .. "/" .. u .."\">Older posts &raquo;</a>";
   end
@@ -167,19 +173,17 @@ function showUserPostsWithPagination(thispage, username, userid, start, count)
       prevlink = "<a href=\"" .. thispage .. "/" .. prevc .. "/" .. u .."\">Newer posts &laquo;</a>";
   end
   if (string.len(nextlink) or string.len(prevlink)) then
-      html = html .. "<div class=\"rightlink\">" .. prevlink .. " " ..  nextlink .. "</div>";
+      output("<div class=\"rightlink\">" .. prevlink .. " " ..  nextlink .. "</div>");
   end
-  return html;
 end
 
 function showLastUsers()
   local users = redis("sort", "global:users", "GET", "uid:*:username", "DESC", "LIMIT", 0, 10);
-  local html = "<div>";
+  output("<div>");
   for k,v in pairs(users) do
-    html = html .. "<a class=\"username\" href=\"profile/" .. v .. "\">" .. v .. "</a> ";
+    output("<a class=\"username\" href=\"profile/" .. v .. "\">" .. v .. "</a> ");
   end
-  html = html .. "</div><br>";
-  return html;
+  output("</div><br>");
 end
 
 function create_home(thispage, start)
@@ -187,7 +191,9 @@ function create_home(thispage, start)
   local nfollowing = redis("scard", "uid:" .. User['id'] .. ":following");
   local s          = 0;
   if (start ~= nil) then s = start; end
-  local html = '<div id="postform"><form method="GET" onsubmit="return form_action_rewrite_url(\'/post\', encodeURIComponent(this.elements[\'status\'].value), \'\');">' .. User['username'] ..', what you are doing?' .. [[
+  output('<div id="postform"><form method="GET" onsubmit="return form_action_rewrite_url(\'/post\', encodeURIComponent(this.elements[\'status\'].value), \'\');">');
+  output(User['username'] ..', what you are doing?');
+  output([[
 <br>
 <table>
 <tr><td><textarea cols="70" rows="3" name="status"></textarea></td></tr>
@@ -195,15 +201,15 @@ function create_home(thispage, start)
 </table>
 </form>
 <div id="homeinfobox">
-]] .. nfollowers .. " followers<br>" .. nfollowing .. " following<br></div></div>" .. showUserPostsWithPagination(thispage, false, User['id'], s, 10);
-  return html;
+]]);
+  output(nfollowers .. " followers<br>" .. nfollowing .. " following<br></div></div>");
+  showUserPostsWithPagination(thispage, false, User['id'], s, 10);
 end
 
 function goback(msg)
-  local html = create_header();
-  html = html .. '<div id ="error">' .. msg .. '<br><a href="javascript:history.back()">Please return back and try again</a></div>';
-  html = html .. create_footer();
-  return html;
+  create_header();
+  output('<div id ="error">' .. msg .. '<br><a href="javascript:history.back()">Please return back and try again</a></div>');
+  create_footer();
 end
 
 User = {};
@@ -229,35 +235,31 @@ end
 
 -- PUBLIC_API PUBLIC_API PUBLIC_API PUBLIC_API PUBLIC_API PUBLIC_API
 -- PUBLIC_API PUBLIC_API PUBLIC_API PUBLIC_API PUBLIC_API PUBLIC_API
-
 module("whitelist", package.seeall);
 
-function show_keys() 
-  local keys = redis('keys', '*');
-  local html = '';
-  for k,v in pairs(keys) do
-    html = html .. "key: " .. k .. " value: " .. v .. "\n";
-  end
-  return html;
-end
-
 function index_page(start) 
+  init_output();
   local thispage = '/index_page';
   local s        = tonumber(start);
+  create_header();
   if (isLoggedIn()) then
-    return create_header() .. create_home(thispage, s) ..  create_footer();
+    create_home(thispage, s);
   else 
-    return create_header() .. create_welcome() ..  create_footer();
+    create_welcome();
   end
+  create_footer();
+  return flush_output();
 end
 
 function register(username, password)
-  if (username == nil or password == nil or 
-      string.len(username) == 0 or string.len(password) == 0) then
-    return goback("Either Username or Password is Empty");
+  init_output();
+  if (is_empty(username) or is_empty(password)) then
+    goback("Either Username or Password is Empty");
+    return flush_output();
   end
   if (redis("get", "username:" .. username .. ":id")) then
-    return goback("Sorry the selected username is already in use.");
+    goback("Sorry the selected username is already in use.");
+    return flush_output();
   end
 
   -- Everything is ok, Register the user!
@@ -276,32 +278,10 @@ function register(username, password)
   -- User registered! Login this guy
   SetHttpResponseHeader('Set-Cookie', 'auth=' .. authsecret .. '; Expires=Wed, 09 Jun 2021 10:18:14 GMT; path=/;');
 
-  local html = create_header();
-  html = html .. '<h2>Welcome aboard!</h2> Hey ' .. username .. ', now you have an account, <a href="/index_page">a good start is to write your first message!</a>.';
-  html = html .. create_footer();
-  return html;
-end
-
-function post(msg)
-  local isl = isLoggedIn();
-  if (isl == false or msg == nil or string.len(msg) == 0) then
-    SetHttpRedirect('/index_page');
-    return;
-  end
-
-  local postid = redis("incr", "global:nextPostId");
-  local post   =  User['id'] .. "|" .. os.time() .. "|" .. msg;
-  redis("set", "post:" .. postid, post);
-  local followers = redis("smembers", "uid:" .. User['id'] .. ":followers");
-  table.insert(followers, User['id']); -- Add the post to our own posts too 
-
-  for k,v in pairs(followers) do
-    redis("lpush", "uid:" .. v .. ":posts", postid);
-  end
-  -- Push post to timeline, and trim timeline to newest 1000 elements.
-  redis("lpush", "global:timeline", postid);
-  redis("ltrim", "global:timeline", 0, 1000);
-  SetHttpRedirect('/index_page');
+  create_header();
+  output('<h2>Welcome aboard!</h2> Hey ' .. username .. ', now you have an account, <a href="/index_page">a good start is to write your first message!</a>.');
+  create_footer();
+  return flush_output();
 end
 
 function logout()
@@ -321,17 +301,20 @@ function logout()
 end
 
 function login(username, password)
-  if (username == nil or password == nil or
-      string.len(username) == 0 or string.len(password) == 0) then
-    return goback("You need to enter both username and password to login.");
+  init_output();
+  if (is_empty(username) or is_empty(password)) then
+    goback("You need to enter both username and password to login.");
+    return flush_output();
   end
   local userid = redis("get", "username:" .. username ..":id");
   if (userid == nil) then
-    return goback("Wrong username or password");
+    goback("Wrong username or password");
+    return flush_output();
   end
   local realpassword = redis("get", "uid:" .. userid .. ":password");
   if (realpassword ~= password) then
-    return goback("Wrong useranme or password");
+    goback("Wrong useranme or password");
+    return flush_output();
   end
 
   -- Username / password OK, set the cookie and redirect to index.php
@@ -340,16 +323,40 @@ function login(username, password)
   SetHttpRedirect('/index_page');
 end
 
+function post(msg)
+  local isl = isLoggedIn();
+  if (isl == false or is_empty(msg)) then
+    SetHttpRedirect('/index_page'); return;
+  end
+
+  local postid = redis("incr", "global:nextPostId");
+  local post   =  User['id'] .. "|" .. os.time() .. "|" .. msg;
+  redis("set", "post:" .. postid, post);
+  local followers = redis("smembers", "uid:" .. User['id'] .. ":followers");
+  table.insert(followers, User['id']); -- Add the post to our own posts too 
+
+  for k,v in pairs(followers) do
+    redis("lpush", "uid:" .. v .. ":posts", postid);
+  end
+  -- Push post to timeline, and trim timeline to newest 1000 elements.
+  redis("lpush", "global:timeline", postid);
+  redis("ltrim", "global:timeline", 0, 1000);
+  SetHttpRedirect('/index_page');
+end
+
 function timeline()
-  return create_header() .. showLastUsers() ..
-         '<i>Latest 50 messages from users aroud the world!</i><br>' ..
-         showUserPosts("global:timeline", 0, 50) ..
-         create_footer();
+  init_output();
+  create_header();
+  showLastUsers();
+  output('<i>Latest 50 messages from users aroud the world!</i><br>');
+  showUserPosts("global:timeline", 0, 50);
+  create_footer();
+  return flush_output();
 end
 
 function profile(username, start)
   local thispage = '/profile';
-  if (username == nil or string.len(username) == 0) then
+  if (is_empty(username)) then
     SetHttpRedirect('/index_page'); return;
   end
   local userid = redis("get", "username:" .. username .. ":id")
@@ -357,35 +364,35 @@ function profile(username, start)
     SetHttpRedirect('/index_page'); return;
   end
 
-  local html = create_header() .. 
-               "<h2 class=\"username\">" .. username .. "</h2>";
+  init_output();
+  create_header();
+  output("<h2 class=\"username\">" .. username .. "</h2>");
   local isl  = isLoggedIn();
   if (isl and User['id'] ~= userid) then
     local isfollowing = redis("sismember", "uid:" .. User['id'] .. ":following", userid);
     if (isfollowing == 1) then
-      html = html .. "<a href=\"/follow/" .. userid .. "/0\" class=\"button\">Stop following</a>";
+      output("<a href=\"/follow/" .. userid .. "/0\" class=\"button\">Stop following</a>");
     else
-      html = html .. "<a href=\"/follow/" .. userid .. "/1\" class=\"button\">Follow this user</a>";
+      output("<a href=\"/follow/" .. userid .. "/1\" class=\"button\">Follow this user</a>");
     end
   end
   local s = tonumber(start);
   if (s == nil) then s = 0; end
-  html = html .. showUserPostsWithPagination(thispage, false, userid, s, 10);
-  html = html .. create_footer();
-  return html;
+  showUserPostsWithPagination(thispage, false, userid, s, 10);
+  create_footer();
+  return flush_output();
 end
 
 function follow(userid, follow)
-  if (userid == nil or follow == nil or
-      string.len(userid) == 0 or string.len(follow) == 0) then
+  if (is_empty(userid) or is_empty(follow)) then
     SetHttpRedirect('/index_page'); return;
   end
   local isl = isLoggedIn();
   if (isl == false) then
     SetHttpRedirect('/index_page'); return;
   end
-  local f = tonumber(follow);
   if (userid ~= User['id']) then
+    local f = tonumber(follow);
     if (f == 1) then
       redis("sadd", "uid:" .. userid     .. ":followers", User['id']);
       redis("sadd", "uid:" .. User['id'] .. ":following", userid);
