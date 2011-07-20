@@ -2,13 +2,12 @@
 package.cpath = package.cpath .. ";./external/lua-zlib/?.so"
 local lz = require("zlib");
 
+-- STATIC_FILES STATIC_FILES STATIC_FILES STATIC_FILES STATIC_FILES
 function load_image(ifile, name)
   local inp = assert(io.open(ifile, "rb"))
   local data = inp:read("*all")
   redis("SET", "STATIC/" .. name, data);
 end
-
--- STATIC_FILES STATIC_FILES STATIC_FILES STATIC_FILES STATIC_FILES
 load_image('external/retwis-0.3/logo.png',      'logo.png');
 load_image('external/retwis-0.3/css/style.css', 'css/style.css');
 load_image('external/retwis-0.3/sfondo.png',    'sfondo.png');
@@ -37,7 +36,8 @@ function is_empty(var)
   if (var == nil or string.len(var) == 0) then return true;
   else                                         return false; end
 end
--- STRINGS STRINGS STRINGS STRINGS STRINGS STRINGS STRINGS STRINGS
+
+-- OUTPUT_BUFFER+DEFLATE OUTPUT_BUFFER+DEFLATE OUTPUT_BUFFER+DEFLATE
 -- this approach is explained here: http://www.lua.org/pil/11.6.html
 -- the 3 functions [init_output, output, flush_output] could be 
 --   1.) written in C
@@ -60,8 +60,7 @@ function flush_output()
    end
 end
 
--- RETWIS RETWIS RETWIS RETWIS RETWIS RETWIS RETWIS RETWIS
--- RETWIS RETWIS RETWIS RETWIS RETWIS RETWIS RETWIS RETWIS
+-- HTML HTML HTML HTML HTML HTML HTML HTML HTML HTML HTML HTML
 function create_navbar()
   output('<div id="navbar"> <a href="/index_page">home</a> | <a href="/timeline">timeline</a>');
   if (isLoggedIn()) then

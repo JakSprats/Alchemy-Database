@@ -69,7 +69,14 @@ static struct config {
     int raw_output; /* output mode per command */
     sds mb_delim;
     char prompt[32];
+#ifdef ALCHEMY_DATABASE
+    int   pubsub_pipe;
+    char *pipe_hostip;
+    int   pipe_hostport;
+    int   quiet;
+#endif
 } config;
+
 
 static void usage();
 char *redisGitSHA1(void);
@@ -457,12 +464,18 @@ static int cliReadReply(int output_raw_strings) {
             out = cliFormatReplyTTY(reply,"");
         }
     }
+#ifdef ALCHEMY_DATABASE
+    if (!config.quiet)
+#endif
     fwrite(out,sdslen(out),1,stdout);
     sdsfree(out);
     freeReplyObject(reply);
     return REDIS_OK;
 }
 
+#ifdef ALCHEMY_DATABASE
+static int cliPipeReply();
+#endif
 static int cliSendCommand(int argc, char **argv, int repeat) {
     char *command = argv[0];
     size_t *argvlen;
@@ -491,6 +504,11 @@ static int cliSendCommand(int argc, char **argv, int repeat) {
     if (!strcasecmp(command,"subscribe") ||
         !strcasecmp(command,"psubscribe")) config.pubsub_mode = 1;
 #ifdef ALCHEMY_DATABASE
+    if (!strcasecmp(command,"subpipe")) {
+        config.pubsub_pipe = 1;
+        command            = "subscribe"; //server expects "subscribe" command
+        argv[0]            = sdsnew(command);
+    }
     DXDB_cliSendCommand(&argc, argv);
 #endif
 
@@ -513,6 +531,13 @@ static int cliSendCommand(int argc, char **argv, int repeat) {
                 if (cliReadReply(output_raw) != REDIS_OK) exit(1);
             }
         }
+#ifdef ALCHEMY_DATABASE
+        if (config.pubsub_pipe) {
+            while (1) {
+                if (cliPipeReply() != REDIS_OK) exit(1);
+            }
+        }
+#endif
 
         if (cliReadReply(output_raw) != REDIS_OK) {
             free(argvlen);
@@ -531,6 +556,70 @@ static int cliSendCommand(int argc, char **argv, int repeat) {
     free(argvlen);
     return REDIS_OK;
 }
+
+#ifdef ALCHEMY_DATABASE
+static redisContext *p_context = NULL;
+static void writePipe(sds fcall) {
+    redisContext *t_context  = context;              // SAVE STATE
+    char         *t_hostip   = config.hostip;
+    int           t_hostport = config.hostport;
+    context                  = p_context;            // PUT IN PIPE STATE
+    config.hostip            = config.pipe_hostip;
+    config.hostport          = config.pipe_hostport;
+    config.pubsub_pipe       = 0;
+    if (!context) cliConnect(1);
+    p_context                = context;
+    int argc;
+    sds          *argv       = sdssplitlen(fcall, sdslen(fcall), "|", 1, &argc);
+    cliSendCommand(argc, argv, 1);
+    context                  = t_context;            // REVERT TO SAVED STATE
+    config.hostip            = t_hostip;
+    config.hostport          = t_hostport;
+    config.pubsub_pipe       = 1;
+}
+
+static int cliPipeReply() {
+    void *_reply;
+    if (redisGetReply(context,&_reply) != REDIS_OK) {
+        if (config.shutdown) return REDIS_OK;
+        if (config.interactive) { /* Filter cases where we should reconnect */
+            if (context->err == REDIS_ERR_IO && errno == ECONNRESET)
+                return REDIS_ERR;
+            if (context->err == REDIS_ERR_EOF)
+                return REDIS_ERR;
+        }
+        cliPrintContextError(); exit(1); return REDIS_ERR; // compiler warning
+    }
+    redisReply *reply = (redisReply*)_reply;
+    //TODO this is the laziest parsing ever, write specialised routine
+    sds         out   = cliFormatReplyTTY(reply,"");
+    sds         fname = NULL;
+    sds         fargs = NULL;
+    char       *tok;
+    if ((tok = strchr(out, ':'))) {
+        tok++;
+        char *end = strchr(tok, '\"');
+        if (end) {
+            fname = sdsnewlen(tok, end - tok);
+            end++;
+            tok   = strchr(end, '\"');
+            if (tok) {
+                tok++;
+                end = strchr(tok, '\"');
+                if (end) {
+                    fargs     = sdsnewlen(tok, end - tok);
+                    sds fcall = sdscatprintf(sdsempty(), "LUA|%s|%s", 
+                                                         fname, fargs);
+                    writePipe(fcall);
+                }
+            }
+        }
+    }
+    sdsfree(out);
+    freeReplyObject(reply);
+    return REDIS_OK;
+}
+#endif
 
 /*------------------------------------------------------------------------------
  * User interface
@@ -582,6 +671,17 @@ static int parseOptions(int argc, char **argv) {
             printf("redis-cli %s\n", version);
             sdsfree(version);
             exit(0);
+#ifdef ALCHEMY_DATABASE
+        } else if (!strcmp(argv[i],"-ph") && !lastarg) {
+            sdsfree(config.pipe_hostip);
+            config.pipe_hostip   = sdsnew(argv[i+1]);
+            i++;
+        } else if (!strcmp(argv[i],"-pp") && !lastarg) {
+            config.pipe_hostport = atoi(argv[i+1]);
+            i++;
+        } else if (!strcmp(argv[i],"--quiet")) {
+            config.quiet = 1;
+#endif
         } else {
             break;
         }
@@ -625,6 +725,11 @@ static void usage() {
 "  --raw            Use raw formatting for replies (default when STDOUT is not a tty)\n"
 "  --help           Output this help and exit\n"
 "  --version        Output version and exit\n"
+#ifdef ALCHEMY_DATABASE
+"  -ph <hostname>   Pipe RightHandSide hostname (default: 127.0.0.1)\n"
+"  -pp <port>       Pipe RightHandSide port (default: 6380)\n"
+"  --quiet          Do not output responses\n"
+#endif
 "\n"
 "Examples:\n"
 "  cat /etc/passwd | redis-cli -x set mypasswd\n"
@@ -758,6 +863,12 @@ int main(int argc, char **argv) {
     config.shutdown = 0;
     config.monitor_mode = 0;
     config.pubsub_mode = 0;
+#ifdef ALCHEMY_DATABASE
+    config.pubsub_pipe   = 0;
+    config.pipe_hostip   = sdsnew("127.0.0.1");
+    config.pipe_hostport = 6380;
+    config.quiet         = 0;
+#endif
     config.stdinarg = 0;
     config.auth = NULL;
     config.raw_output = !isatty(fileno(stdout)) && (getenv("FAKETTY") == NULL);

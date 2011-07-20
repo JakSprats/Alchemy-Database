@@ -6,11 +6,7 @@ TODO LIST:
         3.) JTAlias[MAX_JOIN_COLS]        -> push into JoinBlock
   B.) Prohibit updates on Uniquely Indexed Columns -> Constraint Violation
   C.) Unlimited tables, columns, indexes
-  D.) ShortStack, enable gzip response compression
-        i.)  can be done in Lua by "require gzip"
-        ii.) in flush_output(),
-             check for HTTP_HEADER['Accept-Encoding'] has 'gzip'
-  E.) in Lua, support sql(RAW),
+  D.) in Lua, support sql(RAW),
       RAW_SQL turned into Alchemy_SQL via DXDB_cliSendCommand()
 
 FIX:

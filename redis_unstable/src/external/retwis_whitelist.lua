@@ -41,7 +41,7 @@ function register(username, password)
   -- Manage a Set with all the users, may be userful in the future
   redis("sadd", "global:users", userid);
 
-  -- User registered! Login this guy
+  -- User registered -> Log him in
   SetHttpResponseHeader('Set-Cookie', 'auth=' .. authsecret .. '; Expires=Wed, 09 Jun 2021 10:18:14 GMT; path=/;');
 
   create_header();
@@ -95,11 +95,15 @@ function post(msg)
     SetHttpRedirect('/index_page'); return;
   end
 
+  local ts = os.time();
   local postid = redis("incr", "global:nextPostId");
-  local post   =  User['id'] .. "|" .. os.time() .. "|" .. msg;
+  local post   = User['id'] .. "|" .. ts .. "|" .. msg;
   redis("set", "post:" .. postid, post);
   local followers = redis("smembers", "uid:" .. User['id'] .. ":followers");
   table.insert(followers, User['id']); -- Add the post to our own posts too 
+
+  local pubmsg = User['id'] .. "|" .. ts .. "|" .. msg;
+  redis("publish", "channel:uppost", pubmsg); -- for pubsub_pipe replication
 
   for k,v in pairs(followers) do
     redis("lpush", "uid:" .. v .. ":posts", postid);
