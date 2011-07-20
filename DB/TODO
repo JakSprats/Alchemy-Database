@@ -10,6 +10,8 @@ TODO LIST:
         i.)  can be done in Lua by "require gzip"
         ii.) in flush_output(),
              check for HTTP_HEADER['Accept-Encoding'] has 'gzip'
+  E.) in Lua, support sql(RAW),
+      RAW_SQL turned into Alchemy_SQL via DXDB_cliSendCommand()
 
 FIX:
   1.) [shard-key & foreign-key] info not in RDB or AOF-rewrite
