@@ -1,4 +1,6 @@
 -- Retwis for Alchemy's Short Stack - Helper Functions (PRIVATE FUNCTIONS)
+package.cpath = package.cpath .. ";./external/lua-zlib/?.so"
+local lz = require("zlib");
 
 function load_image(ifile, name)
   local inp = assert(io.open(ifile, "rb"))
@@ -48,7 +50,14 @@ function output(line)
   table.insert(OutputBuffer, line)
 end
 function flush_output()
-  return table.concat(OutputBuffer);
+  local out      = table.concat(OutputBuffer);
+  local deflater = string.find(HTTP_HEADER['Accept-Encoding'], "deflate")
+  if (deflater) then
+    SetHttpResponseHeader('Content-Encoding', 'deflate');
+    return lz.deflate()(out, "finish")
+  else
+    return out;
+   end
 end
 
 -- RETWIS RETWIS RETWIS RETWIS RETWIS RETWIS RETWIS RETWIS
