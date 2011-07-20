@@ -37,11 +37,9 @@ ALL RIGHTS RESERVED
 #include "adlist.h"
 #include "rdb.h"
 
-// FOR override_getKeysFromComm()
-#include "wc.h"
-#include "colparse.h"
-
 #include "internal_commands.h"
+#include "ctable.h"
+#include "webserver.h"
 #include "aof_alsosql.h"
 #include "sixbit.h"
 #include "range.h"
@@ -49,7 +47,6 @@ ALL RIGHTS RESERVED
 #include "rdb_alsosql.h"
 #include "alsosql.h"
 #include "lua_integration.h"
-#include "redis_core.h"
 
 extern int      Num_tbls;
 extern r_tbl_t  Tbl[MAX_NUM_TABLES];
@@ -78,18 +75,15 @@ struct in_addr  WS_WL_Mask;
 unsigned int    WS_WL_Broadcast = 0;
 unsigned int    WS_WL_Subnet    = 0;
 
+#define LUA_INTERNAL_FILE "internal.lua"
 
 /* PROTOTYPES */
 int  yesnotoi(char *s);
-sds override_getKeysFromComm(rcommand *cmd, robj **argv, int argc, bool *err);
 int *getKeysUsingCommandTable(rcommand *cmd, robj **argv, int argc, int *nkeys);
- // from scripting.c
-void luaReplyToRedisReply(redisClient *c, lua_State *lua);
-void luaPushError(lua_State *lua, char *error);
-void luaMaskCountHook(lua_State *lua, lua_Debug *ar);
 
-static bool luafunc_call(redisClient *c, int argc, robj **argv);
-static robj *luaReplyToHTTPReply(lua_State *lua);
+// from scripting.c
+void luaReplyToRedisReply(redisClient *c, lua_State *lua);
+
 
 void showCommand     (redisClient *c);
 
@@ -182,6 +176,13 @@ void DXDB_initServerConfig() { //printf("DXDB_initServerConfig\n");
     bzero(&WS_WL_Mask, sizeof(struct in_addr));
 }
 
+
+static void init_Tbl_and_Index() {
+    Num_tbls = 0;
+    Num_indx = 0;
+    bzero(&Tbl,      sizeof(r_tbl_t) * MAX_NUM_TABLES);
+    bzero(&Index,    sizeof(r_ind_t) * MAX_NUM_INDICES);
+}
 void DXDB_initServer() { //printf("DXDB_initServer\n");
     aeCreateTimeEvent(server.el, 1, luaCronTimeProc, NULL, NULL);
     initX_DB_Range();
@@ -193,6 +194,35 @@ void DXDB_initServer() { //printf("DXDB_initServer\n");
     Operations     = 0;
 }
 
+static bool loadLuaHelperFile(cli *c, char *fname) {
+    sds fwpath = sdscatprintf(sdsempty(), "%s%s", Basedir, fname);
+    //printf("loadLuaHelperFile: %s\n", fwpath);
+    if (luaL_loadfile(server.lua, fwpath) || lua_pcall(server.lua, 0, 0, 0)) {
+        const char *lerr = lua_tostring(server.lua, -1);
+        if (c) addReplySds(c, sdscatprintf(sdsempty(),
+                           "-ERR luaL_loadfile: %s err: %s\r\n", fwpath, lerr));
+        else fprintf(stderr, "loadLuaHelperFile: err: %s\r\n", lerr);
+        lua_pop(server.lua, 1); /* pop error from stack */
+        return 0;
+    }
+    sdsfree(fwpath);
+    return 1;
+}
+static bool initLua(cli *c) {
+    lua_pushcfunction(server.lua, luaSetHttpResponseHeaderCommand);
+    lua_setglobal(server.lua, "SetHttpResponseHeader");
+    lua_pushcfunction(server.lua, luaSetHttpRedirectCommand);
+    lua_setglobal(server.lua, "SetHttpRedirect");
+    if                    (!loadLuaHelperFile(c, LUA_INTERNAL_FILE)) return 0;
+    if (WhiteListLua    && !loadLuaHelperFile(c, WhiteListLua))      return 0;
+    if (LuaIncludeFile  && !loadLuaHelperFile(c, LuaIncludeFile))    return 0;
+    else                                                             return 1;
+}
+static bool reloadLua(cli *c) {
+    lua_close(server.lua);
+    scriptingInit();
+    return initLua(c);
+}
 void DXDB_main() { //NOTE: must come after rdbLoad()
     if (!initLua(NULL)) exit(-1);
 }
@@ -286,98 +316,6 @@ int DXDB_loadServerConfig(int argc, sds *argv) {
     return 1;
 }
 
-typedef struct two_sds {
-  sds a;
-  sds b;
-} two_sds;
-two_sds *init_two_sds(sds a, sds b) {
-    two_sds *ss = malloc(sizeof(two_sds));
-    ss->a       = sdsdup(a);
-    ss->b       = sdsdup(b);
-    return ss;
-}
-void free_two_sds(void *v) {
-    if (!v) return;
-    two_sds *ss = (two_sds *)v;
-    sdsfree(ss->a);
-    sdsfree(ss->b);
-    free(ss);
-}
-
-#define SEND_REPLY_FROM_STRING(s)                 \
-  { robj *r = createStringObject(s, sdslen(s));   \
-    addReply(c, r);                               \
-    decrRefCount(r); }
-
-#define SEND_404                                  \
-  { sds s = sdsnew("HTTP/1.0 404 Not Found\r\nContent-Length: 0\r\n\r\n"); \
-  SEND_REPLY_FROM_STRING(s) }
-#define SEND_405                                  \
-  { sds s = sdsnew("HTTP/1.0 405 Method Not Allowed\r\n\r\n"); \
-  SEND_REPLY_FROM_STRING(s) }
-
-static void send_http_response_header_extended(cli *c, sds s) {
-    if (c->http.resp_hdr) {
-        listNode *ln;
-        listIter *li = listGetIterator(c->http.resp_hdr, AL_START_HEAD);
-        while((ln = listNext(li)) != NULL) {// POPULATE Lua Global HTTP_HEADER[]
-            two_sds *ss = ln->value;
-            s = sdscatprintf(s, "%s: %s\r\n", ss->a, ss->b);
-         }
-    }
-    s = sdscatlen(s, "\r\n", 2);
-    SEND_REPLY_FROM_STRING(s)
-}
-static void send_http_200_reponse_header(cli *c, sds body) {
-    sds s = sdscatprintf(sdsempty(), 
-                        "HTTP/1.0 200 OK\r\nContent-length: %ld\r\n%s",
-                         sdslen(body), 
-                         c->http.ka ? "Connection: Keep-Alive\r\n": "");
-    send_http_response_header_extended(c, s);
-}
-static void send_http_302_reponse_header(cli *c) {
-    sds s = sdscatprintf(sdsempty(), 
-                        "HTTP/1.0 302 Found\r\nLocation: %s\r\n%s",
-                         c->http.redir,
-                         c->http.ka ? "Connection: Keep-Alive\r\n": "");
-    send_http_response_header_extended(c, s);
-    sdsfree(c->http.redir); c->http.redir = NULL; // DESTROYED 079
-}
-static void send_http_reponse_header(cli *c, sds body) {
-  if (c->http.retcode == 200) send_http_200_reponse_header(c, body);
-  else                        send_http_302_reponse_header(c);
-}
-
-static void addHttpResponseHeader(sds name, sds value) {
-    if (!CurrClient->http.resp_hdr) {
-        CurrClient->http.resp_hdr       = listCreate(); 
-        CurrClient->http.resp_hdr->free = free_two_sds;
-    }
-    two_sds *ss = init_two_sds(name, value);
-    listAddNodeTail(CurrClient->http.resp_hdr, ss);// Store RESP Headers in List
-}
-int luaSetHttpResponseHeaderCommand(lua_State *lua) {
-    int argc = lua_gettop(lua);
-    if (argc != 2 || !lua_isstring(lua, 1) || !lua_isstring(lua, 2)) {
-        luaPushError(lua, "Lua SetHttpResponseHeader() takes 2 string args");
-        return 1;
-    }
-    sds a    = sdsnew(lua_tostring(lua, 1));
-    sds b    = sdsnew(lua_tostring(lua, 2));
-    addHttpResponseHeader(a, b);
-    return 0;
-}
-int luaSetHttpRedirectCommand(lua_State *lua) {
-    int argc = lua_gettop(lua);
-    if (argc != 1 || !lua_isstring(lua, 1)) {
-        luaPushError(lua, "Lua SetHttpRedirect() takes 1 string arg");
-        return 1;
-    }
-    CurrClient->http.retcode = 302;
-    CurrClient->http.redir   = sdsnew(lua_tostring(lua, 1)); // DESTROY ME 079
-    return 0;
-}
-
 void DXDB_createClient(redisClient *c) { //printf("DXDB_createClient\n");
     c->NumJTAlias      =  0;
     c->LastJTAmatch    = -1;
@@ -389,150 +327,24 @@ void DXDB_createClient(redisClient *c) { //printf("DXDB_createClient\n");
 }
 
 int   DXDB_processCommand(redisClient *c) { //printf("DXDB_processCommand\n");
-    if (c->http.mode) {
-        if (c->argc < 2) return 1; // IGNORE Headers w/ no values
-        if (!strcasecmp(c->argv[0]->ptr, "Connection:")) {
-            if (!strcasecmp(c->argv[1]->ptr, "Keep-Alive")) c->http.ka = 1;
-            if (!strcasecmp(c->argv[1]->ptr, "Close"))      c->http.ka = 0;
-        }
-        two_sds *ss = init_two_sds(c->argv[0]->ptr, c->argv[1]->ptr);
-        listAddNodeTail(c->http.req_hdr, ss); // Store REQ Headers in List
-        return 1;
-    }
+    if (c->http.mode) return continue_http_session(c);
     Operations++;
     CurrClient = c;
     CurrCard   =  0;
     DXDB_createClient(c);
+    sds arg0       = c->argv[0]->ptr;
     sds arg2       = c->argc > 2 ? c->argv[2]->ptr : NULL;
-    if (c->argc == 3 && 
-        (!strcasecmp(arg2, "HTTP/1.0") || !strcasecmp(arg2, "HTTP/1.1"))) {
-        if (!strcasecmp(arg2, "HTTP/1.1")) c->http.ka = 1;// Default: ON in 1.1
-        if      (!strcasecmp(c->argv[0]->ptr, "GET"))  c->http.get  = 1;
-        else if (!strcasecmp(c->argv[0]->ptr, "HEAD")) c->http.head = 1;
-        else                                           { SEND_405; return 1; }
-        c->http.mode          = 1;
-        if (c->http.resp_hdr) listRelease(c->http.resp_hdr);
-        c->http.resp_hdr      = NULL;
-        if (c->http.req_hdr) listRelease(c->http.req_hdr);
-        c->http.req_hdr       = listCreate(); 
-        c->http.req_hdr->free = free_two_sds;
-        char *fname           = c->argv[1]->ptr;
-        int   fnlen           = sdslen(c->argv[1]->ptr);
-        if (*fname == '/') { fname++; fnlen--; }
-        c->http.file          = createStringObject(fname, fnlen);
-        return 1;
-    } else return 0;
+    if (c->argc == 3 /* FIRST LINE OF HTTP REQUEST */                       &&
+        (!strcasecmp(arg0, "GET")      || !strcasecmp(arg0, "HEAD"))        &&
+        (!strcasecmp(arg2, "HTTP/1.0") || !strcasecmp(arg2, "HTTP/1.1")))
+        return start_http_session(c);
+    else return 0;
 }
 
-bool  DXDB_processInputBuffer_ZeroArgs(redisClient *c) {//HTTP Request End-Delim
-    bool ret = 0;
-    if (c->http.mode) {
-        if (c->http.get || c->http.head) {
-            sds  file = c->http.file->ptr;
-            if (!strncasecmp(file, "STATIC/", 7)) {
-                robj *o;
-                if ((o = lookupKeyRead(c->db, c->http.file)) == NULL) SEND_404
-                else if (o->type != REDIS_STRING)                     SEND_404
-                else { //NOTE: STATIC expire in 10 years (HARDCODED)
-                    addHttpResponseHeader(sdsnew("Expires"),
-                             sdsnew("Wed, 09 Jun 2021 10:18:14 GMT;"));
-                    //addHttpResponseHeader(sdsnew("ExpiresDefault"),
-                                          //sdsnew("access plus 10 years"));
-                    send_http_200_reponse_header(c, o->ptr);
-                    addReply(c, o);
-                }
-            } else {
-                int argc; robj **rargv = NULL;
-                if (!sdslen(file) || !strcmp(file, "/")) {
-                    argc      = 2; //NOTE: rargv[0] is ignored
-                    rargv     = zmalloc(sizeof(robj *) * argc);
-                    rargv[1]  = _createStringObject(WebServerIndexFunc);
-                } else {
-                    sds *argv = sdssplitlen(file, strlen(file), "/", 1, &argc);
-                    rargv     = zmalloc(sizeof(robj *) * (argc + 1));
-                    for (int i = 0; i < argc; i++) {
-                        rargv[i + 1] = createStringObject(argv[i],
-                                                          sdslen(argv[i]));
-                    }
-                    argc++; //NOTE: rargv[0] is ignored
-                }
-                if (!luafunc_call(c, argc, rargv)) {
-                    robj *resp = luaReplyToHTTPReply(server.lua);
-                    send_http_reponse_header(c, resp->ptr);
-                    if (c->http.get) addReply(c, resp);
-                    decrRefCount(resp);
-                }
-                for (int i = 1; i < argc; i++) decrRefCount(rargv[i]);
-                zfree(rargv);
-            }
-        }
-        if (c->http.file) { decrRefCount(c->http.file); c->http.file = NULL; }
-        if (!c->http.ka && !sdslen(c->querybuf)) {// not KeepAlive,not Pipelined
-            c->flags |= REDIS_CLOSE_AFTER_REPLY;
-        }
-        ret = 1;
-    }
+void  DXDB_processInputBuffer_ZeroArgs(redisClient *c) {//HTTP Request End-Delim
+    if (c->http.mode) end_http_session(c);
     c->http.mode = 0;
-    return ret;
-}
-
-static robj *luaReplyToHTTPReply(lua_State *lua) {
-    robj *r = createObject(REDIS_STRING, NULL);
-    int   t = lua_type(lua,1);
-    switch(t) {
-    case LUA_TSTRING:
-        r->ptr = sdsnewlen((char*)lua_tostring(lua, 1), lua_strlen(lua, 1));
-        break;
-    case LUA_TBOOLEAN:
-        r->ptr = sdsnewlen(lua_toboolean(lua, 1) ? "1" : "0", 1);
-        break;
-    case LUA_TNUMBER:
-        r->ptr = sdscatprintf(sdsempty(), "%lld", (lolo)lua_tonumber(lua,1));
-        break;
-    case LUA_TTABLE:
-        lua_pushstring(lua, "err"); // check for error
-        lua_gettable(lua, -2);
-        t = lua_type(lua, -1);
-        if (t == LUA_TSTRING) {
-            r->ptr = sdscatprintf(sdsempty(), "%s",
-                                  (char*)lua_tostring(lua, -1));
-            lua_pop(lua,2);
-        } else { // check for ok
-            lua_pop(lua, 1); lua_pushstring(lua, "ok"); lua_gettable(lua, -2);
-            t = lua_type(lua, -1);
-            if (t == LUA_TSTRING) {
-                r->ptr = sdscatprintf(sdsempty(), "%s\r\n",
-                                      (char*)lua_tostring(lua, -1));
-                lua_pop(lua, 1);
-            } else { // this is a real table
-                int j = 1, mbulklen = 0;
-                lua_pop(lua, 1); /* Discard the 'ok' field value we popped */
-                while(1) {
-                    lua_pushnumber(lua, j++); lua_gettable(lua, -2);
-                    t = lua_type(lua, -1);
-                    if (t == LUA_TNIL) { lua_pop(lua,1); break;
-                    } else if (t == LUA_TSTRING) {
-                        size_t len;
-                        char *s = (char *)lua_tolstring(lua, -1, &len);
-                        r->ptr = r->ptr ? sdscatlen(r->ptr, s, len) :
-                                           sdsnewlen(s, len);
-                        mbulklen++;
-                    } else if (t == LUA_TNUMBER) {
-                        sds s = r->ptr ? r->ptr : sdsempty();
-                        r->ptr = sdscatprintf(s, "%lld",
-                                                     (lolo)lua_tonumber(lua,1));
-                        mbulklen++;
-                    }
-                    lua_pop(lua, 1);
-                }
-            }
-            break;
-        default:
-            r->ptr = sdsempty();
-        }
-    }
-    lua_pop(lua, 1);
-    return r;
+    return;
 }
 
 //TODO webserver_mode, webserver_whitelist_address, webserver_whitelist_netmask, webserver_index_function
@@ -550,7 +362,7 @@ int DXDB_configSetCommand(cli *c, robj *o) {
     } else if (!strcasecmp(c->argv[2]->ptr,"whitelist_lua")) {
         zfree(WhiteListLua);
         WhiteListLua = zstrdup(o->ptr);
-        if (!reloadLua()) {
+        if (!reloadLua(c)) {
             addReplySds(c,sdscatprintf(sdsempty(),
                "-ERR problem loading lua helper file: %s\r\n", (char *)o->ptr));
             decrRefCount(o);
@@ -576,6 +388,20 @@ int DXDB_configSetCommand(cli *c, robj *o) {
         return 0;
     }
     return 1;
+}
+
+static void configAddCommand(redisClient *c) {
+    robj *o = getDecodedObject(c->argv[3]);
+    if (!strcasecmp(c->argv[2]->ptr, "lua")) {
+        if (!loadLuaHelperFile(c, o->ptr)) {
+            addReplySds(c,sdscatprintf(sdsempty(),
+               "-ERR problem adding lua helper file: %s\r\n", (char *)o->ptr));
+            decrRefCount(o);
+            return;
+        }
+    }
+    decrRefCount(o);
+    addReply(c,shared.ok);
 }
 unsigned char DXDB_configCommand(redisClient *c) {
     if (!strcasecmp(c->argv[1]->ptr, "ADD")) {
@@ -688,107 +514,6 @@ void DBXD_genRedisInfoString(sds info) {
              WebServerIndexFunc);
 }
 
-#define WHITELIST_REDIS_ERR \
-  addReplySds(c, sdsnew(\
-   "-ERR module \"whitelist\" must be defined via config option \"whitelist_lua\""));
-#define WHITELIST_FUNCTION_REDIS_ERR \
-  addReplySds(c, sdsnew(\
-   "-ERR function not found in module \"whitelist\""));
-
-static bool luafunc_call(redisClient *c, int argc, robj **argv) {
-    char *fname = argv[1]->ptr;
-    if (WebServerMode > 0) {
-        lua_getglobal(server.lua, "whitelist");
-        if (lua_type(server.lua, -1) != LUA_TTABLE) {
-            lua_pop(server.lua, 2); 
-            if (c->http.mode) SEND_404
-            else              WHITELIST_REDIS_ERR
-            return 1;
-        }
-        lua_getfield(server.lua, -1, fname);
-        int type = lua_type(server.lua, -1);
-        if (type != LUA_TFUNCTION) {
-            lua_pop(server.lua, 2);
-            if (c->http.mode) SEND_404
-            else              WHITELIST_FUNCTION_REDIS_ERR
-            return 1;
-        }
-        lua_replace(server.lua, -2); // remove "whitelist" from stack
-    } else {
-        lua_getglobal(server.lua, fname);
-    }
-    for (int i = 2; i < argc; i++) {
-        sds arg = argv[i]->ptr;
-        lua_pushlstring(server.lua, arg, sdslen(arg));
-    }
-
-    if (WebServerMode > 0) { // POPULATE Lua Global HTTP Tables
-        listNode *ln;
-        bool      cook = 0;
-        lua_newtable(server.lua);
-        int       top  = lua_gettop(server.lua);
-        listIter *li   = listGetIterator(c->http.req_hdr, AL_START_HEAD);
-        while((ln = listNext(li)) != NULL) {// POPULATE Lua Global HTTP_HEADER[]
-            two_sds *ss = ln->value;
-            char *cln = strchr(ss->a, ':');
-            if (cln) { // no colon -> IGNORE, dont include colon
-                *cln = '\0';
-                if (!strcasecmp(ss->a, "cookie")) cook = 1;
-                lua_pushstring(server.lua, ss->a);
-                lua_pushstring(server.lua, ss->b);
-                lua_settable(server.lua, top);
-            }
-        }
-        lua_setglobal(server.lua, "HTTP_HEADER");
-        lua_newtable(server.lua);
-        if (cook) { // POPULATE Lua Global COOKIE[]
-            top   = lua_gettop(server.lua);
-            li    = listGetIterator(c->http.req_hdr, AL_START_HEAD);
-            while((ln = listNext(li)) != NULL) {
-                two_sds *ss = ln->value;
-                if (!strcasecmp(ss->a, "cookie")) {
-                    char *eq = strchr(ss->b, '=');
-                    if (eq) {
-                        *eq = '\0'; lua_pushstring(server.lua, ss->b);
-                        eq++;       lua_pushstring(server.lua, eq);
-                        lua_settable(server.lua, top);
-                    }
-                }
-            }
-        }
-        lua_setglobal(server.lua, "COOKIE");
-    }
-
-    // Set hook to stop script execution if it takes too long
-    // NOTE: hooks degrade performance
-    if (server.lua_time_limit > 0) {
-        lua_sethook(server.lua, luaMaskCountHook, LUA_MASKCOUNT, 100000);
-        server.lua_time_start = ustime() / 1000;
-    } else {
-        lua_sethook(server.lua,luaMaskCountHook, 0, 0);
-    }
-
-    /* Select the right DB in the context of the Lua client */
-    selectDb(server.lua_client, c->db->id);
-    c->InternalRequest = 1;
-    int ret = lua_pcall(server.lua, (argc - 2), 1, 0);
-    c->InternalRequest = 0;
-    selectDb(c, server.lua_client->db->id); /* set DB ID from Lua client */
-    if (ret) {
-        sds err = sdscatprintf(sdsempty(), "Error running script (%s): %s\n",
-                                            fname, lua_tostring(server.lua,-1));
-        if (c->http.mode) {
-            send_http_200_reponse_header(c, err);
-            SEND_REPLY_FROM_STRING(err);
-            sdsfree(err);
-        } else {
-            addReplyErrorFormat(c, "%s", err);
-        }
-        lua_pop(server.lua, 1);
-        return 1;
-    }
-    return 0;
-}
 void luafuncCommand(redisClient *c) {
     if (luafunc_call(c, c->argc, c->argv)) return;
     luaReplyToRedisReply(c, server.lua);
@@ -796,400 +521,3 @@ void luafuncCommand(redisClient *c) {
 
 extern struct sockaddr_in AcceptedClientSA;
 void DXDB_setClientSA(redisClient *c) { c->sa = AcceptedClientSA; }
-
-
-
-//TODO put in seperate file ctable.c
-
-//TODO when parsing work is done in these functions
-//      it does not need to be done AGAIN (store globally)
-
-/* RULES: for commands in cluster-mode
-    1.) INSERT/REPLACE
-          CLUSTERED -> OK
-          SHARDED
-            a.) bulk -> PROHIBITED
-            b.) column declaration must include shard-key
-    2.) UPDATE
-          CLUSTERED -> must have indexed-column
-          SHARDED   -> must have shard-key as (w.wf.akey) & be single-lookup
-    3.) DELETE
-          CLUSTERED -> must have indexed-column
-          SHARDED   -> must have shard-key as (w.wf.akey) & be single-lookup
-    4.) SIMPLE READS:
-        A.) SELECT
-              CLUSTERED -> OK
-              SHARDED   -> must have shard-key as (w.wf.akey) & be single-lookup
-        B.) DSELECT
-              CLUSTERED -> OK
-              SHARDED   -> must have indexed-column
-        C.) SCAN
-              CLUSTERED -> OK
-              SHARDED   -> PROHIBITED
-        D.) DSCAN
-              CLUSTERED -> OK
-              SHARDED   -> OK
-    5.) JOINS: (same rules as #4: SIMPLE READS, w/ following definitions)
-          PROHIBITED: 2+ SHARDED & not related via FKs
-          SHARDED: A.) Single SHARDED
-                   B.) multiple SHARDED w/ FK relation
-                   C.) SHARDED + CLUSTERED
-          CLUSTERED: 1+ CLUSTERED
-*/
-
-static bool Bdum;
-sds override_getKeysFromComm(rcommand *cmd, robj **argv, int argc, bool *err) {
-    int argt;
-    cli              *c    = CurrClient;
-    redisCommandProc *proc = cmd->proc;
-    if      (proc == sqlSelectCommand || proc == tscanCommand     ) argt = 3;
-    else if (proc == insertCommand    || proc == deleteCommand ||
-             proc == replaceCommand                               ) argt = 2;
-    else /* (proc == updateCommand */                               argt = 1;
-
-    sds tname = argv[argt]->ptr;
-    if (proc == sqlSelectCommand || proc == tscanCommand) {
-        if (strchr(tname, ',')) { printf("JOIN\n"); //TODO
-            int  ts  [MAX_JOIN_INDXS];
-            int  jans[MAX_JOIN_INDXS];
-            int  numt = 0;
-            if (!parseCommaSpaceList(c, argv[3]->ptr, 0, 1, 0, -1, NULL, &numt,
-                                     ts, jans, NULL, NULL, &Bdum)) return NULL;
-            uint32 n_clstr = 0, n_shrd = 0;
-            for (int i = 0; i < numt; i++) {
-                r_tbl_t *rt = &Tbl[ts[i]];
-                if (rt->sk == -1) n_clstr++;
-                else              n_shrd++;
-            }
-            if (n_shrd > 1) { // check for FK relations
-
-                //TODO parse WC, validate join-chain
-                int fk_otmatch[MAX_JOIN_INDXS];
-                int fk_ocmatch[MAX_JOIN_INDXS];
-                int n_fk = 0;
-                for (int i = 0; i < numt; i++) {
-                    r_tbl_t *rt = &Tbl[ts[i]];
-                    if (rt->sk != -1 && rt->fk_cmatch != -1) {
-                        fk_otmatch[n_fk] = rt->fk_otmatch;
-                        fk_ocmatch[n_fk] = rt->fk_ocmatch;
-                        n_fk++;
-                    }
-                }
-                for (int i = 0; i < n_fk; i++) {
-printf("%d: ot: %d oc: %d\n", i, fk_otmatch[i], fk_ocmatch[i]);
-                }
-            }
-printf("n_clstr: %d n_shrd: %d\n", n_clstr, n_shrd);
-            return NULL;
-        }
-    }
-    printf("override_getKeysFromComm: table: %s\n", tname);
-    int      tmatch = find_table(tname);
-    if (tmatch == -1) return NULL;
-    r_tbl_t *rt     = &Tbl[tmatch];
-
-    if (rt->sk == -1) { printf("CLUSTERED TABLE\n");
-        return NULL;
-    } else {                    printf("SHARDED TABLE rt->sk: %d\n", rt->sk);
-        if (proc == tscanCommand) {
-            *err = 1; addReply(c, shared.scan_sharded); return NULL;
-        } else if (proc == insertCommand || proc == replaceCommand) {
-            if (argc < 5) {
-                *err = 1; addReply(c, shared.insertsyntax); return NULL;
-            }
-            sds key;
-            bool repl = (proc == replaceCommand);
-            insertParse(c, argv, repl, tmatch, 1, &key);
-            //printf("insertParse: cluster-key: %s\n", *key);
-            return key;
-        } else if (proc == sqlSelectCommand || proc == deleteCommand ||
-                   proc == updateCommand) {
-            cswc_t w; wob_t wb;
-            init_check_sql_where_clause(&w, tmatch, argv[5]->ptr);
-            init_wob(&wb);
-            parseWCReply(c, &w, &wb, SQL_SELECT);
-            if (w.wtype == SQL_ERR_LKP)   return NULL;
-            if (w.wtype == SQL_RANGE_LKP) return NULL;
-            if (w.wtype == SQL_IN_LKP   ) return NULL; //TODO evaluate each key
-            if (w.wf.cmatch != rt->sk) {
-                *err = 1; addReply(c, shared.select_on_sk); return NULL;
-            }
-            aobj *afk = &w.wf.akey;
-            sds   sk  = createSDSFromAobj(afk);
-            sds   key  = sdscatprintf(sdsempty(), "%s=%s.%s",
-                                         sk, tname, Tbl->col_name[rt->sk]->ptr);
-            //printf("sqlSelectCommand: key: %s\n", key);
-            return key;
-        }
-    }
-    return NULL;
-}
-
-
-//TODO put in separate file, this is just too many lines of code here
-/* SHARED_OBJECTS  SHARED_OBJECTS  SHARED_OBJECTS  SHARED_OBJECTS */
-void DXDB_createSharedObjects() {
-    shared.singlerow = createObject(REDIS_STRING,sdsnew("*1\r\n"));
-    shared.inserted  = createObject(REDIS_STRING,sdsnew("+INSERTED\r\n"));
-    shared.upd8ed    = createObject(REDIS_STRING,sdsnew("+UPDATED\r\n"));
-    shared.toomanytables = createObject(REDIS_STRING,sdsnew(
-        "-ERR MAX tables reached (256)\r\n"));
-    shared.missingcolumntype = createObject(REDIS_STRING,sdsnew(
-        "-ERR LegacyTable: Column Type Missing\r\n"));
-    shared.undefinedcolumntype = createObject(REDIS_STRING,sdsnew(
-        "-ERR Column Type Unknown ALCHEMY_DATABASE uses[INT,LONG,FLOAT,TEXT] and recognizes INT=[*INT],LONG=[BIGINT],FLOAT=[FLOAT,REAL,DOUBLE],TEXT=[*CHAR,TEXT,BLOB,BINARY,BYTE]\r\n"));
-    shared.columnnametoobig = createObject(REDIS_STRING,sdsnew(
-        "-ERR ColumnName too long MAX(64)\r\n"));
-    shared.toomanycolumns = createObject(REDIS_STRING,sdsnew(
-        "-ERR MAX columns reached(64)\r\n"));
-    shared.toofewcolumns = createObject(REDIS_STRING,sdsnew(
-        "-ERR Too few columns (min 2)\r\n"));
-    shared.nonuniquecolumns = createObject(REDIS_STRING,sdsnew(
-        "-ERR Column name defined more than once\r\n"));
-    shared.nonuniquetablenames = createObject(REDIS_STRING,sdsnew(
-        "-ERR Table name already exists\r\n"));
-    shared.toomanyindices = createObject(REDIS_STRING,sdsnew(
-        "-ERR MAX indices reached(512)\r\n"));
-    shared.nonuniqueindexnames = createObject(REDIS_STRING,sdsnew(
-        "-ERR Index name already exists\r\n"));
-    shared.indextargetinvalid = createObject(REDIS_STRING,sdsnew(
-        "-ERR Index on Tablename.columnname target error\r\n"));
-    shared.indexedalready = createObject(REDIS_STRING,sdsnew(
-        "-ERR Tablename.Columnname is ALREADY indexed)\r\n"));
-    shared.index_wrong_nargs = createObject(REDIS_STRING,sdsnew(
-        "-ERR wrong number of arguments for 'CREATE INDEX' command\r\n"));
-    shared.nonuniquekeyname = createObject(REDIS_STRING,sdsnew(
-        "-ERR Key name already exists\r\n"));
-    shared.trigger_wrong_nargs = createObject(REDIS_STRING,sdsnew(
-        "-ERR wrong number of arguments for 'CREATE TRIGGER' command\r\n"));
-    shared.luatrigger_wrong_nargs = createObject(REDIS_STRING,sdsnew(
-        "-ERR wrong number of arguments for 'CREATE LUATRIGGER' command\r\n"));
-
-    shared.nonexistenttable = createObject(REDIS_STRING,sdsnew(
-        "-ERR Table does not exist\r\n"));
-    shared.insertcolumn = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: INSERT INTO tablename VALUES (1234,'abc',,,)\r\n"));
-    shared.insert_ovrwrt = createObject(REDIS_STRING,sdsnew(
-        "-ERR INSERT on Existing Data - use REPLACE\r\n"));
-
-    shared.uint_pkbig = createObject(REDIS_STRING,sdsnew(
-        "-ERR INSERT: PK greater than UINT_MAX(4GB)\r\n"));
-    shared.col_uint_string_too_long = createObject(REDIS_STRING,sdsnew(
-        "-ERR INSERT: UINT Column longer than 32 bytes\r\n"));
-    shared.u2big = createObject(REDIS_STRING,sdsnew(
-        "-ERR INSERT: UINT Column greater than UINT_MAX(4GB)\r\n"));
-    shared.col_float_string_too_long = createObject(REDIS_STRING,sdsnew(
-        "-ERR INSERT: FLOAT Column longer than 32 bytes\r\n"));
-
-    shared.columntoolarge = createObject(REDIS_STRING,sdsnew(
-        "-ERR INSERT - MAX column size is 1GB\r\n"));
-    shared.nonexistentcolumn = createObject(REDIS_STRING,sdsnew(
-        "-ERR Column does not exist\r\n"));
-    shared.nonexistentindex = createObject(REDIS_STRING,sdsnew(
-        "-ERR Index does not exist\r\n"));
-    shared.drop_virtual_index = createObject(REDIS_STRING,sdsnew(
-        "-ERR PROHIBITED: Primary Key Indices can not be dropped\r\n"));
-    shared.drop_lru = createObject(REDIS_STRING,sdsnew(
-        "-ERR PROHIBITED: LRU Indices can not be dropped\r\n"));
-    shared.drop_ind_on_sk = createObject(REDIS_STRING,sdsnew(
-        "-ERR PROHIBITED: Index on SHARDKEY can not be dropped\r\n"));
-    shared.drop_luatrigger = createObject(REDIS_STRING,sdsnew(
-        "-ERR TARGET: DROP LUATRIGGER on wrong object\r\n"));
-    shared.badindexedcolumnsyntax = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: JOIN WHERE tablename.columname ...\r\n"));
-    shared.index_nonrel_decl_fmt = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: CREATE TRIGGER name ON table ADD_CMD [DEL_CMD] - syntax for CMD: [INSERT,SET,GET,etc...] $col_name text = '$' is used for variable substitution of columns\r\n"));
-    shared.luat_decl_fmt = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: CREATE LUATRIGGER name ON table ADD_FUNC [DEL_FUNC]\r\n"));
-    shared.luat_c_decl = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: CREATE LUATRIGGER ... ADD_FUNC can ONLY contain column names and commas, e.g. \"luafunc(col1, col2, col3)\"\r\n"));
-
-    shared.invalidupdatestring = createObject(REDIS_STRING,sdsnew(
-        "-ERR UPDATE: string error, syntax is col1=val1,col2=val2,....\r\n"));
-    shared.invalidrange = createObject(REDIS_STRING,sdsnew(
-        "-ERR RANGE: Invalid range\r\n"));
-
-    shared.toomany_nob = createObject(REDIS_STRING,sdsnew(
-        "-ERR SELECT: JOIN: ORDER BY columns MAX = 16\r\n"));
-
-    shared.mci_on_pk = createObject(REDIS_STRING,sdsnew(
-        "-ERR PROHIBITED: Compound Indexes can NOT be on PrimaryKey\r\n"));
-    shared.UI_SC = createObject(REDIS_STRING,sdsnew(
-        "-ERR PROHIBITED: UNIQUE INDEX must be a Compound Index - e.g. ON (fk1, fk2)\r\n"));
-    shared.two_uniq_mci = createObject(REDIS_STRING,sdsnew(
-        "-ERR PROHIBITED: only ONE UNIQUE INDEX per table\r\n"));
-    shared.uniq_mci_notint = createObject(REDIS_STRING,sdsnew(
-        "-ERR PROHIBITED: UNIQUE INDEX final column must be INT\r\n"));
-    shared.uniq_mci_pk_notint = createObject(REDIS_STRING,sdsnew(
-        "-ERR PROHIBITED: UNIQUE INDEX Primary Key must be INT\r\n"));
-
-    shared.accesstypeunknown = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: SELECT ... WHERE x IN ([SELECT|SCAN])\r\n"));
-
-    shared.createsyntax = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: \"CREATE TABLE tablename (columnname type,,,,)\" OR \"CREATE INDEX indexname ON tablename (columnname)\" OR \"CREATE LRUINDEX ON tablename\" OR \"CREATE LUATRIGGER luatriggername ON tablename ADD_RPC_CALL DEL_RPC_CALL\"\r\n"));
-    shared.dropsyntax = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: DROP TABLE tablename OR DROP INDEX indexname OR DROP LUATRIGGER\r\n"));
-    shared.altersyntax = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: ALTER TABLE tablename ADD [COLUMN columname columntype[INT,LONG,FLOAT,TEXT]] [SHARDKEY columname] [FOREIGN KEY (fk_name) REFERENCES othertable (other_table_indexed_column)]\r\n"));
-    shared.alter_other = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: ALTER TABLE tablename ADD COLUMN columname columntype - CAN NOT be done on OPTIMISED 2 COLUMN TABLES\r\n"));
-    shared.lru_other = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: CREATE LRUINDEX ON tablename - CAN NOT be done on OPTIMISED 2 COLUMN TABLES\r\n"));
-    shared.lru_repeat = createObject(REDIS_STRING,sdsnew(
-        "-ERR LOGIC: LRUINDEX already exists on this table\r\n"));
-    shared.col_lru = createObject(REDIS_STRING,sdsnew(
-        "-ERR KEYWORD: LRU is a keyword, can not be used as a columnname\r\n"));
-    shared.update_lru = createObject(REDIS_STRING,sdsnew(
-        "-ERR PROHIBITED: LRU column can not be DIRECTLY UPDATED\r\n"));
-    shared.insert_lru = createObject(REDIS_STRING,sdsnew(
-        "-ERR PROHIBITED: INSERT of LRU column DIRECTLY not kosher\r\n"));
-    shared.insert_replace_update = createObject(REDIS_STRING,sdsnew(
-        "-ERR PROHIBITED:  REPLACE INTO tbl ... ON DUPLICATE KEY UPDATE\r\n"));
-
-    shared.insertsyntax = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: INSERT INTO tablename VALUES (vals,,,,)\r\n"));
-    shared.insertsyntax_no_into = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: INSERT INTO tablename VALUES (vals,,,,) - \"INTO\" keyword MISSING\r\n"));
-    shared.insertsyntax_no_values = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: INSERT INTO tablename VALUES (vals,,,,) - \"VALUES\" keyword MISSING\r\n"));
-    shared.part_insert_other = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: INSERT INTO table with 2 values, both values must be specified - these tables are optimised and stored inside the BTREE and MUST have ALL values defined\r\n"));
-
-    shared.key_query_mustbe_eq = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: SELECT WHERE fk != 4 - primary key or index lookup must use EQUALS (=) - OR use \"SCAN\"\r\n"));
-
-    shared.whereclause_in_err = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: WHERE col IN (...) - \"IN\" requires () delimited list\r\n"));
-    shared.where_in_select = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: WHERE col IN ($SELECT col ....) INNER SELECT SYNTAX ERROR \r\n"));
-    shared.whereclause_between = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: WHERE col BETWEEN x AND y\r\n"));
-
-    shared.wc_orderby_no_by = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: WHERE ... ORDER BY col - \"BY\" MISSING\r\n"));
-    shared.order_by_col_not_found = createObject(REDIS_STRING,sdsnew(
-        "-ERR SELECT: ORDER BY columname - column does not exist\r\n"));
-    shared.oby_lim_needs_num = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: WHERE ... ORDER BY col [DESC] LIMIT N = \"N\" MISSING\r\n"));
-    shared.oby_ofst_needs_num = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: WHERE ... ORDER BY col [DESC] LIMIT N OFFSET M = \"M\" MISSING\r\n"));
-    shared.orderby_count = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: SELECT COUNT(*) ... WHERE ... ORDER BY col - \"ORDER BY\" and \"COUNT(*)\" dont mix, drop the \"ORDER BY\"\r\n"));
-
-    shared.selectsyntax = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: SELECT [col,,,,] FROM tablename WHERE [[indexed_column = val]|| [indexed_column BETWEEN x AND y] || [indexed_column IN (X,Y,Z,...)] || [indexed_column IN ($redis_statment)]] [ORDER BY [col [DESC/ASC]*,,] LIMIT n OFFSET m]\r\n"));
-    shared.selectsyntax_nofrom = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: SELECT col,,,, FROM tablename WHERE indexed_column = val - \"FROM\" keyword MISSING\r\n"));
-    shared.selectsyntax_nowhere = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: SELECT col,,,, FROM tablename WHERE indexed_column = val - \"WHERE\" keyword MISSING\r\n"));
-    shared.rangequery_index_not_found = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: WHERE indexed_column = val - indexed_column either non-existent or not indexed\r\n"));
-
-    shared.deletesyntax = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: DELETE FROM tablename WHERE indexed_column = val || WHERE indexed_column BETWEEN x AND y\r\n"));
-    shared.deletesyntax_nowhere = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: DELETE FROM tablename WHERE indexed_column = val - \"WHERE\" keyword MISSING\r\n"));
-
-    shared.updatesyntax = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: UPDATE tablename SET col1=val1,col2=val2,,,, WHERE indexed_column = val\r\n"));
-    shared.updatesyntax_nowhere = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: UPDATE tablename SET col1=val1,col2=val2,,,, WHERE indexed_column = val \"WHERE\" keyword MISSING\r\n"));
-    shared.update_pk_range_query = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: UPDATE of PK not allowed with Range Query\r\n"));
-    shared.update_pk_overwrite = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: UPDATE of PK would overwrite existing row - disallowed\r\n"));
-    shared.update_expr = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: UPDATE expression: parse error\r\n"));
-    shared.update_expr_col = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: UPDATE expression: SYNTAX: 'columname OP value' - OP=[+-*/%||] value=[columname,integer,float]\r\n"));
-    shared.update_expr_div_0 = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: UPDATE expression evaluation resulted in divide by zero\r\n"));
-    shared.update_expr_mod = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: UPDATE expression: MODULO only possible on INT columns \r\n"));
-    shared.update_expr_cat = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: UPDATE expression: String Concatenation only possible on TEXT columns \r\n"));
-    shared.update_expr_str = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: UPDATE expression: TEXT columns do not support [+-*/%^] Operations\r\n"));
-    shared.update_expr_empty_str = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: UPDATE expression: Concatenating Empty String\r\n"));
-    shared.update_expr_math_str = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: UPDATE expression: INT or FLOAT columns can not be set to STRINGS\r\n"));
-    shared.update_expr_col_other = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: UPDATE expression: SYNTAX: Left Hand Side column operations not possible on other columns in table\r\n"));
-    shared.update_expr_float_overflow = createObject(REDIS_STRING,sdsnew(
-        "-ERR MATH: UPDATE expression: Floating point arithmetic produced overflow or underflow [FLT_MIN,FLT_MAX]\r\n"));
-    shared.up_on_mt_col = createObject(REDIS_STRING,sdsnew(
-        "-ERR LOGIC: UPDATE expression against an empty COLUMN - behavior undefined\r\n"));
-    shared.neg_on_uint = createObject(REDIS_STRING,sdsnew(
-        "-ERR MATH: UPDATE expression: NEGATIVE value against UNSIGNED [INT,LONG]\r\n"));
-
-    shared.wc_col_not_found = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: WHERE indexed_column = val - Column does not exist\r\n"));
-    shared.whereclause_col_not_indxd = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: WHERE indexed_column = val - Column must be indexed\r\n"));
-    shared.whereclause_no_and = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: WHERE-CLAUSE: WHERE indexed_column BETWEEN start AND finish - \"AND\" MISSING\r\n"));
-
-    shared.scansyntax = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: SCAN col,,,, FROM tablename [WHERE [indexed_column = val]|| [indexed_column BETWEEN x AND y] [ORDER BY col LIMIT num offset] ]\r\n"));
-    shared.cr8tbl_scan = createObject(REDIS_STRING,sdsnew(
-        "-ERR CREATE TABLE AS SCAN not yet supported\r\n"));
-
-    shared.toofewindicesinjoin = createObject(REDIS_STRING,sdsnew(
-        "-ERR SELECT: JOIN: Too few indexed columns in join(min=2)\r\n"));
-    shared.toomanyindicesinjoin = createObject(REDIS_STRING,sdsnew(
-        "-ERR SELECT: JOIN: MAX indices in JOIN reached(64)\r\n"));
-    shared.joincolumnlisterror = createObject(REDIS_STRING,sdsnew(
-        "-ERR SELECT: JOIN: error in columnlist (select columns)\r\n"));
-    shared.join_order_by_tbl = createObject(REDIS_STRING,sdsnew(
-        "-ERR SELECT: JOIN: ORDER BY tablename.columname - table does not exist\r\n"));
-    shared.join_order_by_col = createObject(REDIS_STRING,sdsnew(
-        "-ERR SELECT: JOIN: ORDER BY tablename.columname - column does not exist\r\n"));
-    shared.join_table_not_in_query = createObject(REDIS_STRING,sdsnew(
-        "-ERR SELECT: JOIN: ORDER BY tablename.columname - table not in SELECT *\r\n"));
-    shared.joinsyntax_no_tablename = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: SELECT tbl.col,,,, FROM tbl1,tbl2 WHERE tbl1.indexed_column = tbl2.indexed_column AND tbl1.indexed_column BETWEEN x AND y - MISSING table-name in WhereClause\r\n"));
-    shared.join_chain = createObject(REDIS_STRING,sdsnew(
-        "-ERR SELECT: JOIN: TABLES in WHERE statement must form a chain to be a star schema (e.g. WHERE t1.pk = 3 AND t1.fk = t2.pk AND t2.pk = t3.pk AND t3.fk = t4.pk [tables were chained {t1,t2,t3,t4 each joined to one another}]\r\n"));
-    shared.fulltablejoin = createObject(REDIS_STRING,sdsnew(
-        "-ERR SELECT: JOIN: Join has a full table scan in it (maybe in the middle) - this is not supported via SELECT - use \"SCAN\"\r\n"));
-    shared.joindanglingfilter = createObject(REDIS_STRING,sdsnew(
-        "-ERR SELECT: JOIN: relationship not joined (i.e. a.x = 5 and a is not joined)\r\n"));
-    shared.join_noteq = createObject(REDIS_STRING,sdsnew(
-        "-ERR SELECT: JOIN: table joins only possible via the EQUALS operator (e.g. t1.fk = t2.fk2 ... not t1.fk < t2.fk2)\r\n"));
-    shared.join_coltypediff = createObject(REDIS_STRING,sdsnew(
-        "-ERR SELECT: JOIN: column types of joined columns do not match\r\n"));
-    shared.join_col_not_indexed = createObject(REDIS_STRING,sdsnew(
-        "-ERR SELECT: JOIN: joined column IS not indexed - USE \"SCAN\"\r\n"));
-    shared.join_qo_err = createObject(REDIS_STRING,sdsnew(
-        "-ERR SELECT: JOIN: query optimiser could not find a join plan\r\n"));
-
-
-    shared.create_table_err = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: CREATE TABLE tablename (col INT,,,,,,) [SELECT ....]\r\n"));
-
-    shared.create_table_as_count = createObject(REDIS_STRING,sdsnew(
-        "-ERR TYPE: CREATE TABLE tbl AS SELECT COUNT(*) - is disallowed\r\n"));
-
-    shared.dump_syntax = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: DUMP tablename [TO MYSQL [mysqltablename]],[TO FILE fname]\r\n"));
-    shared.show_syntax = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: SHOW [TABLES|INDEXES]\r\n"));
-
-    shared.alter_sk_rpt = createObject(REDIS_STRING,sdsnew(
-        "-ERR SHARDKEY: TABLE can only have 1 shardkey\r\n"));
-    shared.alter_sk_no_i = createObject(REDIS_STRING,sdsnew(
-        "-ERR SHARDKEY: must be Indexed\r\n"));
-    shared.alter_sk_no_lru = createObject(REDIS_STRING,sdsnew(
-        "-ERR SHARDKEY: can not be on LRU column\r\n"));
-    shared.alter_fk_not_sk = createObject(REDIS_STRING,sdsnew(
-        "-ERR ALTER TABLE ADD FOREIGN KEY: must point from this table's shard-key to the foreign table's shard-key\r\n"));
-    shared.alter_fk_repeat = createObject(REDIS_STRING,sdsnew(
-        "-ERR ALTER TABLE ADD FOREIGN KEY: table already has foreign key, drop foreign key first to redefine ... and caution if your data is already distributed\r\n"));
-
-    shared.select_on_sk = createObject(REDIS_STRING,sdsnew(
-        "-ERR SELECT: NOT ON SHARDKEY\r\n"));
-    shared.scan_sharded = createObject(REDIS_STRING,sdsnew(
-        "-ERR SCAN: PROHIBITED on SHARDED TABLE -> USE \"DSCAN\"\r\n"));
-}

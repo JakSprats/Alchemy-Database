@@ -1,5 +1,5 @@
 /*
- * This file implements ALCHEMY_DATABASE's redis-server interface
+ * This file implements ALCHEMY_DATABASE's ShortStack WebServer
  *
 
 AGPL License
@@ -9,7 +9,7 @@ ALL RIGHTS RESERVED
 
    This file is part of ALCHEMY_DATABASE
 
-    This program is free software: you can redistribute it and/or modify
+   This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU Affero General Public License as
     published by the Free Software Foundation, either version 3 of the
     License, or (at your option) any later version.
@@ -23,19 +23,20 @@ ALL RIGHTS RESERVED
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-
-#ifndef REDIS_CORE__H
-#define REDIS_CORE__H
+#ifndef DXDB_WEBSERVER_H
+#define DXDB_WEBSERVER_H
 
 #include "redis.h"
 
 #include "common.h"
 
-void init_Tbl_and_Index();
+bool luafunc_call(redisClient *c, int argc, robj **argv);
 
-bool initLua();
-bool reloadLua();
+int start_http_session(cli *c);
+int continue_http_session(cli *c);
+void end_http_session(cli *c);
 
-void configAddCommand(redisClient *c);
+int luaSetHttpResponseHeaderCommand(lua_State *lua);
+int luaSetHttpRedirectCommand(lua_State *lua);
 
-#endif /* REDIS_CORE__H */
+#endif /* DXDB_WEBSERVER_H */

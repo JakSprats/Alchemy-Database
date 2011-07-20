@@ -57,7 +57,7 @@ endif
 
 CCOPT= $(CFLAGS) $(CCLINK) $(ARCH) $(PROF)
 
-OBJ = bt.o bt_code.o bt_output.o alsosql.o sixbit.o row.o index.o rdb_alsosql.o aof_alsosql.o join.o bt_iterator.o wc.o scan.o orderby.o lua_integration.o parser.o cr8tblas.o rpipe.o range.o desc.o aobj.o stream.o colparse.o filter.o qo.o lru.o internal_commands.o redis_core.o xdb_hooks.o xdb_client_hooks.o
+OBJ = bt.o bt_code.o bt_output.o alsosql.o sixbit.o row.o index.o rdb_alsosql.o aof_alsosql.o join.o bt_iterator.o wc.o scan.o orderby.o lua_integration.o parser.o cr8tblas.o rpipe.o range.o desc.o aobj.o stream.o colparse.o filter.o qo.o lru.o internal_commands.o xdb_hooks.o xdb_client_hooks.o ctable.o shared_obj.o webserver.o
 
 LIBNAME = libx_db.a
 
@@ -100,9 +100,11 @@ filter.o: filter.h colparse.h aobj.h common.h
 qo.o: qo.h join.h bt.h filter.h index.h alsosql.h common.h
 lru.o: lru.h row.h stream.h alsosql.h aobj.h query.h common.h
 internal_commands.o: internal_commands.h
-redis_core.o: redis_core.h
 xdb_hooks.o: xdb_hooks.h
 xdb_client_hooks.o: xdb_client_hooks.h
+ctable.o: ctable.h wc.h colparse.h common.h
+shared_obj.o: xdb_hooks.h
+webserver.o: webserver.h
 
 .c.o:
 	$(CC) -c $(CFLAGS) $(DEBUG) $(COMPILE_TIME) $<

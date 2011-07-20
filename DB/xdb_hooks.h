@@ -48,7 +48,7 @@ void  DXDB_emptyDb();
 rcommand *DXDB_lookupCommand(sds name);
 
 int           DXDB_processCommand(redisClient *c);
-unsigned char DXDB_processInputBuffer_ZeroArgs(redisClient *c);
+void          DXDB_processInputBuffer_ZeroArgs(redisClient *c);
 
 int           DXDB_loadServerConfig(int argc, sds *argv);
 int           DXDB_configSetCommand(redisClient *c, robj *o);
