@@ -41,7 +41,7 @@ ALL RIGHTS RESERVED
 #include "bt_iterator.h"
 #include "row.h"
 #include "orderby.h"
-#include "lua_integration.h"
+#include "luatrigger.h"
 #include "colparse.h"
 #include "stream.h"
 #include "alsosql.h"

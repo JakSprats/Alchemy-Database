@@ -62,8 +62,6 @@ int parseUpdateOrReply(redisClient  *c,
 bool initLRUCS(int tmatch, int cmatchs[], int qcols);
 bool initLRUCS_J(jb_t *jb);
 
-void createCommand   (redisClient *c);
-void dropCommand     (redisClient *c);
 void insertParse(cli *c, robj **argv, bool repl, int tmatch,
                  bool parse, sds *key);
 void insertCommand   (redisClient *c);
@@ -71,15 +69,11 @@ void replaceCommand  (redisClient *c);
 void sqlSelectCommand(redisClient *c);
 void updateCommand   (redisClient *c);
 void deleteCommand   (redisClient *c);
-void alterCommand    (redisClient *c);
 
 void addReplyRow(cli *c, robj *r, int tmatch, aobj *apk, uchar *lruc);
-void addColumn(int tmatch, char *cname, int ctype);
-ulong emptyTable(int tmatch);
 
 /* FILLERS FILLERS FILLERS FILLERS FILLERS FILLERS FILLERS */
 void tscanCommand(redisClient *c);  /* scan.h does not exist */
-void denormCommand(redisClient *c); /* denorm.h does not exist */
 
 void setDeferredMultiBulkLong(redisClient *c, void *node, long card);
 void setDeferredMultiBulkError(redisClient *c, void *node, sds error);

@@ -1,5 +1,6 @@
 /*
- * This file implements Lua c bindings for lua function "redis"
+ * This file implements the basic SQL commands of Alsosql (single row ops)
+ *  and calls the range-query and join ops
  *
 
 AGPL License
@@ -7,7 +8,7 @@ AGPL License
 Copyright (c) 2011 Russell Sullivan <jaksprats AT gmail DOT com>
 ALL RIGHTS RESERVED 
 
-    This file is part of ALCHEMY_DATABASE
+   This file is part of ALCHEMY_DATABASE
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU Affero General Public License as
@@ -21,32 +22,20 @@ ALL RIGHTS RESERVED
 
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
  */
 
-#ifndef __LUA_INTEGRATION__H
-#define __LUA_INTEGRATION__H
-
-#include <lua.h>
-#include <lauxlib.h>
-#include <lualib.h>
+#ifndef __A_DDL__H
+#define __A_DDL__H
 
 #include "redis.h"
 
-#include "bt.h"
 #include "common.h"
 
-/* this calls lua routines every second from a server cron -> an event */
-int luaCronTimeProc(struct aeEventLoop *eventLoop, lolo id, void *clientData);
+void createCommand   (redisClient *c);
+void dropCommand     (redisClient *c);
+void alterCommand    (redisClient *c);
 
-/* LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER */
-luat_t *init_lua_trigger();
-sds     getLUATlist(ltc_t *ltc, int tmatch);
-void createLuaTrigger(cli *c);
-void dropLuaTrigger  (cli *c);
-void freeLuaTriggerObject(robj *o);
+void addColumn(int tmatch, char *cname, int ctype);
+ulong emptyTable(int tmatch);
 
-void luatAdd(bt *btr, luat_t *luat, aobj *apk, int imatch, void *rrow);
-void luatDel(bt *btr, luat_t *luat, aobj *apk, int imatch, void *rrow);
-
-#endif /* __LUA_INTEGRATION__H */ 
+#endif /*__A_DDL__H */ 

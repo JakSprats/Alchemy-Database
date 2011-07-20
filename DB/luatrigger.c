@@ -40,7 +40,7 @@ ALL RIGHTS RESERVED
 #include "rpipe.h"
 #include "parser.h"
 #include "alsosql.h"
-#include "lua_integration.h"
+#include "luatrigger.h"
 
 extern r_tbl_t Tbl[MAX_NUM_TABLES];
 extern r_ind_t Index[MAX_NUM_INDICES];
@@ -153,10 +153,6 @@ void dropLuaTrigger(cli *c) {
     }
     emptyIndex(imatch);
     addReply(c, shared.cone);
-}
-void freeLuaTriggerObject(robj *o) {
-    luat_t *luat = (luat_t *)o->ptr;
-    destroy_lua_trigger(luat);
 }
 
 static void luatDo(bt  *btr,    luat_t *luat, aobj *apk, 

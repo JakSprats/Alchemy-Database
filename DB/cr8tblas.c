@@ -34,9 +34,9 @@ ALL RIGHTS RESERVED
 
 #include "internal_commands.h"
 #include "wc.h"
-#include "lua_integration.h"
 #include "row.h"
 #include "rpipe.h"
+#include "ddl.h"
 #include "alsosql.h"
 #include "parser.h"
 #include "colparse.h"

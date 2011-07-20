@@ -98,7 +98,6 @@ sds override_getKeysFromComm(rcommand *cmd, robj **argv, int argc, bool *err) {
                 else              n_shrd++;
             }
             if (n_shrd > 1) { // check for FK relations
-
                 //TODO parse WC, validate join-chain
                 int fk_otmatch[MAX_JOIN_INDXS];
                 int fk_ocmatch[MAX_JOIN_INDXS];
@@ -112,10 +111,11 @@ sds override_getKeysFromComm(rcommand *cmd, robj **argv, int argc, bool *err) {
                     }
                 }
                 for (int i = 0; i < n_fk; i++) {
-printf("%d: ot: %d oc: %d\n", i, fk_otmatch[i], fk_ocmatch[i]);
+                    printf("%d: ot: %d oc: %d\n",
+                           i, fk_otmatch[i], fk_ocmatch[i]);
                 }
             }
-printf("n_clstr: %d n_shrd: %d\n", n_clstr, n_shrd);
+            printf("n_clstr: %d n_shrd: %d\n", n_clstr, n_shrd);
             return NULL;
         }
     }
@@ -153,7 +153,7 @@ printf("n_clstr: %d n_shrd: %d\n", n_clstr, n_shrd);
             aobj *afk = &w.wf.akey;
             sds   sk  = createSDSFromAobj(afk);
             sds   key  = sdscatprintf(sdsempty(), "%s=%s.%s",
-                                         sk, tname, Tbl->col_name[rt->sk]->ptr);
+                                 sk, tname, (char *)Tbl->col_name[rt->sk]->ptr);
             //printf("sqlSelectCommand: key: %s\n", key);
             return key;
         }

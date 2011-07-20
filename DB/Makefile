@@ -57,7 +57,7 @@ endif
 
 CCOPT= $(CFLAGS) $(CCLINK) $(ARCH) $(PROF)
 
-OBJ = bt.o bt_code.o bt_output.o alsosql.o sixbit.o row.o index.o rdb_alsosql.o aof_alsosql.o join.o bt_iterator.o wc.o scan.o orderby.o lua_integration.o parser.o cr8tblas.o rpipe.o range.o desc.o aobj.o stream.o colparse.o filter.o qo.o lru.o internal_commands.o xdb_hooks.o xdb_client_hooks.o ctable.o shared_obj.o webserver.o
+OBJ = bt.o bt_code.o bt_output.o ddl.o alsosql.o sixbit.o row.o index.o rdb_alsosql.o aof_alsosql.o join.o bt_iterator.o wc.o scan.o orderby.o luatrigger.o parser.o cr8tblas.o rpipe.o range.o desc.o aobj.o stream.o colparse.o filter.o qo.o lru.o internal_commands.o xdb_hooks.o xdb_client_hooks.o ctable.o shared_obj.o webserver.o
 
 LIBNAME = libx_db.a
 
@@ -73,18 +73,18 @@ redis3:
 all: redis3
 
 # Deps (use make dep to generate this)
-alsosql.o: alsosql.h bt.h filter.h query.h index.h range.h rpipe.h desc.h cr8tblas.h lua_integration.h wc.h parser.h colparse.h aobj.h common.h
+alsosql.o: alsosql.h bt.h filter.h query.h index.h range.h rpipe.h desc.h cr8tblas.h wc.h parser.h colparse.h aobj.h common.h
 aobj.o: aobj.h row.h parser.h query.h common.h
 bt.o: bt.h btree.h btreepriv.h query.h stream.h common.h
 bt_code.o: btree.h btreepriv.h bt.h bt_iterator.h common.h
 bt_output.o: btree.h stream.h colparse.h
 bt_iterator.o: bt_iterator.h bt.h stream.h aobj.h query.h common.h
-cr8tblas.o: cr8tblas.h wc.h lua_integration.h alsosql.h row.h rpipe.h parser.h common.h
+cr8tblas.o: cr8tblas.h wc.h alsosql.h row.h rpipe.h parser.h common.h
 colparse.o: colparse.h parser.h query.h common.h
 desc.o: desc.h bt_iterator.h colparse.h bt_iterator.h bt.h aobj.h common.h
-index.o: index.h lua_integration.h colparse.h bt_iterator.h alsosql.h orderby.h  stream.h aobj.h common.h
+index.o: index.h luatrigger.h colparse.h bt_iterator.h alsosql.h orderby.h  stream.h aobj.h common.h
 join.o: join.h wc.h colparse.h range.h bt_iterator.h alsosql.h orderby.h aobj.h common.h
-lua_integration.o: lua_integration.h rpipe.h
+luatrigger.o: luatrigger.h rpipe.h
 orderby.o: orderby.h join.h aobj.h common.h
 parser.o: parser.h common.h
 range.o: range.h filter.h colparse.h orderby.h bt_iterator.h bt.h aobj.h common.h
@@ -105,6 +105,7 @@ xdb_client_hooks.o: xdb_client_hooks.h
 ctable.o: ctable.h wc.h colparse.h common.h
 shared_obj.o: xdb_hooks.h
 webserver.o: webserver.h
+ddl.o: ddl.h alsosql.h common.h
 
 .c.o:
 	$(CC) -c $(CFLAGS) $(DEBUG) $(COMPILE_TIME) $<

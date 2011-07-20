@@ -31,7 +31,7 @@ ALL RIGHTS RESERVED
 #include "redis.h"
 #include "rdb.h"
 
-#include "lua_integration.h"
+#include "luatrigger.h"
 #include "bt.h"
 #include "index.h"
 #include "lru.h"

@@ -36,6 +36,7 @@ ALL RIGHTS RESERVED
 #include "row.h"
 #include "stream.h"
 #include "index.h"
+#include "ddl.h"
 #include "alsosql.h"
 #include "colparse.h"
 #include "parser.h"

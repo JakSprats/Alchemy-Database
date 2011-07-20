@@ -45,8 +45,9 @@ ALL RIGHTS RESERVED
 #include "range.h"
 #include "index.h"
 #include "rdb_alsosql.h"
+#include "luatrigger.h"
+#include "ddl.h"
 #include "alsosql.h"
-#include "lua_integration.h"
 
 extern int      Num_tbls;
 extern r_tbl_t  Tbl[MAX_NUM_TABLES];
