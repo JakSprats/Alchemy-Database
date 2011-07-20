@@ -31,6 +31,7 @@ ALL RIGHTS RESERVED
 #include <ctype.h>
 
 #include "redis.h"
+#include "dict.h"
 
 #include "bt.h"
 #include "luatrigger.h"
@@ -41,9 +42,9 @@ ALL RIGHTS RESERVED
 #include "cr8tblas.h"
 #include "parser.h"
 #include "colparse.h"
-#include "ddl.h"
-#include "common.h"
 #include "alsosql.h"
+#include "common.h"
+#include "ddl.h"
 
 extern int     Num_tbls;
 extern r_tbl_t Tbl[MAX_NUM_TABLES];
@@ -51,6 +52,9 @@ extern int     Num_indx;
 extern r_ind_t Index[MAX_NUM_INDICES];
 
 extern char *RangeType[5];
+
+// GLOBALS
+dict *Constraints = NULL;
 
 // CONSTANT GLOBALS
 char *Col_type_defs[] = {"INT", "LONG", "TEXT", "FLOAT", "NONE"};
@@ -97,12 +101,15 @@ static void createTableCommitReply(redisClient *c,
     int      tmatch = Num_tbls;
     robj    *tbl    = createStringObject(tname, tlen);
     r_tbl_t *rt     = &Tbl[tmatch];
-    //bzero(rt); NOTE: not possible col_types assigned in parseCreateTable - FIX
+
+    //bzero(rt); NOTE: not possible col_types assigned in parseCreateTable
+    // TODO FIX & make function initTable(), user in rdbLoadBT() & emptyTable()
     bzero(rt->col_indxd, MAX_COLUMN_PER_TABLE);
-    rt->nmci        = rt->ainc = rt->lrud = rt->nltrgr    = rt->n_intr     =
-                                            rt->lastts    = rt->nextts     =  0;
-    rt->lruc        = rt->lrui = rt->sk   = rt->fk_cmatch = rt->fk_otmatch = 
-                                                            rt->fk_ocmatch = -1;
+    rt->nmci        = rt->lrud       = rt->ainc       = rt->n_intr    = \
+                      rt->lastts     = rt->nextts     =  0;
+    rt->lruc        = rt->lrui       = rt->sk         = rt->fk_cmatch = \
+                      rt->fk_otmatch = rt->fk_ocmatch = -1;
+    rt->rn          = NULL;
     rt->name        = tbl;
     rt->vimatch     = vimatch;
     rt->col_count   = ccount;
@@ -129,8 +136,82 @@ static void createTable(redisClient *c) { //printf("createTable\n");
         createTableCommitReply(c, cnames, ccount, tname, tlen);
     }
 }
-static void createConstraint(cli *c) { printf("createConstraint\n");
+
+static cst_t *init_constraint(sds rname,  int tmatch, int cmatch,
+                              int imatch, bool asc) {
+    cst_t *rn  = malloc(sizeof(cst_t)); // FREE ME 080
+    rn->name   = sdsnew(rname);         // DEST ME 081
+    rn->tmatch = tmatch;
+    rn->cmatch = cmatch;
+    rn->imatch = imatch;
+    rn->asc    = asc;
+    return rn;
 }
+static void destroy_constraint(void *v) {
+    if (!v) return;
+    cst_t *rn = (cst_t *)v;
+    sdsfree(rn->name); // DESTROYED 081
+    free(rn);          // FREED     080
+}
+
+//TODO this will be replace by "ALTER INDEX iname ORDER BY cname ASC"
+// SYNTAX: CREATE CONSTRAINT c_foo ON foo (ts) RESPECTS INDEX (i_foo) [ASC|DESC]
+static void createConstraint(cli *c) { //printf("createConstraint\n");
+    if (c->argc < 9                             ||
+        strcasecmp(c->argv[3]->ptr, "ON")       ||
+        strcasecmp(c->argv[6]->ptr, "RESPECTS") ||
+        strcasecmp(c->argv[7]->ptr, "INDEX")) {
+         addReply(c, shared.constraint_wrong_nargs); return;
+    }
+    char    *rname  = c->argv[2]->ptr;
+    TABLE_CHECK_OR_REPLY(c->argv[4]->ptr,)
+    r_tbl_t *rt     = &Tbl[tmatch];
+    char    *token  = c->argv[5]->ptr;
+    char    *end    = strchr(token, ')');
+    if (!end || (*token != '(')) {
+        addReply(c, shared.constraint_wrong_nargs); return;
+    }
+    STACK_STRDUP(cname, (token + 1), (end - token - 1))
+    int      cmatch = find_column(tmatch, cname);
+    if (cmatch == -1) { addReply(c, shared.constraint_wrong_nargs); return; }
+    if (find_index(tmatch, cmatch) != -1) {
+         addReply(c, shared.constraint_col_indexed); return;
+    }
+    token           = c->argv[8]->ptr;
+    end             = strchr(token, ')');
+    if (!end || (*token != '(')) {
+        addReply(c, shared.constraint_wrong_nargs); return;
+    }
+    STACK_STRDUP(iname, (token + 1), (end - token - 1))
+    int      imatch = match_index_name(iname);
+    if (imatch == -1) { addReply(c, shared.constraint_wrong_nargs); return; }
+    r_ind_t *ri     = &Index[imatch];
+    if (ri->table != tmatch) {
+        addReply(c, shared.constraint_table_mismatch); return;
+    }
+    uchar    ctype  = rt->col_type[cmatch];
+    uchar    itype  = Tbl[ri->table].col_type[ri->column];
+    if (!C_IS_NUM(ctype) || !C_IS_NUM(itype)) {
+         addReply(c, shared.constraint_not_num); return;
+    }
+
+    //TODO no UNIQUE indexes - makes no sense
+    //TODO support MCIs - need logic
+    bool     asc    = 1;
+    if (c->argc == 10 && !strcasecmp(c->argv[9]->ptr, "DESC")) asc = 0;
+    cst_t   *rn     = init_constraint(rname, tmatch, cmatch, imatch, asc);//D082
+    int      retval = dictAdd(Constraints, sdsnew(rname), rn);
+    if (retval != DICT_OK) {
+         addReply(c, shared.constraint_nonuniq); free(rn); return; // FREED 080
+    }
+    rt->rn          = rn;
+
+printf("createConstraint: rname: %s tmatch: %d cname: %s cmatch: %d iname: %s imatch: %d asc: %d\n", rname, tmatch, cname, cmatch, iname, imatch, asc);
+
+    addReply(c, shared.ok);
+}
+//TODO dropConstraint(cli *c) { }
+
 void createCommand(redisClient *c) { //printf("createCommand\n");
     bool  tbl  = 0; bool ind = 0; bool lru = 0; bool luat = 0; bool cnstr = 0;
     uchar slot = 2;
@@ -168,8 +249,10 @@ unsigned long emptyTable(int tmatch) {
         rt->col_type[j] = -1;
     }
     bt_destroy(rt->btr);
+    //TODO remove rt->rn from dict: Constraints
+    destroy_constraint(rt->rn);                             // DESTROYED 082
     bzero(rt, sizeof(r_tbl_t));
-    rt->vimatch = rt->lruc = rt->lrui    = -1;
+    rt->vimatch = rt->lruc = rt->lrui    = -1; //TODO use initTable()
     deleted++; //TODO shuffle tables to make space for deleted indices
     return deleted;
 }

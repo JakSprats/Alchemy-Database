@@ -61,6 +61,17 @@ extern ulong    Operations;
 
 extern uchar    OutputMode;
 
+extern dict    *Constraints;
+/* Constraint table. sds string -> command struct pointer. */
+dictType constraintTableDictType = {
+    dictSdsCaseHash,           /* hash function */
+    NULL,                      /* key dup */
+    NULL,                      /* val dup */
+    dictSdsKeyCaseCompare,     /* key compare */
+    dictSdsDestructor,         /* key destructor */
+    NULL                       /* val destructor */
+};
+
 cli            *CurrClient         = NULL;
 char           *Basedir            = "./";
 char           *LuaIncludeFile     = NULL;
@@ -175,6 +186,8 @@ void DXDB_initServerConfig() { //printf("DXDB_initServerConfig\n");
     WS_WL_Subnet       =  0;
     bzero(&WS_WL_Addr, sizeof(struct in_addr));
     bzero(&WS_WL_Mask, sizeof(struct in_addr));
+
+    Constraints = dictCreate(&constraintTableDictType, NULL);
 }
 
 

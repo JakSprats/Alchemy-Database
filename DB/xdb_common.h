@@ -82,22 +82,24 @@
     *update_expr_float_overflow,                     *update_expr_empty_str, \
     *up_on_mt_col, \
     *neg_on_uint, \
-    *scansyntax,       *scansyntax_noequals, \
-    *cr8tbl_scan, \
-    *rangequery_index_not_found, \
-    *whereclause_col_not_indxd, *wc_col_not_found, \
-    *whereclause_no_and,        *whereclause_between, \
+    *scansyntax,     *scansyntax_noequals, *cr8tbl_scan, \
+    *rangequery_index_not_found,                         \
+    *whereclause_col_not_indxd, *wc_col_not_found,       \
+    *whereclause_no_and,        *whereclause_between,    \
     *joincolumnlisterror,        *fulltablejoin, \
     *join_order_by_syntax,       *join_order_by_tbl,       *join_order_by_col, \
     *join_table_not_in_query,    *joinsyntax_no_tablename, *join_chain, \
     *joindanglingfilter,         *join_noteq,              *join_coltypediff, \
-    *join_col_not_indexed,       *join_qo_err, \
-    *createtable_as_on_wrong_type, \
-    *create_table_err, \
-    *create_table_as_count, \
-    *dump_syntax, *show_syntax, \
-    *alter_sk_rpt, *alter_sk_no_i, *alter_sk_no_lru, \
-    *alter_fk_not_sk, *alter_fk_repeat, \
-    *select_on_sk, *scan_sharded;
+    *join_col_not_indexed,       *join_qo_err,           \
+    *createtable_as_on_wrong_type,                       \
+    *create_table_err,                                   \
+    *create_table_as_count,                              \
+    *dump_syntax, *show_syntax,                          \
+    *alter_sk_rpt, *alter_sk_no_i, *alter_sk_no_lru,     \
+    *alter_fk_not_sk, *alter_fk_repeat,                  \
+    *select_on_sk, *scan_sharded,                        \
+    *constraint_wrong_nargs, *constraint_col_indexed,    \
+    *constraint_not_num,     *constraint_table_mismatch, \
+    *constraint_nonuniq,     *constraint_viol;
 
 #endif /* XDB_COMMON__H */

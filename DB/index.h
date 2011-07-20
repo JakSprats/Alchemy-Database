@@ -40,6 +40,7 @@ int find_next_index(int tmatch, int cmatch, int j);
 int match_index(    int tmatch, int inds[]);
 int match_index_name(char *iname);
 
+//TODO turn into function
 /* MATCH_INDICES(tmatch)
      creates (int inds[], int matches)     */
 #define MATCH_INDICES(tmatch)                 \

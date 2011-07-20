@@ -214,10 +214,10 @@ bool rdbLoadBT(FILE *fp) {
         if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)         return 0;
         int imatch    = u;
         r_tbl_t *rt   = &Tbl[tmatch];
-        rt->nmci      = rt->lrud   = rt->ainc   = rt->n_intr = \
-                        rt->lastts = rt->nextts = 0;
-        rt->lruc      = -1;
-        rt->lrui      = -1;
+        bzero(rt, sizeof(r_tbl_t)); //TODO use initTable();
+        rt->lruc      = rt->lrui       = rt->sk         = rt->fk_cmatch = \
+                        rt->fk_otmatch = rt->fk_ocmatch = -1;
+        //TODO [lruc, lrui, sk, fk_cmatch, fk_otmatch, fk_ocmatch] -> PERSISTENT
         r_ind_t *ri   = &Index[imatch];
         rt->vimatch   = imatch;
         ri->virt      =  1;

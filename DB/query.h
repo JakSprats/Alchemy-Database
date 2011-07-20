@@ -32,13 +32,21 @@ ALL RIGHTS RESERVED
 #include "xdb_common.h"
 #include "common.h"
 
+typedef struct constraint {
+  sds  name;
+  int  tmatch;
+  int  cmatch;
+  int  imatch;
+  bool asc;
+} cst_t;
+
 typedef struct r_tbl {
-    robj   *name;
+    robj   *name;                            // TODO -> sds
     bt     *btr;
     int     col_count;
     int     vimatch;
     ulong   ainc;
-    robj   *col_name [MAX_COLUMN_PER_TABLE]; //TODO make sds
+    robj   *col_name [MAX_COLUMN_PER_TABLE]; //TODO -> sds
     uchar   col_type [MAX_COLUMN_PER_TABLE];
     bool    col_indxd[MAX_COLUMN_PER_TABLE]; /* used in updateRow OVRWR */
     uint32  n_intr;     /* num ACCESSES in current LRU interval */
@@ -53,11 +61,12 @@ typedef struct r_tbl {
     int     fk_cmatch;  /* Foreign-key local column */
     int     fk_otmatch; /* Foreign-key other table's table */
     int     fk_ocmatch; /* Foreign-key other table's column */
+    cst_t  *rn;         /* CONSTRAINT intra-table dependency "RESPECTS INDEX" */
 } r_tbl_t;
 
 typedef struct r_ind {
     bt    *btr;     /* Btree of index                                     */
-    robj  *obj;     /* Name of index                                      */
+    robj  *obj;     /* Name of index              TODO -> sds             */
     int    table;   /* table index is ON                                  */
     int    column;  /* single column OR 1st MCI column                    */
     list  *clist;   /* MultipleColumnIndex(mci) list                      */

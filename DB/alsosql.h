@@ -1,5 +1,5 @@
 /*
- * This file implements the basic SQL commands of Alsosql (single row ops)
+ * This file implements basic SQL commands of Alchemy Database (single row ops)
  *  and calls the range-query and join ops
  *
 

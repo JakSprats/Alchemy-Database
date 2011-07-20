@@ -2291,3 +2291,20 @@ function alter_fk() {
   $CLI DESC parent
   $CLI DESC child
 }
+
+function init_constraint_table() {
+  $CLI DROP TABLE ctest
+  $CLI CREATE TABLE ctest "(pk INT, fk INT, val INT)";
+  $CLI CREATE INDEX i_ctest ON ctest "(fk)"
+  $CLI CREATE CONSTRAINT c_ctest ON ctest "(val)" RESPECTS INDEX "(i_ctest)"
+  $CLI DESC ctest
+}
+function insert_constraint_table() {
+  $CLI INSERT INTO ctest "(fk, val)" VALUES "(1, 10)"
+  $CLI INSERT INTO ctest "(fk, val)" VALUES "(1, 20)"
+  $CLI INSERT INTO ctest "(fk, val)" VALUES "(1, 30)"
+  $CLI INSERT INTO ctest "(fk, val)" VALUES "(2, 100)"
+  $CLI INSERT INTO ctest "(fk, val)" VALUES "(2, 200)"
+  $CLI INSERT INTO ctest "(fk, val)" VALUES "(2, 100)"
+  $CLI DUMP ctest
+}

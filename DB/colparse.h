@@ -44,6 +44,7 @@ sds getJoinAlias(int jan);
 int find_column(int tmatch, char *column);
 int find_column_n(int tmatch, char *column, int len);
 
+//TODO turn into function
 /* TABLE_CHECK_OR_REPLY(char *TBL, RET) -
      creates (int tmatch) */
 #define TABLE_CHECK_OR_REPLY(TBL, RET)        \
@@ -53,6 +54,7 @@ int find_column_n(int tmatch, char *column, int len);
         return RET;                           \
     }
 
+//TODO turn into function
 /* COLUMN_CHECK_OR_REPLY(char *cargv2ptr) -
      creates (char *cname, int cmatch)    */
 #define COLUMN_CHECK_OR_REPLY(cargv2ptr, retval)   \

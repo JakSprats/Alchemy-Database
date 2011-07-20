@@ -69,4 +69,11 @@ void DXDB_setClientSA(redisClient *c);
 int *DXDB_getKeysFromCommand(rcommand *cmd, robj **argv, int argc,
                              int *numkeys, int flags, sds *override_key,
                              unsigned char *err);
+
+//PROTOTYPES
+// from redis.c
+unsigned int dictSdsCaseHash(const void *key);
+int dictSdsKeyCaseCompare(void *privdata, const void *key1, const void *key2);
+void dictSdsDestructor(void *privdata, void *val);
+
 #endif /* DXDB_HOOKS_H */

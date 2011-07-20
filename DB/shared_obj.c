@@ -294,4 +294,17 @@ void DXDB_createSharedObjects() {
         "-ERR SELECT: NOT ON SHARDKEY\r\n"));
     shared.scan_sharded = createObject(REDIS_STRING,sdsnew(
         "-ERR SCAN: PROHIBITED on SHARDED TABLE -> USE \"DSCAN\"\r\n"));
+
+    shared.constraint_wrong_nargs = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: CREATE CONSTRAINT constraintname ON table (column) RESPECTS INDEX (indexname) [ASC|DESC]\r\n"));
+    shared.constraint_col_indexed = createObject(REDIS_STRING,sdsnew(
+        "-ERR PROHIBITED: CREATE CONSTRAINT ON indexed (column) - column can NOT be indexed\r\n"));
+    shared.constraint_not_num     = createObject(REDIS_STRING,sdsnew(
+        "-ERR PROHIBITED: CREATE CONSTRAINT ON [INT|LONG] (column) RESPECT [INT|LONG] INDEX - both column and index must be [INT|LONG]\r\n"));
+    shared.constraint_table_mismatch = createObject(REDIS_STRING,sdsnew(
+        "-ERR PROHIBITED: CREATE CONSTRAINT ON table RESPECT INDEX index - index does not belong to table\r\n"));
+    shared.constraint_nonuniq        = createObject(REDIS_STRING,sdsnew(
+        "-ERR PROHIBITED: CREATE CONSTRAINT constraintname exists already\r\n"));
+    shared.constraint_viol        = createObject(REDIS_STRING,sdsnew(
+        "-ERR CONSTRAINT_VIOLATION: INSERT violated table's constraint\r\n"));
 }

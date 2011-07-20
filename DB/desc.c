@@ -250,6 +250,10 @@ void descCommand(redisClient *c) {
                                   (char *)ort->name->ptr,
                                   (char *)ort->col_name[rt->fk_ocmatch]->ptr);
         }
+        if (rt->rn->cmatch == j) {
+            r->ptr = sdscatprintf(r->ptr, " - CONSTRAINT RESPECTS INDEX: %s",
+                                        (char *)Index[rt->rn->imatch].obj->ptr);
+        }
         int   imatch = find_index(tmatch, j);
         if (imatch != -1) {
             int loops = 0;

@@ -28,6 +28,7 @@ ALL RIGHTS RESERVED
 #define __A_DDL__H
 
 #include "redis.h"
+#include "dict.h"
 
 #include "common.h"
 
