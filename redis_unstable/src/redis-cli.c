@@ -52,7 +52,11 @@
 
 #define REDIS_NOTUSED(V) ((void) V)
 
+#ifdef ALCHEMY_SERVER
+redisContext *context;
+#else
 static redisContext *context;
+#endif
 static struct config {
     char *hostip;
     int hostport;
@@ -78,7 +82,9 @@ static struct config {
 } config;
 
 
+#ifndef ALCHEMY_SERVER
 static void usage();
+#endif
 char *redisGitSHA1(void);
 char *redisGitDirty(void);
 
@@ -296,7 +302,11 @@ static int cliSelect() {
 
 /* Connect to the client. If force is not zero the connection is performed
  * even if there is already a connected socket. */
+#ifdef ALCHEMY_SERVER
+int cliConnect(int force) {
+#else
 static int cliConnect(int force) {
+#endif
     if (context == NULL || force) {
         if (context != NULL)
             redisFree(context);
@@ -476,7 +486,11 @@ static int cliReadReply(int output_raw_strings) {
 #ifdef ALCHEMY_DATABASE
 static int cliPipeReply();
 #endif
+#ifdef ALCHEMY_SERVER
+int cliSendCommand(int argc, char **argv, int repeat) {
+#else
 static int cliSendCommand(int argc, char **argv, int repeat) {
+#endif
     char *command = argv[0];
     size_t *argvlen;
     int j, output_raw;
@@ -501,8 +515,10 @@ static int cliSendCommand(int argc, char **argv, int repeat) {
     }
     if (!strcasecmp(command,"shutdown")) config.shutdown = 1;
     if (!strcasecmp(command,"monitor")) config.monitor_mode = 1;
+#ifndef ALCHEMY_SERVER
     if (!strcasecmp(command,"subscribe") ||
         !strcasecmp(command,"psubscribe")) config.pubsub_mode = 1;
+#endif
 #ifdef ALCHEMY_DATABASE
     if (!strcasecmp(command,"subpipe")) {
         config.pubsub_pipe = 1;
@@ -559,23 +575,28 @@ static int cliSendCommand(int argc, char **argv, int repeat) {
 
 #ifdef ALCHEMY_DATABASE
 static redisContext *p_context = NULL;
-static void writePipe(sds fcall) {
-    redisContext *t_context  = context;              // SAVE STATE
-    char         *t_hostip   = config.hostip;
-    int           t_hostport = config.hostport;
-    context                  = p_context;            // PUT IN PIPE STATE
-    config.hostip            = config.pipe_hostip;
-    config.hostport          = config.pipe_hostport;
-    config.pubsub_pipe       = 0;
+static void writePipe(sds fcall) { printf("writePipe: %s\n", fcall);
+    sds           fcc       = sdsnew(fcall);
+    redisContext *tcontext  = context;              // SAVE STATE
+    char         *thostip   = config.hostip;
+    int           thostport = config.hostport;
+    context                 = p_context;            // PUT IN PIPE STATE
+    config.hostip           = config.pipe_hostip;
+    config.hostport         = config.pipe_hostport;
+    config.pubsub_pipe      = 0;
     if (!context) cliConnect(1);
-    p_context                = context;
+    p_context               = context;
     int argc;
-    sds          *argv       = sdssplitlen(fcall, sdslen(fcall), "|", 1, &argc);
+    sds          *argv      = sdssplitlen(fcc, sdslen(fcc), "/", 1, &argc);
+    //for (int i = 0; i < argc; i++) printf("argv[%d]: %s: %d\n", i, argv[i], sdslen(argv[i]));
     cliSendCommand(argc, argv, 1);
-    context                  = t_context;            // REVERT TO SAVED STATE
-    config.hostip            = t_hostip;
-    config.hostport          = t_hostport;
-    config.pubsub_pipe       = 1;
+    while(argc--) sdsfree(argv[argc]); /* Free the argument vector */
+    zfree(argv);
+    sdsfree(fcc);
+    context                 = tcontext;            // REVERT TO SAVED STATE
+    config.hostip           = thostip;
+    config.hostport         = thostport;
+    config.pubsub_pipe      = 1;
 }
 
 static int cliPipeReply() {
@@ -592,15 +613,7 @@ static int cliPipeReply() {
     }
     redisReply *r = (redisReply*)_reply;
     if (r->type != REDIS_REPLY_ARRAY || r->elements != 3) return REDIS_ERR;
-    char *func = r->element[1]->str;
-    char *farg = r->element[2]->str;
-    if (!farg) return REDIS_OK; // INT ARGS NOT PROXIED (TODO support)
-    char *cln      = strchr(func, ':');
-    if (!cln)      return REDIS_OK; // IGNORE if no funcname is ':' delimed
-    cln++;
-    sds fname = sdsnew(cln);
-    sds fcall = sdscatprintf(sdsempty(), "LUA|%s|%s", fname, farg);
-    writePipe(fcall);
+    if (r->element[2]->str) writePipe(r->element[2]->str);
     freeReplyObject(r);
     return REDIS_OK;
 }
@@ -691,6 +704,7 @@ static sds readArgFromStdin(void) {
     return arg;
 }
 
+#ifndef ALCHEMY_SERVER
 static void usage() {
     sds version = cliVersion();
     fprintf(stderr,
@@ -729,6 +743,7 @@ static void usage() {
     sdsfree(version);
     exit(1);
 }
+#endif
 
 /* Turn the plain C strings into Sds strings */
 static char **convertToSds(int count, char** args) {
@@ -835,7 +850,12 @@ static int noninteractive(int argc, char **argv) {
     return retval;
 }
 
+#ifdef ALCHEMY_SERVER
+  int compiler_warnings() {
+      int argc = 0; char **argv = NULL;
+#else
 int main(int argc, char **argv) {
+#endif
     int firstarg;
 
     config.hostip = sdsnew("127.0.0.1");
@@ -876,3 +896,11 @@ int main(int argc, char **argv) {
     if (cliConnect(0) != REDIS_OK) exit(1);
     return noninteractive(argc,convertToSds(argc,argv));
 }
+
+#ifdef ALCHEMY_SERVER
+  void setClientParams(sds hostip, int hostport) {
+      config.hostip   = hostip;
+      config.hostport = hostport;
+      config.quiet    = 1;
+  }
+#endif

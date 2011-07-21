@@ -1,6 +1,6 @@
   function form_action_rewrite_url(action, a, b) {
-    var href = action + '/' + encodeURIComponent(a);
-    if (b) href += '/' + encodeURIComponent(b);
+    var href = action + '/' + a;
+    if (b) href += '/' + b;
     //alert('redirect to : ' + href);
     window.location.href = href;
     return false;

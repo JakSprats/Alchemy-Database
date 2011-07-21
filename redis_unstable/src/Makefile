@@ -84,7 +84,7 @@ CHECKDUMPPRGNAME = alchemy-check-dump
 CHECKAOFPRGNAME = alchemy-check-aof
 GENBENCHPRGNAME = alchemy-gen-benchmark
 
-all: alchemy-lib alchemy-benchmark alchemy-cli alchemy-check-dump alchemy-check-aof alchemy-server alchemy-gen-benchmark
+all: init alchemy-lib alchemy-benchmark alchemy-cli alchemy-check-dump alchemy-check-aof alchemy-server alchemy-gen-benchmark
 	@echo ""
 	@echo "Hint: To run 'make test' is a good idea ;)"
 	@echo ""
@@ -177,8 +177,11 @@ dependencies:
 ../deps/jemalloc/lib/libjemalloc.a:
 	cd ../deps/jemalloc && ./configure $(JEMALLOC_CFLAGS) --with-jemalloc-prefix=je_ --enable-cc-silence && $(MAKE) lib/libjemalloc.a
 
-alchemy-server: $(OBJ)
-	$(QUIET_CC)$(CC) -o $(PRGNAME) $(CCOPT) $(DEBUG) $(OBJ) $(CCLINK) $(ALLOC_LINK) -L../../DB/ -lx_db $(LUALIB)
+init:
+	@rm -f redis-cli.o
+
+alchemy-server: redis-cli-server $(OBJ)
+	$(QUIET_CC)$(CC) -o $(PRGNAME) $(CCOPT) $(DEBUG) redis-cli.o $(OBJ) $(CCLINK) $(ALLOC_LINK) -L../../DB/ -lx_db $(LUALIB) ../deps/hiredis/libhiredis.a ../deps/linenoise/linenoise.o
 
 alchemy-benchmark: dependencies $(BENCHOBJ)
 	@cd ../deps/hiredis && $(MAKE) static
@@ -193,11 +196,14 @@ alchemy-gen-benchmark: $(GENBENCHOBJ)
 	$(QUIET_LINK)$(CC) -o $(GENBENCHPRGNAME) $(CCOPT) $(DEBUG) $(GENBENCHOBJ) ../deps/hiredis/libhiredis.a $(CCLINK) $(ALLOC_LINK)
 	#$(CC) -o $(GENBENCHPRGNAME) $(CCOPT) $(DEBUG) $(GENBENCHOBJ)
 
-alchemy-cli: dependencies $(CLIOBJ)
+alchemy-cli: init dependencies $(CLIOBJ)
 	$(QUIET_LINK)$(CC) -o $(CLIPRGNAME) $(CCOPT) $(DEBUG) $(CLIOBJ) ../deps/hiredis/libhiredis.a ../deps/linenoise/linenoise.o $(CCLINK) $(ALLOC_LINK) ../../DB/xdb_client_hooks.o
 
 redis-cli.o:
 	$(QUIET_CC)$(CC) -c $(CFLAGS) -I../deps/hiredis -I../deps/linenoise $(DEBUG) $(COMPILE_TIME) $<
+
+redis-cli-server:
+	$(QUIET_CC)$(CC) -DALCHEMY_SERVER -c $(CFLAGS) -I../deps/hiredis -I../deps/linenoise $(DEBUG) $(COMPILE_TIME) redis-cli.c
 
 alchemy-check-dump: $(CHECKDUMPOBJ)
 	$(QUIET_LINK)$(CC) -o $(CHECKDUMPPRGNAME) $(CCOPT) $(DEBUG) $(CHECKDUMPOBJ) $(CCLINK) $(ALLOC_LINK)

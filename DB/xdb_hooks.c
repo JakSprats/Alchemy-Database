@@ -92,31 +92,32 @@ unsigned int    WS_WL_Subnet    = 0;
 /* PROTOTYPES */
 int  yesnotoi(char *s);
 int *getKeysUsingCommandTable(rcommand *cmd, robj **argv, int argc, int *nkeys);
-
 // from scripting.c
 void luaReplyToRedisReply(redisClient *c, lua_State *lua);
 
+void showCommand      (redisClient *c);
 
-void showCommand     (redisClient *c);
+void createCommand    (redisClient *c);
+void dropCommand      (redisClient *c);
+void descCommand      (redisClient *c);
+void alterCommand     (redisClient *c);
+void sqlDumpCommand   (redisClient *c);
 
-void createCommand   (redisClient *c);
-void dropCommand     (redisClient *c);
-void descCommand     (redisClient *c);
-void alterCommand    (redisClient *c);
-void sqlDumpCommand  (redisClient *c);
+void insertCommand    (redisClient *c);
+void replaceCommand   (redisClient *c);
+void sqlSelectCommand (redisClient *c);
+void updateCommand    (redisClient *c);
+void deleteCommand    (redisClient *c);
+void tscanCommand     (redisClient *c);
 
-void insertCommand   (redisClient *c);
-void replaceCommand  (redisClient *c);
-void sqlSelectCommand(redisClient *c);
-void updateCommand   (redisClient *c);
-void deleteCommand   (redisClient *c);
-void tscanCommand    (redisClient *c);
+void luafuncCommand   (redisClient *c);
 
-void luafuncCommand  (redisClient *c);
+void explainCommand   (redisClient *c);
 
-void explainCommand  (redisClient *c);
+void btreeCommand     (redisClient *c);
 
-void btreeCommand    (redisClient *c);
+void messageCommand   (redisClient *c);
+void rsubscribeCommand(redisClient *c);
 
 #ifdef REDIS3
   #define CMD_END       NULL,1,1,1,0,0
@@ -126,24 +127,27 @@ void btreeCommand    (redisClient *c);
 #endif
 
 struct redisCommand DXDBCommandTable[] = {
-    {"select",  sqlSelectCommand, -2, 0,                   CMD_END},
-    {"insert",  insertCommand,    -5, REDIS_CMD_DENYOOM,   CMD_END},
-    {"update",  updateCommand,     6, REDIS_CMD_DENYOOM,   CMD_END},
-    {"delete",  deleteCommand,     5, 0,                   CMD_END},
-    {"replace", replaceCommand,   -5, 0|REDIS_CMD_DENYOOM, CMD_END},
-    {"scan",    tscanCommand,     -4, 0,                   CMD_END},
+    {"select",     sqlSelectCommand,  -2, 0,                   CMD_END},
+    {"insert",     insertCommand,     -5, REDIS_CMD_DENYOOM,   CMD_END},
+    {"update",     updateCommand,      6, REDIS_CMD_DENYOOM,   CMD_END},
+    {"delete",     deleteCommand,      5, 0,                   CMD_END},
+    {"replace",    replaceCommand,    -5, 0|REDIS_CMD_DENYOOM, CMD_END},
+    {"scan",       tscanCommand,      -4, 0,                   CMD_END},
 
-    {"lua",     luafuncCommand,   -2, 0,                   GLOB_FUNC_END},
+    {"lua",        luafuncCommand,    -2, 0,                   GLOB_FUNC_END},
+    {"message",    messageCommand,    -2, 0,                   GLOB_FUNC_END},
+    {"rsubscribe", rsubscribeCommand, -4, 0,                  GLOB_FUNC_END},
 
-    {"create",  createCommand,    -4, REDIS_CMD_DENYOOM,   GLOB_FUNC_END},
-    {"drop",    dropCommand,       3, 0,                   GLOB_FUNC_END},
-    {"desc",    descCommand,       2, 0,                   GLOB_FUNC_END},
-    {"dump",    sqlDumpCommand,   -2, 0,                   GLOB_FUNC_END},
+    {"create",     createCommand,     -4, REDIS_CMD_DENYOOM,   GLOB_FUNC_END},
+    {"drop",       dropCommand,        3, 0,                   GLOB_FUNC_END},
+    {"desc",       descCommand,        2, 0,                   GLOB_FUNC_END},
+    {"dump",       sqlDumpCommand,    -2, 0,                   GLOB_FUNC_END},
 
-    {"explain", explainCommand,    7, 0,                   GLOB_FUNC_END},
-    {"alter",   alterCommand,     -6, 0,                   GLOB_FUNC_END},
-    {"show",    showCommand,       2, 0,                   GLOB_FUNC_END},
-    {"btree",   btreeCommand,      2, 0,                   GLOB_FUNC_END},
+    {"explain",    explainCommand,     7, 0,                   GLOB_FUNC_END},
+    {"alter",      alterCommand,      -6, 0,                   GLOB_FUNC_END},
+
+    {"show",       showCommand,        2, 0,                   GLOB_FUNC_END},
+    {"btree",      btreeCommand,       2, 0,                   GLOB_FUNC_END},
 };
 
 

@@ -31,7 +31,7 @@ ifeq ($(USE_JEMALLOC),yes)
   ALLOC_FLAGS=-DUSE_JEMALLOC -I$(REDISDIR)/deps/jemalloc/include
 endif
 
-CFLAGS?= -std=c99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF) -I./ -I$(REDISDIR)/src/ $(ALLOC_FLAGS) -DALCHEMY_DATABASE
+CFLAGS?= -std=c99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF) -I./ -I$(REDISDIR)/src/ $(ALLOC_FLAGS) -DALCHEMY_DATABASE -I../redis/deps/hiredis/
 CCLINK?= -lm -pthread
 DEBUG?= -g -rdynamic -ggdb 
 
@@ -57,7 +57,7 @@ endif
 
 CCOPT= $(CFLAGS) $(CCLINK) $(ARCH) $(PROF)
 
-OBJ = bt.o bt_code.o bt_output.o ddl.o alsosql.o sixbit.o row.o index.o rdb_alsosql.o aof_alsosql.o join.o bt_iterator.o wc.o scan.o orderby.o luatrigger.o parser.o cr8tblas.o rpipe.o range.o desc.o aobj.o stream.o colparse.o filter.o qo.o lru.o internal_commands.o xdb_hooks.o xdb_client_hooks.o ctable.o shared_obj.o webserver.o
+OBJ = bt.o bt_code.o bt_output.o ddl.o alsosql.o sixbit.o row.o index.o rdb_alsosql.o aof_alsosql.o join.o bt_iterator.o wc.o scan.o orderby.o luatrigger.o parser.o cr8tblas.o rpipe.o range.o desc.o aobj.o stream.o colparse.o filter.o qo.o lru.o internal_commands.o xdb_hooks.o xdb_client_hooks.o ctable.o shared_obj.o webserver.o messaging.o
 
 LIBNAME = libx_db.a
 
@@ -106,6 +106,7 @@ ctable.o: ctable.h wc.h colparse.h common.h
 shared_obj.o: xdb_hooks.h
 webserver.o: webserver.h
 ddl.o: ddl.h alsosql.h common.h
+messaging.o: rpipe.h
 
 .c.o:
 	$(CC) -c $(CFLAGS) $(DEBUG) $(COMPILE_TIME) $<

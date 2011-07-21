@@ -23,6 +23,8 @@ function register(username, password)
     goback("Either Username or Password is Empty");
     return flush_output();
   end
+  username = url_decode(username);
+  password = url_decode(password);
   if (redis("get", "username:" .. username .. ":id")) then
     goback("Sorry the selected username is already in use.");
     return flush_output();
@@ -72,6 +74,8 @@ function login(username, password)
     goback("You need to enter both username and password to login.");
     return flush_output();
   end
+  username = url_decode(username);
+  password = url_decode(password);
   local userid = redis("get", "username:" .. username ..":id");
   if (userid == nil) then
     goback("Wrong username or password");
@@ -94,6 +98,7 @@ function post(msg)
   if (isl == false or is_empty(msg)) then
     SetHttpRedirect('/index_page'); return;
   end
+  msg = url_decode(msg);
 
   local ts = os.time();
   local postid = redis("incr", "global:nextPostId");
@@ -102,8 +107,8 @@ function post(msg)
   local followers = redis("smembers", "uid:" .. User['id'] .. ":followers");
   table.insert(followers, User['id']); -- Add the post to our own posts too 
 
-  local pubmsg = User['id'] .. "|" .. ts .. "|" .. msg;
-  redis("publish", "channel:uppost", pubmsg); -- for pubsub_pipe replication
+  local pubmsg = 'LUA/uppost/' .. User['id'] .. "/" .. ts .. "/" .. msg;
+  redis("publish", "channel:posts", pubmsg); -- for pubsub_pipe replication
 
   for k,v in pairs(followers) do
     redis("lpush", "uid:" .. v .. ":posts", postid);
@@ -129,6 +134,7 @@ function profile(username, start)
   if (is_empty(username)) then
     SetHttpRedirect('/index_page'); return;
   end
+  username = url_decode(username);
   local userid = redis("get", "username:" .. username .. ":id")
   if (userid == nil) then
     SetHttpRedirect('/index_page'); return;
@@ -172,5 +178,5 @@ function follow(userid, follow)
     end
   end
   local username = redis("get", "uid:" .. userid .. ":username");
-  SetHttpRedirect('/profile/' .. username);
+  SetHttpRedirect('/profile/' .. url_encode(username));
 end
