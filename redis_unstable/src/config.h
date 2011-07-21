@@ -54,9 +54,9 @@
     #define BYTE_ORDER LITTLE_ENDIAN
   #endif
 #endif
-#ifdef ALCHEMY_DATABASE
-  #undef HAVE_BACKTRACE
-#endif
+//#ifdef ALCHEMY_DATABASE
+  //#undef HAVE_BACKTRACE
+//#endif
 
 #ifndef BYTE_ORDER
 #if (BSD >= 199103)
