@@ -590,33 +590,18 @@ static int cliPipeReply() {
         }
         cliPrintContextError(); exit(1); return REDIS_ERR; // compiler warning
     }
-    redisReply *reply = (redisReply*)_reply;
-    //TODO this is the laziest parsing ever, write specialised routine
-    sds         out   = cliFormatReplyTTY(reply,"");
-    sds         fname = NULL;
-    sds         fargs = NULL;
-    char       *tok;
-    if ((tok = strchr(out, ':'))) {
-        tok++;
-        char *end = strchr(tok, '\"');
-        if (end) {
-            fname = sdsnewlen(tok, end - tok);
-            end++;
-            tok   = strchr(end, '\"');
-            if (tok) {
-                tok++;
-                end = strchr(tok, '\"');
-                if (end) {
-                    fargs     = sdsnewlen(tok, end - tok);
-                    sds fcall = sdscatprintf(sdsempty(), "LUA|%s|%s", 
-                                                         fname, fargs);
-                    writePipe(fcall);
-                }
-            }
-        }
-    }
-    sdsfree(out);
-    freeReplyObject(reply);
+    redisReply *r = (redisReply*)_reply;
+    if (r->type != REDIS_REPLY_ARRAY || r->elements != 3) return REDIS_ERR;
+    char *func = r->element[1]->str;
+    char *farg = r->element[2]->str;
+    if (!farg) return REDIS_OK; // INT ARGS NOT PROXIED (TODO support)
+    char *cln      = strchr(func, ':');
+    if (!cln)      return REDIS_OK; // IGNORE if no funcname is ':' delimed
+    cln++;
+    sds fname = sdsnew(cln);
+    sds fcall = sdscatprintf(sdsempty(), "LUA|%s|%s", fname, farg);
+    writePipe(fcall);
+    freeReplyObject(r);
     return REDIS_OK;
 }
 #endif
