@@ -89,6 +89,8 @@ static bool internalCr8Tbl(redisClient *c,
         if (tmatch != -1) cpyColDef(&cdefs, tmatch, cmatchs[i], qcols, i, 0, x);
         else              cpyColDef(&cdefs, js[i].t, js[i].c, qcols, i, 1, x);
     }
+    robj **rargv = zmalloc(sizeof(robj *) * 4);
+    rfc->argv    = rargv;
     rfc->argc    = 4;
     rfc->argv[0] = _createStringObject("CREATE");
     rfc->argv[1] = _createStringObject("TABLE");
@@ -101,7 +103,7 @@ static bool internalCr8Tbl(redisClient *c,
     else                                                          return 1;
 }
 bool createTableFromJoin(redisClient *c,
-                         redisClient *fc,
+                         redisClient *rfc,
                          int          qcols,
                          jc_t         js[]) {
     bool x[qcols];
@@ -117,7 +119,7 @@ bool createTableFromJoin(redisClient *c,
             }
         }
     }
-    return internalCr8Tbl(c, fc, qcols, AIdum, -1, js, x);
+    return internalCr8Tbl(c, rfc, qcols, AIdum, -1, js, x);
 }
 void createTableSelect(redisClient *c) {
     char *cmd = c->argv[3]->ptr;
@@ -149,11 +151,10 @@ void createTableSelect(redisClient *c) {
     sds          clist = rargv[1]->ptr;
     sds          tlist = rargv[3]->ptr;
     sds          wc    = rargv[5]->ptr;
-    robj        *argv[3];
     bool         ok    = 0;
     char        *msg   = CR8TBL_SELECT_ERR_MSG;
-    redisClient *rfc   = getFakeClient();
-    rfc->argv          = argv;
+    redisClient *rfc   = getFakeClient(); // frees last rfc->rargv[] + contents
+    rfc->argc          = 0;
     if (join) { /* CREATE TABLE AS SELECT JOIN */
         jb_t jb;
         init_join_block(&jb);

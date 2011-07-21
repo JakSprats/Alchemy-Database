@@ -41,7 +41,12 @@ redisClient *getFakeClient() {
         FakeClient         = createClient(-1);
         FakeClient->flags |= REDIS_LUA_CLIENT; // means no networking
     }
-    return FakeClient;
+    redisClient *rfc = FakeClient;
+    if (rfc->argc) { // free last call to getFakeClient
+        while(rfc->argc--) sdsfree(rfc->argv[rfc->argc]);
+        if (rfc->argv) { zfree(rfc->argv); rfc->argv = NULL; }
+    }
+    return rfc;
 }
 void resetFakeClient(struct redisClient *c) {
     listRelease(c->reply); c->reply = listCreate();

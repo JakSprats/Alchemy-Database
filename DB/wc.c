@@ -308,12 +308,11 @@ static bool parseWC_IN_NRI(redisClient *c, list **inl, char *s, int slen) {
     rargv = (*AccessCommands[axs].parse)(x, &argc);
     sdsfree(x);
     if (!rargv) { addReply(c, shared.where_in_select); return 0; }
-    redisClient *rfc = getFakeClient();
+    redisClient *rfc = getFakeClient(); // frees last rfc->rargv[] + content
     rfc->argv        = rargv;
     rfc->argc        = argc;
     fakeClientPipe(rfc, inl, addSelectToINL);
     bool         err = !replyIfNestedErr(c, rfc, IN_RCMD_ERR_MSG);
-    zfree(rargv);
     return !err;
 }
 

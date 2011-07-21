@@ -40,6 +40,7 @@ ALL RIGHTS RESERVED
 #include "internal_commands.h"
 #include "ctable.h"
 #include "webserver.h"
+#include "messaging.h"
 #include "aof_alsosql.h"
 #include "sixbit.h"
 #include "range.h"
@@ -231,6 +232,8 @@ static bool initLua(cli *c) {
     lua_setglobal(server.lua, "SetHttpResponseHeader");
     lua_pushcfunction(server.lua, luaSetHttpRedirectCommand);
     lua_setglobal(server.lua, "SetHttpRedirect");
+    lua_pushcfunction(server.lua, luaConvertToRedisProtocolCommand);
+    lua_setglobal(server.lua, "ConvertToRedisProtocol");
     if                    (!loadLuaHelperFile(c, LUA_INTERNAL_FILE)) return 0;
     if (WhiteListLua    && !loadLuaHelperFile(c, WhiteListLua))      return 0;
     if (LuaIncludeFile  && !loadLuaHelperFile(c, LuaIncludeFile))    return 0;

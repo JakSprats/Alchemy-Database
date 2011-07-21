@@ -106,7 +106,7 @@ ctable.o: ctable.h wc.h colparse.h common.h
 shared_obj.o: xdb_hooks.h
 webserver.o: webserver.h
 ddl.o: ddl.h alsosql.h common.h
-messaging.o: rpipe.h
+messaging.o: messaging.h rpipe.h
 
 .c.o:
 	$(CC) -c $(CFLAGS) $(DEBUG) $(COMPILE_TIME) $<

@@ -77,6 +77,7 @@ static struct config {
     int   pubsub_pipe;
     char *pipe_hostip;
     int   pipe_hostport;
+    int   pipe_to_stdout;
     int   quiet;
 #endif
 } config;
@@ -575,25 +576,29 @@ static int cliSendCommand(int argc, char **argv, int repeat) {
 
 #ifdef ALCHEMY_DATABASE
 static redisContext *p_context = NULL;
-static void writePipe(sds fcall) { printf("writePipe: %s\n", fcall);
+static void writePipe(char *fcall) { //printf("writePipe: %s\n", fcall);
+    if (config.pipe_to_stdout) {
+        sds fcc = sdscatprintf(sdsempty(), "%s\n", fcall);
+        fwrite(fcc, sdslen(fcc), 1, stdout);
+        fflush(stdout); /* Make it grep friendly */ //Performance Hit?
+        return;
+    }
     sds           fcc       = sdsnew(fcall);
-    redisContext *tcontext  = context;              // SAVE STATE
+    redisContext *tcontext  = context;               // SAVE STATE
     char         *thostip   = config.hostip;
     int           thostport = config.hostport;
-    context                 = p_context;            // PUT IN PIPE STATE
+    context                 = p_context;             // PUT IN PIPE STATE
     config.hostip           = config.pipe_hostip;
     config.hostport         = config.pipe_hostport;
     config.pubsub_pipe      = 0;
     if (!context) cliConnect(1);
     p_context               = context;
-    int argc;
-    sds          *argv      = sdssplitlen(fcc, sdslen(fcc), "/", 1, &argc);
-    //for (int i = 0; i < argc; i++) printf("argv[%d]: %s: %d\n", i, argv[i], sdslen(argv[i]));
-    cliSendCommand(argc, argv, 1);
-    while(argc--) sdsfree(argv[argc]); /* Free the argument vector */
-    zfree(argv);
-    sdsfree(fcc);
-    context                 = tcontext;            // REVERT TO SAVED STATE
+    context->obuf           = fcc;
+    int           wdone     = 0;
+    do {
+        if (redisBufferWrite(context, &wdone) == REDIS_ERR) return;
+    } while (!wdone);
+    context                 = tcontext;              // REVERT TO SAVED STATE
     config.hostip           = thostip;
     config.hostport         = thostport;
     config.pubsub_pipe      = 1;
@@ -679,6 +684,8 @@ static int parseOptions(int argc, char **argv) {
             i++;
         } else if (!strcmp(argv[i],"--quiet")) {
             config.quiet = 1;
+        } else if (!strcmp(argv[i],"-po")) {
+            config.pipe_to_stdout = 1;
 #endif
         } else {
             break;
@@ -727,6 +734,7 @@ static void usage() {
 #ifdef ALCHEMY_DATABASE
 "  -ph <hostname>   Pipe RightHandSide hostname (default: 127.0.0.1)\n"
 "  -pp <port>       Pipe RightHandSide port (default: 6380)\n"
+"  -po              Pipe writes message payload to stdout\n"
 "  --quiet          Do not output responses\n"
 #endif
 "\n"
@@ -869,10 +877,11 @@ int main(int argc, char **argv) {
     config.monitor_mode = 0;
     config.pubsub_mode = 0;
 #ifdef ALCHEMY_DATABASE
-    config.pubsub_pipe   = 0;
-    config.pipe_hostip   = sdsnew("127.0.0.1");
-    config.pipe_hostport = 6380;
-    config.quiet         = 0;
+    config.pubsub_pipe    = 0;
+    config.pipe_hostip    = sdsnew("127.0.0.1");
+    config.pipe_hostport  = 6380;
+    config.pipe_to_stdout = 0;
+    config.quiet          = 0;
 #endif
     config.stdinarg = 0;
     config.auth = NULL;

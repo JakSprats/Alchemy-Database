@@ -33,28 +33,31 @@ ALL RIGHTS RESERVED
 #include "adlist.h"
 
 #include "rpipe.h"
+#include "messaging.h"
 
-extern redisContext *context;
+//GLOBALS
+extern redisContext *context; //from redis-cli.c
+
 //PROTOTYPES
-//from redis-cli.c
+// from redis-cli.c
 void setClientParams(sds hostip, int hostport);
 int cliConnect(int force);
 int cliSendCommand(int argc, char **argv, int repeat);
+// from networking.c
+int processMultibulkBuffer(redisClient *c);
+// from scripting.c
+void luaPushError(lua_State *lua, char *error);
 
 static void ignoreFCP(void *v, lolo val, char *x, lolo xlen, long *card) {
     v = NULL; val = 0; x = NULL; xlen = 0; card = NULL;
 }
 void messageCommand(redisClient *c) { //NOTE: this command does not reply
-    sds    cmd  = c->argv[2]->ptr;
-    int    argc;
-    sds   *argv  = sdssplitlen(cmd, sdslen(cmd), "/", 1, &argc);
-    robj **rargv = zmalloc(sizeof(robj *) * argc);
-    for (int i = 0; i < argc; i++) {
-        rargv[i] = createStringObject(argv[i], sdslen(argv[i]));
-    }
-    redisClient *rfc = getFakeClient();
-    rfc->argv        = rargv;
-    rfc->argc        = argc;
+    redisClient  *rfc   = getFakeClient();
+    rfc->reqtype        = REDIS_REQ_MULTIBULK;
+    rfc->argc           = 0;
+    rfc->multibulklen   = 0;
+    rfc->querybuf       = c->argv[2]->ptr;
+    processMultibulkBuffer(rfc);
     fakeClientPipe(rfc, NULL, ignoreFCP);
 }
 
@@ -70,10 +73,11 @@ void rsubscribeCommand(redisClient *c) {
         cliSendCommand(argc, argv, 1);
         while(argc--) sdsfree(argv[argc]); /* Free the argument vector */
         zfree(argv);
-        if (!context) { addReply(c, shared.err); return; }
+        if (!context) { addReply(c, shared.err); return; } //TODO err: no ping
     }
     cli *rc = createClient(context->fd); // use this fd for remote-subscription
-    for (int j = 3; j < c->argc; j++) {
+    if (!rc) { addReply(c, shared.err); return; } //TODO err repeat rsubscribe
+    for (int j = 3; j < c->argc; j++) {//carbon-copy of pubsubSubscribeChannel()
         struct dictEntry *de;
         list *clients = NULL;
         robj *channel = c->argv[j];
@@ -93,4 +97,42 @@ void rsubscribeCommand(redisClient *c) {
         }
     }
     addReply(c, shared.ok);
+}
+
+int luaConvertToRedisProtocolCommand(lua_State *lua) {
+    int  argc  = lua_gettop(lua);
+    if (argc < 1) {
+        luaPushError(lua, "Lua ConvertToRedisProtocol() takes 1+ string arg");
+        return 1;
+    }
+    sds *argv  = zmalloc(sizeof(sds) * argc);
+    int  i     = argc -1;
+    while(1) {
+        int t = lua_type(lua, 1);
+        if (t == LUA_TNIL) {
+            argv[i] = sdsempty();
+            lua_pop(lua, 1);
+            break;
+        } else if (t == LUA_TSTRING) {
+            size_t len;
+            char *s = (char *)lua_tolstring(lua, -1, &len);
+            argv[i] = sdsnewlen(s, len);
+        } else if (t == LUA_TNUMBER) {
+            argv[i] = sdscatprintf(sdsempty(), "%lld",
+                                               (lolo)lua_tonumber(lua, -1));
+        } else break;
+        lua_pop(lua, 1);
+        i--;
+    }
+    size_t *argvlen = malloc(argc * sizeof(size_t));
+    for (int j = 0; j < argc; j++) argvlen[j] = sdslen(argv[j]);
+    char *cmd;
+    int   len = redisFormatCommandArgv(&cmd,              argc,
+                                      (const char**)argv, argvlen);
+    lua_pushlstring(lua, cmd, len);
+    free(cmd);
+    free(argvlen);
+    while(argc--) sdsfree(argv[argc]); /* Free the argument vector */
+    zfree(argv);
+    return 1;
 }

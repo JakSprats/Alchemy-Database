@@ -107,8 +107,11 @@ function post(msg)
   local followers = redis("smembers", "uid:" .. User['id'] .. ":followers");
   table.insert(followers, User['id']); -- Add the post to our own posts too 
 
-  local pubmsg = 'LUA/uppost/' .. User['id'] .. "/" .. ts .. "/" .. msg;
+  local pubmsg = ConvertToRedisProtocol('LUA', 'addpost', User['id'], ts, msg);
   redis("publish", "channel:posts", pubmsg); -- for pubsub_pipe replication
+  local sqlmsg = "INSERT INTO tweets (userid, ts, msg) VALUES (" .. 
+                  User['id'] .. "," .. ts .. ",'" .. msg .. "');";
+  redis("publish", "channel:sql", sqlmsg); -- for pubsub_pipe replication
 
   for k,v in pairs(followers) do
     redis("lpush", "uid:" .. v .. ":posts", postid);
