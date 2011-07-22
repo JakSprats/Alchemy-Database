@@ -107,18 +107,21 @@ function post(msg)
   local followers = redis("smembers", "uid:" .. User['id'] .. ":followers");
   table.insert(followers, User['id']); -- Add the post to our own posts too 
 
+  for k,v in pairs(followers) do
+    redis("lpush", "uid:" .. v .. ":posts", postid);
+  end
+  redis("lpush", "uid:" .. User['id'] .. ":myposts", postid); -- for /profile
+
+  -- Push post to timeline, and trim timeline to newest 1000 elements.
+  redis("lpush", "global:timeline", postid);
+  redis("ltrim", "global:timeline", 0, 1000);
+
   local pubmsg = ConvertToRedisProtocol('LUA', 'addpost', User['id'], ts, msg);
   redis("publish", "channel:posts", pubmsg); -- for pubsub_pipe replication
   local sqlmsg = "INSERT INTO tweets (userid, ts, msg) VALUES (" .. 
                   User['id'] .. "," .. ts .. ",'" .. msg .. "');";
   redis("publish", "channel:sql", sqlmsg); -- for pubsub_pipe replication
 
-  for k,v in pairs(followers) do
-    redis("lpush", "uid:" .. v .. ":posts", postid);
-  end
-  -- Push post to timeline, and trim timeline to newest 1000 elements.
-  redis("lpush", "global:timeline", postid);
-  redis("ltrim", "global:timeline", 0, 1000);
   SetHttpRedirect('/index_page');
 end
 
@@ -157,7 +160,7 @@ function profile(username, start)
   end
   local s = tonumber(start);
   if (s == nil) then s = 0; end
-  showUserPostsWithPagination(thispage, false, userid, s, 10);
+  showUserPostsWithPagination(thispage, username, userid, s, 10);
   create_footer();
   return flush_output();
 end

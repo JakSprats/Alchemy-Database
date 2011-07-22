@@ -187,18 +187,22 @@ function showUserPostsWithPagination(thispage, username, userid, start, count)
   local nextlink = "";
   local prevlink = "";
   if (prevc < 0) then prevc = 0; end
-  local u;
-  if (username) then u = username;
-  else               u = ""; end
+  local key, u;
+  if (username) then
+      u = "/" .. username .. "/";
+      key = "uid:" .. userid .. ":myposts";
+  else
+      u = "/";
+      key = "uid:" .. userid .. ":posts";
+  end
 
-  local key    = "uid:" .. userid .. ":posts";
   showUserPosts(key, start, count);
   local nposts = redis("llen", key);
   if (nposts ~= nil and nposts > start + count) then
-      nextlink = "<a href=\"" .. thispage .. "/" .. nextc .. "/" .. u .."\">Older posts &raquo;</a>";
+      nextlink = "<a href=\"" .. thispage .. u .. nextc .."\">Older posts &raquo;</a>";
   end
   if (start > 0) then
-      prevlink = "<a href=\"" .. thispage .. "/" .. prevc .. "/" .. u .."\">Newer posts &laquo;</a>";
+      prevlink = "<a href=\"" .. thispage .. u .. prevc .."\">Newer posts &laquo;</a>";
   end
   if (string.len(nextlink) or string.len(prevlink)) then
       output("<div class=\"rightlink\">" .. prevlink .. " " ..  nextlink .. "</div>");
