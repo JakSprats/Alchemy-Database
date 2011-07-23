@@ -284,6 +284,7 @@ static robj *luaReplyToHTTPReply(lua_State *lua) {
 bool luafunc_call(redisClient *c, int argc, robj **argv) {
     char *fname = argv[1]->ptr;
     if (WebServerMode > 0) {
+printf("WHITELIST check: %s\n", fname);
         lua_getglobal(server.lua, "whitelist");
         if (lua_type(server.lua, -1) != LUA_TTABLE) {
             lua_pop(server.lua, 2); 
@@ -299,6 +300,7 @@ bool luafunc_call(redisClient *c, int argc, robj **argv) {
             else              WHITELIST_FUNCTION_REDIS_ERR
             return 1;
         }
+printf("PASSED\n");
         lua_replace(server.lua, -2); // remove "whitelist" from stack
     } else {
         lua_getglobal(server.lua, fname);
@@ -307,7 +309,7 @@ bool luafunc_call(redisClient *c, int argc, robj **argv) {
         sds arg = argv[i]->ptr; lua_pushlstring(server.lua, arg, sdslen(arg));
     }
 
-    if (WebServerMode > 0) { // POPULATE Lua Global HTTP Tables
+    if (WebServerMode > 0 && c->http.req_hdr) { // POPULATE Lua Global HTTP Vars
         listNode *ln;
         bool      cook = 0;
         lua_newtable(server.lua);

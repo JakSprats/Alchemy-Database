@@ -100,6 +100,7 @@
     *select_on_sk, *scan_sharded,                        \
     *constraint_wrong_nargs, *constraint_col_indexed,    \
     *constraint_not_num,     *constraint_table_mismatch, \
-    *constraint_nonuniq,     *constraint_viol;
+    *constraint_nonuniq,     *constraint_viol,           \
+    *subscribe_ping_err;
 
 #endif /* XDB_COMMON__H */

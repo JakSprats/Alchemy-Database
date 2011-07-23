@@ -116,12 +116,6 @@ function post(msg)
   redis("lpush", "global:timeline", postid);
   redis("ltrim", "global:timeline", 0, 1000);
 
-  local pubmsg = ConvertToRedisProtocol('LUA', 'addpost', User['id'], ts, msg);
-  redis("publish", "channel:posts", pubmsg); -- for pubsub_pipe replication
-  local sqlmsg = "INSERT INTO tweets (userid, ts, msg) VALUES (" .. 
-                  User['id'] .. "," .. ts .. ",'" .. msg .. "');";
-  redis("publish", "channel:sql", sqlmsg); -- for pubsub_pipe replication
-
   SetHttpRedirect('/index_page');
 end
 

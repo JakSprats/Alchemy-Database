@@ -307,4 +307,7 @@ void DXDB_createSharedObjects() {
         "-ERR PROHIBITED: CREATE CONSTRAINT constraintname exists already\r\n"));
     shared.constraint_viol        = createObject(REDIS_STRING,sdsnew(
         "-ERR CONSTRAINT_VIOLATION: INSERT violated table's constraint\r\n"));
+
+    shared.subscribe_ping_err     = createObject(REDIS_STRING,sdsnew(
+        "-ERR RSUBSCRIBE ping to remote machine failed\r\n"));
 }

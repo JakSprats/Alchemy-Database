@@ -175,6 +175,11 @@ int redisContextSetTimeout(redisContext *c, struct timeval tv) {
     return REDIS_OK;
 }
 
+#ifdef ALCHEMY_DATABASE
+extern struct sockaddr_in AcceptedClientSA;
+void DXDB_setSA(struct sockaddr_in sa);
+#endif
+
 int redisContextConnectTcp(redisContext *c, const char *addr, int port, struct timeval *timeout) {
     int s;
     int blocking = (c->flags & REDIS_BLOCK);
@@ -216,6 +221,9 @@ int redisContextConnectTcp(redisContext *c, const char *addr, int port, struct t
     if (redisSetTcpNoDelay(c,s) != REDIS_OK)
         return REDIS_ERR;
 
+#ifdef ALCHEMY_DATABASE
+    DXDB_setSA(sa);
+#endif
     c->fd = s;
     c->flags |= REDIS_CONNECTED;
     return REDIS_OK;

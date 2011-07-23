@@ -166,7 +166,7 @@ zmalloc.o: zmalloc.c config.h zmalloc.h
 
 dependencies:
 	@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)hiredis$(ENDCOLOR)
-	@cd ../deps/hiredis && $(MAKE) static ARCH="$(ARCH)"
+	@cd ../deps/hiredis && $(MAKE) static ARCH="$(ARCH)" CFLAGS="-DALCHEMY_DATABASE"
 	@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)linenoise$(ENDCOLOR)
 	@cd ../deps/linenoise && $(MAKE) ARCH="$(ARCH)"
 	@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)lua$(ENDCOLOR)

@@ -303,11 +303,7 @@ static int cliSelect() {
 
 /* Connect to the client. If force is not zero the connection is performed
  * even if there is already a connected socket. */
-#ifdef ALCHEMY_SERVER
-int cliConnect(int force) {
-#else
 static int cliConnect(int force) {
-#endif
     if (context == NULL || force) {
         if (context != NULL)
             redisFree(context);
@@ -487,11 +483,7 @@ static int cliReadReply(int output_raw_strings) {
 #ifdef ALCHEMY_DATABASE
 static int cliPipeReply();
 #endif
-#ifdef ALCHEMY_SERVER
-int cliSendCommand(int argc, char **argv, int repeat) {
-#else
 static int cliSendCommand(int argc, char **argv, int repeat) {
-#endif
     char *command = argv[0];
     size_t *argvlen;
     int j, output_raw;
@@ -576,7 +568,7 @@ static int cliSendCommand(int argc, char **argv, int repeat) {
 
 #ifdef ALCHEMY_DATABASE
 static redisContext *p_context = NULL;
-static void writePipe(char *fcall) { //printf("writePipe: %s\n", fcall);
+void writePipe(char *fcall) { //printf("writePipe: %s\n", fcall);
     if (config.pipe_to_stdout) {
         sds fcc = sdscatprintf(sdsempty(), "%s\n", fcall);
         fwrite(fcc, sdslen(fcc), 1, stdout);
@@ -908,8 +900,9 @@ int main(int argc, char **argv) {
 
 #ifdef ALCHEMY_SERVER
   void setClientParams(sds hostip, int hostport) {
-      config.hostip   = hostip;
-      config.hostport = hostport;
-      config.quiet    = 1;
+      bzero(&config, sizeof(config));
+      config.hostip         = hostip;
+      config.hostport       = hostport;
+      config.quiet          = 1;
   }
 #endif

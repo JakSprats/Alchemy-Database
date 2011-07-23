@@ -25,6 +25,7 @@ ALL RIGHTS RESERVED
  */
 
 #include <strings.h>
+#include <poll.h>
 
 #include "hiredis.h"
 
@@ -33,6 +34,7 @@ ALL RIGHTS RESERVED
 #include "adlist.h"
 
 #include "rpipe.h"
+#include "xdb_hooks.h"
 #include "messaging.h"
 
 //GLOBALS
@@ -41,8 +43,6 @@ extern redisContext *context; //from redis-cli.c
 //PROTOTYPES
 // from redis-cli.c
 void setClientParams(sds hostip, int hostport);
-int cliConnect(int force);
-int cliSendCommand(int argc, char **argv, int repeat);
 // from networking.c
 int processMultibulkBuffer(redisClient *c);
 // from scripting.c
@@ -61,22 +61,39 @@ void messageCommand(redisClient *c) { //NOTE: this command does not reply
     fakeClientPipe(rfc, NULL, ignoreFCP);
 }
 
+//TODO redis-cli.o is not needed here, take out this spaghetti linking
 void rsubscribeCommand(redisClient *c) {
     sds  ip     = c->argv[1]->ptr;
     int  port   = atoi(c->argv[2]->ptr);
     { // PING the remote machine to create a fd for it
         setClientParams(ip, port);
-        cliConnect(1);
-        int  argc = 1;
-        sds *argv = zmalloc(sizeof(sds));
-        argv[0]   = sdsnew("PING");
-        cliSendCommand(argc, argv, 1);
-        while(argc--) sdsfree(argv[argc]); /* Free the argument vector */
-        zfree(argv);
-        if (!context) { addReply(c, shared.err); return; } //TODO err: no ping
+        //context       = redisConnect(ip, port);
+        struct timeval tv; tv.tv_sec = 1; tv.tv_usec = 0; // 1 SECOND TIMEOUT
+        context       = redisConnectWithTimeout(ip, port, tv);
+        if (!context || context->err)                                goto rsube;
+        context->obuf = sdsnew("*1\r\n$4\r\nPING\r\n");
+        int wdone     = 0;
+
+        do {
+            if (redisBufferWrite(context, &wdone) == REDIS_ERR)      goto rsube;
+        } while (!wdone);
+        struct pollfd fds[1];
+        int timeout_msecs = 100; // 100ms timeout, this is a PING
+        fds[0].fd = context->fd;
+        fds[0].events = POLLIN | POLLPRI;
+        int ret = poll(fds, 1, timeout_msecs);
+        if (!ret || fds[0].revents & POLLERR || fds[0].revents & POLLHUP) {
+            goto rsube;
+        }
+        void *aux = NULL;
+        do { //TODO redisGetReplyFromReader ?NEEDED?
+            if (redisBufferRead(context)               == REDIS_ERR ||
+                redisGetReplyFromReader(context, &aux) == REDIS_ERR) goto rsube;
+        } while (aux == NULL);
+        freeReplyObject(aux);
     }
     cli *rc = createClient(context->fd); // use this fd for remote-subscription
-    if (!rc) { addReply(c, shared.err); return; } //TODO err repeat rsubscribe
+    DXDB_setClientSA(rc);
     for (int j = 3; j < c->argc; j++) {//carbon-copy of pubsubSubscribeChannel()
         struct dictEntry *de;
         list *clients = NULL;
@@ -92,17 +109,36 @@ void rsubscribeCommand(redisClient *c) {
                 incrRefCount(channel);
             } else {
                 clients = dictGetEntryVal(de);
+                listNode *ln;
+                listIter *li  = listGetIterator(clients, AL_START_HEAD);
+                while ((ln = listNext(li)) != NULL) { // on repeat, delete older
+                    cli *lc = (cli *)ln->value;
+                    if (rc->sa.sin_addr.s_addr == lc->sa.sin_addr.s_addr &&
+                        rc->sa.sin_port        == lc->sa.sin_port) {
+                       listDelNode(clients,ln);
+                    }
+                } listReleaseIterator(li);
             }
             listAddNodeTail(clients, rc);
         }
     }
+    if (context->errstr) sdsfree(context->errstr);
+    if (context->obuf)   sdsfree(context->obuf);
+    if (context->reader) redisReplyReaderFree(context->reader);
     addReply(c, shared.ok);
+    return;
+
+rsube:
+    if (context->errstr) sdsfree(context->errstr);
+    if (context->obuf)   sdsfree(context->obuf);
+    if (context->reader) redisReplyReaderFree(context->reader);
+    addReply(c, shared.subscribe_ping_err);
 }
 
 int luaConvertToRedisProtocolCommand(lua_State *lua) {
     int  argc  = lua_gettop(lua);
     if (argc < 1) {
-        luaPushError(lua, "Lua ConvertToRedisProtocol() takes 1+ string arg");
+        luaPushError(lua, "Lua Redisify() takes 1+ string arg");
         return 1;
     }
     sds *argv  = zmalloc(sizeof(sds) * argc);
