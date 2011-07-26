@@ -37,7 +37,7 @@ function WL_register(username, password)
   local my_userid  = IncrementAutoInc('NextUserId');
   local authsecret = call_sync(global_register, 'global_register',
                                my_userid,       username);
-  local_register(my_userid, password, authsecret);
+  local_register(my_userid, username, password);
 
   -- User registered -> Log him in
   SetHttpResponseHeader('Set-Cookie', 'auth=' .. authsecret .. 

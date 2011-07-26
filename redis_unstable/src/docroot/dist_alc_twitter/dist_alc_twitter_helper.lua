@@ -387,10 +387,13 @@ function isLoggedIn()
 end
 
 -- LOCAL_FUNCS LOCAL_FUNCS LOCAL_FUNCS LOCAL_FUNCS LOCAL_FUNCS LOCAL_FUNCS
-function local_register(my_userid, password, authsecret)
+function local_register(my_userid, username, password)
   redis("set",  "uid:"      .. my_userid   .. ":password", password);
   -- keep a global list of local users (used later for MIGRATEs)
   redis("lpush", "local_user_id",                          my_userid);
+  local sqlmsg = "INSERT INTO users (id, name, passwd) VALUES (" ..
+                  my_userid .. ",'" .. username .. "','" .. password .. "');";
+  redis("publish", "channel:sql", sqlmsg); -- for pubsub_pipe replication
   -- TODO publish to "channel:sql"
 end
 function local_post(my_userid, postid, ts, msg)
@@ -401,7 +404,10 @@ function local_post(my_userid, postid, ts, msg)
   redis("publish", "channel:sql", sqlmsg); -- for pubsub_pipe replication
 end
 function local_follow(my_userid, userid, follow)
-  -- TODO publish to "channel:sql"
+  local sqlmsg = 
+         "INSERT INTO relations (from_userid, to_userid, type) VALUES (" ..
+                  my_userid .. "," .. userid .. "," .. follow .. ");";
+  redis("publish", "channel:sql", sqlmsg); -- for pubsub_pipe replication
 end
 
 -- SYNC_FUNCS SYNC_FUNCS SYNC_FUNCS SYNC_FUNCS SYNC_FUNCS SYNC_FUNCS
