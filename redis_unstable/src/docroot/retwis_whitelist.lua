@@ -1,7 +1,6 @@
--- Retwis for Alchemy's Short Stack - PUBLIC API
 dofile "./docroot/retwis_helper.lua";
-
-function index_page(start) 
+-- Retwis for Alchemy's Short Stack - PUBLIC API
+function WL_index_page(start) 
   init_output();
   local thispage = '/index_page';
   local s        = tonumber(start);
@@ -15,7 +14,7 @@ function index_page(start)
   return flush_output();
 end
 
-function register(username, password)
+function WL_register(username, password)
   init_output();
   if (is_empty(username) or is_empty(password)) then
     goback("Either Username or Password is Empty");
@@ -50,7 +49,7 @@ function register(username, password)
   return flush_output();
 end
 
-function logout()
+function WL_logout()
   local isl = isLoggedIn();
   if (isl == false) then
     SetHttpRedirect('/index_page'); return;
@@ -66,7 +65,7 @@ function logout()
   SetHttpRedirect('/index_page');
 end
 
-function login(username, password)
+function WL_login(username, password)
   init_output();
   if (is_empty(username) or is_empty(password)) then
     goback("You need to enter both username and password to login.");
@@ -91,7 +90,7 @@ function login(username, password)
   SetHttpRedirect('/index_page');
 end
 
-function post(msg)
+function WL_post(msg)
   local isl = isLoggedIn();
   if (isl == false or is_empty(msg)) then
     SetHttpRedirect('/index_page'); return;
@@ -117,7 +116,7 @@ function post(msg)
   SetHttpRedirect('/index_page');
 end
 
-function timeline()
+function WL_timeline()
   init_output();
   create_header();
   showLastUsers();
@@ -127,7 +126,7 @@ function timeline()
   return flush_output();
 end
 
-function profile(username, start)
+function WL_profile(username, start)
   local thispage = '/profile';
   if (is_empty(username)) then
     SetHttpRedirect('/index_page'); return;
@@ -157,7 +156,7 @@ function profile(username, start)
   return flush_output();
 end
 
-function follow(userid, follow)
+function WL_follow(userid, follow)
   if (is_empty(userid) or is_empty(follow)) then
     SetHttpRedirect('/index_page'); return;
   end

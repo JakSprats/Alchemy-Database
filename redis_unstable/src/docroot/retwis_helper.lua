@@ -1,5 +1,5 @@
 -- Retwis for Alchemy's Short Stack - Helper Functions (PRIVATE FUNCTIONS)
-package.cpath = package.cpath .. ";./external/lua-zlib/?.so"
+package.cpath = package.cpath .. ";./extra/lua-zlib/?.so"
 local lz = require("zlib");
 
 -- STATIC_FILES STATIC_FILES STATIC_FILES STATIC_FILES STATIC_FILES
@@ -8,11 +8,12 @@ function load_image(ifile, name)
   local data = inp:read("*all")
   redis("SET", "STATIC/" .. name, data);
 end
-load_image('external/retwis-0.3/logo.png',      'logo.png');
-load_image('external/retwis-0.3/css/style.css', 'css/style.css');
-load_image('external/retwis-0.3/sfondo.png',    'sfondo.png');
-load_image('external/retwis-0.3/favicon.ico',   'favicon.ico');
-load_image('external/retwis-0.3/helper.js',     'helper.js');
+load_image('docroot/img/logo.png',    'logo.png');
+load_image('docroot/css/style.css',   'css/style.css');
+load_image('docroot/img/sfondo.png',  'sfondo.png');
+load_image('docroot/img/favicon.ico', 'favicon.ico');
+load_image('docroot/js/helper.js',    'helper.js');
+
 
 -- HELPERS HELPERS HELPERS HELPERS HELPERS HELPERS HELPERS HELPERS
 math.randomseed( os.time() )
@@ -116,7 +117,7 @@ function create_welcome()
 <div id="registerbox">
 <h2>Register!</h2>
 <b>Want to try Retwis? Create an account!</b>
-<form method="GET" onsubmit="return passwords_match(this.elements['password'].value, this.elements['password2'].value) && form_action_rewrite_url('/register', encodeURIComponent(this.elements['username'].value), encodeURIComponent(this.elements['password'].value))">
+<form method="GET" onsubmit="return passwords_match(this.elements['password'].value, this.elements['password2'].value) && form_action_rewrite_url('register', encodeURIComponent(this.elements['username'].value), encodeURIComponent(this.elements['password'].value))">
 <table>
 <tr> <td>Username</td><td><input type="text" name="username"></td> </tr>
 <tr> <td>Password</td><td><input type="password" name="password"></td> </tr>
@@ -125,7 +126,7 @@ function create_welcome()
 </table>
 </form>
 <h2>Already registered? Login here</h2>
-<form method="GET" onsubmit="return form_action_rewrite_url('./login', encodeURIComponent(this.elements['username'].value), encodeURIComponent(this.elements['password'].value))">
+<form method="GET" onsubmit="return form_action_rewrite_url('login', encodeURIComponent(this.elements['username'].value), encodeURIComponent(this.elements['password'].value))">
 <table>
 <tr> <td>Username</td><td><input type="text" name="username"></td> </tr>
 <tr> <td>Password</td><td><input type="password" name="password"></td> </tr>
@@ -223,7 +224,7 @@ function create_home(thispage, start)
   local nfollowing = redis("scard", "uid:" .. User['id'] .. ":following");
   local s          = 0;
   if (start ~= nil) then s = start; end
-  output('<div id="postform"><form method="GET" onsubmit="return form_action_rewrite_url(\'/post\', encodeURIComponent(this.elements[\'status\'].value), \'\');">');
+  output('<div id="postform"><form method="GET" onsubmit="return form_action_rewrite_url(\'post\', encodeURIComponent(this.elements[\'status\'].value), \'\');">');
   output(User['username'] ..', what you are doing?');
   output([[
 <br>
