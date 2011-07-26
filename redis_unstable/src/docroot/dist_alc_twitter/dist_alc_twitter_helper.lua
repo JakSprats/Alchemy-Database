@@ -418,18 +418,22 @@ function call_sync(func, name, ...)
   return ret;
 end
 
+function perform_auth_change(my_userid, oldauthsecret, newauthsecret)
+  redis("set",    "uid:"  .. my_userid .. ":auth",     newauthsecret);
+  redis("set",    "auth:" .. newauthsecret,            my_userid);
+  if (oldauthsecret~= nil) then redis("delete", "auth:" .. oldauthsecret); end
+end
 -- NOTE, register & logout have no guaranteed order
 global_register = function(my_userid, username)
  -- do one-time SET's - this data is needed
   redis("set",  "username:" .. username  .. ":id",       my_userid);
   redis("set",  "uid:"      .. my_userid .. ":username", username);
   redis("sadd", "global:users",                          my_userid);
-  local nlgt = redis("get",  "uid:" .. my_userid .. ":nlogouts");
-  if (nlgt == nil) then
-    local authsecret = init_sha1_variable('nlogouts', my_userid);
-    redis("set",  "uid:"      .. my_userid   .. ":auth",     authsecret);
-    redis("set",  "auth:"     .. authsecret,                 my_userid);
-    return authsecret;
+  local oldauthsecret = get_sha1_variable('nlogouts', my_userid);
+  if (oldauthsecret == nil) then
+    local newauthsecret = init_sha1_variable('nlogouts', my_userid);
+    perform_auth_change(my_userid, nil, newauthsecret);
+    return newauthsecret;
   else
     return 0; -- handle OOO logout
   end
@@ -439,9 +443,7 @@ global_logout = function(my_userid)
   local oldauthsecret = get_sha1_variable('nlogouts', my_userid);
   -- combinatorial INCR operation governs flow
   local newauthsecret = incr_sha1_variable('nlogouts', my_userid);
-  redis("set",    "uid:"  .. my_userid .. ":auth",     newauthsecret);
-  redis("set",    "auth:" .. newauthsecret,            my_userid);
-  redis("delete", "auth:" .. oldauthsecret);
+  perform_auth_change(my_userid, oldauthsecret, newauthsecret);
 end
 
 global_post = function(my_userid, postid, ts, msg)
