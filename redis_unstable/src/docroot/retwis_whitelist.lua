@@ -1,7 +1,5 @@
 -- Retwis for Alchemy's Short Stack - PUBLIC API
-dofile "./external/retwis_helper.lua";
-
-module("whitelist", package.seeall);
+dofile "./docroot/retwis_helper.lua";
 
 function index_page(start) 
   init_output();

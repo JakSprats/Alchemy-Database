@@ -58,6 +58,7 @@ void messageCommand(redisClient *c) { //NOTE: this command does not reply
     rfc->argc           = 0;
     rfc->multibulklen   = 0;
     rfc->querybuf       = c->argv[2]->ptr;
+    rfc->sa             = c->sa;
     processMultibulkBuffer(rfc);
     fakeClientPipe(rfc, NULL, ignoreFCP);
 }

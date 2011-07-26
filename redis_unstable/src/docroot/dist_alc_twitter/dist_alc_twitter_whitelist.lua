@@ -1,7 +1,7 @@
+dofile "./docroot/dist_alc_twitter/dist_alc_twitter_helper.lua";
 -- Retwis for Alchemy's Short Stack - PUBLIC API
-module("whitelist", package.seeall);
 
-function index_page(start) 
+function WL_index_page(start) 
   init_output();
   local thispage = 'index_page';
   local my_userid;
@@ -21,7 +21,7 @@ function index_page(start)
   return flush_output();
 end
 
-function register(username, password)
+function WL_register(username, password)
   init_output();
   if (is_empty(username) or is_empty(password)) then
     goback(getrand(), "Either Username or Password is Empty");
@@ -52,10 +52,11 @@ function register(username, password)
   return flush_output();
 end
 
-function login(o_username, o_password)
+function WL_login(o_username, o_password)
   init_output();
   if (is_empty(o_username) or is_empty(o_password)) then
-    goback(getrand(), "You need to enter both username and password to login.");
+    goback(getrand(),
+                      "You need to enter both username and password to login.");
     return flush_output();
   end
   username           = url_decode(o_username);
@@ -65,7 +66,7 @@ function login(o_username, o_password)
     goback(getrand(), "Wrong username or password");
     return flush_output();
   end
-  if (IsCorrectNode(my_userid) == false) then -- login ONLY to shard-node
+  if (IsCorrectNode(my_userid) == false) then -- login ONLY 2 shard-node
     SetHttpRedirect(build_link(my_userid, 'login', o_username, o_password));
     return;
   end
@@ -81,7 +82,7 @@ function login(o_username, o_password)
   SetHttpRedirect(build_link(my_userid, 'index_page'));
 end
 
-function logout(muserid) -- muserid used for URL haproxy LoadBalancing
+function WL_logout(muserid) -- muserid used for URL haproxy LoadBalancing
   if (isLoggedIn() == false) then
     SetHttpRedirect(build_link(muserid, 'index_page')); return;
   end
@@ -94,7 +95,7 @@ function logout(muserid) -- muserid used for URL haproxy LoadBalancing
   SetHttpRedirect(build_link(getrand(), 'index_page'));
 end
 
-function post(muserid, o_msg) -- muserid used for URL haproxy LoadBalancing
+function WL_post(muserid, o_msg) -- muserid used for URL haproxy LoadBalancing
   if (is_empty(o_msg) or isLoggedIn() == false) then
     SetHttpRedirect(build_link(muserid, 'index_page')); return;
   end
@@ -113,7 +114,7 @@ function post(muserid, o_msg) -- muserid used for URL haproxy LoadBalancing
   SetHttpRedirect(build_link(my_userid, 'index_page'));
 end
 
-function timeline()
+function WL_timeline()
   local my_userid;
   if (isLoggedIn()) then my_userid = User['id'];
   else                   my_userid = getrand();  end
@@ -126,7 +127,7 @@ function timeline()
   return flush_output();
 end
 
-function profile(userid, start)
+function WL_profile(userid, start)
   local thispage = 'profile';
   if (is_empty(userid)) then
     SetHttpRedirect(build_link(getrand(), 'index_page')); return;
@@ -161,7 +162,7 @@ function profile(userid, start)
   return flush_output();
 end
 
-function follow(muserid, userid, follow) -- muserid used ONLY by haproxy
+function WL_follow(muserid, userid, follow) -- muserid used ONLY by haproxy
   if (is_empty(userid) or is_empty(follow) or isLoggedIn() == false) then
     SetHttpRedirect(build_link(getrand(), 'index_page')); return;
   end

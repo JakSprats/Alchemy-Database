@@ -398,12 +398,10 @@ activerehashing yes
 
 ############################## ALCHEMY_DATABASE ###############################
 
-# include_lua will include lua functions from the specified file
-include_lua example.lua
 
 # the file internal.lua is part of the server's core
 # basedir must be set so this file can be loaded on startup
-basedir ./external/
+basedir ./extra/
 
 # outputmode determines how the line protocol looks on replies
 # the default value is "normal" and will return comma delimited rows
@@ -416,8 +414,8 @@ basedir ./external/
 # it should be used for very light weight cleanup or stat gathering
 #luacronfunc lua_cron
 
-# whitelist.lus defines the "whitelist" module used in webserver_mode
-whitelist_lua retwis_whitelist.lua
+# include_lua will include lua functions from the specified file
+include_lua ../docroot/retwis_whitelist.lua
 webserver_mode yes
 webserver_index_function index_page
 webserver_whitelist_address 127.0.0.1

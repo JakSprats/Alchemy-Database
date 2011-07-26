@@ -79,7 +79,6 @@ char           *LuaIncludeFile     = NULL;
 
 /* WEBSERVERMODE variables */
 int             WebServerMode      = -1;
-char           *WhiteListLua       = NULL;
 char           *WebServerIndexFunc = NULL;
 
 /* WHITELISTED IPS for WebServerMode */
@@ -181,7 +180,6 @@ void DXDB_populateCommandTable(dict *server_commands) {
 
 void DXDB_initServerConfig() { //printf("DXDB_initServerConfig\n");
     LuaIncludeFile     = NULL;
-    WhiteListLua       = NULL;
     LuaCronFunc        = NULL;
     Basedir            = zstrdup("./external/"); // DEFAULT dir for Alchemy
     WebServerMode      = -1;
@@ -239,7 +237,6 @@ static bool initLua(cli *c) {
 
     if                    (!loadLuaHelperFile(c, LUA_INTERNAL_FILE)) return 0;
     if (LuaIncludeFile  && !loadLuaHelperFile(c, LuaIncludeFile))    return 0;
-    if (WhiteListLua    && !loadLuaHelperFile(c, WhiteListLua))      return 0;
     else                                                             return 1;
 }
 static bool reloadLua(cli *c) {
@@ -256,18 +253,22 @@ void DXDB_emptyDb() { //printf("DXDB_emptyDb\n");
     init_Tbl_and_Index();
 }
 
+bool isWhiteListedIp(cli *c) {
+    if (WS_WL_Broadcast) { // check WHITELISTED IPs
+        unsigned int saddr     = c->sa.sin_addr.s_addr;
+        unsigned int b_masked  = saddr | WS_WL_Broadcast;
+        unsigned int sn_masked = saddr & WS_WL_Subnet;
+        if (b_masked  == WS_WL_Broadcast &&
+            sn_masked == WS_WL_Subnet) return 1;
+    }
+    return 0;
+}
 rcommand *DXDB_lookupCommand(sds name) {
     struct redisCommand *cmd = dictFetchValue(server.commands, name);
     if (WebServerMode > 0) {
         if (!CurrClient) return cmd; // called during load in whitelist
         if (!CurrClient->InternalRequest) {
-            if (WS_WL_Broadcast) { // check WHITELISTED IPs
-                unsigned int saddr     = CurrClient->sa.sin_addr.s_addr;
-                unsigned int b_masked  = saddr | WS_WL_Broadcast;
-                unsigned int sn_masked = saddr & WS_WL_Subnet;
-                if (b_masked  == WS_WL_Broadcast &&
-                    sn_masked == WS_WL_Subnet) return cmd;
-            }
+            if (isWhiteListedIp(CurrClient)) return cmd;
             return cmd ? (cmd->proc == luafuncCommand) ? cmd : NULL : NULL;
         }
     }
@@ -285,10 +286,6 @@ int DXDB_loadServerConfig(int argc, sds *argv) {
     if        (!strcasecmp(argv[0], "include_lua")   && argc == 2) {
         if (LuaIncludeFile) zfree(LuaIncludeFile);
         LuaIncludeFile = zstrdup(argv[1]);
-        return 0;
-    } else if (!strcasecmp(argv[0], "whitelist_lua") && argc == 2) {
-        if (WhiteListLua) zfree(WhiteListLua);
-        WhiteListLua = zstrdup(argv[1]);
         return 0;
     } else if (!strcasecmp(argv[0], "luacronfunc")   && argc == 2) {
         if (LuaCronFunc) zfree(LuaCronFunc);
@@ -383,16 +380,6 @@ int DXDB_configSetCommand(cli *c, robj *o) {
             return -1;
         }
         return 0;
-    } else if (!strcasecmp(c->argv[2]->ptr,"whitelist_lua")) {
-        zfree(WhiteListLua);
-        WhiteListLua = zstrdup(o->ptr);
-        if (!reloadLua(c)) {
-            addReplySds(c,sdscatprintf(sdsempty(),
-               "-ERR problem loading lua helper file: %s\r\n", (char *)o->ptr));
-            decrRefCount(o);
-            return -1;
-        }
-        return 0;
     } else if (!strcasecmp(c->argv[2]->ptr,"luacronfunc")) {
         zfree(LuaCronFunc);
         LuaCronFunc = zstrdup(o->ptr);
@@ -439,11 +426,6 @@ void DXDB_configGetCommand(redisClient *c, char *pattern, int *matches) {
     if (stringmatch(pattern, "include_lua", 0)) {
         addReplyBulkCString(c, "include_lua");
         addReplyBulkCString(c, LuaIncludeFile);
-        *matches = *matches + 1;
-    }
-    if (stringmatch(pattern, "whitelist_lua", 0)) {
-        addReplyBulkCString(c, "whitelist_lua");
-        addReplyBulkCString(c, WhiteListLua);
         *matches = *matches + 1;
     }
     if (stringmatch(pattern, "luacronfunc", 0)) {
@@ -526,13 +508,12 @@ void DBXD_genRedisInfoString(sds info) {
             "# ALCHEMY\r\n"
 #endif
             "luafilname:%s\r\n"
-            "whitelist_lua:%s\r\n"
             "luacronfunc:%s\r\n"
             "basedir:%s\r\n"
             "outputmode:%s\r\n"
             "webserver_mode:%s\r\n"
             "webserver_index_function:%s\r\n",
-             LuaIncludeFile, WhiteListLua, LuaCronFunc, Basedir,
+             LuaIncludeFile, LuaCronFunc, Basedir,
              (OREDIS) ? "pure_redis" : "normal",
              (WebServerMode == -1) ? "no" : "yes",
              WebServerIndexFunc);

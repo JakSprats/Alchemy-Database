@@ -70,6 +70,8 @@ int *DXDB_getKeysFromCommand(rcommand *cmd, robj **argv, int argc,
                              int *numkeys, int flags, sds *override_key,
                              unsigned char *err);
 
+unsigned char isWhiteListedIp(redisClient *c); //TODO move to another file?
+
 // PROTOTYPES
 // from redis.c
 unsigned int dictSdsCaseHash(const void *key);

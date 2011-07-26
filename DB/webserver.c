@@ -274,36 +274,33 @@ static robj *luaReplyToHTTPReply(lua_State *lua) {
     return r;
 }
 
-#define WHITELIST_REDIS_ERR \
-  addReplySds(c, sdsnew(\
-   "-ERR module \"whitelist\" must be defined via config option \"whitelist_lua\""));
-#define WHITELIST_FUNCTION_REDIS_ERR \
-  addReplySds(c, sdsnew(\
-   "-ERR function not found in module \"whitelist\""));
+#define LUA_FUNCTION_REDIS_ERR \
+  addReplySds(c, sdsnew("-ERR LUA function not defined\r\n"));
 
 bool luafunc_call(redisClient *c, int argc, robj **argv) {
-    char *fname = argv[1]->ptr;
-    if (WebServerMode > 0) {
-printf("WHITELIST check: %s\n", fname);
-        lua_getglobal(server.lua, "whitelist");
-        if (lua_type(server.lua, -1) != LUA_TTABLE) {
-            lua_pop(server.lua, 2); 
-            if (c->http.mode) SEND_404
-            else              WHITELIST_REDIS_ERR
-            return 1;
-        }
-        lua_getfield(server.lua, -1, fname);
-        int type = lua_type(server.lua, -1);
-        if (type != LUA_TFUNCTION) {
-            lua_pop(server.lua, 2);
-            if (c->http.mode) SEND_404
-            else              WHITELIST_FUNCTION_REDIS_ERR
-            return 1;
-        }
-printf("PASSED\n");
-        lua_replace(server.lua, -2); // remove "whitelist" from stack
+    sds fname;
+    if (WebServerMode == -1) {
+        fname = sdsdup(argv[1]->ptr);
     } else {
-        lua_getglobal(server.lua, fname);
+        if (isWhiteListedIp(c)) {
+            if (c->http.mode) {
+                fname = sdscatprintf(sdsempty(), "WL_%s", (char *)argv[1]->ptr);
+            } else {
+                fname = sdsdup(argv[1]->ptr);
+            }
+        } else {
+            fname = sdscatprintf(sdsempty(), "WL_%s", (char *)argv[1]->ptr);
+        }
+    }
+
+    lua_getglobal(server.lua, fname);
+    sdsfree(fname);
+    int type = lua_type(server.lua, -1);
+    if (type != LUA_TFUNCTION) {
+        lua_pop(server.lua, 1);
+        if (c->http.mode) SEND_404
+        else              LUA_FUNCTION_REDIS_ERR
+        return 1;
     }
     for (int i = 2; i < argc; i++) {
         sds arg = argv[i]->ptr; lua_pushlstring(server.lua, arg, sdslen(arg));

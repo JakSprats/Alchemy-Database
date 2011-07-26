@@ -6,6 +6,20 @@ local lz = require("zlib");
 dofile "./docroot/dist_alc_twitter/instance_settings.lua";
 NumNodes = #NodeData;
 
+-- ALCHEMY_SYNC ALCHEMY_SYNC ALCHEMY_SYNC ALCHEMY_SYNC ALCHEMY_SYNC
+function RsubscribeAlchemySync() -- lua_cron function, called every second
+  --print ('RsubscribeAlchemySync');
+  for num,data in pairs(NodeData) do
+    if (num ~= NodeId and data['synced'] == 0) then
+        print ('RSUBSCRIBE to ip: ' .. data['ip'] .. ' port: ' .. data['port']);
+        ret = redis("RSUBSCRIBE", data['ip'], data['port'],
+                                                        'channel:alchemy_sync');
+        if (ret["err"] == nil) then data['synced'] = 1; 
+        else                        data['synced'] = 0; end
+    end
+  end
+end
+
 -- AUTO_INC_COUNTER AUTO_INC_COUNTER AUTO_INC_COUNTER AUTO_INC_COUNTER
 AutoInc = {};
 function AutoIncInit(name)
@@ -65,20 +79,6 @@ AutoIncInit('NextUserId');
 print ('NextUserId: ' .. AutoInc['NextUserId']);
 AutoIncInit('NextPostId');
 print ('NextPostId: ' .. AutoInc['NextPostId']);
-
--- ALCHEMY_SYNC ALCHEMY_SYNC ALCHEMY_SYNC ALCHEMY_SYNC ALCHEMY_SYNC
-function RsubscribeAlchemySync() -- lua_cron function, called every second
-  --print ('RsubscribeAlchemySync');
-  for num,data in pairs(NodeData) do
-    if (num ~= NodeId and data['synced'] == 0) then
-        print ('RSUBSCRIBE to ip: ' .. data['ip'] .. ' port: ' .. data['port']);
-        ret = redis("RSUBSCRIBE", data['ip'], data['port'],
-                                                        'channel:alchemy_sync');
-        if (ret["err"] == nil) then data['synced'] = 1; 
-        else                        data['synced'] = 0; end
-    end
-  end
-end
 
 function GetNode(num)
   return (math.floor(tonumber(num) / AutoIncRange) % NumNodes) + 1;
