@@ -31,7 +31,8 @@ ALL RIGHTS RESERVED
 #include "redis.h"
 
 cli *getFakeClient(void);
-void resetFakeClient(cli *c);
+void cleanupFakeClient(cli *rfc);
+void resetFakeClient(cli *rfc);
 
 bool replyIfNestedErr(redisClient *c, redisClient *rfc, char *msg);
 

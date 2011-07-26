@@ -312,6 +312,7 @@ static bool parseWC_IN_NRI(redisClient *c, list **inl, char *s, int slen) {
     rfc->argv        = rargv;
     rfc->argc        = argc;
     fakeClientPipe(rfc, inl, addSelectToINL);
+    cleanupFakeClient(rfc);
     bool         err = !replyIfNestedErr(c, rfc, IN_RCMD_ERR_MSG);
     return !err;
 }

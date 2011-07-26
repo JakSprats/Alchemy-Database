@@ -61,6 +61,7 @@ void messageCommand(redisClient *c) { //NOTE: this command does not reply
     rfc->sa             = c->sa;
     processMultibulkBuffer(rfc);
     fakeClientPipe(rfc, NULL, ignoreFCP);
+    cleanupFakeClient(rfc);
 }
 
 //TODO redis-cli.o is not needed here, take out this spaghetti linking

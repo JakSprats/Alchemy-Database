@@ -99,6 +99,7 @@ static bool internalCr8Tbl(redisClient *c,
     sdsfree(cdefs);                                      /* FREED 038 */
     resetFakeClient(rfc);
     createCommand(rfc);
+    cleanupFakeClient(rfc);
     if (!replyIfNestedErr(c, rfc, INTERNAL_CREATE_TABLE_ERR_MSG)) return 0;
     else                                                          return 1;
 }

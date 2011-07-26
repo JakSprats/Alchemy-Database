@@ -35,28 +35,27 @@ ALL RIGHTS RESERVED
 #include "parser.h"
 #include "rpipe.h"
 
-static redisClient *FakeClient = NULL;
-redisClient *getFakeClient() {
+static cli *FakeClient = NULL;
+cli *getFakeClient() {
     if (!FakeClient) {
         FakeClient         = createClient(-1);
         FakeClient->flags |= REDIS_LUA_CLIENT; // means no networking
         FakeClient->argc   = 0;
     }
-    redisClient *rfc = FakeClient;
-//TODO HACK FIX MEMLEAK
-#if 0
-    if (rfc->argc) { // free last call to getFakeClient
-        while(rfc->argc--) sdsfree(rfc->argv[rfc->argc]);
-        if (rfc->argv) { zfree(rfc->argv); rfc->argv = NULL; }
-    }
-#endif
+    cli *rfc = FakeClient; //TODO add nesting of FakeClient (nested SELECT INs)
     return rfc;
 }
-void resetFakeClient(struct redisClient *c) {
-    listRelease(c->reply); c->reply = listCreate();
+void cleanupFakeClient(cli *rfc) {
+    if (rfc->argc) { // free last call to getFakeClient
+        while(rfc->argc--) decrRefCount(rfc->argv[rfc->argc]);
+        if (rfc->argv) { zfree(rfc->argv); rfc->argv = NULL; }
+    }
+}
+void resetFakeClient(cli *rfc) {
+    listRelease(rfc->reply); rfc->reply = listCreate();
 }
 
-static bool respNotErr(redisClient *rfc) {
+static bool respNotErr(cli *rfc) {
     listNode *ln = listFirst(rfc->reply);
     if (!ln) return 1;
     robj     *o  = ln->value;
@@ -64,7 +63,7 @@ static bool respNotErr(redisClient *rfc) {
     if (!strncmp(s, "-ERR", 4)) return 0;
     else                        return 1;
 }
-bool replyIfNestedErr(redisClient *c, redisClient *rfc, char *msg) {
+bool replyIfNestedErr(cli *c, cli *rfc, char *msg) {
     if (!respNotErr(rfc)) {
         listNode *ln   = listFirst(rfc->reply);
         robj     *emsg = ln->value;
