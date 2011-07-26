@@ -234,6 +234,9 @@ static bool initLua(cli *c) {
     lua_setglobal(server.lua, "SetHttpRedirect");
     lua_pushcfunction(server.lua, luaConvertToRedisProtocolCommand);
     lua_setglobal(server.lua, "Redisify");
+    lua_pushcfunction(server.lua, luaSha1Command);
+    lua_setglobal(server.lua, "SHA1");
+
     if                    (!loadLuaHelperFile(c, LUA_INTERNAL_FILE)) return 0;
     if (LuaIncludeFile  && !loadLuaHelperFile(c, LuaIncludeFile))    return 0;
     if (WhiteListLua    && !loadLuaHelperFile(c, WhiteListLua))      return 0;

@@ -47,6 +47,7 @@ void setClientParams(sds hostip, int hostport);
 int processMultibulkBuffer(redisClient *c);
 // from scripting.c
 void luaPushError(lua_State *lua, char *error);
+void hashScript(char *digest, char *script, size_t len);
 
 static void ignoreFCP(void *v, lolo val, char *x, lolo xlen, long *card) {
     v = NULL; val = 0; x = NULL; xlen = 0; card = NULL;
@@ -138,8 +139,7 @@ rsube:
 int luaConvertToRedisProtocolCommand(lua_State *lua) {
     int  argc  = lua_gettop(lua);
     if (argc < 1) {
-        luaPushError(lua, "Lua Redisify() takes 1+ string arg");
-        return 1;
+        luaPushError(lua, "Lua Redisify() takes 1+ string arg"); return 1;
     }
     sds *argv  = zmalloc(sizeof(sds) * argc);
     int  i     = argc -1;
@@ -170,5 +170,34 @@ int luaConvertToRedisProtocolCommand(lua_State *lua) {
     free(argvlen);
     while(argc--) sdsfree(argv[argc]); /* Free the argument vector */
     zfree(argv);
+    return 1;
+}
+int luaSha1Command(lua_State *lua) {
+    int  argc  = lua_gettop(lua);
+    if (argc < 1) {
+        luaPushError(lua, "Lua SHA1() takes 1+ string arg"); return 1;
+    }
+    sds tok = sdsempty();                                // DESTROY ME 083
+    while(1) {
+        int t = lua_type(lua, 1);
+        if (t == LUA_TNIL) {
+            lua_pop(lua, 1);
+            break;
+        } else if (t == LUA_TSTRING) {
+            size_t len;
+            char *s = (char *)lua_tolstring(lua, -1, &len);
+            tok = sdscatlen(tok, s, len);
+        } else if (t == LUA_TNUMBER) {
+            char buf[32];
+            snprintf(buf, 32, "%lld", (lolo)lua_tonumber(lua, -1));
+            buf[31] = '\0';
+            tok = sdscatlen(tok, buf, strlen(buf));
+        } else break;
+        lua_pop(lua, 1);
+    }
+    char sha1v[41];
+    hashScript(sha1v, tok, sdslen(tok));
+    lua_pushlstring(lua, sha1v, strlen(sha1v));
+    sdsfree(tok);                                        // DESTROYED 083
     return 1;
 }

@@ -35,5 +35,6 @@ void messageCommand(redisClient *c);
 void rsubscribeCommand(redisClient *c);
 
 int luaConvertToRedisProtocolCommand(lua_State *lua);
+int luaSha1Command(lua_State *lua);
 
 #endif /* DXDB_MESSAGING_H */
