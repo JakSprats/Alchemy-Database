@@ -897,12 +897,3 @@ int main(int argc, char **argv) {
     if (cliConnect(0) != REDIS_OK) exit(1);
     return noninteractive(argc,convertToSds(argc,argv));
 }
-
-#ifdef ALCHEMY_SERVER
-  void setClientParams(sds hostip, int hostport) {
-      bzero(&config, sizeof(config));
-      config.hostip         = hostip;
-      config.hostport       = hostport;
-      config.quiet          = 1;
-  }
-#endif

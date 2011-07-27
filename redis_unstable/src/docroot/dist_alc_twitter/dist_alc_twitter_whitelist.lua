@@ -103,14 +103,12 @@ function WL_post(muserid, o_msg) -- muserid used for URL haproxy LoadBalancing
   if (IsCorrectNode(my_userid) == false) then -- post ONLY to shard-node
     SetHttpRedirect(build_link(my_userid, 'post', my_userid, o_msg)); return;
   end
-  msg             = url_decode(o_msg);
-  print ("post: " .. msg);
-  local ts        = os.time();
+  local msg       = url_decode(o_msg);
+  local ts        = gettime();
   local postid    = IncrementAutoInc('NextPostId');
   local my_userid = User['id'];
-
   call_sync(global_post, 'global_post', my_userid, postid, ts, msg);
-  local_post(my_userid, postid, ts, msg);
+  local_post(my_userid, postid, msg, ts);
   SetHttpRedirect(build_link(my_userid, 'index_page'));
 end
 
@@ -135,10 +133,13 @@ function WL_profile(userid, start)
   if (IsCorrectNode(userid) == false) then -- profile ONLY to shard-node
     SetHttpRedirect(build_link(userid, 'profile', userid, start)); return;
   end
+  local username = redis("get", "uid:" .. userid .. ":username");
+  if (username == nil) then -- FOR: hackers doing userid scanning
+    SetHttpRedirect(build_link(getrand(), 'index_page')); return;
+  end
   local my_userid;
   if (isLoggedIn()) then my_userid = User['id'];
   else                   my_userid = getrand();  end
-  local username = redis("get", "uid:" .. userid .. ":username");
   init_output();
   create_header(my_userid);
   output('<h2 class="username">' .. username .. '</h2>');

@@ -38,11 +38,8 @@ ALL RIGHTS RESERVED
 #include "messaging.h"
 
 //GLOBALS
-extern redisContext *context; //from redis-cli.c
 
 //PROTOTYPES
-// from redis-cli.c
-void setClientParams(sds hostip, int hostport);
 // from networking.c
 int processMultibulkBuffer(redisClient *c);
 // from scripting.c
@@ -64,38 +61,53 @@ void messageCommand(redisClient *c) { //NOTE: this command does not reply
     cleanupFakeClient(rfc);
 }
 
-//TODO redis-cli.o is not needed here, take out this spaghetti linking
-void rsubscribeCommand(redisClient *c) {
-    sds  ip     = c->argv[1]->ptr;
-    int  port   = atoi(c->argv[2]->ptr);
-    { // PING the remote machine to create a fd for it
-        setClientParams(ip, port);
-        //context       = redisConnect(ip, port);
-        struct timeval tv; tv.tv_sec = 1; tv.tv_usec = 0; // 1 SECOND TIMEOUT
-        context       = redisConnectWithTimeout(ip, port, tv);
-        if (!context || context->err)                                goto rsube;
-        context->obuf = sdsnew("*1\r\n$4\r\nPING\r\n");
-        int wdone     = 0;
+#define cntxt redisContext
+static int remoteMessage(sds ip, int port, sds cmd, bool wait) {
+    int fd         = -1;
+    struct timeval tv; tv.tv_sec = 0; tv.tv_usec = 100000; // 100ms timeout
+    cntxt *context = redisConnectWithTimeout(ip, port, tv);
+    if (!context || context->err)                                    goto rmend;
+    context->obuf  = cmd;
+    int wdone      = 0;
+    do {
+        if (redisBufferWrite(context, &wdone) == REDIS_ERR)          goto rmend;
+    } while (!wdone);
+    context->obuf  = NULL;
 
-        do {
-            if (redisBufferWrite(context, &wdone) == REDIS_ERR)      goto rsube;
-        } while (!wdone);
+    if (wait) { // WAIT is for PINGs (wait for PONG) validate box is up
         struct pollfd fds[1];
         int timeout_msecs = 100; // 100ms timeout, this is a PING
         fds[0].fd = context->fd;
         fds[0].events = POLLIN | POLLPRI;
         int ret = poll(fds, 1, timeout_msecs);
         if (!ret || fds[0].revents & POLLERR || fds[0].revents & POLLHUP) {
-            goto rsube;
+            goto rmend;
         }
         void *aux = NULL;
-        do { //TODO redisGetReplyFromReader ?NEEDED?
+        do {
             if (redisBufferRead(context)               == REDIS_ERR ||
-                redisGetReplyFromReader(context, &aux) == REDIS_ERR) goto rsube;
+                redisGetReplyFromReader(context, &aux) == REDIS_ERR) goto rmend;
         } while (aux == NULL);
         freeReplyObject(aux);
     }
-    cli *rc = createClient(context->fd); // use this fd for remote-subscription
+    fd = context->fd;
+
+rmend:
+    if (context) {
+        if (context->obuf)   sdsfree(context->obuf);
+        if (context->errstr) sdsfree(context->errstr);
+        if (context->reader) redisReplyReaderFree(context->reader);
+    }
+    return fd;
+}
+
+void rsubscribeCommand(redisClient *c) {
+    sds  ip   = c->argv[1]->ptr;
+    int  port = atoi(c->argv[2]->ptr);
+    sds  cmd  = sdsnew("*1\r\n$4\r\nPING\r\n");   // DESTROYED IN remoteMessage
+    int  fd   = remoteMessage(ip, port, cmd, 1);               // blocking PING
+    if (fd == -1) { addReply(c, shared.subscribe_ping_err); return; }
+    cli *rc   = createClient(fd);                 // fd for remote-subscription
     DXDB_setClientSA(rc);
     for (int j = 3; j < c->argc; j++) {//carbon-copy of pubsubSubscribeChannel()
         struct dictEntry *de;
@@ -125,17 +137,40 @@ void rsubscribeCommand(redisClient *c) {
             listAddNodeTail(clients, rc);
         }
     }
-    if (context->errstr) sdsfree(context->errstr);
-    if (context->obuf)   sdsfree(context->obuf);
-    if (context->reader) redisReplyReaderFree(context->reader);
     addReply(c, shared.ok);
-    return;
+}
 
-rsube:
-    if (context->errstr) sdsfree(context->errstr);
-    if (context->obuf)   sdsfree(context->obuf);
-    if (context->reader) redisReplyReaderFree(context->reader);
-    addReply(c, shared.subscribe_ping_err);
+int luaRemoteMessageCommand(lua_State *lua) {
+    int  argc   = lua_gettop(lua);
+    if (argc != 3) {
+        luaPushError(lua, "Lua RemoteMessage(ip, port, msg)"); return 1;
+    }
+    int t       = lua_type(lua, 1);
+    if (t != LUA_TSTRING) {
+        luaPushError(lua, "Lua RemoteMessage(ip, port, msg)"); return 1;
+    }
+    size_t  len;
+    char   *s   = (char *)lua_tolstring(lua, -1, &len);
+    sds     cmd = sdsnewlen(s, len);              // DESTROYED IN remoteMessage
+    lua_pop(lua, 1);
+    t           = lua_type(lua, 1);
+    if (t != LUA_TNUMBER && t != LUA_TSTRING) {
+        luaPushError(lua, "Lua RemoteMessage(ip, port, msg)"); return 1;
+    }
+    int port = (t == LUA_TNUMBER) ? lua_tonumber(lua, -1) :
+                                    atoi((char *)lua_tolstring(lua, -1, &len));
+    lua_pop(lua, 1);
+    t           = lua_type(lua, 1);
+    if (t != LUA_TSTRING) {
+        luaPushError(lua, "Lua RemoteMessage(ip, port, msg)"); return 1;
+    }
+    s           = (char *)lua_tolstring(lua, -1, &len);
+    sds     ip  = sdsnewlen(s, len);                     // DESTROY ME 085
+    lua_pop(lua, 1);
+    int     fd = remoteMessage(ip, port, cmd, 0);           // NON-blocking CMD
+    if (fd != -1) close(fd);                                // FIRE & FORGET
+    sdsfree(ip);                                         // DESTROYED 085
+    return 0;
 }
 
 int luaConvertToRedisProtocolCommand(lua_State *lua) {

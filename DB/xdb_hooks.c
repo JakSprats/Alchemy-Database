@@ -234,6 +234,8 @@ static bool initLua(cli *c) {
     lua_setglobal(server.lua, "Redisify");
     lua_pushcfunction(server.lua, luaSha1Command);
     lua_setglobal(server.lua, "SHA1");
+    lua_pushcfunction(server.lua, luaRemoteMessageCommand);
+    lua_setglobal(server.lua, "RemoteMessage");
 
     if                    (!loadLuaHelperFile(c, LUA_INTERNAL_FILE)) return 0;
     if (LuaIncludeFile  && !loadLuaHelperFile(c, LuaIncludeFile))    return 0;

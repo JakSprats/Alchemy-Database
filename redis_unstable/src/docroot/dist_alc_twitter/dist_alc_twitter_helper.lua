@@ -2,28 +2,58 @@
 package.cpath = package.cpath .. ";./extra/lua-zlib/?.so"
 local lz = require("zlib");
 
+io.stdout:setvbuf("no");
+
 -- CLUSTER_INIT CLUSTER_INIT CLUSTER_INIT CLUSTER_INIT CLUSTER_INIT
 dofile "./docroot/dist_alc_twitter/instance_settings.lua";
-NumNodes = #NodeData;
+local NumNodes = #NodeData;
+
+-- DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
+local SimulateNetworkPartition = 10;
 
 -- ALCHEMY_SYNC ALCHEMY_SYNC ALCHEMY_SYNC ALCHEMY_SYNC ALCHEMY_SYNC
+local AllSynced = false;
 function RsubscribeAlchemySync() -- lua_cron function, called every second
   --print ('RsubscribeAlchemySync');
+   local nsync = 0;
   for num,data in pairs(NodeData) do
-    if (num ~= NodeId and data['synced'] == 0) then
-        print ('RSUBSCRIBE to ip: ' .. data['ip'] .. ' port: ' .. data['port']);
-        ret = redis("RSUBSCRIBE", data['ip'], data['port'],
-                                                        'channel:alchemy_sync');
-        if (ret["err"] == nil) then data['synced'] = 1; 
-        else                        data['synced'] = 0; end
+    if (num ~= MyNodeId and data['synced'] == 0) then
+      local continue = false; -- LUA does not have "continue"
+      if (SimulateNetworkPartition ~= 0) then
+        if (MyNodeId < 3 and num >= 3) then continue = true; end -- [1<->2]
+        if (MyNodeId >= 3 and num < 3) then continue = true; end -- [3<->4]
+      end
+      if (continue == false) then
+        print ('RSUBSCRIBE ip: ' .. data['ip'] .. ' port: ' .. data['port']);
+        local ret = redis("RSUBSCRIBE", data['ip'], data['port'], 'sync');
+        if (ret["err"] == nil) then
+          data['synced'] = 1; 
+          nsync = nsync + 1;
+          print ('SYNCED ip: ' .. data['ip'] .. ' port: ' .. data['port']);
+        else
+          data['synced'] = 0;
+        end
+      end
+    else
+      nsync = nsync + 1;
     end
+  end
+  if (nsync == NumNodes) then
+    if (AllSynced == false) then
+      AllSynced = true;
+      print ('AllSynced');
+    end
+  end
+  if (SimulateNetworkPartition ~= 0) then
+    SimulateNetworkPartition = SimulateNetworkPartition - 1;
+    print ('SimulateNetworkPartition: ' .. SimulateNetworkPartition);
   end
 end
 
 -- AUTO_INC_COUNTER AUTO_INC_COUNTER AUTO_INC_COUNTER AUTO_INC_COUNTER
 AutoInc = {};
-function AutoIncInit(name)
-  local inc = AutoIncRange * (NodeId - 1);
+function InitAutoInc(name)
+  local inc = AutoIncRange * (MyNodeId - 1);
   local id  = redis("get", "global:" .. name);
   if (id == nil) then
       id = inc;
@@ -32,13 +62,22 @@ function AutoIncInit(name)
   AutoInc[name] = id;
 end
 function IncrementAutoInc(name)
-  AutoInc[name] = AutoInc[name] +1;
+  --local was = AutoInc[name];
+  AutoInc[name] = AutoInc[name] + 1;
   if ((AutoInc[name] % AutoIncRange) == 0) then
     AutoInc[name] = AutoInc[name] + (AutoIncRange * (NumNodes - 1));
   end
-  redis("set", "global:SavedStartUserId", StartUserId);
   redis("set", "global:" .. name, AutoInc[name]);
+  --print ('Autoinc[' .. name .. '] was: ' .. was .. ' is: ' .. AutoInc[name]);
   return AutoInc[name];
+end
+function getPreviousAutoInc(num)
+  local was = num;
+  num = tonumber(num) - 1;
+  if ((num % AutoIncRange) == (AutoIncRange -1)) then
+    num = num - (AutoIncRange * (NumNodes - 1));
+  end
+  return num;
 end
 
 -- STATELESS_VARS STATELESS_VARS STATELESS_VARS STATELESS_VARS STATELESS_VARS
@@ -74,12 +113,7 @@ function incr_sha1_variable(name, my_userid)                          -- PUBLIC
   return __set_sha1_variable(name, my_userid, (rval + 1))
 end
 
--- GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS
-AutoIncInit('NextUserId');
-print ('NextUserId: ' .. AutoInc['NextUserId']);
-AutoIncInit('NextPostId');
-print ('NextPostId: ' .. AutoInc['NextPostId']);
-
+-- DISTRIBUTED_LINKING DISTRIBUTED_LINKING DISTRIBUTED_LINKING
 function GetNode(num)
   return (math.floor(tonumber(num) / AutoIncRange) % NumNodes) + 1;
 end
@@ -91,8 +125,23 @@ function GetHttpDomainPort(num)
 end
 function IsCorrectNode(num)
   local which = GetNode(num);
-  return (which == NodeId);
+  return (which == MyNodeId);
 end
+
+function build_link(my_userid, page, arg1, arg2, arg3)
+  local path = '';
+  if (arg1 ~= nil) then
+    path = '/' .. arg1;
+    if (arg2 ~= nil) then
+      path = path .. '/' .. arg2;
+      if (arg3 ~= nil) then
+        path = path .. '/' .. arg3;
+      end
+    end
+  end
+  return GetHttpDomainPort(my_userid) .. page .. path;
+end
+
 -- STATIC_FILES STATIC_FILES STATIC_FILES STATIC_FILES STATIC_FILES
 function load_image(ifile, name)
   local inp = assert(io.open(ifile, "rb"))
@@ -106,7 +155,11 @@ load_image('docroot/img/favicon.ico', 'favicon.ico');
 load_image('docroot/js/helper.js',    'helper.js');
 
 -- HELPERS HELPERS HELPERS HELPERS HELPERS HELPERS HELPERS HELPERS
-math.randomseed( os.time() )
+function gettime()
+  return os.time(); -- TODO check speed, override w/ C call (no OS call)
+end
+
+math.randomseed(gettime() )
 function getrand()
   return math.random(99999999999999);
 end
@@ -145,7 +198,6 @@ function url_encode(str)
   return str	
 end
 
-
 -- OUTPUT_BUFFER+DEFLATE OUTPUT_BUFFER+DEFLATE OUTPUT_BUFFER+DEFLATE
 -- this approach is explained here: http://www.lua.org/pil/11.6.html
 -- the 3 functions [init_output, output, flush_output] could be 
@@ -168,20 +220,25 @@ function flush_output()
     return out;
    end
 end
+ 
+-- GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS
+-- one PK AutoInc for EACH table
+InitAutoInc('Next_sql_users_TransactionId');
+print ('Next_sql_users_TransactionId: ' .. AutoInc['Next_sql_users_TransactionId']);
+InitAutoInc('Next_sql_posts_TransactionId');
+print ('Next_sql_posts_TransactionId: ' .. AutoInc['Next_sql_posts_TransactionId']);
+InitAutoInc('Next_sql_follows_TransactionId');
+print ('Next_sql_follows_TransactionId: ' .. AutoInc['Next_sql_follows_TransactionId']);
+-- one GLOBAL AutoInc for "sync"
+InitAutoInc('Next_sync_TransactionId');
+print ('Next_sync_TransactionId: ' .. AutoInc['Next_sync_TransactionId']);
 
-function build_link(my_userid, page, arg1, arg2, arg3)
-  local path = '';
-  if (arg1 ~= nil) then
-    path = '/' .. arg1;
-    if (arg2 ~= nil) then
-      path = path .. '/' .. arg2;
-      if (arg3 ~= nil) then
-        path = path .. '/' .. arg3;
-      end
-    end
-  end
-  return GetHttpDomainPort(my_userid) .. page .. path;
-end
+-- USERLAND_GLOBALS USERLAND_GLOBALS USERLAND_GLOBALS USERLAND_GLOBALS
+InitAutoInc('NextUserId');
+print ('NextUserId: ' .. AutoInc['NextUserId']);
+InitAutoInc('NextPostId');
+print ('NextPostId: ' .. AutoInc['NextPostId']);
+
 -- HTML HTML HTML HTML HTML HTML HTML HTML HTML HTML HTML HTML
 function create_navbar(my_userid)
   local domain = GetHttpDomainPort(my_userid)
@@ -330,7 +387,7 @@ function showLastUsers()
   for k,v in pairs(users) do
     local userid = redis("get", "username:" .. v .. ":id");
     output('<a class="username" href="' ..
-                   build_link(userid, "profile", v) ..  '">' .. v .. '</a> ');
+                build_link(userid, "profile", userid) ..  '">' .. v .. '</a> ');
   end
   output('</div><br>');
 end
@@ -386,46 +443,115 @@ function isLoggedIn()
   return false;
 end
 
+-- PUBLISH_REPLICATION PUBLISH_REPLICATION PUBLISH_REPLICATION
+function publish_queue_sql(tbl, sqlbeg, sqlend)
+  local channel = 'sql';
+  local xactid  = IncrementAutoInc('Next_' .. channel .. '_' .. 
+                                              tbl     .. '_TransactionId');
+  local msg     = sqlbeg .. xactid .. sqlend;
+  redis("publish", channel, msg);
+  redis("zadd", "Q_" .. channel, xactid, msg);
+end
+function publish_queue_sync(name, ...)
+  local channel = 'sync';
+  local xactid  = IncrementAutoInc('Next_' .. channel .. '_TransactionId');
+  local msg     = Redisify('LUA', name, MyNodeId, xactid, ...);
+  redis("publish", channel, msg);
+  redis("zadd", "Q_" .. channel, xactid, msg);
+end
+function call_sync(func, name, ...)
+  local ret = func(0, 0, ...); -- LOCALLY: [nodeid, xactid] -> 0
+  publish_queue_sync(name, ...);
+  return ret;
+end
+
 -- LOCAL_FUNCS LOCAL_FUNCS LOCAL_FUNCS LOCAL_FUNCS LOCAL_FUNCS LOCAL_FUNCS
 function local_register(my_userid, username, password)
   redis("set",  "uid:"      .. my_userid   .. ":password", password);
   -- keep a global list of local users (used later for MIGRATEs)
   redis("lpush", "local_user_id",                          my_userid);
-  local sqlmsg = "INSERT INTO users (id, name, passwd) VALUES (" ..
-                  my_userid .. ",'" .. username .. "','" .. password .. "');";
-  redis("publish", "channel:sql", sqlmsg); -- for pubsub_pipe replication
-  -- TODO publish to "channel:sql"
+  local sqlbeg = "INSERT INTO users (pk, id, name, passwd) VALUES (";
+  local sqlend = "," .. my_userid .. ",'" ..
+                        username .. "','" .. password .. "');";
+  publish_queue_sql('users', sqlbeg, sqlend);
 end
-function local_post(my_userid, postid, ts, msg)
+function local_post(my_userid, postid, msg, ts)
   redis("lpush", "uid:" .. my_userid .. ":posts", postid);   -- U follow U
   redis("lpush", "uid:" .. my_userid .. ":myposts", postid); -- for /profile
-  local sqlmsg = "INSERT INTO tweets (userid, ts, msg) VALUES (" ..
-                  my_userid .. "," .. ts .. ",'" .. msg .. "');";
-  redis("publish", "channel:sql", sqlmsg); -- for pubsub_pipe replication
+  local sqlbeg = "INSERT INTO posts (pk, userid, ts, msg) VALUES (";
+  local sqlend = "," .. my_userid .. "," .. ts .. ",'" .. msg .. "');";
+  publish_queue_sql('posts', sqlbeg, sqlend);
 end
 function local_follow(my_userid, userid, follow)
-  local sqlmsg = 
-         "INSERT INTO relations (from_userid, to_userid, type) VALUES (" ..
-                  my_userid .. "," .. userid .. "," .. follow .. ");";
-  redis("publish", "channel:sql", sqlmsg); -- for pubsub_pipe replication
+  local sqlbeg = 
+         "INSERT INTO follows (pk, from_userid, to_userid, type) VALUES (";
+  local sqlend = "," .. my_userid .. "," .. userid .. "," .. follow .. ");";
+  publish_queue_sql('follows', sqlbeg, sqlend);
 end
 
 -- SYNC_FUNCS SYNC_FUNCS SYNC_FUNCS SYNC_FUNCS SYNC_FUNCS SYNC_FUNCS
-function call_sync(func, name, ...)
-  local ret = func(...);
-  local pubmsg = Redisify('LUA', name, ...);
-  redis("publish", "channel:alchemy_sync", pubmsg); -- pubsub_pipe replication
-  return ret;
-end
-
 function perform_auth_change(my_userid, oldauthsecret, newauthsecret)
   redis("set",    "uid:"  .. my_userid .. ":auth",     newauthsecret);
   redis("set",    "auth:" .. newauthsecret,            my_userid);
   if (oldauthsecret~= nil) then redis("delete", "auth:" .. oldauthsecret); end
 end
--- NOTE, register & logout have no guaranteed order
-global_register = function(my_userid, username)
- -- do one-time SET's - this data is needed
+
+-- trimQ()
+--print ('PRE: qname: ZCARD: ' .. redis('zcard', qname));
+      --redis("zremrangebyscore", qname, "-inf", xactid);
+--print ('POST: qname: ZCARD: ' .. redis('zcard', qname));
+
+function update_remote_hw(qname, nodeid, xactid)
+  local inodeid = tonumber(nodeid);
+  local hwname = "HW_" .. nodeid .. '_Q_' .. qname;
+  local hw     = tonumber(redis("get", hwname));
+  print('update_remote_hw: nodeid: ' .. nodeid ..  ' xactid: ' .. xactid ..
+                         " HW: "     .. hw);
+  if (hw == nil) then
+    redis("set", hwname, xactid);
+  else
+    if (hw == getPreviousAutoInc(xactid)) then
+      redis("set", hwname, xactid);
+    else
+      local mabove = "HW_" .. nodeid .. "_mabove";
+      local mbelow = "HW_" .. nodeid .. "_mbelow";
+      local mav    = redis("get", mabove);
+      if (mav ~= nil) then -- CHECK if (mav < xactid < mbv)
+        local mbv = redis("get", mbelow);
+        if (tonumber(mav) == tonumber(getPreviousAutoInc(xactid))) then
+          if (tonumber(xactid) == tonumber(getPreviousAutoInc(mbv))) then
+            redis("del", mabove, mbelow);
+          else
+            redis("set", mabove, xactid);
+          end
+        end
+        return;
+      end
+      local cmd = Redisify('LUA', 'handle_ooo', MyNodeId, hw, xactid);
+      RemoteMessage(NodeData[inodeid]["ip"], NodeData[inodeid]["port"], cmd);
+      redis("set", mabove, tostring(hw));
+      redis("set", mbelow, xactid);
+      redis("set", hwname, xactid); -- [mabove,mbelow] will catch OOO
+    end
+  end
+end
+function handle_ooo(fromnode, hw, xactid)
+  local ifromnode = tonumber(fromnode);
+  print ('handle_ooo: fromnode: ' .. fromnode .. ' hw: ' .. hw .. 
+                    ' xactid: ' .. xactid);
+  local beg      = tonumber(hw)     + 1;
+  local fin      = tonumber(xactid) - 1;
+  local msgs     = redis("zrangebyscore", "Q_sync", beg, fin);
+  local pipeline = '';
+  for k,v in pairs(msgs) do pipeline = pipeline .. v; end
+  RemoteMessage(NodeData[ifromnode]["ip"], NodeData[ifromnode]["port"],
+                pipeline);
+end
+
+-- NOTE: register & logout can be OOO, shared vars MUST be stateless
+global_register = function(nodeid, xactid, my_userid, username)
+  if (xactid ~= 0) then update_remote_hw('sync', nodeid, xactid); end
+  -- do one-time SET's - this data is needed
   redis("set",  "username:" .. username  .. ":id",       my_userid);
   redis("set",  "uid:"      .. my_userid .. ":username", username);
   redis("sadd", "global:users",                          my_userid);
@@ -438,30 +564,31 @@ global_register = function(my_userid, username)
     return 0; -- handle OOO logout
   end
 end
-
-global_logout = function(my_userid)
+global_logout = function(nodeid, xactid, my_userid)
+  if (xactid ~= 0) then update_remote_hw('sync', nodeid, xactid); end
   local oldauthsecret = get_sha1_variable('nlogouts', my_userid);
   -- combinatorial INCR operation governs flow
   local newauthsecret = incr_sha1_variable('nlogouts', my_userid);
   perform_auth_change(my_userid, oldauthsecret, newauthsecret);
 end
-
-global_post = function(my_userid, postid, ts, msg)
-  print ('global_post: my_userid: ' .. my_userid .. ' ts: ' .. ts .. ' msg: ' .. msg);
+global_post = function(nodeid, xactid, my_userid, postid, ts, msg)
+  if (xactid ~= 0) then update_remote_hw('sync', nodeid, xactid); end
+  print ('global_post: my_userid: ' .. my_userid .. ' ts: ' .. ts ..
+         ' msg: ' .. msg);
   local post   = my_userid .. "|" .. ts .. "|" .. msg;
   redis("set", "post:" .. postid, post);
   -- global_post just does follower, not self
   local followers = redis("smembers", "uid:" .. my_userid .. ":followers");
   -- todo only local followers
   for k,v in pairs(followers) do
-    redis("lpush", "uid:" .. v .. ":posts", postid);
+    redis("lpush", "uid:" .. v .. ":posts", postid); -- TODO lpush NOT combntrl
   end
   -- Push post to timeline, and trim timeline to newest 1000 elements.
-  redis("lpush", "global:timeline", postid);
+  redis("lpush", "global:timeline", postid); -- TODO lpush NOT combntrl
   redis("ltrim", "global:timeline", 0, 1000);
 end
-
-global_follow = function(my_userid, userid, follow)
+global_follow = function(nodeid, xactid, my_userid, userid, follow)
+  if (xactid ~= 0) then update_remote_hw('sync', nodeid, xactid); end
   local f = tonumber(follow);
   if (f == 1) then
     redis("sadd", "uid:" .. userid    .. ":followers", my_userid);

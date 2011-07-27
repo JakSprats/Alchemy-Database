@@ -31,10 +31,11 @@ ALL RIGHTS RESERVED
 
 #include "common.h"
 
-void messageCommand(redisClient *c);
+void messageCommand   (redisClient *c);
 void rsubscribeCommand(redisClient *c);
 
 int luaConvertToRedisProtocolCommand(lua_State *lua);
-int luaSha1Command(lua_State *lua);
+int luaSha1Command                  (lua_State *lua);
+int luaRemoteMessageCommand         (lua_State *lua);
 
 #endif /* DXDB_MESSAGING_H */
