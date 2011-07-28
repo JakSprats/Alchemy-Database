@@ -1,4 +1,4 @@
-dofile "./docroot/dist_alc_twitter/dist_alc_twitter_helper.lua";
+dofile "./docroot/dist_alc_twitter/short_stack.lua";
 -- Retwis for Alchemy's Short Stack - PUBLIC API
 
 function WL_index_page(start) 

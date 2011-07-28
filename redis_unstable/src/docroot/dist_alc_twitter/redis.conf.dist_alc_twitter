@@ -412,10 +412,10 @@ basedir ./extra/
 # luacronfunc when defined will be run every second and
 #  will BLOCK the server during its execution
 # it should be used for very light weight cleanup or stat gathering
-luacronfunc RsubscribeAlchemySync
+luacronfunc HeartBeat
 
 # include_lua will include lua functions from the specified file
-include_lua ../docroot/dist_alc_twitter/dist_alc_twitter_whitelist.lua
+include_lua ../docroot/dist_alc_twitter/whitelist.lua
 webserver_mode yes
 webserver_index_function index_page
 webserver_whitelist_address 127.0.0.1
