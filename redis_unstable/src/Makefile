@@ -205,7 +205,7 @@ alchemy-check-dump: $(CHECKDUMPOBJ)
 alchemy-check-aof: $(CHECKAOFOBJ)
 	$(QUIET_LINK)$(CC) -o $(CHECKAOFPRGNAME) $(CCOPT) $(DEBUG) $(CHECKAOFOBJ) $(CCLINK) $(ALLOC_LINK)
 
-alchemy-lib: dependencies
+alchemy-lib: dependencies $(ALLOC_DEP)
 	(cd ../../DB; make redis3)
 
 # Because the jemalloc.h header is generated as a part of the jemalloc build
