@@ -188,7 +188,7 @@ redis-benchmark.o:
 	$(CC) -c $(CFLAGS) -I../deps/hiredis $(DEBUG) $(COMPILE_TIME) $<
 	#$(QUIET_CC)$(CC) -c $(CFLAGS) -I../deps/hiredis $(DEBUG) $(COMPILE_TIME) $<
 
-alchemy-gen-benchmark: $(GENBENCHOBJ)
+alchemy-gen-benchmark: dependencies $(GENBENCHOBJ)
 	@cd ../deps/hiredis && $(MAKE) static
 	$(QUIET_LINK)$(CC) -o $(GENBENCHPRGNAME) $(CCOPT) $(DEBUG) $(GENBENCHOBJ) ../deps/hiredis/libhiredis.a $(CCLINK) $(ALLOC_LINK)
 	#$(CC) -o $(GENBENCHPRGNAME) $(CCOPT) $(DEBUG) $(GENBENCHOBJ)
@@ -205,7 +205,7 @@ alchemy-check-dump: $(CHECKDUMPOBJ)
 alchemy-check-aof: $(CHECKAOFOBJ)
 	$(QUIET_LINK)$(CC) -o $(CHECKAOFPRGNAME) $(CCOPT) $(DEBUG) $(CHECKAOFOBJ) $(CCLINK) $(ALLOC_LINK)
 
-alchemy-lib:
+alchemy-lib: dependencies
 	(cd ../../DB; make redis3)
 
 # Because the jemalloc.h header is generated as a part of the jemalloc build
