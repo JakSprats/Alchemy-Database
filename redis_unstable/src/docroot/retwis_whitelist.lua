@@ -177,3 +177,11 @@ function WL_follow(userid, follow)
   local username = redis("get", "uid:" .. userid .. ":username");
   SetHttpRedirect('/profile/' .. url_encode(username));
 end
+
+function WL_hello_world()
+  return 'HELLO WORLD';
+end
+redis("set", 'HELLO WORLD', 'HELLO WORLD');
+function WL_hello_world_data()
+  return redis("get", 'HELLO WORLD');
+end

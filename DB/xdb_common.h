@@ -24,6 +24,7 @@
       bool    ka;                    \
       bool    get;                   \
       bool    head;                  \
+      bool    proto_1_1;             \
       uint32  retcode;               \
       sds     redir;                 \
       list   *req_hdr;               \

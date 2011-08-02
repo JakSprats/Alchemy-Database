@@ -71,7 +71,11 @@ function output(line)
 end
 function flush_output()
   local out      = table.concat(OutputBuffer);
-  local deflater = string.find(HTTP_HEADER['Accept-Encoding'], "deflate")
+  local deflater = false;
+  if (HTTP_HEADER['Accept-Encoding'] ~= nil and
+      string.find(HTTP_HEADER['Accept-Encoding'], "deflate")) then
+    deflater = true;
+  end
   if (deflater) then
     SetHttpResponseHeader('Content-Encoding', 'deflate');
     return lz.deflate()(out, "finish")

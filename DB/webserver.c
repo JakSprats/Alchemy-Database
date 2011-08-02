@@ -73,11 +73,15 @@ static void free_two_sds(void *v) {
     addReply(c, r);                               \
     decrRefCount(r); }
 
-#define SEND_404                                  \
-  { sds s = sdsnew("HTTP/1.0 404 Not Found\r\nContent-Length: 0\r\n\r\n"); \
+#define SEND_404                                                             \
+  { sds s = c->http.proto_1_1 ?                                              \
+             sdsnew("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n") : \
+             sdsnew("HTTP/1.0 404 Not Found\r\nContent-Length: 0\r\n\r\n");  \
   SEND_REPLY_FROM_STRING(s) }
-#define SEND_405                                  \
-  { sds s = sdsnew("HTTP/1.0 405 Method Not Allowed\r\n\r\n"); \
+#define SEND_405                                                 \
+  { sds s = c->http.proto_1_1 ?                                  \
+             sdsnew("HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\n\r\n") : \
+             sdsnew("HTTP/1.0 405 Method Not Allowed\r\nContent-Length: 0\r\n\r\n");  \
   SEND_REPLY_FROM_STRING(s) }
 
 static void send_http_response_header_extended(cli *c, sds s) {
@@ -94,14 +98,16 @@ static void send_http_response_header_extended(cli *c, sds s) {
 }
 static void send_http_200_reponse_header(cli *c, sds body) {
     sds s = sdscatprintf(sdsempty(), 
-                        "HTTP/1.0 200 OK\r\nContent-length: %ld\r\n%s",
+                        "HTTP/1.%d 200 OK\r\nContent-length: %ld\r\n%s",
+                         c->http.proto_1_1 ? 1 : 0,
                          sdslen(body), 
                          c->http.ka ? "Connection: Keep-Alive\r\n": "");
     send_http_response_header_extended(c, s);
 }
 static void send_http_302_reponse_header(cli *c) {
     sds s = sdscatprintf(sdsempty(), 
-                        "HTTP/1.0 302 Found\r\nLocation: %s\r\n%s",
+               "HTTP/1.%d 302 Found\r\nContent-Length: 0\r\nLocation: %s\r\n%s",
+                         c->http.proto_1_1 ? 1 : 0,
                          c->http.redir,
                          c->http.ka ? "Connection: Keep-Alive\r\n": "");
     send_http_response_header_extended(c, s);
@@ -143,8 +149,10 @@ int luaSetHttpRedirectCommand(lua_State *lua) {
 }
 
 int start_http_session(cli *c) {
-    // Default: keep-alive -> ON in HTTP 1.1
-    if      (!strcasecmp(c->argv[2]->ptr, "HTTP/1.1")) c->http.ka = 1;
+    if      (!strcasecmp(c->argv[2]->ptr, "HTTP/1.1")) {
+        c->http.ka        = 1; // Default: keep-alive -> ON in HTTP 1.1
+        c->http.proto_1_1 = 1;
+    }
     if      (!strcasecmp(c->argv[0]->ptr, "GET"))      c->http.get  = 1;
     else if (!strcasecmp(c->argv[0]->ptr, "HEAD"))     c->http.head = 1;
     else                                               { SEND_405; return 1; }
