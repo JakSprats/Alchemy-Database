@@ -56,6 +56,20 @@ function url_encode(str)
   return str	
 end
 
+-- DEFLATE DEFLATE DEFLATE DEFLATE DEFLATE DEFLATE DEFLATE DEFLATE DEFLATE
+local IsSet_IsDeflatable = false; -- reset every request
+local IsDeflatable       = false;
+function set_is_deflatable()
+  if (IsSet_IsDeflatable) then return IsDeflatable; end
+  if (HTTP_HEADER['Accept-Encoding'] ~= nil and
+      string.find(HTTP_HEADER['Accept-Encoding'], "deflate")) then
+    IsDeflatable = true;
+  else
+    IsDeflatable = false;
+  end
+  IsSet_IsDeflatable = true;
+  return IsDeflatable;
+end
 
 -- OUTPUT_BUFFER+DEFLATE OUTPUT_BUFFER+DEFLATE OUTPUT_BUFFER+DEFLATE
 -- this approach is explained here: http://www.lua.org/pil/11.6.html
@@ -70,32 +84,85 @@ function output(line)
   table.insert(OutputBuffer, line)
 end
 function flush_output()
-  local out      = table.concat(OutputBuffer);
-  local deflater = false;
-  if (HTTP_HEADER['Accept-Encoding'] ~= nil and
-      string.find(HTTP_HEADER['Accept-Encoding'], "deflate")) then
-    deflater = true;
-  end
+  SetHttpResponseHeader('Content-Type', 'text/html; charset=utf-8');
+  local out          = table.concat(OutputBuffer);
+  local deflater     = set_is_deflatable();
+  IsSet_IsDeflatable = false;
   if (deflater) then
     SetHttpResponseHeader('Content-Encoding', 'deflate');
     return lz.deflate()(out, "finish")
   else
     return out;
-   end
+  end
 end
 
+-- CACHE CACHE CACHE CACHE CACHE CACHE CACHE CACHE CACHE CACHE CACHE
+local CacheExpireTime = 600; -- 10 minutes
+--CacheExpireTime = 5; -- DEBUG
+
+function getCacheKey(...)
+  local key = 'PAGE_CACHE';
+  for i,v in ipairs(arg) do     key = key .. '_' .. tostring(v); end
+  if (set_is_deflatable()) then key = 'gzip_' .. key;            end
+  return key;
+end
+function CacheExists(...)
+  local key = getCacheKey(...);
+  local hit = redis("exists", key);
+  --print ('CacheExists: key: ' .. key .. ' hit: ' .. hit);
+  if (hit == 0) then return false;
+  else               return true;  end
+end
+function CacheGet(...)
+  SetHttpResponseHeader('Content-Type', 'text/html; charset=utf-8');
+  if (set_is_deflatable()) then
+    SetHttpResponseHeader('Content-Encoding', 'deflate');
+  end
+  local key = getCacheKey(...);
+  IsSet_IsDeflatable = false;
+  --print ('CacheGet key: ' .. key);
+  redis("expire", key,            CacheExpireTime); -- live a little longer
+  redis("expire", key .. '_BLOB', CacheExpireTime); -- live a little longer
+  return redis("get", key .. '_BLOB');
+end
+function CachePutOutput(...)
+  local key          = getCacheKey(...);
+  IsSet_IsDeflatable = false;
+  --print ('CachePutOutput key: ' .. key);
+  local out          = table.concat(OutputBuffer);
+  local deflater     = set_is_deflatable();
+  if (deflater) then out = lz.deflate()(out, "finish") end
+  redis("setex", key,            CacheExpireTime, 1);
+  redis("setex", key .. '_BLOB', CacheExpireTime, out);
+end
+
+-- ETAG ETAG ETAG ETAG ETAG ETAG ETAG ETAG ETAG ETAG ETAG ETAG ETAG
+function CheckEtag(...)
+  local ekey = 'ETAG';
+  for i,v in ipairs(arg) do     ekey = ekey .. '_' .. tostring(v); end
+  --print('CheckEtag: key: ' .. ekey);
+  if (HTTP_HEADER['If-None-Match'] ~= nil) then
+    if (HTTP_HEADER['If-None-Match'] == ekey) then
+      SetHttp304();
+      return true;
+    end
+  end
+  SetHttpResponseHeader('Etag', ekey);
+  return false;
+end
 -- HTML HTML HTML HTML HTML HTML HTML HTML HTML HTML HTML HTML
 function create_navbar()
-  output('<div id="navbar"> <a href="/index_page">home</a> | <a href="/timeline">timeline</a>');
   if (isLoggedIn()) then
-    output('| <a href="/logout">logout</a>');
+    output('<div id="navbar"> <a href="/home">home</a> | <a href="/timeline">timeline</a>| <a href="/logout">logout</a>');
+  else
+    output('<div id="navbar"> <a href="/index_page">home</a> | <a href="/timeline">timeline</a>');
   end
   output('</div>');
 end
 
 function create_header()
-output([[<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
-<html lang="it">
+output([[
+<html>
 <head>
 <script src="/STATIC/helper.js"></script>
 <link rel="shortcut icon" href="/STATIC/favicon.ico" />
@@ -121,7 +188,7 @@ function create_welcome()
 <div id="registerbox">
 <h2>Register!</h2>
 <b>Want to try Retwis? Create an account!</b>
-<form method="GET" onsubmit="return passwords_match(this.elements['password'].value, this.elements['password2'].value) && form_action_rewrite_url('register', encodeURIComponent(this.elements['username'].value), encodeURIComponent(this.elements['password'].value))">
+<form action="/register" method="POST" onsubmit="return passwords_match(this.elements['password'].value, this.elements['password2'].value)">
 <table>
 <tr> <td>Username</td><td><input type="text" name="username"></td> </tr>
 <tr> <td>Password</td><td><input type="password" name="password"></td> </tr>
@@ -130,7 +197,7 @@ function create_welcome()
 </table>
 </form>
 <h2>Already registered? Login here</h2>
-<form method="GET" onsubmit="return form_action_rewrite_url('login', encodeURIComponent(this.elements['username'].value), encodeURIComponent(this.elements['password'].value))">
+<form action="/login" method="POST" >
 <table>
 <tr> <td>Username</td><td><input type="text" name="username"></td> </tr>
 <tr> <td>Password</td><td><input type="password" name="password"></td> </tr>
@@ -141,6 +208,29 @@ function create_welcome()
 Hello! Retwis is a very simple clone of <a href="http://twitter.com">Twitter</a>, as a demo for the <a href="http://code.google.com/p/alchemydatabase/wiki/ShortStack">Alchemy's Short-Stack</a>
 </div>
 ]]);
+end
+
+function create_follow() -- Button controlled by Cookie sent w/ Response
+--TODO using cookies[1,2] is dangerous, use explicit names [userid, following]
+output([[
+<script>
+  var each_cookie = process_cookies();
+  if (each_cookie.length < 3) { return; }
+  var my_userid = each_cookie[1].split("=")[1];
+  var following = each_cookie[2].split("=")[1];
+  var userid    = each_cookie[3].split("=")[1];
+  if (following == 1) {
+    document.write('<a href="/follow/' + my_userid + '/' + userid + '/0" class="button">Stop following</a>');
+  } else if (following == 0) {
+    document.write('<a href="/follow/' + my_userid + '/' + userid + '/1" class="button">Follow this user</a>');
+  }
+</script>
+]]);
+end
+
+function set_auth_cookie(authsecret, userid)
+  SetHttpResponseHeader('Set-Cookie', 'auth=' .. authsecret .. '; Expires=Wed, 09 Jun 2021 10:18:14 GMT; path=/;');
+  SetHttpResponseHeader('Set-Cookie', 'userid=' .. userid .. '; Expires=Wed, 09 Jun 2021 10:18:14 GMT; path=/;');
 end
 
 function strElapsed(t)
@@ -185,7 +275,7 @@ function showUserPosts(key, start, count)
   end
 end
 
-function showUserPostsWithPagination(thispage, username, userid, start, count)
+function showUserPostsWithPagination(thispage, nposts, username, userid, start, count)
   local navlink  = "";
   local nextc    = start + 10;
   local prevc    = start - 10;
@@ -202,7 +292,6 @@ function showUserPostsWithPagination(thispage, username, userid, start, count)
   end
 
   showUserPosts(key, start, count);
-  local nposts = redis("llen", key);
   if (nposts ~= nil and nposts > start + count) then
       nextlink = "<a href=\"" .. thispage .. u .. nextc .."\">Older posts &raquo;</a>";
   end
@@ -223,12 +312,12 @@ function showLastUsers()
   output("</div><br>");
 end
 
-function create_home(thispage, start)
-  local nfollowers = redis("scard", "uid:" .. User['id'] .. ":followers");
-  local nfollowing = redis("scard", "uid:" .. User['id'] .. ":following");
+function create_home(start, nposts, nfollowers, nfollowing)
+  local thispage   = '/home';
   local s          = 0;
   if (start ~= nil) then s = start; end
-  output('<div id="postform"><form method="GET" onsubmit="return form_action_rewrite_url(\'post\', encodeURIComponent(this.elements[\'status\'].value), \'\');">');
+  -- post needs "my_userid" as 2nd arg for haproxy
+  output('<div id="postform"><form action="/post/' .. User['id'] .. '" method="POST">');
   output(User['username'] ..', what you are doing?');
   output([[
 <br>
@@ -240,7 +329,7 @@ function create_home(thispage, start)
 <div id="homeinfobox">
 ]]);
   output(nfollowers .. " followers<br>" .. nfollowing .. " following<br></div></div>");
-  showUserPostsWithPagination(thispage, false, User['id'], s, 10);
+  showUserPostsWithPagination(thispage, nposts, false, User['id'], tonumber(s), 10);
 end
 
 function goback(msg)

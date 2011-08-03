@@ -1,6 +1,7 @@
 dofile "./docroot/dist_alc_twitter/short_stack.lua";
 -- Retwis for Alchemy's Short Stack - PUBLIC API
 
+-- TODO break out "/home" page
 function WL_index_page(start) 
   init_output();
   local thispage = 'index_page';

@@ -23,9 +23,12 @@
       bool    mode;                  \
       bool    ka;                    \
       bool    get;                   \
+      bool    post;                  \
       bool    head;                  \
       bool    proto_1_1;             \
+      uint32  req_clen;              \
       uint32  retcode;               \
+      sds     post_body;             \
       sds     redir;                 \
       list   *req_hdr;               \
       list   *resp_hdr;              \

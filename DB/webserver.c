@@ -113,9 +113,18 @@ static void send_http_302_reponse_header(cli *c) {
     send_http_response_header_extended(c, s);
     sdsfree(c->http.redir); c->http.redir = NULL; // DESTROYED 079
 }
+static void send_http_304_reponse_header(cli *c) {
+    sds s = sdscatprintf(sdsempty(), 
+               "HTTP/1.%d 304 Not Modified\r\nContent-Length: 0\r\n%s",
+                         c->http.proto_1_1 ? 1 : 0,
+                         c->http.ka ? "Connection: Keep-Alive\r\n": "");
+    send_http_response_header_extended(c, s);
+    sdsfree(c->http.redir); c->http.redir = NULL; // DESTROYED 079
+}
 static void send_http_reponse_header(cli *c, sds body) {
-  if (c->http.retcode == 200) send_http_200_reponse_header(c, body);
-  else                        send_http_302_reponse_header(c);
+  if      (c->http.retcode == 200)   send_http_200_reponse_header(c, body);
+  else if (c->http.retcode == 302)   send_http_302_reponse_header(c);
+  else                     /* 304 */ send_http_304_reponse_header(c);
 }
 
 static void addHttpResponseHeader(sds name, sds value) {
@@ -140,11 +149,18 @@ int luaSetHttpResponseHeaderCommand(lua_State *lua) {
 int luaSetHttpRedirectCommand(lua_State *lua) {
     int argc = lua_gettop(lua);
     if (argc != 1 || !lua_isstring(lua, 1)) {
-        luaPushError(lua, "Lua SetHttpRedirect() takes 1 string arg");
-        return 1;
+        luaPushError(lua, "Lua SetHttpRedirect() takes 1 string arg"); return 1;
     }
     CurrClient->http.retcode = 302;
     CurrClient->http.redir   = sdsnew(lua_tostring(lua, 1)); // DESTROY ME 079
+    return 0;
+}
+int luaSetHttp304Command(lua_State *lua) {
+    int argc = lua_gettop(lua);
+    if (argc != 0) {
+        luaPushError(lua, "Lua SetHttp304() takes ZERO args"); return 1;
+    }
+    CurrClient->http.retcode = 304;
     return 0;
 }
 
@@ -154,9 +170,10 @@ int start_http_session(cli *c) {
         c->http.proto_1_1 = 1;
     }
     if      (!strcasecmp(c->argv[0]->ptr, "GET"))      c->http.get  = 1;
+    else if (!strcasecmp(c->argv[0]->ptr, "POST"))     c->http.post = 1;
     else if (!strcasecmp(c->argv[0]->ptr, "HEAD"))     c->http.head = 1;
     else                                               { SEND_405; return 1; }
-    c->http.mode          = 1;
+    c->http.mode          = HTTP_MODE_ON;
     if (c->http.resp_hdr) listRelease(c->http.resp_hdr);
     c->http.resp_hdr      = NULL;
     if (c->http.req_hdr) listRelease(c->http.req_hdr);
@@ -175,13 +192,16 @@ int continue_http_session(cli *c) {
         if (!strcasecmp(c->argv[1]->ptr, "Keep-Alive")) c->http.ka = 1;
         if (!strcasecmp(c->argv[1]->ptr, "Close"))      c->http.ka = 0;
     }
+    if (!strcasecmp(c->argv[0]->ptr, "Content-Length:")) {
+      c->http.req_clen = atoi(c->argv[1]->ptr);
+    }
     two_sds *ss = init_two_sds(c->argv[0]->ptr, c->argv[1]->ptr);
     listAddNodeTail(c->http.req_hdr, ss); // Store REQ Headers in List
     return 1;
 }
 
 void end_http_session(cli *c) {
-    if (c->http.get || c->http.head) {
+    if (c->http.get || c->http.post || c->http.head) {
         sds  file = c->http.file->ptr;
         if (!strncasecmp(file, "STATIC/", 7)) {
             robj *o;
@@ -199,23 +219,41 @@ void end_http_session(cli *c) {
                 argc      = 2; //NOTE: rargv[0] is ignored
                 rargv     = zmalloc(sizeof(robj *) * argc);
                 rargv[1]  = _createStringObject(WebServerIndexFunc);
+            } else if (c->http.post && c->http.req_clen) {
+                int  urgc;
+                sds *urgv = sdssplitlen(file, sdslen(file), "/", 1, &urgc);
+                sds  pb   = c->http.post_body;
+                sds *argv = sdssplitlen(pb, sdslen(pb), "&", 1, &argc);
+                rargv     = zmalloc(sizeof(robj *) * (argc + urgc + 1));
+                for (int i = 0; i < urgc; i++) {
+                    rargv[i + 1] = createStringObject(urgv[i], sdslen(urgv[i]));
+                }
+                for (int i = 0; i < argc; i++) {
+                    char *x = strchr(argv[i], '=');
+                    if (!x) continue; x++;
+                    rargv[i + urgc + 1] = createStringObject(x, strlen(x));
+                }
+                argc += (urgc + 1); //NOTE: rargv[0] is ignored
+                zfree(urgv); zfree(argv);
             } else {
-                sds *argv = sdssplitlen(file, strlen(file), "/", 1, &argc);
+                sds *argv = sdssplitlen(file, sdslen(file), "/", 1, &argc);
                 rargv     = zmalloc(sizeof(robj *) * (argc + 1));
                 for (int i = 0; i < argc; i++) {
                     rargv[i + 1] = createStringObject(argv[i], sdslen(argv[i]));
                 }
                 argc++; //NOTE: rargv[0] is ignored
+                zfree(argv);
             }
             if (!luafunc_call(c, argc, rargv)) {
                 robj *resp = luaReplyToHTTPReply(server.lua);
                 send_http_reponse_header(c, resp->ptr);
-                if (c->http.get) addReply(c, resp);
+                if (c->http.get || c->http.post) addReply(c, resp);
                 decrRefCount(resp);
             }
             for (int i = 1; i < argc; i++) decrRefCount(rargv[i]);
             zfree(rargv);
         }
+        if (c->http.post_body) sdsfree(c->http.post_body);
     }
     if (c->http.file) { decrRefCount(c->http.file); c->http.file = NULL; }
     if (!c->http.ka && !sdslen(c->querybuf)) { // not KeepAlive, not Pipelined
@@ -291,7 +329,7 @@ bool luafunc_call(redisClient *c, int argc, robj **argv) {
         fname = sdsdup(argv[1]->ptr);
     } else {
         if (isWhiteListedIp(c)) {
-            if (c->http.mode) {
+            if (c->http.mode == HTTP_MODE_ON) {
                 fname = sdscatprintf(sdsempty(), "WL_%s", (char *)argv[1]->ptr);
             } else {
                 fname = sdsdup(argv[1]->ptr);
@@ -306,8 +344,8 @@ bool luafunc_call(redisClient *c, int argc, robj **argv) {
     int type = lua_type(server.lua, -1);
     if (type != LUA_TFUNCTION) {
         lua_pop(server.lua, 1);
-        if (c->http.mode) SEND_404
-        else              LUA_FUNCTION_REDIS_ERR
+        if (c->http.mode == HTTP_MODE_ON) SEND_404
+        else                              LUA_FUNCTION_REDIS_ERR
         return 1;
     }
     for (int i = 2; i < argc; i++) {
@@ -342,12 +380,20 @@ bool luafunc_call(redisClient *c, int argc, robj **argv) {
                     char *eq = strchr(ss->b, '=');
                     if (eq) {
                         *eq = '\0'; lua_pushstring(server.lua, ss->b);
-                        eq++;       lua_pushstring(server.lua, eq);
+                        eq++;       
+                        char *cln = strchr(eq, ';');
+                        if (cln) *cln = '\0';
+                        lua_pushstring(server.lua, eq);
                         lua_settable(server.lua, top);
                     }
                 }
             }
         }
+        lua_setglobal(server.lua, "COOKIE");
+    } else { // Make empty tables, to not break lua scripts
+        lua_newtable(server.lua);
+        lua_setglobal(server.lua, "HTTP_HEADER");
+        lua_newtable(server.lua);
         lua_setglobal(server.lua, "COOKIE");
     }
 
@@ -369,7 +415,7 @@ bool luafunc_call(redisClient *c, int argc, robj **argv) {
     if (ret) {
         sds err = sdscatprintf(sdsempty(), "Error running script (%s): %s\n",
                                             fname, lua_tostring(server.lua,-1));
-        if (c->http.mode) {
+        if (c->http.mode == HTTP_MODE_ON) {
             send_http_200_reponse_header(c, err);
             SEND_REPLY_FROM_STRING(err);
             sdsfree(err);

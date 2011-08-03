@@ -30,13 +30,18 @@ ALL RIGHTS RESERVED
 
 #include "common.h"
 
-bool luafunc_call(redisClient *c, int argc, robj **argv);
+#define HTTP_MODE_OFF      0
+#define HTTP_MODE_ON       1
+#define HTTP_MODE_POSTBODY 2
 
-int start_http_session(cli *c);
+bool luafunc_call(cli *c, int argc, robj **argv);
+
+int start_http_session   (cli *c);
 int continue_http_session(cli *c);
-void end_http_session(cli *c);
+void end_http_session    (cli *c);
 
 int luaSetHttpResponseHeaderCommand(lua_State *lua);
-int luaSetHttpRedirectCommand(lua_State *lua);
+int luaSetHttpRedirectCommand      (lua_State *lua);
+int luaSetHttp304Command           (lua_State *lua);
 
 #endif /* DXDB_WEBSERVER_H */

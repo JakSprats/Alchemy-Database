@@ -230,6 +230,8 @@ static bool initLua(cli *c) {
     lua_setglobal(server.lua, "SetHttpResponseHeader");
     lua_pushcfunction(server.lua, luaSetHttpRedirectCommand);
     lua_setglobal(server.lua, "SetHttpRedirect");
+    lua_pushcfunction(server.lua, luaSetHttp304Command);
+    lua_setglobal(server.lua, "SetHttp304");
     lua_pushcfunction(server.lua, luaConvertToRedisProtocolCommand);
     lua_setglobal(server.lua, "Redisify");
     lua_pushcfunction(server.lua, luaSha1Command);
@@ -350,23 +352,40 @@ void DXDB_createClient(redisClient *c) { //printf("DXDB_createClient\n");
 }
 
 int   DXDB_processCommand(redisClient *c) { //printf("DXDB_processCommand\n");
-    if (c->http.mode) return continue_http_session(c);
+    if (c->http.mode == HTTP_MODE_ON) return continue_http_session(c);
     Operations++;
     CurrClient = c;
     CurrCard   =  0;
     DXDB_createClient(c);
     sds arg0       = c->argv[0]->ptr;
     sds arg2       = c->argc > 2 ? c->argv[2]->ptr : NULL;
-    if (c->argc == 3 /* FIRST LINE OF HTTP REQUEST */                       &&
-        (!strcasecmp(arg0, "GET")      || !strcasecmp(arg0, "HEAD"))        &&
+    if (c->argc == 3 /* FIRST LINE OF HTTP REQUEST */                     &&
+        (!strcasecmp(arg0, "GET")      || !strcasecmp(arg0, "POST") ||
+         !strcasecmp(arg0, "HEAD"))                                       &&
         (!strcasecmp(arg2, "HTTP/1.0") || !strcasecmp(arg2, "HTTP/1.1")))
         return start_http_session(c);
     else return 0;
 }
 
+bool DXDB_processInputBuffer_begin(redisClient *c) {// NOTE: used for POST BODY
+    if (c->http.post && c->http.req_clen && c->http.mode == HTTP_MODE_POSTBODY){
+        c->http.post_body = c->querybuf;
+        c->querybuf       = sdsempty();
+        c->http.mode      = HTTP_MODE_ON;
+        end_http_session(c);
+        c->http.mode      = HTTP_MODE_OFF;
+        return 1;
+    }
+    return 0;
+}
 void  DXDB_processInputBuffer_ZeroArgs(redisClient *c) {//HTTP Request End-Delim
-    if (c->http.mode) end_http_session(c);
-    c->http.mode = 0;
+    if (c->http.mode == HTTP_MODE_ON) {
+        if (c->http.post && c->http.req_clen) c->http.mode = HTTP_MODE_POSTBODY;
+        else { 
+            end_http_session(c);
+            c->http.mode = HTTP_MODE_OFF;
+        }
+    } else c->http.mode = HTTP_MODE_OFF;
     return;
 }
 

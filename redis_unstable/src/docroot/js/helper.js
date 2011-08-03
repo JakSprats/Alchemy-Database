@@ -8,7 +8,12 @@ function form_action_rewrite_url(action, a, b) {
 
 function passwords_match(p1, p2) {
   if (!p1 || p1 != p2) {
-      //alert("PASSWORDS DONT MATCH");
+      alert("PASSWORDS DONT MATCH");
       return false;
   } else return true;
+}
+
+function process_cookies() {
+  var whole_cookie = unescape(document.cookie);
+  return whole_cookie.split(";");
 }

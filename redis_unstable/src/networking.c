@@ -808,6 +808,9 @@ int processMultibulkBuffer(redisClient *c) {
 void processInputBuffer(redisClient *c) {
     /* Keep processing while there is something in the input buffer */
     while(sdslen(c->querybuf)) {
+#ifdef ALCHEMY_DATABASE // NOTE: used for POST BODY
+        if (DXDB_processInputBuffer_begin(c)) break;
+#endif
         /* Immediately abort if the client is in the middle of something. */
         if (c->flags & REDIS_BLOCKED || c->flags & REDIS_IO_WAIT) return;
 
@@ -835,7 +838,7 @@ void processInputBuffer(redisClient *c) {
 
         /* Multibulk processing could see a <= 0 length. */
         if (c->argc == 0) {
-#ifdef ALCHEMY_DATABASE //NOTE: used as HTTP Request End-Delimiter
+#ifdef ALCHEMY_DATABASE // NOTE: used as HTTP Request End-Delimiter
             DXDB_processInputBuffer_ZeroArgs(c);
 #endif
             resetClient(c);
