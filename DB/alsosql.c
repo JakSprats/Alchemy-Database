@@ -406,7 +406,7 @@ void sqlSelectCommand(redisClient *c) {
         }
         if (w.wf.imatch == Tbl[tmatch].lrui) c->LruColInSelect = 1;
         iselectAction(c, &w, &wb, cmatchs, qcols, cstar);
-    } else {                                /* SQL_SINGLE_LKP */
+    } else {                         /* SQL_SINGLE_LKP */
         bt    *btr   = getBtr(w.wf.tmatch);
         aobj  *apk   = &w.wf.akey;
         void *rrow = btFind(btr, apk);

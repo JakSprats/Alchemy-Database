@@ -195,7 +195,13 @@ int continue_http_session(cli *c) {
     if (!strcasecmp(c->argv[0]->ptr, "Content-Length:")) {
       c->http.req_clen = atoi(c->argv[1]->ptr);
     }
-    two_sds *ss = init_two_sds(c->argv[0]->ptr, c->argv[1]->ptr);
+    sds hval = sdsdup(c->argv[1]->ptr);                  // DESTROY ME 084
+    for (int i = 2; i < c->argc; i++) {
+        hval = sdscatlen(hval, " ", 1); //TODO this assumes single space
+        hval = sdscatlen(hval, c->argv[i]->ptr, sdslen(c->argv[i]->ptr));
+    }
+    two_sds *ss = init_two_sds(c->argv[0]->ptr, hval);
+    sdsfree(hval);                                       // DESTROYED 084
     listAddNodeTail(c->http.req_hdr, ss); // Store REQ Headers in List
     return 1;
 }
@@ -354,7 +360,7 @@ bool luafunc_call(redisClient *c, int argc, robj **argv) {
 
     if (WebServerMode > 0 && c->http.req_hdr) { // POPULATE Lua Global HTTP Vars
         listNode *ln;
-        bool      cook = 0;
+        bool      hascook = 0;
         lua_newtable(server.lua);
         int       top  = lua_gettop(server.lua);
         listIter *li   = listGetIterator(c->http.req_hdr, AL_START_HEAD);
@@ -363,7 +369,7 @@ bool luafunc_call(redisClient *c, int argc, robj **argv) {
             char *cln = strchr(ss->a, ':');
             if (cln) { // no colon -> IGNORE, dont include colon
                 *cln = '\0';
-                if (!strcasecmp(ss->a, "cookie")) cook = 1;
+                if (!strcasecmp(ss->a, "cookie")) hascook = 1;
                 lua_pushstring(server.lua, ss->a);
                 lua_pushstring(server.lua, ss->b);
                 lua_settable(server.lua, top);
@@ -371,20 +377,22 @@ bool luafunc_call(redisClient *c, int argc, robj **argv) {
         }
         lua_setglobal(server.lua, "HTTP_HEADER");
         lua_newtable(server.lua);
-        if (cook) { // POPULATE Lua Global COOKIE[]
+        if (hascook) { // POPULATE Lua Global COOKIE[]
             top   = lua_gettop(server.lua);
             li    = listGetIterator(c->http.req_hdr, AL_START_HEAD);
             while((ln = listNext(li)) != NULL) {
                 two_sds *ss = ln->value;
                 if (!strcasecmp(ss->a, "cookie")) {
-                    char *eq = strchr(ss->b, '=');
-                    if (eq) {
-                        *eq = '\0'; lua_pushstring(server.lua, ss->b);
-                        eq++;       
+                    char *eq, *cookie = ss->b;
+                    while ((eq = strchr(cookie, '='))) {
+                        *eq = '\0'; eq++;       
+                        lua_pushstring(server.lua, cookie);
                         char *cln = strchr(eq, ';');
                         if (cln) *cln = '\0';
                         lua_pushstring(server.lua, eq);
                         lua_settable(server.lua, top);
+                        if (!cln) break;
+                        cookie = cln + 1; SKIP_SPACES(cookie);
                     }
                 }
             }

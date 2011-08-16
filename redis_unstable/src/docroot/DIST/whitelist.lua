@@ -1,4 +1,4 @@
-dofile "./docroot/dist_alc_twitter/short_stack.lua";
+dofile "./docroot/DIST/short_stack.lua";
 -- Retwis for Alchemy's Short Stack - PUBLIC API
 
 -- TODO break out "/home" page
@@ -120,8 +120,8 @@ function WL_timeline()
   init_output();
   create_header(my_userid);
   showLastUsers();
-  output('<i>Latest 50 messages from users aroud the world!</i><br>');
-  showUserPosts("global:timeline", 0, 50);
+  output('<i>Latest 20 messages from users aroud the world!</i><br>');
+  showUserPosts("global:timeline", 0, 20);
   create_footer();
   return flush_output();
 end

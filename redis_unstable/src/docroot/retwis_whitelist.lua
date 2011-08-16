@@ -1,37 +1,36 @@
 dofile "./docroot/retwis_helper.lua";
 -- Retwis for Alchemy's Short Stack - PUBLIC API
-function WL_index_page(start) 
-  if (isLoggedIn()) then SetHttpRedirect('/home'); return; end
-  if (CheckEtag('index_page')) then return; end
+
+function I_index_page(start) 
+  if (CheckEtag('index_page')) then   return;                        end
   if (CacheExists('index_page')) then return CacheGet('index_page'); end
   init_output();
   create_header(); create_welcome(); create_footer();
   CachePutOutput('index_page');
   return flush_output();
 end
+function WL_index_page(start) 
+  if (isLoggedIn()) then SetHttpRedirect('/home'); return; end
+  return I_index_page(start);
+end
 
-function WL_home(s) 
-  if (isLoggedIn() == false) then SetHttpRedirect('/index_page'); return; end
+function I_home(s) 
   local nflwers   = redis("scard", "uid:" .. User['id'] .. ":followers");
   local nflwing   = redis("scard", "uid:" .. User['id'] .. ":following");
   local nposts    = redis("llen",  "uid:" .. User['id'] .. ":posts");
   local my_userid = User['id'];
   if (CheckEtag('home', my_userid, nposts, nflwers, nflwing)) then return; end
-  if (s == nil or tonumber(s) == 0) then -- CACHE only 1st page
-    if (CacheExists('home', my_userid, nposts, nflwers, nflwing)) then
-      return CacheGet('home', my_userid, nposts, nflwers, nflwing);
-    end
-  end
   init_output();
   create_header(); create_home(s, nposts, nflwers, nflwing); create_footer();
   CachePutOutput('home', my_userid, nposts, nflwers, nflwing);
   return flush_output();
 end
+function WL_home(s) 
+  if (isLoggedIn() == false) then SetHttpRedirect('/index_page'); return; end
+  return I_home(s);
+end
 
-function WL_profile(username, s)
-  local page      = '/profile';
-  if (is_empty(username)) then SetHttpRedirect('/index_page'); return; end
-  username = url_decode(username);
+function I_profile(username, s) -- NOTE: username is NOT encoded
   local userid    = redis("get", "username:" .. username .. ":id")
   if (userid == nil) then SetHttpRedirect('/index_page'); return; end
   local nposts    = redis("llen", "uid:" .. userid .. ":myposts");
@@ -39,12 +38,14 @@ function WL_profile(username, s)
   local my_userid = User['id'];
   local f         = -1;
   if (isl and my_userid ~= userid) then
-    local isf = redis("sismember", "uid:" .. my_userid .. ":following", userid);
+    local isf = redis("sismember", "uid:" .. my_userid .. ":following",userid);
     if (isf == 1) then f = 1;
     else               f = 0; end
   end
-  SetHttpResponseHeader('Set-Cookie', 'following=' .. f .. '; Max-Age=1; path=/;');
-  SetHttpResponseHeader('Set-Cookie', 'otheruser=' .. userid .. '; Max-Age=1; path=/;');
+  SetHttpResponseHeader('Set-Cookie', 'following=' .. f ..
+                                      '; Max-Age=1; path=/;');
+  SetHttpResponseHeader('Set-Cookie', 'otheruser=' .. userid ..
+                                      '; Max-Age=1; path=/;');
   if (CheckEtag('profile', userid, nposts, s)) then return; end
   if (s == nil or tonumber(s) == 0) then -- CACHE only 1st page
     if (CacheExists('profile', userid, nposts)) then
@@ -55,7 +56,7 @@ function WL_profile(username, s)
   init_output();
   create_header();
   output("<h2 class=\"username\">" .. username .. "</h2>");
-  if (isl and User['id'] ~= userid) then create_follow(); end
+  create_follow();
   s = tonumber(s);
   if (s == nil) then s = 0; end
   showUserPostsWithPagination(page, nposts, username, userid, s, 10);
@@ -63,15 +64,19 @@ function WL_profile(username, s)
   CachePutOutput('profile', userid, nposts, f);
   return flush_output();
 end
+function WL_profile(username, s)
+  local page      = '/profile';
+  if (is_empty(username)) then SetHttpRedirect('/index_page'); return; end
+  username = url_decode(username);
+  isLoggedIn(); -- this call effects links
+  return I_profile(username, s);
+end
 
 function WL_follow(my_userid, userid, follow) -- my_userid only for proxying
   if (is_empty(userid) or is_empty(follow)) then
     SetHttpRedirect('/index_page'); return;
   end
-  local isl = isLoggedIn();
-  if (isl == false) then
-    SetHttpRedirect('/index_page'); return;
-  end
+  if (isLoggedIn() == false) then SetHttpRedirect('/index_page'); return; end
   if (userid ~= User['id']) then
     local f = tonumber(follow);
     if (f == 1) then
@@ -79,11 +84,11 @@ function WL_follow(my_userid, userid, follow) -- my_userid only for proxying
       redis("sadd", "uid:" .. User['id'] .. ":following", userid);
     else 
       redis("srem", "uid:" .. userid     .. ":followers", User['id']);
-      redis("srem", "uid:" .. User['id'] ..":following",  userid);
+      redis("srem", "uid:" .. User['id'] .. ":following", userid);
     end
   end
   local username = redis("get", "uid:" .. userid .. ":username");
-  return WL_profile(url_encode(username)); -- internal redirect
+  return I_profile(username); -- internal redirect
 end
 
 function WL_register(username, password)
@@ -113,6 +118,7 @@ function WL_register(username, password)
 
   -- User registered -> Log him in
   set_auth_cookie(authsecret, userid);
+  loadUserInfo(userid);
 
   create_header();
   output('<h2>Welcome aboard!</h2> Hey ' .. username .. ', now you have an account, <a href="/index_page">a good start is to write your first message!</a>.');
@@ -130,7 +136,7 @@ function WL_logout()
   redis("set", "uid:" .. userid .. ":auth", newauthsecret);
   redis("set", "auth:" .. newauthsecret, userid);
   redis("delete", "auth:" .. oldauthsecret);
-  return WL_index_page(0); -- internal redirect
+  return I_index_page(0); -- internal redirect
 end
 
 function WL_login(username, password)
@@ -143,24 +149,22 @@ function WL_login(username, password)
   password = url_decode(password);
   local userid = redis("get", "username:" .. username ..":id");
   if (userid == nil) then
-    goback("Wrong username or password");
-    return flush_output();
+    goback("Wrong username or password"); return flush_output();
   end
   local realpassword = redis("get", "uid:" .. userid .. ":password");
   if (realpassword ~= password) then
-    goback("Wrong useranme or password");
-    return flush_output();
+    goback("Wrong username or password"); return flush_output();
   end
 
-  -- Username / password OK, set the cookie and redirect to index.php
+  -- Username / password OK, set the cookie and internal redirect to index
   local authsecret = redis("get", "uid:" .. userid .. ":auth");
   set_auth_cookie(authsecret, userid);
-  SetHttpRedirect('/home'); -- Redirect so Cookie is set
+  loadUserInfo(userid); -- log user in
+  return I_home(); -- internal redirect
 end
 
 function WL_post(my_userid, msg)
-  local isl = isLoggedIn();
-  if (isl == false or is_empty(msg)) then
+  if (isLoggedIn() == false or is_empty(msg)) then
     SetHttpRedirect('/index_page'); return;
   end
   msg = url_decode(msg);
@@ -181,17 +185,18 @@ function WL_post(my_userid, msg)
   redis("lpush", "global:timeline", postid);
   redis("ltrim", "global:timeline", 0, 1000);
 
-  return WL_home(); -- internal redirect
+  return I_home(); -- internal redirect
 end
 
 function WL_timeline()
   -- dependencies: n_global_users, n_global_timeline
   -- page is too volatile to cache -> NO CACHING
+  isLoggedIn(); -- this call effects links
   init_output();
   create_header();
   showLastUsers();
-  output('<i>Latest 50 messages from users aroud the world!</i><br>');
-  showUserPosts("global:timeline", 0, 50);
+  output('<i>Latest 20 messages from users aroud the world!</i><br>');
+  showUserPosts("global:timeline", 0, 20);
   create_footer();
   return flush_output();
 end

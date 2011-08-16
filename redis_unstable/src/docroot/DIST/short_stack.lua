@@ -5,7 +5,7 @@ local lz = require("zlib");
 io.stdout:setvbuf("no"); -- flush stdout
 
 -- CLUSTER_INIT CLUSTER_INIT CLUSTER_INIT CLUSTER_INIT CLUSTER_INIT
-dofile "./docroot/dist_alc_twitter/.instance_settings.lua";
+dofile "./docroot/DIST/.instance_settings.lua";
 NumNodes = #NodeData;
 
 -- ALCHEMY_SYNC ALCHEMY_SYNC ALCHEMY_SYNC ALCHEMY_SYNC ALCHEMY_SYNC
@@ -39,7 +39,7 @@ function RsubscribeAlchemySync()
 end
 
 -- defines SimulateNetworkPartition
---dofile "./docroot/dist_alc_twitter/debug.lua";
+--dofile "./docroot/DIST/debug.lua";
 
 -- HEARTBEAT HEARTBEAT HEARTBEAT HEARTBEAT HEARTBEAT HEARTBEAT HEARTBEAT
 local MyGeneration = redis("get", "alchemy_generation");
@@ -72,11 +72,7 @@ function HeartBeat() -- lua_cron function, called every second
 end
 
 -- OOO_HANDLING OOO_HANDLING OOO_HANDLING OOO_HANDLING OOO_HANDLING
-local GlobalRemoteHW   = {};
-GlobalRemoteHW['sync'] = 0;
-local RemoteHW         = {};
-local LastHB_HW        = {};
-
+local GlobalRemoteHW   = {}; GlobalRemoteHW['sync'] = 0;
 function trim_Q(qname, hw)
   if (GlobalRemoteHW[qname] == hw) then return; end
   redis("zremrangebyscore", 'Q_' .. qname, "-inf", hw);
@@ -94,6 +90,7 @@ function handle_ooo(fromnode, hw, xactid)
   RemoteMessage(NodeData[ifromnode]["ip"], NodeData[ifromnode]["port"],
                 pipeline);
 end
+local RemoteHW         = {}; local LastHB_HW        = {};
 function natural_net_recovery(hw)
   for num, data in pairs(RemoteHW) do
     if (tonumber(data) ~= tonumber(hw)) then
@@ -104,7 +101,7 @@ function natural_net_recovery(hw)
   end
 end
 function handle_heartbeat(nodeid, generation, hw_eval_cmd)
-  assert(loadstring(hw_eval_cmd))() -- Lua's eval
+  assert(loadstring(hw_eval_cmd))() -- Lua's eval - "hw" is defined
   for num, data in pairs(hw) do
     if (num == MyNodeId) then
       RemoteHW[nodeid] = data;
@@ -338,7 +335,7 @@ InitAutoInc('NextPostId');
 print ('NextPostId: ' .. AutoInc['NextPostId']);
 
 -- HTML HTML HTML HTML HTML HTML HTML HTML HTML HTML HTML HTML HTML HTML
-dofile "./docroot/dist_alc_twitter/html.lua";
+dofile "./docroot/DIST/html.lua";
 
 -- STATIC_FILES STATIC_FILES STATIC_FILES STATIC_FILES STATIC_FILES
 function load_image(ifile, name)

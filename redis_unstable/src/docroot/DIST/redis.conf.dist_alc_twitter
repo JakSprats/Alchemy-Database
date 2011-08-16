@@ -415,7 +415,7 @@ basedir ./extra/
 luacronfunc HeartBeat
 
 # include_lua will include lua functions from the specified file
-include_lua ../docroot/dist_alc_twitter/whitelist.lua
+include_lua ../docroot/DIST/whitelist.lua
 webserver_mode yes
 webserver_index_function index_page
 webserver_whitelist_address 127.0.0.1

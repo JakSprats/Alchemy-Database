@@ -152,7 +152,7 @@ function CheckEtag(...)
 end
 -- HTML HTML HTML HTML HTML HTML HTML HTML HTML HTML HTML HTML
 function create_navbar()
-  if (isLoggedIn()) then
+  if (User['id'] ~= nil) then
     output('<div id="navbar"> <a href="/home">home</a> | <a href="/timeline">timeline</a>| <a href="/logout">logout</a>');
   else
     output('<div id="navbar"> <a href="/index_page">home</a> | <a href="/timeline">timeline</a>');
@@ -345,6 +345,7 @@ function loadUserInfo(userid)
 end
 
 function isLoggedIn()
+  User = {};
   local authcookie = COOKIE['auth'];
   if (authcookie ~= nil) then
     local userid = redis("get", "auth:" .. authcookie);
