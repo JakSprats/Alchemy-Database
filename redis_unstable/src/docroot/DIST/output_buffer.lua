@@ -18,9 +18,6 @@ end
 
 -- OUTPUT_BUFFER+DEFLATE OUTPUT_BUFFER+DEFLATE OUTPUT_BUFFER+DEFLATE
 -- this approach is explained here: http://www.lua.org/pil/11.6.html
--- the 3 functions [init_output, output, flush_output] could be 
---   1.) written in C
---   2.) pushed up into the server (i.e. OutputBuffer append to c->reply)
 OutputBuffer = {};
 function init_output()
   OutputBuffer = {};

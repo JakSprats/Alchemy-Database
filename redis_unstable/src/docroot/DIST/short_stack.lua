@@ -1,4 +1,3 @@
--- Retwis for Alchemy's Short Stack - Helper Functions (PRIVATE FUNCTIONS)
 
 io.stdout:setvbuf("no"); -- flush stdout
 
@@ -288,6 +287,9 @@ function url_encode(str)
   end
   return str	
 end
+
+-- INLINER INLINER INLINER INLINER INLINER INLINER INLINER INLINER INLINER
+dofile "./docroot/DIST/inliner.lua"
 
 -- OUTPUT_BUFFER+DEFLATE OUTPUT_BUFFER+DEFLATE OUTPUT_BUFFER+DEFLATE
 dofile "./docroot/DIST/output_buffer.lua";

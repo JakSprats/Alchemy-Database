@@ -14,26 +14,83 @@ function create_navbar(my_userid)
                                                         '">timeline</a></div>');
   end
 end
-function create_header(my_userid)
-output([[<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
-<html lang="it">
+function create_header(inline, my_userid)
+  local script;
+  if (inline) then script = '<script>var AlchemyStartLoad=new Date();</script>';
+  else             script = ''; end
+  output(
+[[
+<html>
 <head>
-<script src="/STATIC/helper.js"></script>
-</script>
+<meta content="text/html; charset=UTF-8" http-equiv="content-type" />
+]]                                             ..
+    script                                     ..
+    inline_include_js("STATIC/helper.js")      ..
+    inline_include_css("STATIC/css/style.css") ..
+[[
 <link rel="shortcut icon" href="/STATIC/favicon.ico" />
-<meta content="text/html; charset=UTF-8" http-equiv="content-type">
 <title>Retwis - Example Twitter clone based on Alchemy DB</title>
-<link href="/STATIC/css/style.css" rel="stylesheet" type="text/css">
 </head>
 <body>
 <div id="page">
 <div id="header">
-<img style="border:none" src="/STATIC/logo.png" width="192" height="85" alt="Retwis">]]);
-create_navbar(my_userid);
-output('</div>');
+<img style="border:none" width="192" height="85" alt="Retwis" src="]] ..
+    inline_include_png_src("STATIC/logo.png")                    .. '" />');
+  create_navbar(my_userid);
+  output('</div>');
 end
-function create_footer()
-  output('<div id="footer"> <a href="http://code.google.com/p/alchemydatabase/">Alchemy Database</a> is a A Hybrid Relational-Database/NOSQL-Datastore</div> </div> </body> </html>');
+function create_footer(inline)
+  local post_onload_script;
+  if (inline) then
+    local inlined_js  = '';
+    for k,v in pairs(InlinedJS)  do
+      inlined_js  = inlined_js  .. 'include_alc("' .. v .. '");';
+    end
+    local inlined_html = '';
+    for k,v in pairs(InlinedCSS) do
+      inlined_html = inlined_html .. '<link href="/' .. v ..
+                                     '" rel="stylesheet" type="text/css" />';
+    end
+    for k,v in pairs(InlinedPNG) do
+      inlined_html = inlined_html .. '<img src="/' .. v .. '" />';
+    end
+    post_onload_script =
+[[
+<script>
+function window_loaded() {
+  var now = new Date();
+  var LoadStatsDiv = document.getElementById('load_stats');
+  LoadStatsDiv.innerHTML = 'LOAD TIME: ' +
+                           (now.getTime() - AlchemyStartLoad.getTime()) + ' ms';
+  ]] ..  inlined_js  .. [[
+
+  var AlcPostLoadReload = document.getElementById('alchemy_postload_reload');
+  AlcPostLoadReload.innerHTML = ']] ..  inlined_html .. [[';
+}
+window.onload=function() { window_loaded(); }
+</script>
+]];
+  else
+    post_onload_script = '';
+  end
+  local css_src = inline_include_png_src('STATIC/sfondo.png');
+  output([[
+  <div id="footer">
+    <a href="http://code.google.com/p/alchemydatabase/">Alchemy Database</a> is a A Hybrid Relational-Database/NOSQL-Datastore
+  </div>
+  <div id="load_stats"></div>
+</div>
+<div id="alchemy_postload_reload" style="display: none"></div>
+]] .. post_onload_script .. [[
+  <style type="text/css">
+  BODY {
+    font-family: Verdana, sans-serif;
+    background: url(]] .. css_src .. [[) repeat-x top white;
+    background-attachment: fixed;
+  }
+  </style>
+</body> </html>
+]]);
 end
 
 function create_welcome()
@@ -181,9 +238,9 @@ function create_home(my_userid, my_username, start, nposts,
 end
 
 function goback(my_userid, msg)
-  create_header(my_userid);
+  create_header(false, my_userid);
   output('<div id ="error">' .. msg .. '<br><a href="javascript:history.back()">Please return back and try again</a></div>');
-  create_footer();
+  create_footer(false);
 end
 
 MyUserid = 0;
@@ -191,6 +248,7 @@ LoggedIn = false;
 function resetIsLoggedIn()
   MyUserid = 0;
   LoggedIn = false;
+  setInlineable(false, true); -- default to OFF
 end
 function setIsLoggedIn(userid)
   MyUserid = userid;

@@ -1,20 +1,24 @@
 dofile "./docroot/DIST/short_stack.lua";
 -- Retwis for Alchemy's Short Stack - PUBLIC API
 
-function I_index_page(start) 
-  if (CheckEtag('index_page'))   then return;                        end
-  if (CacheExists('index_page')) then return CacheGet('index_page'); end
+function I_index_page(virgin, start) 
+  local inline = setInlineable(virgin, LoggedIn);
+  if (CheckEtag('index_page',     inline))   then return; end
+  if (CacheExists('index_page',   inline)) then
+    return CacheGet('index_page', inline);
+  end
   local my_userid;
   if (LoggedIn) then my_userid = MyUserid;
   else               my_userid = getrand();  end
   init_output();
-  create_header(my_userid); create_welcome(); create_footer();
-  CachePutOutput('index_page');
+  create_header(inline, my_userid); create_welcome(); create_footer(inline);
+  CachePutOutput('index_page', inline);
   return flush_output();
 end
+--TODO add READ-OP TO URL
 function WL_index_page(start)
   if (isLoggedIn()) then SetHttpRedirect('/home'); return; end
-  return I_index_page(start);
+  return I_index_page(true, start);
 end
 
 function I_home(my_userid, my_username, s)
@@ -25,11 +29,12 @@ function I_home(my_userid, my_username, s)
   local my_userid = MyUserid;
   if (CheckEtag('home', my_userid, nposts, nflwers, nflwing)) then return; end
   init_output();
-  create_header(my_userid);
+  create_header(false, my_userid);
   create_home(my_userid, my_username, s, nposts, nflwers, nflwing);
-  create_footer();
+  create_footer(false);
   return flush_output();
 end
+--TODO add READ-OP TO URL
 function WL_home(s)
   if (isLoggedIn() == false) then
     SetHttpRedirect(build_link(getrand(), 'index_page')); return;
@@ -70,14 +75,15 @@ function I_profile(userid, username, s)
       return CacheGet('profile', isl, userid, nposts); end end
 
   init_output();
-  create_header(my_userid);
+  create_header(false, my_userid);
   output("<h2 class=\"username\">" .. username .. "</h2>");
   create_follow();
   showUserPostsWithPagination(page, nposts, username, userid, s, 10);
-  create_footer();
+  create_footer(false);
   CachePutOutput('profile', isl, userid, nposts);
   return flush_output();
 end
+--TODO add READ-OP TO URL
 function WL_profile(userid, start)
   if (is_empty(userid)) then
     SetHttpRedirect(build_link(getrand(), 'index_page')); return;
@@ -92,6 +98,7 @@ function WL_profile(userid, start)
   return I_profile(userid, username, start);
 end
 
+--TODO add WRITE-OP TO URL
 function WL_follow(muserid, userid, follow) -- muserid used ONLY by haproxy
   if (is_empty(userid) or is_empty(follow) or isLoggedIn() == false) then
     SetHttpRedirect(build_link(getrand(), 'index_page')); return;
@@ -117,6 +124,7 @@ function WL_follow(muserid, userid, follow) -- muserid used ONLY by haproxy
   end
 end
 
+--TODO add WRITE-OP TO URL
 function WL_register(username, password)
   init_output();
   if (is_empty(username) or is_empty(password)) then
@@ -138,15 +146,16 @@ function WL_register(username, password)
   SetHttpResponseHeader('Set-Cookie', 'auth=' .. authsecret .. 
                             '; Expires=Wed, 09 Jun 2021 10:18:14 GMT; path=/;');
 
-  create_header(my_userid);
+  create_header(false, my_userid);
   output('<h2>Welcome aboard!</h2> Hey ' .. username ..
              ', now you have an account, <a href=' .. 
             build_link(my_userid, "index_page") .. 
              '>a good start is to write your first message!</a>.');
-  create_footer();
+  create_footer(false);
   return flush_output();
 end
 
+--TODO add WRITE-OP TO URL
 function WL_logout(muserid) -- muserid used for URL haproxy LoadBalancing
   if (isLoggedIn() == false) then
     SetHttpRedirect(build_link(muserid, 'index_page')); return;
@@ -157,9 +166,10 @@ function WL_logout(muserid) -- muserid used for URL haproxy LoadBalancing
     return;
   end
   call_sync(global_logout, 'global_logout', my_userid);
-  return I_index_page(0); -- internal redirect
+  return I_index_page(false, 0); -- internal redirect
 end
 
+--TODO add READ-OP TO URL
 function WL_login(o_username, o_password)
   init_output();
   if (is_empty(o_username) or is_empty(o_password)) then
@@ -187,6 +197,7 @@ function WL_login(o_username, o_password)
   return I_home(my_userid, my_username, 0); -- internal redirect
 end
 
+--TODO add WRITE-OP TO URL
 function WL_post(muserid, o_msg) -- muserid used for URL haproxy LoadBalancing
   if (is_empty(o_msg) or isLoggedIn() == false) then
     SetHttpRedirect(build_link(muserid, 'index_page')); return;
@@ -204,27 +215,24 @@ function WL_post(muserid, o_msg) -- muserid used for URL haproxy LoadBalancing
   return I_home(my_userid, my_username, 0); -- internal redirect
 end
 
+--TODO add READ-OP TO URL
 function WL_timeline()
-  -- dependencies: n_global_users, n_global_timeline
+  -- dependencies: [n_global_users, n_global_timeline]
   -- page is too volatile to cache -> NO CACHING
   local my_userid;
   if (isLoggedIn()) then my_userid = MyUserid;
   else                   my_userid = getrand();  end
   init_output();
-  create_header(my_userid);
+  create_header(false, my_userid);
   showLastUsers();
   output('<i>Latest 20 messages from users aroud the world!</i><br>');
   showUserPosts("global:timeline", 0, 20);
-  create_footer();
+  create_footer(false);
   return flush_output();
 end
 
 -- DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
-function WL_hello_world()
-  return 'HELLO WORLD';
-end
-redis("set", 'HELLO WORLD', 'HELLO WORLD');
-function WL_hello_world_data()
-  return redis("get", 'HELLO WORLD');
-end
+function WL_hello_world() return 'HELLO WORLD'; end
 
+redis("set", 'HELLO WORLD', 'HELLO WORLD');
+function WL_hello_world_data() return redis("get", 'HELLO WORLD'); end
