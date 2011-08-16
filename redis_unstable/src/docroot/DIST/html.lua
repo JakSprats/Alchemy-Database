@@ -69,10 +69,11 @@ function create_follow() -- Button controlled by Cookie sent w/ Response
 output([[
 <script>
   var each_cookie = process_cookies();
-  if (each_cookie.length < 3) { return; }
-  var my_userid   = each_cookie[0].split("=")[1];
-  var following   = each_cookie[1].split("=")[1];
-  var userid      = each_cookie[2].split("=")[1];
+  if (each_cookie.length < 4) { return; }
+  var my_userid   = each_cookie[1].split("=")[1];
+  var following   = each_cookie[2].split("=")[1];
+  var userid      = each_cookie[3].split("=")[1];
+  //alert('my_userid: ' + my_userid + ' following: ' + following + ' userid: ' + userid);
   if (following == 1) {
     document.write('<a href="/follow/' + my_userid + '/' + userid + '/0" class="button">Stop following</a>');
   } else if (following == 0) {

@@ -3,10 +3,18 @@
 local CacheExpireTime = 600; -- 10 minutes
 --CacheExpireTime = 5; -- DEBUG
 
+function clearCache() -- NOTE: used when cache format changes
+  local cached  = redis("keys", "PAGE_CACHE*");
+  for k,v in pairs(cached) do  redis("del", v); end
+  local gcached = redis("keys", "GZIP_PAGE_CACHE*");
+  for k,v in pairs(gcached) do redis("del", v); end
+end
+clearCache(); -- NOTE: good idea to clear cache while developing
+
 function getCacheKey(...)
   local key = 'PAGE_CACHE';
   for i,v in ipairs(arg) do     key = key .. '_' .. tostring(v); end
-  if (set_is_deflatable()) then key = 'gzip_' .. key;            end
+  if (set_is_deflatable()) then key = 'GZIP_' .. key;            end
   return key;
 end
 function CacheExists(...)

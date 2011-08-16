@@ -2,15 +2,13 @@ dofile "./docroot/DIST/short_stack.lua";
 -- Retwis for Alchemy's Short Stack - PUBLIC API
 
 function I_index_page(start) 
-  if (CheckEtag('index_page')) then   return;                        end
+  if (CheckEtag('index_page'))   then return;                        end
   if (CacheExists('index_page')) then return CacheGet('index_page'); end
   local my_userid;
   if (LoggedIn) then my_userid = MyUserid;
   else               my_userid = getrand();  end
   init_output();
-  create_header(my_userid);
-  create_welcome();
-  create_footer();
+  create_header(my_userid); create_welcome(); create_footer();
   CachePutOutput('index_page');
   return flush_output();
 end
@@ -21,9 +19,9 @@ end
 
 function I_home(my_userid, my_username, s)
   setIsLoggedIn(my_userid); -- used for internal redirects
+  local nposts    = redis("llen",  "uid:" .. my_userid .. ":posts");
   local nflwers   = redis("scard", "uid:" .. my_userid .. ":followers");
   local nflwing   = redis("scard", "uid:" .. my_userid .. ":following");
-  local nposts    = redis("llen",  "uid:" .. my_userid .. ":posts");
   local my_userid = MyUserid;
   if (CheckEtag('home', my_userid, nposts, nflwers, nflwing)) then return; end
   init_output();
@@ -38,7 +36,7 @@ function WL_home(s)
   else
     local my_userid   = MyUserid;
     if (IsCorrectNode(my_userid) == false) then -- home ONLY to shard-node
-      SetHttpRedirect(build_link(my_userid, 'index_page')); return;
+      SetHttpRedirect(build_link(my_userid, 'home')); return;
     end
     local my_username = redis("get", "uid:" .. my_userid .. ":username");
     return I_home(my_userid, my_username, s);
@@ -58,6 +56,8 @@ function I_profile(userid, username, s)
     if (isf == 1) then f = 1;
     else               f = 0; end
   end
+  SetHttpResponseHeader('Set-Cookie', 'my_userid=' .. my_userid ..
+                                      '; Max-Age=1; path=/;');
   SetHttpResponseHeader('Set-Cookie', 'following=' .. f ..
                                       '; Max-Age=1; path=/;');
   SetHttpResponseHeader('Set-Cookie', 'otheruser=' .. userid ..
@@ -97,15 +97,24 @@ function WL_follow(muserid, userid, follow) -- muserid used ONLY by haproxy
     SetHttpRedirect(build_link(getrand(), 'index_page')); return;
   end
   local my_userid = MyUserid;
+  if (userid == my_userid) then -- FOR: URL hackers
+    SetHttpRedirect(build_link(my_userid, 'home')); return;
+  end
   if (IsCorrectNode(my_userid) == false) then -- follow ONLY to shard-node
     SetHttpRedirect(build_link(my_userid, 'follow', my_userid, userid, follow));
     return;
   end
-  if (userid ~= my_userid) then
-    call_sync(global_follow, 'global_follow', my_userid, userid, follow);
-    local_follow(my_userid, userid, follow);
+  local username = redis("get", "uid:" .. userid .. ":username");
+  if (username == nil) then -- FOR: hackers doing userid scanning
+    SetHttpRedirect(build_link(getrand(), 'home')); return;
   end
-  SetHttpRedirect(build_link(userid, 'profile', userid));
+  call_sync(global_follow, 'global_follow', my_userid, userid, follow);
+  local_follow(my_userid, userid, follow);
+  if (IsCorrectNode(userid)) then -- profile ONLY to shard-node
+    return I_profile(userid, username, 0); -- internal redirect
+  else
+    SetHttpRedirect(build_link(userid, 'profile', userid)); return;
+  end
 end
 
 function WL_register(username, password)
