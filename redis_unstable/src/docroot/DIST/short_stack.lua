@@ -1,6 +1,4 @@
 -- Retwis for Alchemy's Short Stack - Helper Functions (PRIVATE FUNCTIONS)
-package.cpath = package.cpath .. ";./extra/lua-zlib/?.so"
-local lz = require("zlib");
 
 io.stdout:setvbuf("no"); -- flush stdout
 
@@ -8,10 +6,10 @@ io.stdout:setvbuf("no"); -- flush stdout
 dofile "./docroot/DIST/.instance_settings.lua";
 NumNodes = #NodeData;
 
+--TODO break out into cronfunc.lua
 -- ALCHEMY_SYNC ALCHEMY_SYNC ALCHEMY_SYNC ALCHEMY_SYNC ALCHEMY_SYNC
 local AllSynced = false;
-function RsubscribeAlchemySync()
-  --print ('RsubscribeAlchemySync');
+function RsubscribeAlchemySync() --print ('RsubscribeAlchemySync');
   local nsync = 0;
   for num, data in pairs(NodeData) do
     if (num ~= MyNodeId and data['synced'] == 0) then
@@ -41,6 +39,7 @@ end
 -- defines SimulateNetworkPartition
 --dofile "./docroot/DIST/debug.lua";
 
+--TODO break out into heartbeat.lua
 -- HEARTBEAT HEARTBEAT HEARTBEAT HEARTBEAT HEARTBEAT HEARTBEAT HEARTBEAT
 local MyGeneration = redis("get", "alchemy_generation");
 if (MyGeneration == nil) then MyGeneration = 0; end
@@ -157,6 +156,7 @@ function update_remote_hw(qname, nodeid, xactid)
   end
 end
 
+--TODO break out into global_ops.lua
 -- AUTO_INC_COUNTER AUTO_INC_COUNTER AUTO_INC_COUNTER AUTO_INC_COUNTER
 AutoInc = {};
 function InitAutoInc(name)
@@ -245,33 +245,6 @@ function build_link(my_userid, page, arg1, arg2, arg3)
   return GetHttpDomainPort(my_userid) .. page .. path;
 end
 
--- OUTPUT_BUFFER+DEFLATE OUTPUT_BUFFER+DEFLATE OUTPUT_BUFFER+DEFLATE
--- this approach is explained here: http://www.lua.org/pil/11.6.html
--- the 3 functions [init_output, output, flush_output] could be 
---   1.) written in C
---   2.) pushed up into the server (i.e. OutputBuffer append to c->reply)
-OutputBuffer = {};
-function init_output()
-  OutputBuffer = {};
-end
-function output(line)
-  table.insert(OutputBuffer, line)
-end
-function flush_output()
-  local out      = table.concat(OutputBuffer);
-  local deflater = false;
-  if (HTTP_HEADER['Accept-Encoding'] ~= nil and
-      string.find(HTTP_HEADER['Accept-Encoding'], "deflate")) then
-    deflater = true;
-  end
-  if (deflater) then
-    SetHttpResponseHeader('Content-Encoding', 'deflate');
-    return lz.deflate()(out, "finish")
-  else
-    return out;
-   end
-end
-
 -- HELPERS HELPERS HELPERS HELPERS HELPERS HELPERS HELPERS HELPERS
 function gettime()
   return os.time(); -- TODO check speed, override w/ C call (no OS call)
@@ -316,6 +289,15 @@ function url_encode(str)
   return str	
 end
 
+-- OUTPUT_BUFFER+DEFLATE OUTPUT_BUFFER+DEFLATE OUTPUT_BUFFER+DEFLATE
+dofile "./docroot/DIST/output_buffer.lua";
+
+-- CACHE CACHE CACHE CACHE CACHE CACHE CACHE CACHE CACHE CACHE CACHE
+dofile "./docroot/DIST/cache.lua";
+
+-- HTML HTML HTML HTML HTML HTML HTML HTML HTML HTML HTML HTML HTML HTML
+dofile "./docroot/DIST/html.lua";
+
 -- GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS
 -- one PK AutoInc for EACH table
 InitAutoInc('Next_sql_users_TransactionId');
@@ -333,9 +315,6 @@ InitAutoInc('NextUserId');
 print ('NextUserId: ' .. AutoInc['NextUserId']);
 InitAutoInc('NextPostId');
 print ('NextPostId: ' .. AutoInc['NextPostId']);
-
--- HTML HTML HTML HTML HTML HTML HTML HTML HTML HTML HTML HTML HTML HTML
-dofile "./docroot/DIST/html.lua";
 
 -- STATIC_FILES STATIC_FILES STATIC_FILES STATIC_FILES STATIC_FILES
 function load_image(ifile, name)
@@ -425,6 +404,7 @@ global_logout = function(nodeid, xactid, my_userid)
   -- combinatorial INCR operation governs flow
   local newauthsecret = incr_sha1_variable('nlogouts', my_userid);
   perform_auth_change(my_userid, oldauthsecret, newauthsecret);
+  resetIsLoggedIn();
 end
 global_post = function(nodeid, xactid, my_userid, postid, ts, msg)
   if (xactid ~= 0) then update_remote_hw('sync', nodeid, xactid); end

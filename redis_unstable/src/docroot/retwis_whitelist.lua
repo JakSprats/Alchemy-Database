@@ -22,7 +22,6 @@ function I_home(s)
   if (CheckEtag('home', my_userid, nposts, nflwers, nflwing)) then return; end
   init_output();
   create_header(); create_home(s, nposts, nflwers, nflwing); create_footer();
-  CachePutOutput('home', my_userid, nposts, nflwers, nflwing);
   return flush_output();
 end
 function WL_home(s) 
@@ -31,10 +30,11 @@ function WL_home(s)
 end
 
 function I_profile(username, s) -- NOTE: username is NOT encoded
+  local page      = '/profile';
   local userid    = redis("get", "username:" .. username .. ":id")
   if (userid == nil) then SetHttpRedirect('/index_page'); return; end
   local nposts    = redis("llen", "uid:" .. userid .. ":myposts");
-  local isl       = isLoggedIn();
+  local isl       = isLoggedIn(); -- populates User[]
   local my_userid = User['id'];
   local f         = -1;
   if (isl and my_userid ~= userid) then
@@ -48,8 +48,8 @@ function I_profile(username, s) -- NOTE: username is NOT encoded
                                       '; Max-Age=1; path=/;');
   if (CheckEtag('profile', userid, nposts, s)) then return; end
   if (s == nil or tonumber(s) == 0) then -- CACHE only 1st page
-    if (CacheExists('profile', userid, nposts)) then
-      return CacheGet('profile', userid, nposts);
+    if (CacheExists('profile', isl, userid, nposts)) then
+      return CacheGet('profile', isl, userid, nposts);
     end
   end
 
@@ -61,11 +61,10 @@ function I_profile(username, s) -- NOTE: username is NOT encoded
   if (s == nil) then s = 0; end
   showUserPostsWithPagination(page, nposts, username, userid, s, 10);
   create_footer();
-  CachePutOutput('profile', userid, nposts, f);
+  CachePutOutput('profile', isl, userid, nposts);
   return flush_output();
 end
 function WL_profile(username, s)
-  local page      = '/profile';
   if (is_empty(username)) then SetHttpRedirect('/index_page'); return; end
   username = url_decode(username);
   isLoggedIn(); -- this call effects links

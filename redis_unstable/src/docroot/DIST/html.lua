@@ -1,16 +1,19 @@
 -- HTML HTML HTML HTML HTML HTML HTML HTML HTML HTML HTML HTML
 function create_navbar(my_userid)
   local domain = GetHttpDomainPort(my_userid)
-  output([[<div id="navbar">
-       <a href="]] .. build_link(my_userid, 'index_page') .. [[">home</a> |
-       <a href="]] .. build_link(my_userid, 'timeline')   ..  '">timeline</a>');
-  if (isLoggedIn()) then
-    output('| <a href="' .. build_link(my_userid, 'logout', my_userid) ..
-                                                              '">logout</a>');
+  if (LoggedIn) then
+    output([[<div id="navbar">
+      <a href="]] .. build_link(my_userid, 'home')     .. [[">home</a> |
+      <a href="]] .. build_link(my_userid, 'timeline') .. [[">timeline</a> |
+      <a href="]] .. build_link(my_userid, 'logout', my_userid) .. 
+                                                          '">logout</a></div>');
+  else
+    output([[<div id="navbar">
+      <a href="]] .. build_link(my_userid, 'index_page') .. [[">home</a> |
+      <a href="]] .. build_link(my_userid, 'timeline')   ..
+                                                        '">timeline</a></div>');
   end
-  output('</div>');
 end
-
 function create_header(my_userid)
 output([[<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
 <html lang="it">
@@ -29,7 +32,6 @@ output([[<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR
 create_navbar(my_userid);
 output('</div>');
 end
-
 function create_footer()
   output('<div id="footer"> <a href="http://code.google.com/p/alchemydatabase/">Alchemy Database</a> is a A Hybrid Relational-Database/NOSQL-Datastore</div> </div> </body> </html>');
 end
@@ -40,7 +42,7 @@ function create_welcome()
 <div id="registerbox">
 <h2>Register!</h2>
 <b>Want to try Retwis? Create an account!</b>
-<form method="GET" onsubmit="return passwords_match(this.elements['password'].value, this.elements['password2'].value) && form_action_rewrite_url('register', encodeURIComponent(this.elements['username'].value), encodeURIComponent(this.elements['password'].value))">
+<form action="/register" method="POST" onsubmit="return passwords_match(this.elements['password'].value, this.elements['password2'].value)">
 <table>
 <tr> <td>Username</td><td><input type="text" name="username"></td> </tr>
 <tr> <td>Password</td><td><input type="password" name="password"></td> </tr>
@@ -49,7 +51,7 @@ function create_welcome()
 </table>
 </form>
 <h2>Already registered? Login here</h2>
-<form method="GET" onsubmit="return form_action_rewrite_url('login', encodeURIComponent(this.elements['username'].value), encodeURIComponent(this.elements['password'].value))">
+<form action="/login" method="POST" >
 <table>
 <tr> <td>Username</td><td><input type="text" name="username"></td> </tr>
 <tr> <td>Password</td><td><input type="password" name="password"></td> </tr>
@@ -62,19 +64,26 @@ Hello! Retwis is a very simple clone of <a href="http://twitter.com">Twitter</a>
 ]]);
 end
 
-function strElapsed(t)
-  local d = os.time() - t;
-  if (d < 60) then return d .. " seconds"; end
-  if (d < 3600) then
-      local m = d/60;
-      return m .. " minutes";
-  end
-  if (d < 3600*24) then
-      local h = d/3600;
-      return h .. " hours";
-  end
-  d = d/(3600*24);
-  return d .. " days";
+function create_follow() -- Button controlled by Cookie sent w/ Response
+--TODO using cookies[1,2] is dangerous, use explicit names [auth, userid, following]
+output([[
+<script>
+  var each_cookie = process_cookies();
+  if (each_cookie.length < 3) { return; }
+  var my_userid   = each_cookie[0].split("=")[1];
+  var following   = each_cookie[1].split("=")[1];
+  var userid      = each_cookie[2].split("=")[1];
+  if (following == 1) {
+    document.write('<a href="/follow/' + my_userid + '/' + userid + '/0" class="button">Stop following</a>');
+  } else if (following == 0) {
+    document.write('<a href="/follow/' + my_userid + '/' + userid + '/1" class="button">Follow this user</a>');
+  }
+</script>
+]]);
+end
+
+function scriptElapsed(t)
+  return '<script> output_elapsed(' .. t .. ');</script>';
 end
 
 function showPost(id)
@@ -85,18 +94,22 @@ function showPost(id)
   local time     = aux[2];
   local username = redis("get", "uid:" .. userid .. ":username");
   local post     = aux[3];
-  local elapsed  = strElapsed(time);
   local userlink = 
   output('<div class="post">' ..
          '<a class="username" href="' ..
                             build_link(userid, "profile", userid) ..  '">' ..
-           username .. "</a>" ..
-         ' ' .. post .."<br>" .. '<i>posted '..
-         elapsed ..' ago via web</i></div>');
+           username .. "</a>" ..  ' ' .. post .."<br>" .. '<i>posted '..
+           scriptElapsed(time) ..' ago via web</i></div>');
   return true;
 end
 
 function showUserPosts(key, start, count)
+  output([[
+<script>
+var AlchemyNow  = new Date();
+var AlchemyNows = (AlchemyNow.getTime()/1000);
+</script>
+]]);
   local posts = redis("lrange", key, start, (start + count));
   local c     = 0;
   for k,v in pairs(posts) do
@@ -105,7 +118,8 @@ function showUserPosts(key, start, count)
   end
 end
 
-function showUserPostsWithPagination(thispage, username, userid, start, count)
+function showUserPostsWithPagination(thispage, nposts, username, userid,
+                                     start, count)
   local navlink  = "";
   local nextc    = start + 10;
   local prevc    = start - 10;
@@ -113,16 +127,9 @@ function showUserPostsWithPagination(thispage, username, userid, start, count)
   local prevlink = "";
   if (prevc < 0) then prevc = 0; end
   local key, u;
-  if (username) then
-      u   = userid;
-      key = "uid:" .. userid .. ":myposts";
-  else
-      u   = 0;
-      key = "uid:" .. userid .. ":posts";
-  end
-
+  if (username) then u   = userid; key = "uid:" .. userid .. ":myposts";
+  else               u   = 0;      key = "uid:" .. userid .. ":posts"; end
   showUserPosts(key, start, count);
-  local nposts = redis("llen", key);
   if (nposts ~= nil and nposts > start + count) then
       nextlink = '<a href="' .. build_link(userid, thispage, u, nextc) ..
                          '">&raquo; Older posts </a>';
@@ -151,16 +158,14 @@ function showLastUsers()
   output('</div><br>');
 end
 
-function create_home(thispage, my_userid, start)
-  local nfollowers = redis("scard", "uid:" .. my_userid .. ":followers");
-  local nfollowing = redis("scard", "uid:" .. my_userid .. ":following");
+function create_home(my_userid, my_username, start, nposts,
+                     nfollowers, nfollowing)
+  local thispage   = '/home';
   local s          = 0;
-  if (start ~= nil) then s = start; end
-  output([[
-<div id="postform">
-<form method="GET"
-  onsubmit="return form_action_rewrite_url('post', ]] .. my_userid .. [[, encodeURIComponent(this.elements['status'].value));" >]]);
-  output(User['username'] ..', what you are doing?');
+  if (start ~= nil) then s = tonumber(start); end
+  output('<div id="postform"><form action="/post/' .. my_userid ..
+                              '" method="POST">');
+  output(my_username ..', what you are doing?');
   output([[
 <br>
 <table>
@@ -170,8 +175,8 @@ function create_home(thispage, my_userid, start)
 </form>
 <div id="homeinfobox">
 ]]);
-  output(nfollowers .. ' followers<br>' .. nfollowing .. ' following<br></div></div>');
-  showUserPostsWithPagination(thispage, false, User['id'], s, 10);
+  output(nfollowers .. " followers<br>" .. nfollowing .. " following<br></div></div>");
+  showUserPostsWithPagination(thispage, nposts, false, my_userid, s, 10);
 end
 
 function goback(my_userid, msg)
@@ -180,15 +185,18 @@ function goback(my_userid, msg)
   create_footer();
 end
 
-User     = {};
+MyUserid = 0;
 LoggedIn = false;
-function loadUserInfo(userid)
-  User['id']       = userid;
-  User['username'] = redis("get", "uid:" .. userid .. ":username");
-end
-
-function isLoggedIn()
+function resetIsLoggedIn()
+  MyUserid = 0;
   LoggedIn = false;
+end
+function setIsLoggedIn(userid)
+  MyUserid = userid;
+  LoggedIn = true;
+end
+function isLoggedIn()
+  resetIsLoggedIn();
   local authcookie = COOKIE['auth'];
   if (authcookie ~= nil) then
     local userid = redis("get", "auth:" .. authcookie);
@@ -196,7 +204,7 @@ function isLoggedIn()
       if (redis("get", "uid:" .. userid .. ":auth") ~= authcookie) then
         return false;
       end
-      loadUserInfo(userid); LoggedIn = true; return true;
+      MyUserid = userid; LoggedIn = true; return true;
     end
   end
   return false;
