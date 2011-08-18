@@ -1,10 +1,13 @@
 package.cpath = package.cpath .. ";./extra/lua-zlib/?.so"
-LZ = require("zlib");
+local LZ = require("zlib");
 
 -- DEFLATE DEFLATE DEFLATE DEFLATE DEFLATE DEFLATE DEFLATE DEFLATE DEFLATE
-local IsSet_IsDeflatable = false; -- reset every request
+IsSet_IsDeflatable = false; -- reset every request
+function initPerRequestIsDeflatable()
+  IsSet_IsDeflatable = false;
+end
 local IsDeflatable       = false;
-function set_is_deflatable()
+function set_is_deflatable() --print ('set_is_deflatable');
   if (IsSet_IsDeflatable) then return IsDeflatable; end
   if (HTTP_HEADER['Accept-Encoding'] ~= nil and
       string.find(HTTP_HEADER['Accept-Encoding'], "deflate")) then

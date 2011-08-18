@@ -1,24 +1,26 @@
-dofile "./docroot/DIST/short_stack.lua";
 -- Retwis for Alchemy's Short Stack - PUBLIC API
+dofile "./docroot/DIST/short_stack.lua";
 
-function I_index_page(virgin, start) 
-  local inline = setInlineable(virgin, LoggedIn);
+function I_index_page(redirect, start) 
+  local inline;
+  if (redirect == false) then inline = (VirginInlineCache and CanInline);
+  else                        inline = false;       end
   if (CheckEtag('index_page',     inline))   then return; end
   if (CacheExists('index_page',   inline)) then
     return CacheGet('index_page', inline);
   end
   local my_userid;
   if (LoggedIn) then my_userid = MyUserid;
-  else               my_userid = getrand();  end
+  else               my_userid = 0;        end
   init_output();
   create_header(inline, my_userid); create_welcome(); create_footer(inline);
   CachePutOutput('index_page', inline);
   return flush_output();
 end
---TODO add READ-OP TO URL
-function WL_index_page(start)
-  if (isLoggedIn()) then SetHttpRedirect('/home'); return; end
-  return I_index_page(true, start);
+function WL_index_page(rw, start)
+  if (isLoggedIn()) then SetHttpRedirect(build_link(0, 'home')); return; end
+  InitRequest();
+  return I_index_page(false, start);
 end
 
 function I_home(my_userid, my_username, s)
@@ -34,39 +36,40 @@ function I_home(my_userid, my_username, s)
   create_footer(false);
   return flush_output();
 end
---TODO add READ-OP TO URL
-function WL_home(s)
+function WL_home(rw, s)
   if (isLoggedIn() == false) then
-    SetHttpRedirect(build_link(getrand(), 'index_page')); return;
+    SetHttpRedirect(build_link(0, 'index_page')); return;
   else
     local my_userid   = MyUserid;
     if (IsCorrectNode(my_userid) == false) then -- home ONLY to shard-node
       SetHttpRedirect(build_link(my_userid, 'home')); return;
     end
+    InitRequest();
     local my_username = redis("get", "uid:" .. my_userid .. ":username");
     return I_home(my_userid, my_username, s);
   end
 end
 
-function I_profile(userid, username, s)
-  local page   = '/profile';
-  local isl    = isLoggedIn(); -- populates MyUserid
-  local my_userid;
-  if (LoggedIn) then my_userid = MyUserid;
-  else               my_userid = getrand();  end
-  local nposts = redis("llen", "uid:" .. userid .. ":myposts")
-  local f      = -1;
+function D_profile(isl, my_userid, userid)
+  local f   = -1;
   if (isl and my_userid ~= userid) then
     local isf = redis("sismember", "uid:" .. my_userid .. ":following", userid);
     if (isf == 1) then f = 1;
     else               f = 0; end
   end
-  SetHttpResponseHeader('Set-Cookie', 'my_userid=' .. my_userid ..
+  SetHttpResponseHeader('Set-Cookie', 'following='   .. f ..
                                       '; Max-Age=1; path=/;');
-  SetHttpResponseHeader('Set-Cookie', 'following=' .. f ..
+  SetHttpResponseHeader('Set-Cookie', 'other_userid=' .. userid ..
                                       '; Max-Age=1; path=/;');
-  SetHttpResponseHeader('Set-Cookie', 'otheruser=' .. userid ..
-                                      '; Max-Age=1; path=/;');
+  return f;
+end
+function I_profile(userid, username, s)
+  local isl = isLoggedIn(); -- populates MyUserid
+  local my_userid;
+  if (LoggedIn) then my_userid = MyUserid;
+  else               my_userid = 0;       end
+  local f = D_profile(isl, my_userid, userid);
+  local nposts = redis("llen", "uid:" .. userid .. ":myposts")
   if (CheckEtag('profile', isl, userid, nposts, s)) then return; end
   s = tonumber(s);
   if (s == nil) then s = 0; end
@@ -77,31 +80,30 @@ function I_profile(userid, username, s)
   init_output();
   create_header(false, my_userid);
   output("<h2 class=\"username\">" .. username .. "</h2>");
-  create_follow();
-  showUserPostsWithPagination(page, nposts, username, userid, s, 10);
+  create_follow(my_userid);
+  showUserPostsWithPagination('profile', nposts, username, userid, s, 10);
   create_footer(false);
   CachePutOutput('profile', isl, userid, nposts);
   return flush_output();
 end
---TODO add READ-OP TO URL
-function WL_profile(userid, start)
+function WL_profile(rw, userid, start)
   if (is_empty(userid)) then
-    SetHttpRedirect(build_link(getrand(), 'index_page')); return;
+    SetHttpRedirect(build_link(0, 'index_page')); return;
   end
   if (IsCorrectNode(userid) == false) then -- profile ONLY to shard-node
     SetHttpRedirect(build_link(userid, 'profile', userid, start)); return;
   end
   local username = redis("get", "uid:" .. userid .. ":username");
   if (username == nil) then -- FOR: hackers doing userid scanning
-    SetHttpRedirect(build_link(getrand(), 'index_page')); return;
+    SetHttpRedirect(build_link(0, 'index_page')); return;
   end
+  InitRequest();
   return I_profile(userid, username, start);
 end
 
---TODO add WRITE-OP TO URL
-function WL_follow(muserid, userid, follow) -- muserid used ONLY by haproxy
+function WL_follow(rw, muserid, userid, follow) -- muserid used ONLY by haproxy
   if (is_empty(userid) or is_empty(follow) or isLoggedIn() == false) then
-    SetHttpRedirect(build_link(getrand(), 'index_page')); return;
+    SetHttpRedirect(build_link(0, 'index_page')); return;
   end
   local my_userid = MyUserid;
   if (userid == my_userid) then -- FOR: URL hackers
@@ -113,29 +115,37 @@ function WL_follow(muserid, userid, follow) -- muserid used ONLY by haproxy
   end
   local username = redis("get", "uid:" .. userid .. ":username");
   if (username == nil) then -- FOR: hackers doing userid scanning
-    SetHttpRedirect(build_link(getrand(), 'home')); return;
+    SetHttpRedirect(build_link(0, 'home')); return;
   end
-  call_sync(global_follow, 'global_follow', my_userid, userid, follow);
+  InitRequest();
   local_follow(my_userid, userid, follow);
+  call_sync(global_follow, 'global_follow', my_userid, userid, follow);
   if (IsCorrectNode(userid)) then -- profile ONLY to shard-node
     return I_profile(userid, username, 0); -- internal redirect
   else
+    D_profile(true, my_userid, userid); -- add [following, other_userid] cookies
     SetHttpRedirect(build_link(userid, 'profile', userid)); return;
   end
 end
 
---TODO add WRITE-OP TO URL
-function WL_register(username, password)
+function WL_register(rw, o_username, o_password)
   init_output();
-  if (is_empty(username) or is_empty(password)) then
-    goback(getrand(), "Username or Password is Empty"); return flush_output();
+  if (is_empty(o_username) or is_empty(o_password)) then
+    goback(0, "Username or Password is Empty"); return flush_output();
   end
-  username         = url_decode(username);
-  password         = url_decode(password);
+  local username   = url_decode(o_username);
+  local password   = url_decode(o_password);
   if (redis("get", "username:" .. username .. ":id")) then
-    goback(getrand(), "Sorry the selected username is already in use.");
+    goback(0, "Sorry the selected username is already in use.");
     return flush_output();
   end
+  -- "username" assigned via global pool, so it must be sharded data
+  local node = GetUsernameNode(username);
+  if (node ~= MyNodeId) then -- register ONLY to shard-node
+    SetHttpRedirect(build_link_node(node, 'register', o_username, o_password));
+    return;
+  end
+  InitRequest();
   -- Everything is ok, Register the user!
   local my_userid  = IncrementAutoInc('NextUserId');
   local authsecret = call_sync(global_register, 'global_register',
@@ -155,8 +165,7 @@ function WL_register(username, password)
   return flush_output();
 end
 
---TODO add WRITE-OP TO URL
-function WL_logout(muserid) -- muserid used for URL haproxy LoadBalancing
+function WL_logout(rw, muserid) -- muserid used for URL haproxy LoadBalancing
   if (isLoggedIn() == false) then
     SetHttpRedirect(build_link(muserid, 'index_page')); return;
   end
@@ -165,22 +174,22 @@ function WL_logout(muserid) -- muserid used for URL haproxy LoadBalancing
     SetHttpRedirect(build_link(my_userid, 'logout', my_userid));
     return;
   end
+  InitRequest();
   call_sync(global_logout, 'global_logout', my_userid);
-  return I_index_page(false, 0); -- internal redirect
+  return I_index_page(true, 0); -- internal redirect
 end
 
---TODO add READ-OP TO URL
-function WL_login(o_username, o_password)
+function WL_login(rw, o_username, o_password)
   init_output();
   if (is_empty(o_username) or is_empty(o_password)) then
-    goback(getrand(), "Enter both username and password to login.");
+    goback(0, "Enter both username and password to login.");
     return flush_output();
   end
   local my_username  = url_decode(o_username);
   local password     = url_decode(o_password);
   local my_userid    = redis("get", "username:" .. my_username ..":id");
   if (my_userid == nil) then
-    goback(getrand(), "Wrong username or password"); return flush_output();
+    goback(0, "Wrong username or password"); return flush_output();
   end
   if (IsCorrectNode(my_userid) == false) then -- login ONLY 2 shard-node
     SetHttpRedirect(build_link(my_userid, 'login', o_username, o_password));
@@ -188,8 +197,9 @@ function WL_login(o_username, o_password)
   end
   local realpassword = redis("get", "uid:" .. my_userid .. ":password");
   if (realpassword ~= password) then
-    goback(getrand(), "Wrong username or password"); return flush_output();
+    goback(0, "Wrong username or password"); return flush_output();
   end
+  InitRequest();
   -- Username / password OK, set the cookie and internal redirect to home
   local authsecret   = redis("get", "uid:" .. my_userid .. ":auth");
   SetHttpResponseHeader('Set-Cookie', 'auth=' .. authsecret ..
@@ -197,8 +207,7 @@ function WL_login(o_username, o_password)
   return I_home(my_userid, my_username, 0); -- internal redirect
 end
 
---TODO add WRITE-OP TO URL
-function WL_post(muserid, o_msg) -- muserid used for URL haproxy LoadBalancing
+function WL_post(rw, muserid, o_msg) -- muserid for URL haproxy LoadBalancing
   if (is_empty(o_msg) or isLoggedIn() == false) then
     SetHttpRedirect(build_link(muserid, 'index_page')); return;
   end
@@ -206,6 +215,7 @@ function WL_post(muserid, o_msg) -- muserid used for URL haproxy LoadBalancing
   if (IsCorrectNode(my_userid) == false) then -- post ONLY to shard-node
     SetHttpRedirect(build_link(my_userid, 'post', my_userid, o_msg)); return;
   end
+  InitRequest();
   local msg         = url_decode(o_msg);
   local ts          = gettime();
   local postid      = IncrementAutoInc('NextPostId');
@@ -215,19 +225,24 @@ function WL_post(muserid, o_msg) -- muserid used for URL haproxy LoadBalancing
   return I_home(my_userid, my_username, 0); -- internal redirect
 end
 
---TODO add READ-OP TO URL
-function WL_timeline()
-  -- dependencies: [n_global_users, n_global_timeline]
-  -- page is too volatile to cache -> NO CACHING
+function WL_timeline(rw)
+  local n_users   = redis("scard",  "global:users");
+  local last_post = redis("lindex", "global:timeline", 0);
+  if (CheckEtag('timeline',     n_users, last_post)) then return; end
+  if (CacheExists('tineline',   n_users, last_post)) then
+    return CacheGet('timeline', n_users, last_post);
+  end
+  InitRequest();
   local my_userid;
   if (isLoggedIn()) then my_userid = MyUserid;
-  else                   my_userid = getrand();  end
+  else                   my_userid = 0;        end
   init_output();
   create_header(false, my_userid);
   showLastUsers();
   output('<i>Latest 20 messages from users aroud the world!</i><br>');
   showUserPosts("global:timeline", 0, 20);
   create_footer(false);
+  CachePutOutput('timeline', n_users, last_post);
   return flush_output();
 end
 

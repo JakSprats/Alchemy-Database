@@ -6,9 +6,25 @@ function passwords_match(p1, p2) {
   } else return true;
 }
 
+function trim11(str) {
+  str = str.replace(/^\s+/, '');
+  for (var i = str.length - 1; i >= 0; i--) {
+    if (/\S/.test(str.charAt(i))) {
+      str = str.substring(0, i + 1);
+      break;
+    }
+  }
+  return str;
+}
 function process_cookies() {
   var whole_cookie = unescape(document.cookie);
-  return whole_cookie.split(";");
+  var each_cookie  = whole_cookie.split(";");
+  var cooks        = {};
+  for (var i = 0; i < each_cookie.length; i++){
+    var split = each_cookie[i].split("=");
+    cooks[trim11(split[0])] = split[1];
+  }
+  return cooks;
 }
 
 function output_elapsed(when) {

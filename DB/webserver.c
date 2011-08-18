@@ -29,6 +29,7 @@ ALL RIGHTS RESERVED
 #include <arpa/inet.h>
 #include <assert.h>
 #include <strings.h>
+char *strcasestr(const char *haystack, const char *needle); /*compiler warning*/
 
 #include "xdb_hooks.h"
 
@@ -91,7 +92,7 @@ static void send_http_response_header_extended(cli *c, sds s) {
         while((ln = listNext(li)) != NULL) {// POPULATE Lua Global HTTP_HEADER[]
             two_sds *ss = ln->value;
             s = sdscatprintf(s, "%s: %s\r\n", ss->a, ss->b);
-         }
+         } listReleaseIterator(li);
     }
     s = sdscatlen(s, "\r\n", 2);
     SEND_REPLY_FROM_STRING(s)
@@ -214,6 +215,27 @@ void end_http_session(cli *c) {
             if ((o = lookupKeyRead(c->db, c->http.file)) == NULL) SEND_404
             else if (o->type != REDIS_STRING)                     SEND_404
             else { //NOTE: STATIC expire in 10 years (HARDCODED)
+                listNode *ln;
+                bool      dfl = 0;
+                listIter *li  = listGetIterator(c->http.req_hdr, AL_START_HEAD);
+                while((ln = listNext(li)) != NULL) { // check for "deflate"
+                    two_sds *ss = ln->value;
+                    if (!strncasecmp(ss->a, "Accept-Encoding", 15)) {
+                        if (strcasestr(ss->b, "deflate")) { dfl = 1; break; }
+                    }
+                } listReleaseIterator(li);
+                if (dfl) {
+                    robj *dfile = _createStringObject("DEFLATE/");
+                    dfile->ptr  = sdscatlen(dfile->ptr, c->http.file->ptr,
+                                                     sdslen(c->http.file->ptr));
+                    robj *od;
+                    if ((od = lookupKeyRead(c->db, dfile)) &&
+                         od->type == REDIS_STRING) {
+                        o = od;
+                        addHttpResponseHeader(sdsnew("Content-Encoding"),
+                         sdsnew("deflate"));
+                    }
+                }
                 addHttpResponseHeader(sdsnew("Expires"),
                          sdsnew("Wed, 09 Jun 2021 10:18:14 GMT;"));
                 send_http_200_reponse_header(c, o->ptr);
@@ -343,7 +365,7 @@ bool luafunc_call(redisClient *c, int argc, robj **argv) {
         } else {
             fname = sdscatprintf(sdsempty(), "WL_%s", (char *)argv[1]->ptr);
         }
-    }
+    } //printf("luafunc_call: fname: %s\n", fname);
 
     lua_getglobal(server.lua, fname);
     sdsfree(fname);
@@ -374,7 +396,7 @@ bool luafunc_call(redisClient *c, int argc, robj **argv) {
                 lua_pushstring(server.lua, ss->b);
                 lua_settable(server.lua, top);
             }
-        }
+        } listReleaseIterator(li);
         lua_setglobal(server.lua, "HTTP_HEADER");
         lua_newtable(server.lua);
         if (hascook) { // POPULATE Lua Global COOKIE[]
@@ -395,7 +417,7 @@ bool luafunc_call(redisClient *c, int argc, robj **argv) {
                         cookie = cln + 1; SKIP_SPACES(cookie);
                     }
                 }
-            }
+            } listReleaseIterator(li);
         }
         lua_setglobal(server.lua, "COOKIE");
     } else { // Make empty tables, to not break lua scripts

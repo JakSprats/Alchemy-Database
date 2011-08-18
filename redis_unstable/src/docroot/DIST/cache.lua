@@ -1,3 +1,5 @@
+package.cpath = package.cpath .. ";./extra/lua-zlib/?.so"
+local LZ = require("zlib");
 
 -- CACHE CACHE CACHE CACHE CACHE CACHE CACHE CACHE CACHE CACHE CACHE
 local CacheExpireTime = 600; -- 10 minutes
@@ -6,7 +8,7 @@ local CacheExpireTime = 600; -- 10 minutes
 function clearCache() -- NOTE: used when cache format changes
   local cached  = redis("keys", "PAGE_CACHE*");
   for k,v in pairs(cached) do  redis("del", v); end
-  local gcached = redis("keys", "GZIP_PAGE_CACHE*");
+  local gcached = redis("keys", "DEFLATE_PAGE_CACHE*");
   for k,v in pairs(gcached) do redis("del", v); end
 end
 clearCache(); -- NOTE: good idea to clear cache while developing
@@ -14,7 +16,7 @@ clearCache(); -- NOTE: good idea to clear cache while developing
 function getCacheKey(...)
   local key = 'PAGE_CACHE';
   for i,v in ipairs(arg) do     key = key .. '_' .. tostring(v); end
-  if (set_is_deflatable()) then key = 'GZIP_' .. key;            end
+  if (set_is_deflatable()) then key = 'DEFLATE_' .. key;         end
   return key;
 end
 function CacheExists(...)
@@ -41,6 +43,7 @@ function CachePutOutput(...)
   IsSet_IsDeflatable = false;
   --print ('CachePutOutput key: ' .. key);
   local out          = table.concat(OutputBuffer);
+  --print ('CachePutOutput: out' .. out);
   local deflater     = set_is_deflatable();
   if (deflater) then out = LZ.deflate()(out, "finish") end
   redis("setex", key,            CacheExpireTime, 1);
@@ -53,7 +56,7 @@ function CheckEtag(...)
   for i,v in ipairs(arg) do     ekey = ekey .. '_' .. tostring(v); end
   --print('CheckEtag: key: ' .. ekey);
   if (HTTP_HEADER['If-None-Match'] ~= nil) then
-    if (HTTP_HEADER['If-None-Match'] == ekey) then
+    if (HTTP_HEADER['If-None-Match'] == ekey) then --print ('ETAG hit');
       SetHttp304();
       return true;
     end

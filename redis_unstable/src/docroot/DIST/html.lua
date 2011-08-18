@@ -1,4 +1,4 @@
--- HTML HTML HTML HTML HTML HTML HTML HTML HTML HTML HTML HTML
+
 function create_navbar(my_userid)
   local domain = GetHttpDomainPort(my_userid)
   if (LoggedIn) then
@@ -14,6 +14,7 @@ function create_navbar(my_userid)
                                                         '">timeline</a></div>');
   end
 end
+
 function create_header(inline, my_userid)
   local script;
   if (inline) then script = '<script>var AlchemyStartLoad=new Date();</script>';
@@ -23,10 +24,10 @@ function create_header(inline, my_userid)
 <html>
 <head>
 <meta content="text/html; charset=UTF-8" http-equiv="content-type" />
-]]                                             ..
-    script                                     ..
-    inline_include_js("STATIC/helper.js")      ..
-    inline_include_css("STATIC/css/style.css") ..
+]]                                                        ..
+    script                                                ..
+    inline_include_js("STATIC/helper.js")                 ..
+    inline_include_css("STATIC/css/style.css")            ..
 [[
 <link rel="shortcut icon" href="/STATIC/favicon.ico" />
 <title>Retwis - Example Twitter clone based on Alchemy DB</title>
@@ -34,17 +35,32 @@ function create_header(inline, my_userid)
 <body>
 <div id="page">
 <div id="header">
-<img style="border:none" width="192" height="85" alt="Retwis" src="]] ..
-    inline_include_png_src("STATIC/logo.png")                    .. '" />');
+]] ..
+  inline_include_png_at_EOD(
+               '<img style="border:none" width="192" height="85" alt="Retwis" ',
+               'STATIC/logo.png'));
   create_navbar(my_userid);
   output('</div>');
 end
+
+function create_inlined_js_for_png_at_EOD(ihtml_beg, n, isrc)
+  local b64_body = redis("get", 'BASE64/' .. isrc);
+  return 'document.getElementById("alc_png_eod_" + ' .. n .. ').innerHTML = ' ..
+           [[']] .. ihtml_beg .. [[ src="' + ]] ..
+                 [['data:image/png;base64,]] .. b64_body .. [[' + '">'; ]];
+end
 function create_footer(inline)
   local post_onload_script;
-  if (inline) then
+  if (inline) then -- create JS script to post_load all inlined elements
+    local now_js  = '';
+    for k,v in pairs(InlinedPNG_EOD) do
+      local ihtml_beg = v[1];
+      local isrc      = v[2];
+      now_js = now_js .. create_inlined_js_for_png_at_EOD(ihtml_beg, k, isrc);
+    end --print ('now_js: ' .. now_js);
     local inlined_js  = '';
     for k,v in pairs(InlinedJS)  do
-      inlined_js  = inlined_js  .. 'include_alc("' .. v .. '");';
+      inlined_js = inlined_js  .. 'include_alc("' .. v .. '");';
     end
     local inlined_html = '';
     for k,v in pairs(InlinedCSS) do
@@ -54,18 +70,25 @@ function create_footer(inline)
     for k,v in pairs(InlinedPNG) do
       inlined_html = inlined_html .. '<img src="/' .. v .. '" />';
     end
+    for k,v in pairs(InlinedPNG_EOD) do
+      local isrc = v[1];
+      inlined_html = inlined_html .. '<img src="/' .. isrc .. '" />';
+    end
     post_onload_script =
 [[
 <script>
+]] .. now_js     ..
+[[
 function window_loaded() {
   var now = new Date();
   var LoadStatsDiv = document.getElementById('load_stats');
   LoadStatsDiv.innerHTML = 'LOAD TIME: ' +
                            (now.getTime() - AlchemyStartLoad.getTime()) + ' ms';
-  ]] ..  inlined_js  .. [[
+]] .. inlined_js ..
+[[
 
   var AlcPostLoadReload = document.getElementById('alchemy_postload_reload');
-  AlcPostLoadReload.innerHTML = ']] ..  inlined_html .. [[';
+  AlcPostLoadReload.innerHTML = ']] .. inlined_html .. [[';
 }
 window.onload=function() { window_loaded(); }
 </script>
@@ -73,10 +96,9 @@ window.onload=function() { window_loaded(); }
   else
     post_onload_script = '';
   end
-  local css_src = inline_include_png_src('STATIC/sfondo.png');
   output([[
   <div id="footer">
-    <a href="http://code.google.com/p/alchemydatabase/">Alchemy Database</a> is a A Hybrid Relational-Database/NOSQL-Datastore
+    <a href="http://code.google.com/p/alchemydatabase/">Alchemy Database</a> is a A Hybrid Relational-Database/NOSQL-Datastore/Distributed-Web-Platform
   </div>
   <div id="load_stats"></div>
 </div>
@@ -85,7 +107,8 @@ window.onload=function() { window_loaded(); }
   <style type="text/css">
   BODY {
     font-family: Verdana, sans-serif;
-    background: url(]] .. css_src .. [[) repeat-x top white;
+    background: url(]] .. inline_include_png_src('STATIC/sfondo.png') ..
+            [[) repeat-x top white;
     background-attachment: fixed;
   }
   </style>
@@ -100,6 +123,7 @@ function create_welcome()
 <h2>Register!</h2>
 <b>Want to try Retwis? Create an account!</b>
 <form action="/register" method="POST" onsubmit="return passwords_match(this.elements['password'].value, this.elements['password2'].value)">
+<input type="hidden" name="IO_OP" value="w" />
 <table>
 <tr> <td>Username</td><td><input type="text" name="username"></td> </tr>
 <tr> <td>Password</td><td><input type="password" name="password"></td> </tr>
@@ -109,6 +133,7 @@ function create_welcome()
 </form>
 <h2>Already registered? Login here</h2>
 <form action="/login" method="POST" >
+<input type="hidden" name="IO_OP" value="r" />
 <table>
 <tr> <td>Username</td><td><input type="text" name="username"></td> </tr>
 <tr> <td>Password</td><td><input type="password" name="password"></td> </tr>
@@ -121,21 +146,31 @@ Hello! Retwis is a very simple clone of <a href="http://twitter.com">Twitter</a>
 ]]);
 end
 
-function create_follow() -- Button controlled by Cookie sent w/ Response
---TODO using cookies[1,2] is dangerous, use explicit names [auth, userid, following]
+function create_home_post_box()
+  return [[
+<br>
+<table>
+<tr><td><textarea cols="70" rows="3" name="status"></textarea></td></tr>
+<tr><td align="right"><input type="submit" name="doit" value="Update"></td></tr>
+</table>
+</form>
+]];
+end
+
+function create_follow(my_userid) -- Button controld by Cookie sent w/ Response
 output([[
 <script>
-  var each_cookie = process_cookies();
-  if (each_cookie.length < 4) { return; }
-  var my_userid   = each_cookie[1].split("=")[1];
-  var following   = each_cookie[2].split("=")[1];
-  var userid      = each_cookie[3].split("=")[1];
-  //alert('my_userid: ' + my_userid + ' following: ' + following + ' userid: ' + userid);
-  if (following == 1) {
-    document.write('<a href="/follow/' + my_userid + '/' + userid + '/0" class="button">Stop following</a>');
-  } else if (following == 0) {
-    document.write('<a href="/follow/' + my_userid + '/' + userid + '/1" class="button">Follow this user</a>');
+  var cooks     = process_cookies();
+  var following = cooks['following'];
+  var userid    = cooks['other_userid'];
+  if (typeof following=="undefined" || typeof userid=="undefined") { return; }
+  var url_beg   = ']] .. build_link(my_userid, "follow", my_userid) .. [[';
+  if        (following == 0) {
+    document.write('<a href="' + url_beg + '/' + userid + '/1" class="button">Follow this user</a>');
+  } else if (following == 1) {
+    document.write('<a href="' + url_beg + '/' + userid + '/0" class="button">Stop following</a>');
   }
+  //document.write("<br/><br/>following: " + following + " userid: " + userid + "<br/>");
 </script>
 ]]);
 end
@@ -153,10 +188,10 @@ function showPost(id)
   local username = redis("get", "uid:" .. userid .. ":username");
   local post     = aux[3];
   local userlink = 
-  output('<div class="post">' ..
-         '<a class="username" href="' ..
-                            build_link(userid, "profile", userid) ..  '">' ..
-           username .. "</a>" ..  ' ' .. post .."<br>" .. '<i>posted '..
+  output([[
+    <div class="post">
+      <a class="username" href="]] .. build_link(userid, "profile", userid) ..  
+      '">' ..  username .. "</a>" ..  ' ' .. post .."<br>" .. '<i>posted '..
            scriptElapsed(time) ..' ago via web</i></div>');
   return true;
 end
@@ -176,7 +211,7 @@ var AlchemyNows = (AlchemyNow.getTime()/1000);
   end
 end
 
-function showUserPostsWithPagination(thispage, nposts, username, userid,
+function showUserPostsWithPagination(page, nposts, username, userid,
                                      start, count)
   local navlink  = "";
   local nextc    = start + 10;
@@ -189,11 +224,11 @@ function showUserPostsWithPagination(thispage, nposts, username, userid,
   else               u   = 0;      key = "uid:" .. userid .. ":posts"; end
   showUserPosts(key, start, count);
   if (nposts ~= nil and nposts > start + count) then
-      nextlink = '<a href="' .. build_link(userid, thispage, u, nextc) ..
+      nextlink = '<a href="' .. build_link(userid, page, u, nextc) ..
                          '">&raquo; Older posts </a>';
   end
   if (start > 0) then
-      prevlink = '<a href="' .. build_link(userid, thispage, u, prevc) ..
+      prevlink = '<a href="' .. build_link(userid, page, u, prevc) ..
                         '">Newer posts &laquo;</a>';
   end
   local divider;
@@ -206,7 +241,8 @@ function showUserPostsWithPagination(thispage, nposts, username, userid,
 end
 
 function showLastUsers()
-  local users = redis("sort", "global:users", "GET", "uid:*:username", "DESC", "LIMIT", 0, 10);
+  local users = redis("sort", "global:users", "GET", "uid:*:username",
+                      "DESC", "LIMIT",        0,     10);
   output('<div>');
   for k,v in pairs(users) do
     local userid = redis("get", "username:" .. v .. ":id");
@@ -218,53 +254,22 @@ end
 
 function create_home(my_userid, my_username, start, nposts,
                      nfollowers, nfollowing)
-  local thispage   = '/home';
-  local s          = 0;
+  local page = 'home';
+  local s    = 0;
   if (start ~= nil) then s = tonumber(start); end
-  output('<div id="postform"><form action="/post/' .. my_userid ..
+  output('<div id="postform"><form action="/post/w/' .. my_userid ..
                               '" method="POST">');
   output(my_username ..', what you are doing?');
-  output([[
-<br>
-<table>
-<tr><td><textarea cols="70" rows="3" name="status"></textarea></td></tr>
-<tr><td align="right"><input type="submit" name="doit" value="Update"></td></tr>
-</table>
-</form>
-<div id="homeinfobox">
-]]);
-  output(nfollowers .. " followers<br>" .. nfollowing .. " following<br></div></div>");
-  showUserPostsWithPagination(thispage, nposts, false, my_userid, s, 10);
+
+  output(create_home_post_box());
+  output('<div id="homeinfobox">' .. nfollowers .. " followers<br>" ..
+                                    nfollowing .. " following<br></div></div>");
+  showUserPostsWithPagination(page, nposts, false, my_userid, s, 10);
 end
 
 function goback(my_userid, msg)
   create_header(false, my_userid);
-  output('<div id ="error">' .. msg .. '<br><a href="javascript:history.back()">Please return back and try again</a></div>');
+  output('<div id ="error">' .. msg ..
+     '<br><a href="javascript:history.back()">Go back and try again</a></div>');
   create_footer(false);
-end
-
-MyUserid = 0;
-LoggedIn = false;
-function resetIsLoggedIn()
-  MyUserid = 0;
-  LoggedIn = false;
-  setInlineable(false, true); -- default to OFF
-end
-function setIsLoggedIn(userid)
-  MyUserid = userid;
-  LoggedIn = true;
-end
-function isLoggedIn()
-  resetIsLoggedIn();
-  local authcookie = COOKIE['auth'];
-  if (authcookie ~= nil) then
-    local userid = redis("get", "auth:" .. authcookie);
-    if (userid ~= nil) then
-      if (redis("get", "uid:" .. userid .. ":auth") ~= authcookie) then
-        return false;
-      end
-      MyUserid = userid; LoggedIn = true; return true;
-    end
-  end
-  return false;
 end

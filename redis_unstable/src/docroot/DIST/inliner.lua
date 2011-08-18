@@ -1,5 +1,3 @@
-package.cpath = package.cpath .. ";./extra/base64/?.so"
-require "base64"
 
 -- only certain browsers can inline Images
 -- REF: http://en.wikipedia.org/wiki/Data_URI_scheme
@@ -19,19 +17,31 @@ function is_user_agent_inlineable()
   end  
 end
 
-CanInline = false;
-InlinedJS = {}; InlinedCSS = {}; InlinedPNG = {};
-function setInlineable(virgin, isl)
-  InlinedJS = {}; InlinedCSS = {}; InlinedPNG = {};
-  CanInline = false;
-  if (virgin and isl == false) then CanInline = true; end
-  --print ('setInlineable: virgin: ' .. tostring(virgin) .. 
-  --       ' isl: ' .. tostring(isl) .. ' CanInline: ' .. tostring(CanInline));
-  return CanInline;
+VirginInlineCache = true;
+CanInline         = false;
+InlinedJS         = {}; InlinedCSS = {}; InlinedPNG = {}; InlinedPNG_EOD = {};
+
+-- GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS
+InitAutoInc('NextInlineCacheId');
+print ('NextInlineCacheId: ' .. AutoInc['NextInlineCacheId']);
+
+function initPerRequestInlineCache()
+  InlinedJS = {}; InlinedCSS = {}; InlinedPNG = {}; InlinedPNG_EOD = {};
+  local cachecookie = COOKIE['cacheid'];
+  if (cachecookie == nil) then
+    VirginInlineCache = true;
+    SetHttpResponseHeader('Set-Cookie', 
+                          'cacheid=' .. IncrementAutoInc('NextInlineCacheId') ..
+                          '; Expires=Wed, 09 Jun 2021 10:18:14 GMT; path=/;');
+  else
+    VirginInlineCache = false;
+  end
+  CanInline = is_user_agent_inlineable();
+  --print ('VirginInlineCache: ' .. tostring(VirginInlineCache) .. ' CanInline: ' .. tostring(CanInline));
 end
 
 function inline_include_js(js)
-  if (CanInline) then
+  if (VirginInlineCache and CanInline) then
     table.insert(InlinedJS, js)  
     --for k,v in pairs(InlinedJS)  do print('InlinedJS: ' .. v); end
     local body = redis("get", js);
@@ -42,7 +52,7 @@ function inline_include_js(js)
 end
 
 function inline_include_css(css)
-  if (CanInline) then
+  if (VirginInlineCache and CanInline) then
     table.insert(InlinedCSS, css)  
     --for k,v in pairs(InlinedCSS)  do print('InlinedCSS: ' .. v); end
     local body = redis("get", css);
@@ -53,13 +63,23 @@ function inline_include_css(css)
 end
 
 function inline_include_png_src(isrc)
-  if (CanInline) then
+  if (VirginInlineCache and CanInline) then
     table.insert(InlinedPNG, isrc)  
-    for k,v in pairs(InlinedPNG)  do print('InlinedPNG: ' .. v); end
-    local body     = redis("get", isrc);
-    local b64_body = base64.encode(body);
+    --for k,v in pairs(InlinedPNG)  do print('InlinedPNG: ' .. v); end
+    local b64_body = redis("get", 'BASE64/' .. isrc);
     return 'data:image/png;base64,' .. b64_body;
   else
     return '/' .. isrc;
+  end
+end
+
+function inline_include_png_at_EOD(ihtml_beg, isrc)
+  if (VirginInlineCache and CanInline) then
+    itbl = {ihtml_beg, isrc};
+    table.insert(InlinedPNG_EOD, itbl)  
+    --for k,v in pairs(InlinedPNG_EOD)  do print('InlinedPNG_EOD: ' .. v); end
+    return '<div id="alc_png_eod_' .. #InlinedPNG_EOD .. '"></div>';
+  else
+    return ihtml_beg .. ' src="/' .. isrc .. '"> ';
   end
 end
