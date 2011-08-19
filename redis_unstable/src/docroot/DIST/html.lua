@@ -26,8 +26,8 @@ function create_header(inline, my_userid)
 <meta content="text/html; charset=UTF-8" http-equiv="content-type" />
 ]]                                                        ..
     script                                                ..
-    inline_include_js("STATIC/helper.js")                 ..
-    inline_include_css("STATIC/css/style.css")            ..
+    inline_include_js_at_EOD("STATIC/helper.js")          ..
+    inline_include_css      ("STATIC/css/style.css")      ..
 [[
 <link rel="shortcut icon" href="/STATIC/favicon.ico" />
 <title>Retwis - Example Twitter clone based on Alchemy DB</title>
@@ -49,53 +49,62 @@ function create_inlined_js_for_png_at_EOD(ihtml_beg, n, isrc)
            [[']] .. ihtml_beg .. [[ src="' + ]] ..
                  [['data:image/png;base64,]] .. b64_body .. [[' + '">'; ]];
 end
-function create_footer(inline)
-  local post_onload_script;
+function create_post_onload_script(inline)
   if (inline) then -- create JS script to post_load all inlined elements
-    local now_js  = '';
+    local now_js = '';
     for k,v in pairs(InlinedPNG_EOD) do
       local ihtml_beg = v[1];
       local isrc      = v[2];
       now_js = now_js .. create_inlined_js_for_png_at_EOD(ihtml_beg, k, isrc);
-    end --print ('now_js: ' .. now_js);
-    local inlined_js  = '';
-    for k,v in pairs(InlinedJS)  do
-      inlined_js = inlined_js  .. 'include_alc("' .. v .. '");';
     end
-    local inlined_html = '';
+    for k,v in pairs(InlinedJS_EOD) do
+      local body = redis("get", v)
+      now_js     = now_js  .. body;
+    end --print ('now_js: ' .. now_js);
+    local post_load_js = '';
+    for k,v in pairs(InlinedJS)  do
+      post_load_js = post_load_js  .. 'include_alc("' .. v .. '");';
+    end
+    local post_load_html = '';
     for k,v in pairs(InlinedCSS) do
-      inlined_html = inlined_html .. '<link href="/' .. v ..
-                                     '" rel="stylesheet" type="text/css" />';
+      post_load_html = post_load_html .. '<link href="/' .. v ..
+                                        '" rel="stylesheet" type="text/css" />';
     end
     for k,v in pairs(InlinedPNG) do
-      inlined_html = inlined_html .. '<img src="/' .. v .. '" />';
+      post_load_html = post_load_html .. '<img src="/' .. v .. '" />';
     end
     for k,v in pairs(InlinedPNG_EOD) do
       local isrc = v[1];
-      inlined_html = inlined_html .. '<img src="/' .. isrc .. '" />';
+      post_load_html = post_load_html .. '<img src="/' .. isrc .. '" />';
     end
-    post_onload_script =
-[[
+    return [[
 <script>
+
 ]] .. now_js     ..
 [[
+
 function window_loaded() {
   var now = new Date();
   var LoadStatsDiv = document.getElementById('load_stats');
   LoadStatsDiv.innerHTML = 'LOAD TIME: ' +
                            (now.getTime() - AlchemyStartLoad.getTime()) + ' ms';
-]] .. inlined_js ..
+
+]] .. post_load_js ..
 [[
 
   var AlcPostLoadReload = document.getElementById('alchemy_postload_reload');
-  AlcPostLoadReload.innerHTML = ']] .. inlined_html .. [[';
+  AlcPostLoadReload.innerHTML = ']] .. post_load_html .. [[';
+
 }
 window.onload=function() { window_loaded(); }
 </script>
 ]];
   else
-    post_onload_script = '';
+    return '';
   end
+end
+function create_footer(inline)
+  local post_onload_script = create_post_onload_script(inline);
   output([[
   <div id="footer">
     <a href="http://code.google.com/p/alchemydatabase/">Alchemy Database</a> is a A Hybrid Relational-Database/NOSQL-Datastore/Distributed-Web-Platform

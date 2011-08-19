@@ -36,6 +36,14 @@ void rsubscribeCommand(redisClient *c);
 
 int luaConvertToRedisProtocolCommand(lua_State *lua);
 int luaSha1Command                  (lua_State *lua);
+
 int luaRemoteMessageCommand         (lua_State *lua);
+int luaRemotePipeCommand            (lua_State *lua);
+
+int luaSubscribeFDCommand           (lua_State *lua);
+int luaCloseFDCommand               (lua_State *lua);
+
+#define LUA_POP_WHOLE_STACK \
+  while(lua_type(lua, 1) != LUA_TNONE) { lua_pop(lua, 1); }
 
 #endif /* DXDB_MESSAGING_H */

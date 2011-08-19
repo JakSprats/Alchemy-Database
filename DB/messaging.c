@@ -37,7 +37,12 @@ ALL RIGHTS RESERVED
 #include "xdb_hooks.h"
 #include "messaging.h"
 
+#define DEBUG_C_ARGV(c) \
+  for (int i = 0; i < c->argc; i++) \
+    printf("%d: argv[%s]\n", i, (char *)c->argv[i]->ptr);
+
 //GLOBALS
+extern cli *CurrClient;
 
 //PROTOTYPES
 // from networking.c
@@ -50,6 +55,7 @@ static void ignoreFCP(void *v, lolo val, char *x, lolo xlen, long *card) {
     v = NULL; val = 0; x = NULL; xlen = 0; card = NULL;
 }
 void messageCommand(redisClient *c) { //NOTE: this command does not reply
+    //DEBUG_C_ARGV(c)
     redisClient  *rfc   = getFakeClient();
     rfc->reqtype        = REDIS_REQ_MULTIBULK;
     rfc->argc           = 0;
@@ -101,18 +107,12 @@ rmend:
     return fd;
 }
 
-void rsubscribeCommand(redisClient *c) {
-    sds  ip   = c->argv[1]->ptr;
-    int  port = atoi(c->argv[2]->ptr);
-    sds  cmd  = sdsnew("*1\r\n$4\r\nPING\r\n");   // DESTROYED IN remoteMessage
-    int  fd   = remoteMessage(ip, port, cmd, 1);               // blocking PING
-    if (fd == -1) { addReply(c, shared.subscribe_ping_err); return; }
-    cli *rc   = createClient(fd);                 // fd for remote-subscription
-    DXDB_setClientSA(rc);
-    for (int j = 3; j < c->argc; j++) {//carbon-copy of pubsubSubscribeChannel()
+static void subscribeClient(cli *rc, robj **rargv, int arg_beg, int arg_end) {
+    // carbon-copy of pubsubSubscribeChannel()
+    for (int j = arg_beg; j < arg_end; j++) {
         struct dictEntry *de;
         list *clients = NULL;
-        robj *channel = c->argv[j];
+        robj *channel = rargv[j];
         /* Add the channel to the client -> channels hash table */
         if (dictAdd(rc->pubsub_channels, channel, NULL) == DICT_OK) {
             incrRefCount(channel);
@@ -137,16 +137,81 @@ void rsubscribeCommand(redisClient *c) {
             listAddNodeTail(clients, rc);
         }
     }
-    addReply(c, shared.ok);
 }
 
-int luaRemoteMessageCommand(lua_State *lua) {
+//TODO RSUBSCRIBE is deprecated (BLOCKING) considering tossing it
+//TODO - this command leaks redisClient's (rc), need a "RUNSUBSCRIBE"
+void rsubscribeCommand(redisClient *c) {
+    sds  ip   = c->argv[1]->ptr;
+    int  port = atoi(c->argv[2]->ptr);
+    sds  cmd  = sdsnew("*1\r\n$4\r\nPING\r\n");   // DESTROYED IN remoteMessage
+    int  fd   = remoteMessage(ip, port, cmd, 1);               // blocking PING
+    if (fd == -1) { addReply(c, shared.subscribe_ping_err); return; }
+    cli *rc   = createClient(fd);                 // fd for remote-subscription
+    DXDB_setClientSA(rc);
+    subscribeClient(rc, c->argv, 3, c->argc);
+    addReply(c, shared.ok);
+}
+//TODO - this command leaks redisClient's (rc), need a UnsubscribeFD()
+int luaSubscribeFDCommand(lua_State *lua) {
+    int  argc   = lua_gettop(lua);
+    if (argc < 2) {
+        LUA_POP_WHOLE_STACK
+        luaPushError(lua, "Lua SubscribeCurrentFD(fd, channel)"); return 1;
+    }
+    int t = lua_type(lua, 1);
+    if (t != LUA_TSTRING) {
+        LUA_POP_WHOLE_STACK
+        luaPushError(lua, "Lua SubscribeCurrentFD(fd, channel)"); return 1;
+    }
+    size_t   len;
+    robj   **rargv = zmalloc(sizeof(robj *));
+    char    *s     = (char *)lua_tolstring(lua, -1, &len);
+    lua_pop(lua, 1);
+    rargv[0]       = createStringObject(s, len);
+    t = lua_type(lua, 1);
+    if (t != LUA_TNUMBER && t != LUA_TSTRING) {
+        LUA_POP_WHOLE_STACK
+        luaPushError(lua, "Lua SubscribeCurrentFD(fd, channel)"); return 1;
+    }
+    int fd   = (t == LUA_TNUMBER) ? (int)(lolo)lua_tonumber(lua, -1) :
+                                    atoi((char *)lua_tolstring(lua, -1, &len));
+    lua_pop(lua, 1);
+    cli *rc  = createClient(-1);
+    rc->fd   = fd;                               // fd for remote-subscription
+    DXDB_setClientSA(rc);
+    rc->argc = 1;
+    rc->argv = rargv;
+    subscribeClient(rc, rc->argv, 0, 1);
+    return 0;
+}
+int luaCloseFDCommand(lua_State *lua) {
+    int  argc   = lua_gettop(lua);
+    if (argc != 1) {
+        LUA_POP_WHOLE_STACK luaPushError(lua, "Lua CloseFD(fd)"); return 1;
+    }
+    int t = lua_type(lua, 1);
+    if (t != LUA_TNUMBER && t != LUA_TSTRING) {
+        LUA_POP_WHOLE_STACK luaPushError(lua, "Lua CloseFD(fd)"); return 1;
+    }
+    size_t len;
+    int    fd = (t == LUA_TNUMBER) ? (int)(lolo)lua_tonumber(lua, -1) :
+                                     atoi((char *)lua_tolstring(lua, -1, &len));
+    lua_pop(lua, 1);
+    int ret = close(fd); //printf("CloseFDCommand: fd: %d ret: %d\n", fd, ret);
+    lua_pushnumber(lua, (lua_Number)ret);
+    return 1;
+}
+
+static int luaRemoteRPC(lua_State *lua, bool closer) {//printf("luaRemoeRPC\n");
     int  argc   = lua_gettop(lua);
     if (argc != 3) {
+        LUA_POP_WHOLE_STACK
         luaPushError(lua, "Lua RemoteMessage(ip, port, msg)"); return 1;
     }
     int t       = lua_type(lua, 1);
     if (t != LUA_TSTRING) {
+        LUA_POP_WHOLE_STACK
         luaPushError(lua, "Lua RemoteMessage(ip, port, msg)"); return 1;
     }
     size_t  len;
@@ -155,31 +220,44 @@ int luaRemoteMessageCommand(lua_State *lua) {
     lua_pop(lua, 1);
     t           = lua_type(lua, 1);
     if (t != LUA_TNUMBER && t != LUA_TSTRING) {
+        LUA_POP_WHOLE_STACK
         luaPushError(lua, "Lua RemoteMessage(ip, port, msg)"); return 1;
     }
-    int port = (t == LUA_TNUMBER) ? lua_tonumber(lua, -1) :
+    int port = (t == LUA_TNUMBER) ? (int)(lolo)lua_tonumber(lua, -1) :
                                     atoi((char *)lua_tolstring(lua, -1, &len));
     lua_pop(lua, 1);
     t           = lua_type(lua, 1);
     if (t != LUA_TSTRING) {
+        LUA_POP_WHOLE_STACK
         luaPushError(lua, "Lua RemoteMessage(ip, port, msg)"); return 1;
     }
     s           = (char *)lua_tolstring(lua, -1, &len);
     sds     ip  = sdsnewlen(s, len);                     // DESTROY ME 085
     lua_pop(lua, 1);
-    int     fd = remoteMessage(ip, port, cmd, 0);           // NON-blocking CMD
-    if (fd != -1) close(fd);                                // FIRE & FORGET
+    int     fd = remoteMessage(ip, port, cmd, 0);  // NON-blocking CMD
     sdsfree(ip);                                         // DESTROYED 085
-    return 0;
+    if (closer) {                                  // NOT Pipe -> FIRE & FORGET
+        if (fd != -1) { close(fd); }         return 0;
+    } else {
+        lua_pushnumber(lua, (lua_Number)fd); return 1;
+    }
+}
+int luaRemoteMessageCommand(lua_State *lua) {
+  return luaRemoteRPC(lua, 1);
+}
+int luaRemotePipeCommand(lua_State *lua) {
+  return luaRemoteRPC(lua, 0);
 }
 
-int luaConvertToRedisProtocolCommand(lua_State *lua) {
+
+int luaConvertToRedisProtocolCommand(lua_State *lua) { //printf("Redisify()\n");
     int  argc  = lua_gettop(lua);
     if (argc < 1) {
+        LUA_POP_WHOLE_STACK
         luaPushError(lua, "Lua Redisify() takes 1+ string arg"); return 1;
     }
     sds *argv  = zmalloc(sizeof(sds) * argc);
-    int  i     = argc -1;
+    int  i     = argc - 1;
     while(1) {
         int t = lua_type(lua, 1);
         if (t == LUA_TNIL) {
@@ -209,9 +287,11 @@ int luaConvertToRedisProtocolCommand(lua_State *lua) {
     zfree(argv);
     return 1;
 }
-int luaSha1Command(lua_State *lua) {
+
+int luaSha1Command(lua_State *lua) { //printf("SHA1\n");
     int  argc  = lua_gettop(lua);
     if (argc < 1) {
+        LUA_POP_WHOLE_STACK
         luaPushError(lua, "Lua SHA1() takes 1+ string arg"); return 1;
     }
     sds tok = sdsempty();                                // DESTROY ME 083

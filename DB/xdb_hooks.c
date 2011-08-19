@@ -232,12 +232,21 @@ static bool initLua(cli *c) {
     lua_setglobal(server.lua, "SetHttpRedirect");
     lua_pushcfunction(server.lua, luaSetHttp304Command);
     lua_setglobal(server.lua, "SetHttp304");
+
     lua_pushcfunction(server.lua, luaConvertToRedisProtocolCommand);
     lua_setglobal(server.lua, "Redisify");
     lua_pushcfunction(server.lua, luaSha1Command);
     lua_setglobal(server.lua, "SHA1");
+
     lua_pushcfunction(server.lua, luaRemoteMessageCommand);
     lua_setglobal(server.lua, "RemoteMessage");
+    lua_pushcfunction(server.lua, luaRemotePipeCommand);
+    lua_setglobal(server.lua, "RemotePipe");
+
+    lua_pushcfunction(server.lua, luaSubscribeFDCommand);
+    lua_setglobal(server.lua, "SubscribeFD");
+    lua_pushcfunction(server.lua, luaCloseFDCommand);
+    lua_setglobal(server.lua, "CloseFD");
 
     if                    (!loadLuaHelperFile(c, LUA_INTERNAL_FILE)) return 0;
     if (LuaIncludeFile  && !loadLuaHelperFile(c, LuaIncludeFile))    return 0;

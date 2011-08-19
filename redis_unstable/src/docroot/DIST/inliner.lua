@@ -1,16 +1,16 @@
 
+-- USER_AGENT USER_AGENT USER_AGENT USER_AGENT USER_AGENT USER_AGENT USER_AGENT
 -- only certain browsers can inline Images
 -- REF: http://en.wikipedia.org/wiki/Data_URI_scheme
+function sf(a, b) return string.find(a,b); end -- like a C #define
 function is_user_agent_inlineable()
   local ua = HTTP_HEADER['User-Agent'];
   if (ua == nil) then return false; end
-  ua = string.lower(ua);
-  --print ('ua: ' .. ua);
-  if ((string.find(ua, 'msie \[9') ~= nil)      or
-      ((string.find(ua, 'mozilla')    ~= nil) and
-       (string.find(ua, 'compatible') == nil))  or
-      (string.find(ua, 'webkit')  ~= nil)       or
-      (string.find(ua, 'Opera')   ~= nil)) then
+  ua = string.lower(ua); --print ('ua: ' .. ua);
+  if ((sf(ua, 'msie \[9') ~= nil)                                    or
+      ((sf(ua, 'mozilla') ~= nil) and (sf(ua, 'compatible') == nil)) or
+      (sf(ua,  'webkit')  ~= nil)                                    or
+      (sf(ua,  'Opera')   ~= nil)) then
         return true;
   else
         return false;
@@ -19,14 +19,18 @@ end
 
 VirginInlineCache = true;
 CanInline         = false;
-InlinedJS         = {}; InlinedCSS = {}; InlinedPNG = {}; InlinedPNG_EOD = {};
+InlinedJS         = {}; InlinedJS_EOD  = {};
+InlinedCSS        = {};
+InlinedPNG        = {}; InlinedPNG_EOD = {};
 
 -- GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS
 InitAutoInc('NextInlineCacheId');
 print ('NextInlineCacheId: ' .. AutoInc['NextInlineCacheId']);
 
 function initPerRequestInlineCache()
-  InlinedJS = {}; InlinedCSS = {}; InlinedPNG = {}; InlinedPNG_EOD = {};
+  InlinedJS  = {}; InlinedJS_EOD  = {};
+  InlinedCSS = {};
+  InlinedPNG = {}; InlinedPNG_EOD = {};
   local cachecookie = COOKIE['cacheid'];
   if (cachecookie == nil) then
     VirginInlineCache = true;
@@ -37,9 +41,11 @@ function initPerRequestInlineCache()
     VirginInlineCache = false;
   end
   CanInline = is_user_agent_inlineable();
-  --print ('VirginInlineCache: ' .. tostring(VirginInlineCache) .. ' CanInline: ' .. tostring(CanInline));
+  --print ('VirginInlineCache: ' .. tostring(VirginInlineCache) ..
+  --       ' CanInline: ' .. tostring(CanInline));
 end
 
+-- INLINE INLINE INLINE INLINE INLINE INLINE INLINE INLINE INLINE INLINE INLINE
 function inline_include_js(js)
   if (VirginInlineCache and CanInline) then
     table.insert(InlinedJS, js)  
@@ -73,6 +79,7 @@ function inline_include_png_src(isrc)
   end
 end
 
+-- EOD EOD EOD EOD EOD EOD EOD EOD EOD EOD EOD EOD EOD EOD EOD EOD EOD EOD EOD
 function inline_include_png_at_EOD(ihtml_beg, isrc)
   if (VirginInlineCache and CanInline) then
     itbl = {ihtml_beg, isrc};
@@ -81,5 +88,15 @@ function inline_include_png_at_EOD(ihtml_beg, isrc)
     return '<div id="alc_png_eod_' .. #InlinedPNG_EOD .. '"></div>';
   else
     return ihtml_beg .. ' src="/' .. isrc .. '"> ';
+  end
+end
+
+function inline_include_js_at_EOD(js)
+  if (VirginInlineCache and CanInline) then
+    table.insert(InlinedJS_EOD, js)  
+    --for k,v in pairs(InlinedJS_EOD)  do print('InlinedJS_EOD: ' .. v); end
+    return ''; -- nothing to return, js will be inlined at EOD
+  else
+    return '<script src="/' .. js .. '"></script>';
   end
 end
