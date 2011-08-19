@@ -1,8 +1,9 @@
 
 local AllSynced    = false;
 local NumSynced    = 1; -- NOTE: already synce w/ myself
-local PipeFD       = {};
-local SyncedPipeFD = {};
+local PipeFD       = {}; -- {pipeid -> fd}
+local SyncedPipeFD = {}; -- {fd     -> nodeid}
+
 local Pipe_id      = 1;
 local StartSync    = os.time();
 
@@ -42,9 +43,9 @@ function sync_pong_handler(o_pipeid, o_nodeid, o_channel)
     local pipeid  = tonumber(o_pipeid);
     local fd      = tostring(PipeFD[pipeid]);
     local channel = tostring(o_channel);
-    print ('sync_pong_handler nodeid: ' .. nodeid .. ' pipeid: ' .. pipeid);
+    print ('sync_pong_handler nodeid: ' .. nodeid .. ' fd: ' .. fd);
     SubscribeFD(fd, channel);       -- redis("publish", channel) -> fd
-    SyncedPipeFD[tonumber(fd)] = 1; -- means keep this one around
+    SyncedPipeFD[tonumber(fd)] = nodeid; -- means keep this one around
     data['synced']             = 1;
     NumSynced                  = NumSynced + 1;
     print ('NumSynced: ' .. NumSynced);
@@ -60,6 +61,24 @@ function sync_pong_handler(o_pipeid, o_nodeid, o_channel)
       end
     end
   end
+end
+
+function resync_ping(inid, o_channel)
+  print('resync_ping: nodeid: ' .. inid);
+  StartSync                = os.time()
+  NodeData[inid]['synced'] = 0;
+  NumSynced                = NumSynced - 1;
+  AllSynced                = false;
+  for k,v in pairs(SyncedPipeFD) do
+    if (tonumber(v) == inid) then
+      local fd      = tostring(k);
+      local channel = tostring(o_channel);
+      print ('UnsubscribeFD: ' .. fd .. ' channel: ' .. channel);
+      UnsubscribeFD(fd, channel);
+      table.remove(SyncedPipeFD, k);
+    end
+  end
+  sync_ping(inid, 'sync'); -- ASYNC
 end
 
 function RsubscribeAlchemySync() --print ('RsubscribeAlchemySync');

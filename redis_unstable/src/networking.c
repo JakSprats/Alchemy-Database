@@ -490,8 +490,12 @@ void freeClient(redisClient *c) {
     close(c->fd);
     /* Remove from the list of clients */
     ln = listSearchKey(server.clients,c);
+#ifdef ALCHEMY_DATABASE
+    if (ln) listDelNode(server.clients, ln);
+#else
     redisAssert(ln != NULL);
     listDelNode(server.clients,ln);
+#endif
     /* When client was just unblocked because of a blocking operation,
      * remove it from the list with unblocked clients. */
     if (c->flags & REDIS_UNBLOCKED) {

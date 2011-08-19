@@ -117,7 +117,6 @@ void explainCommand   (redisClient *c);
 void btreeCommand     (redisClient *c);
 
 void messageCommand   (redisClient *c);
-void rsubscribeCommand(redisClient *c);
 
 #ifdef REDIS3
   #define CMD_END       NULL,1,1,1,0,0
@@ -136,7 +135,6 @@ struct redisCommand DXDBCommandTable[] = {
 
     {"lua",        luafuncCommand,    -2, 0,                   GLOB_FUNC_END},
     {"message",    messageCommand,    -2, 0,                   GLOB_FUNC_END},
-    {"rsubscribe", rsubscribeCommand, -4, 0,                  GLOB_FUNC_END},
 
     {"create",     createCommand,     -4, REDIS_CMD_DENYOOM,   GLOB_FUNC_END},
     {"drop",       dropCommand,        3, 0,                   GLOB_FUNC_END},
@@ -245,6 +243,8 @@ static bool initLua(cli *c) {
 
     lua_pushcfunction(server.lua, luaSubscribeFDCommand);
     lua_setglobal(server.lua, "SubscribeFD");
+    lua_pushcfunction(server.lua, luaUnsubscribeFDCommand);
+    lua_setglobal(server.lua, "UnsubscribeFD");
     lua_pushcfunction(server.lua, luaCloseFDCommand);
     lua_setglobal(server.lua, "CloseFD");
 

@@ -37,6 +37,7 @@ ALL RIGHTS RESERVED
 #include "xdb_hooks.h"
 #include "messaging.h"
 
+// DEBUG
 #define DEBUG_C_ARGV(c) \
   for (int i = 0; i < c->argc; i++) \
     printf("%d: argv[%s]\n", i, (char *)c->argv[i]->ptr);
@@ -124,35 +125,11 @@ static void subscribeClient(cli *rc, robj **rargv, int arg_beg, int arg_end) {
                 incrRefCount(channel);
             } else {
                 clients = dictGetEntryVal(de);
-                listNode *ln;
-                listIter *li  = listGetIterator(clients, AL_START_HEAD);
-                while ((ln = listNext(li)) != NULL) { // on repeat, delete older
-                    cli *lc = (cli *)ln->value;
-                    if (rc->sa.sin_addr.s_addr == lc->sa.sin_addr.s_addr &&
-                        rc->sa.sin_port        == lc->sa.sin_port) {
-                       listDelNode(clients,ln);
-                    }
-                } listReleaseIterator(li);
             }
             listAddNodeTail(clients, rc);
         }
     }
 }
-
-//TODO RSUBSCRIBE is deprecated (BLOCKING) considering tossing it
-//TODO - this command leaks redisClient's (rc), need a "RUNSUBSCRIBE"
-void rsubscribeCommand(redisClient *c) {
-    sds  ip   = c->argv[1]->ptr;
-    int  port = atoi(c->argv[2]->ptr);
-    sds  cmd  = sdsnew("*1\r\n$4\r\nPING\r\n");   // DESTROYED IN remoteMessage
-    int  fd   = remoteMessage(ip, port, cmd, 1);               // blocking PING
-    if (fd == -1) { addReply(c, shared.subscribe_ping_err); return; }
-    cli *rc   = createClient(fd);                 // fd for remote-subscription
-    DXDB_setClientSA(rc);
-    subscribeClient(rc, c->argv, 3, c->argc);
-    addReply(c, shared.ok);
-}
-//TODO - this command leaks redisClient's (rc), need a UnsubscribeFD()
 int luaSubscribeFDCommand(lua_State *lua) {
     int  argc   = lua_gettop(lua);
     if (argc < 2) {
@@ -177,12 +154,50 @@ int luaSubscribeFDCommand(lua_State *lua) {
     int fd   = (t == LUA_TNUMBER) ? (int)(lolo)lua_tonumber(lua, -1) :
                                     atoi((char *)lua_tolstring(lua, -1, &len));
     lua_pop(lua, 1);
-    cli *rc  = createClient(-1);
+    cli *rc  = createClient(-1);                         // DESTROY ME 086
     rc->fd   = fd;                               // fd for remote-subscription
     DXDB_setClientSA(rc);
     rc->argc = 1;
     rc->argv = rargv;
     subscribeClient(rc, rc->argv, 0, 1);
+    return 0;
+}
+
+int luaUnsubscribeFDCommand(lua_State *lua) {
+    int  argc   = lua_gettop(lua);
+    if (argc != 2) {
+        LUA_POP_WHOLE_STACK
+        luaPushError(lua, "Lua UnsubscribeCurrentFD(fd, channel)"); return 1;
+    }
+    int t = lua_type(lua, 1);
+    if (t != LUA_TSTRING) {
+        LUA_POP_WHOLE_STACK
+        luaPushError(lua, "Lua UnsubscribeCurrentFD(fd, channel)"); return 1;
+    }
+    size_t   len;
+    char *s       = (char *)lua_tolstring(lua, -1, &len);
+    lua_pop(lua, 1);
+    robj *channel = createStringObject(s, len);
+    t = lua_type(lua, 1);
+    if (t != LUA_TNUMBER && t != LUA_TSTRING) {
+        LUA_POP_WHOLE_STACK
+        luaPushError(lua, "Lua UnsubscribeCurrentFD(fd, channel)"); return 1;
+    }
+    int fd   = (t == LUA_TNUMBER) ? (int)(lolo)lua_tonumber(lua, -1) :
+                                    atoi((char *)lua_tolstring(lua, -1, &len));
+    lua_pop(lua, 1);
+
+    struct dictEntry *de = dictFind(server.pubsub_channels, channel);
+    if (de) {
+        listNode *ln;
+        listIter  li;
+        list *list = dictGetEntryVal(de);
+        listRewind(list, &li);
+        while ((ln = listNext(&li))) {
+            redisClient *c = ln->value;
+            if (c->fd == fd) { freeClient(c); break; }   // DESTROYED 086
+        }
+    }
     return 0;
 }
 int luaCloseFDCommand(lua_State *lua) {

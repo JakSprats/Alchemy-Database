@@ -5,26 +5,38 @@ MyGeneration = MyGeneration + 1; -- This is the next generation
 redis("set", "alchemy_generation", MyGeneration);
 print('MyGeneration: ' .. MyGeneration);
 
+function getGenerationName(nodeid)
+  return 'GENERATION_' .. nodeid;
+end
 function getHWname(nodeid, qname)
   return 'HW_' .. nodeid .. '_Q_' .. qname;
 end
 function HeartBeat() -- lua_cron function, called every second
   if (RsubscribeAlchemySync() == false) then return; end -- wait until synced
-  local hw_eval_cmd = 'hw = {'; -- this command will be remotely EVALed
+  local node_hw_cmd  = 'node_hw  = {'; -- this command will be remotely EVALed
+  local node_gnr_cmd = 'node_gnr = {'; -- this command will be remotely EVALed
   for num, data in pairs(NodeData) do
     if (num == MyNodeId) then
-      hw_eval_cmd = hw_eval_cmd .. AutoInc['Next_sync_TransactionId'];
+      node_hw_cmd  = node_hw_cmd  .. AutoInc['Next_sync_TransactionId'];
+      node_gnr_cmd = node_gnr_cmd .. MyGeneration;
     else
-      local hw = redis("get", getHWname(num, 'sync'));
+      local hw     = redis("get", getHWname(num, 'sync'));
       if (hw == nil) then hw = '0'; end
-      hw_eval_cmd = hw_eval_cmd .. hw;
+      node_hw_cmd  = node_hw_cmd .. hw;
+      local gnr    = redis("get", getGenerationName(num));
+      if (gnr == nil) then gnr = '0'; end
+      node_gnr_cmd = node_gnr_cmd .. gnr;
     end
-    if (num ~= NumNodes) then hw_eval_cmd = hw_eval_cmd .. ','; end
+    if (num ~= NumNodes) then
+      node_hw_cmd  = node_hw_cmd  .. ',';
+      node_gnr_cmd = node_gnr_cmd .. ',';
+    end
   end
-  hw_eval_cmd = hw_eval_cmd .. '};';
-  --print ('HeartBeat: hw_eval_cmd: .. ' .. hw_eval_cmd);
+  node_hw_cmd  = node_hw_cmd  .. '};';
+  node_gnr_cmd = node_gnr_cmd .. '};';
+  --print ('HeartBeat: cmd: .. ' .. node_hw_cmd .. node_gnr_cmd);
   local msg = Redisify('LUA', 'handle_heartbeat', MyNodeId, MyGeneration,
-                                                  hw_eval_cmd);
+                                                  node_hw_cmd .. node_gnr_cmd);
   redis("publish", 'sync', msg);
 end
 
@@ -57,12 +69,29 @@ function natural_net_recovery(hw)
     end
   end
 end
-function handle_heartbeat(nodeid, generation, hw_eval_cmd)
-  assert(loadstring(hw_eval_cmd))() -- Lua's eval - "hw" is defined
-  for num, data in pairs(hw) do
+local GenerationSet = {};
+function handle_heartbeat(nodeid, generation, hb_eval_cmd)
+  --print ('handle_heartbeat: hb_eval_cmd: ' .. hb_eval_cmd);
+  assert(loadstring(hb_eval_cmd))() -- Lua's eval - "node_hw, node_gnr" defined
+  for num, data in pairs(node_hw) do
     if (num == MyNodeId) then
       RemoteHW[nodeid] = data;
       if (LastHB_HW[nodeid] == nil) then LastHB_HW[nodeid] = data; end
+    end
+  end
+  for nid, gnr in pairs(node_gnr) do
+    local inid = tonumber(nid);
+    if (inid == tonumber(nodeid)) then
+      if (GenerationSet[inid]) then
+        local lgnr = redis("get", getGenerationName(inid));
+        if (lgnr ~= nil) then
+          if (tonumber(lgnr) ~= tonumber(gnr)) then
+            resync_ping(inid, 'sync');
+          end
+        end
+      end
+      redis("set", getGenerationName(inid), gnr);
+      GenerationSet[inid] = true;
     end
   end
   local nnodes = 0;

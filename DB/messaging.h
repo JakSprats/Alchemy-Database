@@ -32,7 +32,6 @@ ALL RIGHTS RESERVED
 #include "common.h"
 
 void messageCommand   (redisClient *c);
-void rsubscribeCommand(redisClient *c);
 
 int luaConvertToRedisProtocolCommand(lua_State *lua);
 int luaSha1Command                  (lua_State *lua);
@@ -41,6 +40,7 @@ int luaRemoteMessageCommand         (lua_State *lua);
 int luaRemotePipeCommand            (lua_State *lua);
 
 int luaSubscribeFDCommand           (lua_State *lua);
+int luaUnsubscribeFDCommand         (lua_State *lua);
 int luaCloseFDCommand               (lua_State *lua);
 
 #define LUA_POP_WHOLE_STACK \
