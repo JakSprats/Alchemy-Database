@@ -1,11 +1,11 @@
 
 -- ALCHEMY_SYNC ALCHEMY_SYNC ALCHEMY_SYNC ALCHEMY_SYNC ALCHEMY_SYNC
-dofile "../DIST/gossip.lua";
+dofile "./docroot/DIST/gossip.lua";
 
 -- HEARTBEAT HEARTBEAT HEARTBEAT HEARTBEAT HEARTBEAT HEARTBEAT HEARTBEAT
-dofile "../DIST/heartbeat.lua";
+dofile "./docroot/DIST/heartbeat.lua";
 
 -- AUTO_INC_COUNTER AUTO_INC_COUNTER AUTO_INC_COUNTER AUTO_INC_COUNTER
-dofile "../DIST/global_ops.lua";
+dofile "./docroot/DIST/global_ops.lua";
 
 

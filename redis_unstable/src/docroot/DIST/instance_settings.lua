@@ -28,3 +28,6 @@ MyGeneration = MyGeneration + 1; -- This is the next generation
 redis("set", "alchemy_generation", MyGeneration);
 print('MyGeneration: ' .. MyGeneration);
 
+-- WHITELISTED_FUNCTIONS WHITELISTED_FUNCTIONS WHITELISTED_FUNCTIONS
+dofile "./docroot/DIST/whitelist.lua";
+

@@ -1,9 +1,6 @@
 
 io.stdout:setvbuf("no"); -- flush stdout
 
--- CLUSTER_INIT CLUSTER_INIT CLUSTER_INIT CLUSTER_INIT CLUSTER_INIT
-dofile ".instance_settings.lua";
-
 -- INLCUDES INLCUDES INLCUDES INLCUDES INLCUDES INLCUDES INLCUDES INLCUDES
 dofile "includes.lua";
 
