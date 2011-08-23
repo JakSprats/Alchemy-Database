@@ -14,8 +14,6 @@ if [ "$1" == "clean" ]; then
   for d in $DIRS; do
     (cd $d; rm dump.rdb);
   done
-  echo "delete from posts; delete from follows; delete from users;" | \
-         mysql -uroot twitter
 else
   for p in $PORTS; do 
     echo ./alchemy-cli -p $p SAVE
@@ -23,6 +21,10 @@ else
     echo ./alchemy-cli -p $p SHUTDOWN
     ./alchemy-cli -p $p SHUTDOWN
   done
+  echo ./alchemy-cli -p 9999 SAVE
+  ./alchemy-cli -p 9999 SAVE
+  echo ./alchemy-cli -p 9999 SHUTDOWN
+  ./alchemy-cli -p 9999 SHUTDOWN
   if [ "$1" == "shutdown" ]; then
     exit 0;
   fi
@@ -32,26 +34,16 @@ fi
 echo sleep 2
 sleep 2
 
-DIRS="./ ./SERVER2 ./SERVER2/3/ ./SERVER2/4/"
 for d in $DIRS; do
   (cd $d
-    echo "(cd $d; ./alchemy-server docroot/DIST/redis.conf.dist_alc_twitter >> OUTPUT & </dev/null)"
-    ./alchemy-server docroot/DIST/redis.conf.dist_alc_twitter >> OUTPUT & </dev/null
+    echo "(cd $d; ./alchemy-server docroot/DIST/redis.conf >> OUTPUT & </dev/null)"
+    ./alchemy-server docroot/DIST/redis.conf >> OUTPUT & </dev/null
   )
 done
-
-if [ "$1" != "nomysql" ]; then
-  echo sleep 2
-  sleep 2
-  echo killall -9 alchemy-cli
-  killall -9 alchemy-cli
-  echo sleep 2
-  sleep 2
-  for p in $PORTS; do 
-    echo "./alchemy-cli -p $p -po SUBPIPE sql | mysql -uroot twitter"
-    (./alchemy-cli -p $p -po SUBPIPE sql | mysql -uroot twitter) & < /dev/null
-  done
-fi
+echo "(cd ./docroot/BRIDGE/; ./alchemy-server redis.conf >> OUTPUT & </dev/null)"
+(cd ./docroot/BRIDGE/;
+  ./alchemy-server redis.conf >> OUTPUT & </dev/null
+)
 
 echo sleep 2
 sleep 2

@@ -3,12 +3,11 @@ io.stdout:setvbuf("no"); -- flush stdout
 
 -- CLUSTER_INIT CLUSTER_INIT CLUSTER_INIT CLUSTER_INIT CLUSTER_INIT
 dofile "./docroot/DIST/.instance_settings.lua";
-NumNodes = #NodeData;
 
 -- INLCUDES INLCUDES INLCUDES INLCUDES INLCUDES INLCUDES INLCUDES INLCUDES
 dofile "./docroot/DIST/includes.lua";
 
-
+-- INIT INIT INIT INIT INIT INIT INIT INIT INIT INIT INIT INIT INIT INIT INIT
 function InitRequest() -- inits global vars included via "includes.lua"
   initPerRequestIsLoggedIn();
   initPerRequestIsDeflatable();
@@ -110,9 +109,9 @@ end
 
 -- NOTE: register & logout can be OOO, shared vars MUST be stateless
 global_register = function(nodeid, xactid, my_userid, username)
-print ('global_register: my_userid: ' .. my_userid);
-  if (xactid ~= 0) then update_remote_hw('sync', nodeid, xactid); end
+  print ('global_register: my_userid: ' .. my_userid);
   -- do one-time SET's - this data is needed
+  if (xactid ~= 0) then update_remote_hw('sync', nodeid, xactid); end
   redis("set",  'username:' .. username  .. ':id',       my_userid);
   redis("set",  'uid:'      .. my_userid .. ':username', username);
   redis("sadd", "global:users",                          my_userid);
@@ -164,9 +163,9 @@ function iter_global_post(o_tot, o_interval, o_progress,
 end
 
 global_post = function(nodeid, xactid, my_userid, postid, ts, msg)
-  if (xactid ~= 0) then update_remote_hw('sync', nodeid, xactid); end
   print ('global_post: my_userid: ' .. my_userid .. ' ts: ' .. ts ..
          ' msg: ' .. msg);
+  if (xactid ~= 0) then update_remote_hw('sync', nodeid, xactid); end
   local post      = my_userid .. '|' .. ts .. '|' .. msg;
   redis("set", 'post:' .. postid, post);
   local followers = redis("smembers", 'uid:' .. my_userid .. ':followers');
@@ -184,10 +183,10 @@ global_post = function(nodeid, xactid, my_userid, postid, ts, msg)
 end
 
 global_follow = function(nodeid, xactid, my_userid, userid, follow)
-  if (xactid ~= 0) then update_remote_hw('sync', nodeid, xactid); end
   print ('global_follow: my_userid: ' .. my_userid .. ' userid: ' .. userid ..
          ' follow: ' .. follow);
-  if (GetNode(userid) == MyNodeId) then -- only for users ON THIS SHARD
+  if (xactid ~= 0) then update_remote_hw('sync', nodeid, xactid); end
+  if (UserNode(userid) == MyNodeId) then -- only for users ON THIS SHARD
     commit_follow(my_userid, userid, follow);
   end
 end

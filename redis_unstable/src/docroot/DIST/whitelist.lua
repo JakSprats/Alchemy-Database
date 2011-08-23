@@ -1,5 +1,5 @@
--- Retwis for Alchemy's Short Stack - PUBLIC API
-dofile "./docroot/DIST/short_stack.lua";
+-- Retwis for Alchemy's App Stack - PUBLIC API
+dofile "./docroot/DIST/app_stack.lua";
 
 function I_index_page(redirect, start) 
   local inline;

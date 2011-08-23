@@ -1,15 +1,14 @@
 
-function GetNode(num)
+function UserNode(num)
   return (math.floor(tonumber(num) / AutoIncRange) % NumNodes) + 1;
 end
 function GetHttpDomainPort(num)
-  local which = GetNode(num); --print ('num: ' .. num .. ' which: ' .. which);
+  local which = UserNode(num); --print ('num: ' .. num .. ' which: ' .. which);
   return 'http://' .. NodeData[which]["domain"] .. ':' .. 
                       NodeData[which]["port"]   .. '/';
 end
 function IsCorrectNode(num)
-  local which = GetNode(num);
-  return (which == MyNodeId);
+  return (UserNode(num) == MyNodeId);
 end
 function GetUsernameNode(username)
   local uns = SHA1(username);
@@ -18,7 +17,7 @@ function GetUsernameNode(username)
     local c = string.byte(uns, i);
     tot     = tot + tonumber(c);
   end --print ('GetUsernameNode: username: ' .. username .. ' tot: ' .. tot);
-  return GetNode(tot);
+  return UserNode(tot);
 end
 
 -- PAGE read/write OPS (constants)

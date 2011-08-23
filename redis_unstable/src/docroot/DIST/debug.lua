@@ -4,6 +4,8 @@ local SimulateNetworkPartition = 10;
 
 -- ALCHEMY_SYNC ALCHEMY_SYNC ALCHEMY_SYNC ALCHEMY_SYNC ALCHEMY_SYNC
 local AllSynced = false;
+
+--NOTE: this does not work, RSUBSCRIBE was deprecated
 function RsubscribeAlchemySync() -- lua_cron function, called every second
   --print ('DEBUG: RsubscribeAlchemySync');
   local nsync = 0;
