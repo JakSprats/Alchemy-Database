@@ -10,12 +10,19 @@ table.insert(NodeData, {ip     = "127.0.0.1",      port = 8082,
                         domain = "www.retwis.com", synced = 0});
 table.insert(NodeData, {ip     = "127.0.0.1",      port = 8083,
                         domain = "www.retwis.com", synced = 0});
+table.insert(NodeData, {ip     = "127.0.0.1",      port = 8084,
+                        domain = "www.retwis.com", synced = 0});
+table.insert(NodeData, {ip     = "127.0.0.1",      port = 8085,
+                        domain = "www.retwis.com", synced = 0});
+table.insert(NodeData, {ip     = "127.0.0.1",      port = 8086,
+                        domain = "www.retwis.com", synced = 0});
+table.insert(NodeData, {ip     = "127.0.0.1",      port = 8087,
+                        domain = "www.retwis.com", synced = 0});
 
 BridgeData = {ip     = "127.0.0.1",      port = 9999,
               domain = "www.retwis.com", synced = 0};
 
-PeerData = {3, 4, -1};
-
+PeerData = {1, 2, 3, 4, -1};
 
 -- CONSTANT CONSTANT CONSTANT CONSTANT CONSTANT CONSTANT CONSTANT CONSTANT
 NumNodes  = #NodeData;

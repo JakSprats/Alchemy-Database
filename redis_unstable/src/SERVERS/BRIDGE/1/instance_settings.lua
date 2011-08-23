@@ -10,23 +10,39 @@ table.insert(NodeData, {ip     = "127.0.0.1",      port = 8082,
                         domain = "www.retwis.com", synced = 0});
 table.insert(NodeData, {ip     = "127.0.0.1",      port = 8083,
                         domain = "www.retwis.com", synced = 0});
+table.insert(NodeData, {ip     = "127.0.0.1",      port = 8084,
+                        domain = "www.retwis.com", synced = 0});
+table.insert(NodeData, {ip     = "127.0.0.1",      port = 8085,
+                        domain = "www.retwis.com", synced = 0});
+table.insert(NodeData, {ip     = "127.0.0.1",      port = 8086,
+                        domain = "www.retwis.com", synced = 0});
+table.insert(NodeData, {ip     = "127.0.0.1",      port = 8087,
+                        domain = "www.retwis.com", synced = 0});
 
 BridgeData = {ip     = "127.0.0.1",      port = 9999,
               domain = "www.retwis.com", synced = 0};
 
-PeerData = {1, 2, 3, 4};
+PeerData = {1, 2, 3, 4, 5, 6, 7, 8};
 
 NetworkData           = {};
 NetworkData[1]        = 1;
 NetworkData[2]        = 1;
-NetworkData[3]        = 2;
-NetworkData[4]        = 2;
+NetworkData[3]        = 1;
+NetworkData[4]        = 1;
+NetworkData[5]        = 2;
+NetworkData[6]        = 2;
+NetworkData[7]        = 2;
+NetworkData[8]        = 2;
 
 ForwardNetworkData    = {};
 ForwardNetworkData[1] = 2;
 ForwardNetworkData[2] = 2;
-ForwardNetworkData[3] = 1;
-ForwardNetworkData[4] = 1;
+ForwardNetworkData[3] = 2;
+ForwardNetworkData[4] = 2;
+ForwardNetworkData[5] = 1;
+ForwardNetworkData[6] = 1;
+ForwardNetworkData[7] = 1;
+ForwardNetworkData[8] = 1;
 
 -- CONSTANT CONSTANT CONSTANT CONSTANT CONSTANT CONSTANT CONSTANT CONSTANT
 NumNodes  = #NodeData;
