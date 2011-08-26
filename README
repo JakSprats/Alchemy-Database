@@ -1,4 +1,3 @@
-
 Alchemy Database: A Hybrid Relational-Database/NOSQL-Datastore
 
 Project Home Page: http://code.google.com/p/alchemydatabase/
@@ -16,7 +15,8 @@ BUILD:
 2.) cd Alchemy-Database
 3.) make
 RUN:
-1.) ./alchemy-server
+1.)  cd redis/src
+2.) ./alchemy-server ../redis.conf
 EXPERIMENT (run from command line, some characters '(',')','*' must be escaped)
 ./alchemy-cli CREATE TABLE test \(id int primary key, field TEXT, name TEXT\)
 OK
