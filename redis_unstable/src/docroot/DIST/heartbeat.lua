@@ -56,7 +56,7 @@ function HeartBeat() -- lua_cron function, called every second
   end
 end
 
-local RemoteHW = {}; local LastHB_HW = {}; local GenerationSet = {};
+local SyncedHW = {}; local LastHB_SyncedHW = {}; local GenerationSet = {};
 
 function handle_heartbeat(nodeid, generation, hb_eval_cmd)
   print ('handle_heartbeat: inid: ' .. nodeid .. ' hb_cmd: ' .. hb_eval_cmd)
@@ -66,9 +66,9 @@ function handle_heartbeat(nodeid, generation, hb_eval_cmd)
   for num, data in pairs(N_HW) do
     local inum = tonumber(num);
     if (inum == MyNodeId) then
-      print ('X to NODE: RemoteHW[' .. inid .. ']: ' .. data);
-      RemoteHW[inid] = data;
-      if (LastHB_HW[inid] == nil) then LastHB_HW[inid] = data; end
+      print ('X to NODE: SyncedHW[' .. inid .. ']: ' .. data);
+      SyncedHW[inid] = data;
+      if (LastHB_SyncedHW[inid] == nil) then LastHB_SyncedHW[inid] = data; end
     end
   end
   for nid, gnr in pairs(N_GNR) do
@@ -86,19 +86,7 @@ function handle_heartbeat(nodeid, generation, hb_eval_cmd)
       GenerationSet[inid] = true;
     end
   end
-  local nnodes = 0;
-  local lw     = -1;
-  for num, data in pairs(RemoteHW) do
-    nnodes = nnodes +1;
-    if     (lw == -1)  then lw = data;
-    elseif (data < lw) then lw = data; end
-  end
-  if (nnodes ~= NumHBs) then return; end
-  trim_Q('sync', lw);
-  if (tonumber(RemoteHW[inid]) < tonumber(LastHB_HW[inid])) then
-    natural_net_recovery(LastHB_HW[inid]); 
-  end
-  LastHB_HW[inid] = AutoInc['Next_sync_XactId'];
+  check_heartbeat()
 end
 
 function handle_bridge_heartbeat(nodeid, generation, hb_eval_cmd)
@@ -109,9 +97,9 @@ function handle_bridge_heartbeat(nodeid, generation, hb_eval_cmd)
   assert(loadstring(hb_eval_cmd))()
   for num, data in pairs(N_HW) do
     local inum = tonumber(num);
-    print ('BRIDGE to BRIDGE: RemoteHW[' .. inum .. ']: ' .. data);
-    RemoteHW[inum] = data;
-    if (LastHB_HW[inum] == nil) then LastHB_HW[inum] = data; end
+    print ('BRIDGE to BRIDGE: SyncedHW[' .. inum .. ']: ' .. data);
+    SyncedHW[inum] = data;
+    if (LastHB_SyncedHW[inum] == nil) then LastHB_SyncedHW[inum] = data; end
   end
 end
 
@@ -155,11 +143,12 @@ function update_remote_hw(nodeid, xactid)
 end
 
 -- OOO_HANDLING OOO_HANDLING OOO_HANDLING OOO_HANDLING OOO_HANDLING
-local GlobalRemoteHW   = {}; GlobalRemoteHW['sync'] = 0;
-function trim_Q(qname, hw)
-  if (GlobalRemoteHW[qname] == hw) then return; end
-  redis("zremrangebyscore", 'Q_' .. qname, "-inf", hw);
-  GlobalRemoteHW[qname] = hw;
+--TODO
+local GlobalSyncedHW   = 0;
+function trim_sync_Q(hw)
+  if (GlobalSyncedHW == hw) then return; end
+  redis("zremrangebyscore", 'Q_sync', "-inf", hw);
+  GlobalSyncedHW = hw;
 end
 function handle_ooo(fromnode, hw, xactid)
   local ifromnode = tonumber(fromnode);
@@ -174,14 +163,29 @@ function handle_ooo(fromnode, hw, xactid)
   RemoteMessage(data["ip"], data["port"], pipeline);
 end
 function natural_net_recovery(hw)
-  for num, data in pairs(RemoteHW) do
+  for num, data in pairs(SyncedHW) do
     if (tonumber(data) ~= tonumber(hw)) then
-      --print('natural_net_recovery: node: ' .. num .. ' nhw: ' .. data ..
-                                   --' hw: ' .. hw);
       handle_ooo(num, data, (hw + 1));
     end
   end
 end
+--TODO
+function check_heartbeat()
+  local nnodes = 0;
+  local lw     = -1;
+  for num, data in pairs(SyncedHW) do
+    nnodes = nnodes +1;
+    if     (lw == -1)  then lw = data;
+    elseif (data < lw) then lw = data; end
+  end
+  if (nnodes ~= NumHBs) then return; end
+  trim_sync_Q(lw);
+  if (tonumber(SyncedHW[inid]) < tonumber(LastHB_SyncedHW[inid])) then
+    natural_net_recovery(LastHB_SyncedHW[inid]); 
+  end
+  LastHB_SyncedHW[inid] = AutoInc['Next_sync_XactId'];
+end
+
 --TODO
 function recover_from_ooo()
  -- TODO handle multiple missing blocks
