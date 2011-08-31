@@ -1,10 +1,6 @@
 
-function getGenerationName(nodeid)
-  return 'GENERATION_' .. nodeid;
-end
-function getHWname(nodeid, qname)
-  return 'HW_'   .. nodeid .. '_Q_' .. qname;
-end
+function getGenerationName(nodeid) return 'GENERATION_' .. nodeid; end
+function getHWname        (nodeid) return 'HIGHWATER_'  .. nodeid; end
 
 local BridgeHW = 0;
 function aiweq(inid) return '[' .. inid .. ']='; end -- HELPER
@@ -24,7 +20,7 @@ function GenerateHBCommand(isb) -- this command will be remotely EVALed
       n_hw_cmd  = n_hw_cmd  .. aiweq(inid) .. AutoInc['Next_sync_XactId'];
       n_gnr_cmd = n_gnr_cmd .. aiweq(inid) .. MyGeneration;
     else
-      local hw  = redis("get", getHWname(inid, 'sync'));
+      local hw  = redis("get", getHWname(inid));
       if (hw == nil) then hw = '0'; end
       local gnr = redis("get", getGenerationName(inid));
       if (gnr == nil) then gnr = '0'; end
@@ -60,37 +56,7 @@ function HeartBeat() -- lua_cron function, called every second
   end
 end
 
--- OOO_HANDLING OOO_HANDLING OOO_HANDLING OOO_HANDLING OOO_HANDLING
-local GlobalRemoteHW   = {}; GlobalRemoteHW['sync'] = 0;
-function trim_Q(qname, hw)
-  if (GlobalRemoteHW[qname] == hw) then return; end
-  redis("zremrangebyscore", 'Q_' .. qname, "-inf", hw);
-  GlobalRemoteHW[qname] = hw;
-end
-function handle_ooo(fromnode, hw, xactid)
-  local ifromnode = tonumber(fromnode);
-  --print ('handle_ooo: fromnode: ' .. fromnode .. ' hw: ' .. hw .. 
-                    --' xactid: ' .. xactid);
-  local beg      = tonumber(hw)     + 1;
-  local fin      = tonumber(xactid) - 1;
-  local msgs     = redis("zrangebyscore", "Q_sync", beg, fin);
-  local pipeline = '';
-  for k,v in pairs(msgs) do pipeline = pipeline .. v; end
-  local data     = GetNode(ifromnode);
-  RemoteMessage(data["ip"], data["port"], pipeline);
-end
-local RemoteHW         = {}; local LastHB_HW        = {};
-function natural_net_recovery(hw)
-  for num, data in pairs(RemoteHW) do
-    if (tonumber(data) ~= tonumber(hw)) then
-      --print('natural_net_recovery: node: ' .. num .. ' nhw: ' .. data ..
-                                   --' hw: ' .. hw);
-      handle_ooo(num, data, (hw + 1));
-    end
-  end
-end
-
-local GenerationSet = {};
+local RemoteHW = {}; local LastHB_HW = {}; local GenerationSet = {};
 
 function handle_heartbeat(nodeid, generation, hb_eval_cmd)
   print ('handle_heartbeat: inid: ' .. nodeid .. ' hb_cmd: ' .. hb_eval_cmd)
@@ -157,32 +123,27 @@ end
 function update_remote_hw(nodeid, xactid)
   local qname  = 'sync';
   local inid   = tonumber(nodeid);
-  local hwname = getHWname(nodeid, qname);
+  local hwname = getHWname(nodeid);
   local hw     = tonumber(redis("get", hwname));
   local dbg    = hw; if (hw == nil) then dbg = "(nil)"; end
   print('update_remote_hw: nodeid: ' .. nodeid ..  ' xactid: ' .. xactid ..
                          ' HW: '     .. dbg);
   local ooo    = false;
   if     (hw == nil or hw == 0) then
-print('CHERRY SET');
     redis("set", hwname, xactid);
   else
     local isb;
     if (inid == -1) then isb = 1; else isb = 0; end
     if (isb == 1) then
       if (hw == getPreviousBridgeAutoInc(xactid)) then
-print ('NEXT BRIDGE NUM');
         redis("set", hwname, xactid);
       else
-print ('OOO BRIDGE: xactid: ' .. xactid .. ' Prev: ' .. getPreviousBridgeAutoInc(xactid));
           ooo = true;
       end
     else
       if (hw == getPreviousAutoInc(xactid)) then
-print ('NEXT NODE NUM');
         redis("set", hwname, xactid);
       else
-print ('OOO NODE: xactid: ' .. xactid .. ' Prev: ' .. getPreviousAutoInc(xactid));
         ooo = true;
       end
     end
@@ -193,7 +154,34 @@ print ('OOO NODE: xactid: ' .. xactid .. ' Prev: ' .. getPreviousAutoInc(xactid)
   end
 end
 
-
+-- OOO_HANDLING OOO_HANDLING OOO_HANDLING OOO_HANDLING OOO_HANDLING
+local GlobalRemoteHW   = {}; GlobalRemoteHW['sync'] = 0;
+function trim_Q(qname, hw)
+  if (GlobalRemoteHW[qname] == hw) then return; end
+  redis("zremrangebyscore", 'Q_' .. qname, "-inf", hw);
+  GlobalRemoteHW[qname] = hw;
+end
+function handle_ooo(fromnode, hw, xactid)
+  local ifromnode = tonumber(fromnode);
+  --print ('handle_ooo: fromnode: ' .. fromnode .. ' hw: ' .. hw .. 
+                    --' xactid: ' .. xactid);
+  local beg      = tonumber(hw)     + 1;
+  local fin      = tonumber(xactid) - 1;
+  local msgs     = redis("zrangebyscore", "Q_sync", beg, fin);
+  local pipeline = '';
+  for k,v in pairs(msgs) do pipeline = pipeline .. v; end
+  local data     = GetNode(ifromnode);
+  RemoteMessage(data["ip"], data["port"], pipeline);
+end
+function natural_net_recovery(hw)
+  for num, data in pairs(RemoteHW) do
+    if (tonumber(data) ~= tonumber(hw)) then
+      --print('natural_net_recovery: node: ' .. num .. ' nhw: ' .. data ..
+                                   --' hw: ' .. hw);
+      handle_ooo(num, data, (hw + 1));
+    end
+  end
+end
 --TODO
 function recover_from_ooo()
  -- TODO handle multiple missing blocks

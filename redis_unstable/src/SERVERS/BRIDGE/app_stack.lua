@@ -10,17 +10,16 @@ dofile "../includes.lua";
 InitBridgeAutoInc('Next_sync_XactId');
 print ('Next_sync_XactId: ' .. AutoInc['Next_sync_XactId']);
 
-
+-- FORWARDERS FORWARDERS FORWARDERS FORWARDERS FORWARDERS FORWARDERS
 function bridge_global_caller(bid, fname, bxactid, ...) -- NOTE: NO reordering
-  print ('XXXXXXXXXXXXXXXX: bridge_global_caller: bid: '   .. bid .. 
-                                                ' fname: ' .. fname ..
-                                                ' bxactid: ' .. bxactid);
+  print ('bridge_global_caller: bid: '     .. bid .. ' fname: ' .. fname ..
+                              ' bxactid: ' .. bxactid);
   update_bridge_hw(bid, bxactid);
   local channel = 'sync';
   local pmsg    = Redisify('LUA', fname, -1, bxactid, ...);
   --print ('bridge_global_caller: pmsg: ' .. pmsg);
   redis("publish", channel, pmsg);
-  redis("zadd", 'Q_' .. channel, xactid, pmsg);
+  redis("zadd", 'Q_' .. channel, bxactid, pmsg);
 end
 
 function queue_global_op(xactid, fname, ...)
@@ -36,10 +35,11 @@ function queue_global_op(xactid, fname, ...)
   redis("zadd", 'Q_' .. channel, bxactid, pmsg);
 end
 
+-- SKELETONS SKELETONS SKELETONS SKELETONS SKELETONS SKELETONS SKELETONS
+
 -- TODO these all do the same thing
 --      1.) Alchemy config option: bridge_mode yes
---      2.) any "MESSAGE -> LUA global_*" call will just call:
---                                    [update_bridge_remote_hw, queue_global_op]
+--      2.) any "MESSAGE -> LUA global_*" call will just call: queue_global_op
 global_register = function(nodeid, xactid, my_userid, username)
   print ('B: global_register: my_userid: ' .. my_userid);
   queue_global_op(xactid, 'global_register', my_userid, username);
