@@ -179,7 +179,7 @@ void DXDB_populateCommandTable(dict *server_commands) {
 void DXDB_initServerConfig() { //printf("DXDB_initServerConfig\n");
     LuaIncludeFile     = NULL;
     LuaCronFunc        = NULL;
-    Basedir            = zstrdup("./external/"); // DEFAULT dir for Alchemy
+    Basedir            = zstrdup("./extra/"); // DEFAULT dir for Alchemy
     WebServerMode      = -1;
     WebServerIndexFunc = NULL;
 
@@ -309,12 +309,14 @@ int DXDB_loadServerConfig(int argc, sds *argv) {
         Basedir = zstrdup(argv[1]);
         return 0;
     } else if (!strcasecmp(argv[0], "outputmode")    && argc == 2) {
-        if (!strcasecmp(argv[1], "pure_redis")) {
+        if        (!strcasecmp(argv[1], "embedded")) {
+            OutputMode = OUTPUT_EMBEDDED;
+        } else if (!strcasecmp(argv[1], "pure_redis")) {
             OutputMode = OUTPUT_PURE_REDIS;
         } else if (!strcasecmp(argv[1],"normal")) {
             OutputMode = OUTPUT_NORMAL;
         } else {
-            char *err = "argument must be 'pure_redis' or 'normal'";
+            char *err = "argument must be 'embedded', 'pure_redis' or 'normal'";
             fprintf(stderr, "%s\n", err);
             return -1;
         }
@@ -415,13 +417,15 @@ int DXDB_configSetCommand(cli *c, robj *o) {
         LuaCronFunc = zstrdup(o->ptr);
         return 0;
     } else if (!strcasecmp(c->argv[2]->ptr, "outputmode")) {
-        if (!strcasecmp(o->ptr, "pure_redis")) {
+        if        (!strcasecmp(o->ptr, "embedded")) {
+            OutputMode = OUTPUT_EMBEDDED;
+        } else if (!strcasecmp(o->ptr, "pure_redis")) {
             OutputMode = OUTPUT_PURE_REDIS;
         } else if (!strcasecmp(o->ptr, "normal")) {
             OutputMode = OUTPUT_NORMAL;
         } else {
             addReplySds(c,sdscatprintf(sdsempty(),
-               "-ERR OUTPUTMODE can be [PURE_REDIS|NORMAL] not: %s\r\n",
+               "-ERR OUTPUTMODE: [EMBEDDED|PURE_REDIS|NORMAL] not: %s\r\n",
                 (char *)o->ptr));
             decrRefCount(o);
             return -1;
@@ -465,8 +469,9 @@ void DXDB_configGetCommand(redisClient *c, char *pattern, int *matches) {
     }
     if (stringmatch(pattern, "outputmode", 0)) {
         addReplyBulkCString(c, "outputmode");
-        if (OREDIS) addReplyBulkCString(c, "pure_redis");
-        else        addReplyBulkCString(c, "normal");
+        if      (EREDIS) addReplyBulkCString(c, "embedded");
+        else if (OREDIS) addReplyBulkCString(c, "pure_redis");
+        else             addReplyBulkCString(c, "normal");
         *matches = *matches + 1;
     }
 }
@@ -544,7 +549,7 @@ void DBXD_genRedisInfoString(sds info) {
             "webserver_mode:%s\r\n"
             "webserver_index_function:%s\r\n",
              LuaIncludeFile, LuaCronFunc, Basedir,
-             (OREDIS) ? "pure_redis" : "normal",
+             (EREDIS) ? "embedded" : ((OREDIS) ? "pure_redis" : "normal"),
              (WebServerMode == -1) ? "no" : "yes",
              WebServerIndexFunc);
 }

@@ -143,7 +143,7 @@ static void free_obsl_key(obsl_t *ob, int i) {
 void destroy_obsl(obsl_t *ob, bool ofree) {
     for (uint32 i = 0; i < OB_nob; i++) free_obsl_key(ob, i);
     if (ob->row) {
-        if (     ofree == OBY_FREE_ROBJ) decrRefCount(ob->row);/*DESTROYED 005*/
+        if (     ofree == OBY_FREE_ROBJ) destroyCloneRobj(ob->row);/*DESTED005*/
         else if (ofree == OBY_FREE_AOBJ) destroyAobj(ob->row); /*DESTROYED 029*/
     }
     if (ob->apk) destroyAobj(ob->apk);                   /* DESTROYED 071 */

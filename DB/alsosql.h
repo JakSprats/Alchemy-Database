@@ -70,8 +70,6 @@ void sqlSelectCommand(redisClient *c);
 void updateCommand   (redisClient *c);
 void deleteCommand   (redisClient *c);
 
-void addReplyRow(cli *c, robj *r, int tmatch, aobj *apk, uchar *lruc);
-
 /* FILLERS FILLERS FILLERS FILLERS FILLERS FILLERS FILLERS */
 void tscanCommand(redisClient *c);  /* scan.h does not exist */
 

@@ -27,6 +27,8 @@ ALL RIGHTS RESERVED
 #define __ALC_QUERY__H
 
 #include "adlist.h"
+#include "sds.h"
+#include "redis.h"
 
 #include "btreepriv.h"
 #include "xdb_common.h"
@@ -78,18 +80,6 @@ typedef struct r_ind {
     bool   luat;    /* LUATRIGGER - call lua function per CRUD            */
 } r_ind_t;
 
-typedef struct AlsoSqlObject { /* SIZE: 32 BYTES */
-    char   *s;
-    uint32  len;
-    uint32  i;
-    ulong   l;
-    float   f;
-    uchar   type;
-    uchar   enc;
-    uchar   freeme;
-    uchar   empty;
-} aobj;
-
 typedef struct update_expression {
     bool  yes;
     char  op;
@@ -98,12 +88,6 @@ typedef struct update_expression {
     char *pred;
     int   plen;
 } ue_t;
-
-typedef struct join_column {
-    int t;
-    int c;
-    int jan;
-} jc_t;
 
 typedef struct filter {
     int      jan;    /* JoinAliasNumber filter runs on (for JOINS)        */
@@ -161,6 +145,11 @@ typedef struct order_by_sort_element {
     uchar  *lruc;
 } obsl_t;
 
+typedef struct join_column {
+    int t;
+    int c;
+    int jan;
+} jc_t;
 typedef struct index_join_pair {
     enum OP  op;
     f_t      lhs;     /* LeftHandSide  table,column,index */
@@ -169,7 +158,7 @@ typedef struct index_join_pair {
     uint32   nrows;   /* number of rows */
     int      kimatch; /* MCI imatch */
 } ijp_t;
-typedef struct join_block {
+typedef struct jb_t {
     bool    cstar;
     int     qcols;
     jc_t    js[MAX_JOIN_INDXS];

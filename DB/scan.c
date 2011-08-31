@@ -31,6 +31,7 @@ ALL RIGHTS RESERVED
 
 #include "redis.h"
 
+#include "embed.h"
 #include "bt_iterator.h"
 #include "wc.h"
 #include "qo.h"
@@ -43,6 +44,7 @@ ALL RIGHTS RESERVED
 #include "aobj.h"
 
 extern r_tbl_t  Tbl[MAX_NUM_TABLES];
+extern uchar    OutputMode;
 
 static void scanJoin(cli *c) {
     aobj aL, aH;
@@ -50,33 +52,40 @@ static void scanJoin(cli *c) {
     init_join_block(&jb);
     if (!parseJoinReply(c, &jb, c->argv[1]->ptr, c->argv[3]->ptr,
                         c->argv[5]->ptr))                          goto sj_end;
-    if (!sortJoinPlan(c, &jb))                                     goto sj_end;
-    for (int j = 0; j < jb.hw; j++) {
-        ijp_t *ij  = &jb.ij[j];
-        bool   hit = 0;
-        for (int k = jb.hw; k < (int)jb.n_jind; k++) {
-            if (jb.ij[k].lhs.jan == ij->lhs.jan) {
-                hit = 1;
-                break;
+    int  least_cnt = -1; f_t *lflt = NULL;
+    for (int k = 0; k < (int)jb.n_jind; k++) {
+        int cnt = getBtr(jb.ij[k].lhs.tmatch)->numkeys;
+        if (least_cnt == -1 ||  cnt < least_cnt) {
+            least_cnt = cnt; lflt = &jb.ij[k].lhs;
+        }
+        if (jb.ij[k].lhs.tmatch != jb.ij[k].rhs.tmatch) {
+            cnt = getBtr(jb.ij[k].rhs.tmatch)->numkeys;
+            if (cnt < least_cnt) {
+                least_cnt = cnt; lflt = &jb.ij[k].rhs;
             }
         }
-        if (!hit) {
-            int  tmatch                = jb.ij[j].lhs.tmatch;
-            bt  *btr                   = getBtr(tmatch);
-            if (!assignMinKey(btr, &aL))                           goto sj_end;
-            if (!assignMaxKey(btr, &aH))                           goto sj_end;
-            init_ijp(&jb.ij[jb.n_jind]);
-            memcpy(&jb.ij[jb.n_jind].lhs, &jb.ij[j].lhs, sizeof(f_t));
-            jb.ij[jb.n_jind].lhs.cmatch = 0; /* PK RQ */
-            jb.ij[jb.n_jind].lhs.low    = createSDSFromAobj(&aL);
-            jb.ij[jb.n_jind].lhs.high   = createSDSFromAobj(&aH);
-            jb.n_jind++;
-        }
     }
+    bt  *btr       = getBtr(lflt->tmatch);
+    if (!assignMinKey(btr, &aL))                                   goto sj_end;
+    if (!assignMaxKey(btr, &aH))                                   goto sj_end;
+    ijp_t *ij = &jb.ij[jb.n_jind];
+    init_ijp(ij);
+    ij->lhs.jan    = lflt->jan;
+    ij->lhs.imatch = find_index(lflt->tmatch, 0); /* PK RQ */
+    ij->lhs.tmatch = lflt->tmatch;
+    ij->lhs.cmatch = 0;                           /* PK RQ */
+    ij->lhs.op     = RQ;                          /* PK RQ */
+    ij->lhs.low    = createSDSFromAobj(&aL);
+    ij->lhs.high   = createSDSFromAobj(&aH);
+    jb.n_jind++;
+
     bool ok = optimiseJoinPlan(c, &jb) && validateChain(c, &jb);
     if (ok) {
         if (c->Explain) explainJoin(c, &jb); 
-        else            executeJoin(c, &jb);
+        else {
+            if (EREDIS) embeddedSaveJoinedColumnNames(&jb);
+            executeJoin(c, &jb);
+        }
     }
 
 sj_end:
@@ -149,7 +158,10 @@ void tscanCommand(redisClient *c) { //printf("tscanCommand\n");
     w.wtype     = SQL_RANGE_LKP; //dumpW(printf, &w);
     convertFilterListToAobj(w.flist);
     if (c->Explain) explainRQ(c, &w, &wb);
-    else         iselectAction(c, &w, &wb, cmatchs, qcols, cstar);
+    else {
+        if (EREDIS) embeddedSaveSelectedColumnNames(tmatch, cmatchs, qcols);
+        iselectAction(c, &w, &wb, cmatchs, qcols, cstar);
+    }
 
 tscan_end:
     destroy_wob(&wb);

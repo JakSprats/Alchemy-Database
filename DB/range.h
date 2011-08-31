@@ -96,8 +96,8 @@ long Op(range_t *g, row_op *p);
 
 bool passFilters(bt *btr, aobj *akey, void *rrow, list *flist, int tmatch);
 
-void opSelectOnSort(cli  *c,    list *ll,   wob_t *wb,
-                    bool ofree, long *sent, int    tmatch);
+bool opSelectSort(cli  *c,    list *ll,   wob_t *wb,
+                  bool ofree, long *sent, int    tmatch);
 void iselectAction(redisClient *c,
                    cswc_t      *w,
                    wob_t       *wb,

@@ -41,6 +41,8 @@ char *next_token_wc_key(char *tkn, uchar ctype);
 
 robj *_createStringObject(char *s);
 robj *cloneRobj(robj *r);
+void destroyCloneRobj(robj *r);
+
 robj **copyArgv(robj **argv, int argc);
 robj *convertRobj(robj *r, int type);
 

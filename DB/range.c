@@ -50,6 +50,7 @@ extern char     *Col_type_defs[];
 extern aobj_cmp *OP_CMP[7];
 extern r_tbl_t   Tbl[MAX_NUM_TABLES];
 extern r_ind_t   Index[MAX_NUM_INDICES];
+extern uchar     OutputMode;
 
 ulong  CurrCard = 0; // TODO remove - after no update on MCI cols FIX
 
@@ -474,37 +475,44 @@ bool passFilters(bt *btr, aobj *akey, void *rrow, list *flist, int tmatch) {
 
 /* SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS */
 static bool select_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
-    int tmatch = g->co.w->wf.tmatch;
+    int  tmatch = g->co.w->wf.tmatch;
     if (!passFilters(g->co.btr, apk, rrow, g->co.w->flist, tmatch)) return 1;
+    bool ret    = 1;
     if (!g->se.cstar) {
         robj *r = outputRow(g->co.btr, rrow, g->se.qcols, g->se.cmatchs,
                             apk, tmatch);
-        if (q) addRow2OBList(g->co.ll, g->co.wb, g->co.btr, r, g->co.ofree,
-                             rrow, apk);
-        else {
-            GET_LRUC addReplyRow(g->co.c, r, tmatch, apk, lruc);
+        if (q) {
+            addRow2OBList(g->co.ll, g->co.wb, g->co.btr, r, g->co.ofree,
+                          rrow, apk);
+        } else {
+            GET_LRUC
+            if (!addReplyRow(g->co.c, r, tmatch, apk, lruc)) ret = 0;
         }
-        decrRefCount(r);
+        if (!(EREDIS)) decrRefCount(r);
     }
-    INCR(*card) CurrCard = *card;
-    return 1;
+    INCR(*card)
+    CurrCard = *card;
+    return ret;
 }
-void opSelectOnSort(cli  *c,    list *ll,   wob_t *wb,
-                    bool ofree, long *sent, int    tmatch) {
+bool opSelectSort(cli  *c,    list *ll,   wob_t *wb,
+                  bool ofree, long *sent, int    tmatch) {
+    bool     ret  = 1;
     obsl_t **v    = sortOB2Vector(ll);
     long     ofst = wb->ofst;
     for (int i = 0; i < (int)listLength(ll); i++) {
         if (wb->lim != -1 && *sent == wb->lim) break;
-        if (ofst > 0) {
-            ofst--;
-        } else {
+        if (ofst > 0) ofst--;
+        else {
             *sent      = *sent + 1;
             obsl_t *ob = v[i];
-            addReplyRow(c, ob->row, tmatch, ob->apk, ob->lruc);
+            if (!addReplyRow(c, ob->row, tmatch, ob->apk, ob->lruc)) {
+                ret = 0; break;
+            }
         }
     }
     sortOBCleanup(v, listLength(ll), ofree);
     free(v); /* FREED 004 */
+    return ret;
 }
 void iselectAction(cli *c,         cswc_t *w,     wob_t *wb,
                    int  cmatchs[], int     qcols, bool   cstar) {
@@ -519,13 +527,19 @@ void iselectAction(cli *c,         cswc_t *w,     wob_t *wb,
     long card    = Op(&g, select_op);
     long sent    = 0;
     if (card) {
-        if (q.qed) opSelectOnSort(c, ll, wb, g.co.ofree, &sent, w->wf.tmatch);
-        else       sent = card;
+        if (q.qed) {
+            if (!opSelectSort(c, ll, wb, g.co.ofree,
+                              &sent, w->wf.tmatch)) goto isel_end;
+        } else {
+            sent = card;
+        }
     }
     if (wb->lim != -1 && sent < card) card = sent;
-    if (cstar) addReplyLongLong(c, card);
-    else       setDeferredMultiBulkLength(c, rlen, card);
+    if      (cstar)  addReplyLongLong(c, card);
+    else if (EREDIS) setDeferredMultiBulkLength(c, rlen, 0);
+    else             setDeferredMultiBulkLength(c, rlen, card);
 
+isel_end:
     if (wb->ovar) incrOffsetVar(c, wb, card);
     releaseOBsort(ll);
 }
@@ -543,13 +557,8 @@ static bool dellist_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
     INCR(*card) CurrCard = *card;
     return 1;
 }
-static void opDeleteOnSort(list        *ll,
-                           cswc_t      *w,
-                           wob_t       *wb,
-                           bool         ofree,
-                           long        *sent,
-                           int          matches,
-                           int          inds[]) {
+static void opDeleteSort(list *ll,    cswc_t *w,      wob_t *wb,   bool  ofree,
+                         long  *sent, int     matches, int   inds[]) {
     obsl_t **v    = sortOB2Vector(ll);
     long     ofst = wb->ofst;
     for (int i = 0; i < (int)listLength(ll); i++) {
@@ -579,7 +588,7 @@ void ideleteAction(redisClient *c, cswc_t *w, wob_t *wb) {
     long sent = 0;
     if (card) {
         if (q.qed) {
-            opDeleteOnSort(ll, w, wb, g.co.ofree, &sent, matches, inds);
+            opDeleteSort(ll, w, wb, g.co.ofree, &sent, matches, inds);
         } else {
             listNode  *ln;
             listIter  *li = listGetIterator(ll, AL_START_HEAD);
@@ -605,16 +614,16 @@ static bool update_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
         addRow2OBList(g->co.ll, g->co.wb, g->co.btr, apk, g->co.ofree,
                       rrow, apk);
     } else {
-        if (updateRow(g->co.c, g->up.btr, apk, rrow, g->co.w->wf.tmatch,
-                      g->up.ncols, g->up.matches, g->up.indices, g->up.vals,
-                      g->up.vlens, g->up.cmiss, g->up.ue) == -1) return 0;
+        //TODO non-FK/PK updates can be done HERE inline
+        aobj *cln  = cloneAobj(apk);
+        listAddNodeTail(g->co.ll, cln); /* UGLY: build list of PKs to update */
     }
     INCR(*card) CurrCard = *card;
     return 1;
 }
-static bool opUpdateOnSort(cli   *c,   list *ll,    cswc_t  *w,
-                           wob_t *wb,  bool  ofree, long    *sent,
-                            bt   *btr, int   ncols, range_t *g) {
+static bool opUpdateSort(cli   *c,  list *ll,    cswc_t  *w,
+                         wob_t *wb, bool  ofree, long    *sent,
+                         bt   *btr, int   ncols, range_t *g) {
     bool     ret  = 1; /* presume success */
     obsl_t **v    = sortOB2Vector(ll);
     long     ofst = wb->ofst;
@@ -638,19 +647,13 @@ static bool opUpdateOnSort(cli   *c,   list *ll,    cswc_t  *w,
     free(v); /* FREED 004 */
     return ret;
 }
-void iupdateAction(redisClient *c,
-                   cswc_t      *w,
-                   wob_t       *wb,
-                   int          ncols,
-                   int          matches,
-                   int          inds [],
-                   char        *vals [],
-                   uint32       vlens[],
-                   uchar        cmiss[],
-                   ue_t         ue   []) {
+void iupdateAction(cli  *c,      cswc_t *w,       wob_t *wb,
+                   int   ncols,  int     matches, int    inds[],
+                   char *vals[], uint32  vlens[], uchar  cmiss[],
+                   ue_t  ue[]) {
     range_t g; qr_t    q;
     setQueued(w, wb, &q);
-    list *ll     = initOBsort(q.qed, wb);
+    list *ll     = initOBsort(1, wb);
     init_range(&g, c, w, wb, &q, ll, OBY_FREE_AOBJ, NULL);
     bt   *btr    = getBtr(w->wf.tmatch);
     g.up.btr     = btr;
@@ -664,15 +667,32 @@ void iupdateAction(redisClient *c,
     long card    = Op(&g, update_op);
     if (card == -1) return; /* e.g. update MCI UNIQ Violation */
     long sent    = 0;
+    bool err     = 0;
     if (card) {
-        if (q.qed) { if (!opUpdateOnSort(c, ll, w, wb, g.co.ofree, &sent,
-                                         btr, ncols, &g)) return; }/*MCI VIOL*/
-        else       sent = card;
+        if (q.qed) { if (!opUpdateSort(c, ll, w, wb, g.co.ofree, &sent,
+                                       btr, ncols, &g)) return; } /* MCI VIOL */
+        else {
+            listNode  *ln;
+            listIter  *li = listGetIterator(ll, AL_START_HEAD);
+            while((ln = listNext(li)) != NULL) {
+                aobj *apk  = ln->value;
+                void *rrow = btFind(g.up.btr, apk);
+                if (updateRow(g.co.c, g.up.btr, apk, rrow, g.co.w->wf.tmatch,
+                              g.up.ncols, g.up.matches, g.up.indices, g.up.vals,
+                              g.up.vlens, g.up.cmiss, g.up.ue) == -1) {
+                    err = 1; break;
+                }
+                sent++;
+            }
+            listReleaseIterator(li);
+        }
     }
-    if (wb->lim != -1 && sent < card) card = sent;
-    addReplyLongLong(c, (ull)card);
+    if (!err) {
+        if (wb->lim != -1 && sent < card) card = sent;
+        addReplyLongLong(c, (ull)card);
 
-    if (wb->ovar) incrOffsetVar(c, wb, card);
+        if (wb->ovar) incrOffsetVar(c, wb, card);
+    }
     releaseOBsort(ll);
 }
 

@@ -91,7 +91,7 @@ void initAobjFloat(aobj *a, float f) {
     a->type = COL_TYPE_FLOAT;
     a->enc  = COL_TYPE_FLOAT;
 }
-void initAobjFromStr(aobj *a, char *s, int len, bool ctype) {
+void initAobjFromStr(aobj *a, char *s, int len, uchar ctype) {
     initAobj(a);
     if (       C_IS_S(ctype)) {
         a->enc    = COL_TYPE_STRING;
@@ -114,9 +114,14 @@ void initAobjFromStr(aobj *a, char *s, int len, bool ctype) {
         a->i    = (uint32)strtoul(s, NULL, 10);   /* OK: DELIM: \0 */
     }
 }
-aobj *createAobjFromString(char *s, int len, bool ctype) {
+aobj *createAobjFromString(char *s, int len, uchar ctype) {
     aobj *a = (aobj *)malloc(sizeof(aobj));
     initAobjFromStr(a, s, len, ctype);
+    return a;
+}
+aobj *createAobjFromLong(ulong l) {
+    aobj *a = (aobj *)malloc(sizeof(aobj));
+    initAobjLong(a, l);
     return a;
 }
 

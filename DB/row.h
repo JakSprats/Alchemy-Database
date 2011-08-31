@@ -41,6 +41,11 @@ uchar *getColData(    void *orow, int cmatch, uint32 *clen, uchar *rflag);
 aobj getCol (bt *btr, void *rrow, int cmatch, aobj *apk, int tmatch);
 aobj getSCol(bt *btr, void *rrow, int cmatch, aobj *apk, int tmatch);
 
+robj *cloneRobjErow(robj *r);   // EMBEDDED
+void decrRefCountErow(robj *r); // EMBEDDED
+
+bool addReplyRow(cli *c, robj *r, int tmatch, aobj *apk, uchar *lruc);
+
 int output_start(char *buf, uint32 blen, int qcols);
 robj *write_output_row(int   qcols,   uint32  prelen, char *pbuf,
                        uint32 totlen, sl_t   *outs);

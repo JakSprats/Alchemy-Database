@@ -1,31 +1,55 @@
 
--- AUTO_INC_COUNTER AUTO_INC_COUNTER AUTO_INC_COUNTER AUTO_INC_COUNTER
+-- GLOBAL_AUTO_INC_COUNTER GLOBAL_AUTO_INC_COUNTER GLOBAL_AUTO_INC_COUNTER
 AutoInc = {};
 function InitAutoInc(name)
-  local inc = AutoIncRange * (MyNodeId - 1);
-  local id  = redis("get", 'global:' .. name);
+  local id = redis("get", 'global:' .. name);
   if (id == nil) then
-      id = inc;
-      redis("set", 'global:' .. name, id);
+    id = 1 + (BridgeId - 1) * AutoIncRange;
+    for inid, bid in pairs(IslandData) do
+      if (MyNodeId == inid)     then break; end
+      if (bid      == BridgeId) then id = id + 1; end
+    end
+    redis("set", 'global:' .. name, id);
   end
   AutoInc[name] = id;
 end
 function IncrementAutoInc(name)
-  --local was = AutoInc[name];
-  AutoInc[name] = AutoInc[name] + 1;
-  if ((AutoInc[name] % AutoIncRange) == 0) then
-    AutoInc[name] = AutoInc[name] + (AutoIncRange * (NumNodes - 1));
-  end
+  local bid     = (math.floor(AutoInc[name] / AutoIncRange) % #BridgeData + 1);
+  AutoInc[name] = AutoInc[name] + NumPeers;
+  local nbid    = (math.floor(AutoInc[name] / AutoIncRange) % #BridgeData + 1);
+  if (bid ~= nbid) then AutoInc[name] = AutoInc[name] + AutoIncRange; end
   redis("set", 'global:' .. name, AutoInc[name]);
-  --print ('Autoinc[' .. name .. '] was: ' .. was .. ' is: ' .. AutoInc[name]);
   return AutoInc[name];
 end
 function getPreviousAutoInc(num)
-  local was = num;
-  num = tonumber(num) - 1;
-  if ((num % AutoIncRange) == (AutoIncRange -1)) then
-    num = num - (AutoIncRange * (NumNodes - 1));
+  local bid  = (math.floor(num  / AutoIncRange) % #BridgeData + 1);
+  local prev = tonumber(num) - NumPeers;
+  local nbid = (math.floor(prev / AutoIncRange) % #BridgeData + 1);
+  if (bid ~= nbid) then prev = prev - AutoIncRange; end
+  return prev;
+end
+-- BRIDGE_AUTO_INC_COUNTER BRIDGE_AUTO_INC_COUNTER BRIDGE_AUTO_INC_COUNTER
+function InitBridgeAutoInc(name)
+  local id = redis("get", 'global:' .. name);
+  if (id == nil) then
+    id = 1 + (BridgeId - 1) * AutoIncRange;
+    redis("set", 'global:' .. name, id);
   end
+  AutoInc[name] = id;
+end
+function IncrementBridgeAutoInc(name)
+  AutoInc[name] = AutoInc[name] + 1;
+  local bid     = (AutoInc[name] % AutoIncRange);
+  if (bid == 0) then AutoInc[name] = AutoInc[name] + AutoIncRange; end
+  return AutoInc[name];
+end
+function getPreviousBridgeAutoInc(num)
+  if (num == 1) then return 1; end
+local was = num;
+  num = num -1;
+  local bid     = (num % AutoIncRange);
+  if (bid == 0) then num = num - AutoIncRange; end
+print ('getPreviousBridgeAutoInc: was: ' .. was .. ' num: ' .. num);
   return num;
 end
 

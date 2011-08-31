@@ -35,6 +35,7 @@ ALL RIGHTS RESERVED
 #include "redis.h"
 #include "zmalloc.h"
 
+#include "embed.h"
 #include "bt.h"
 #include "filter.h"
 #include "query.h"
@@ -316,15 +317,13 @@ void releaseFlist(list **flist) {
 }
 void destroyFlist(list **flist) {
     if (*flist) {
-        (*flist)->free = destroyFilter;
-        listRelease(*flist);
-        *flist         = NULL;
+        (*flist)->free = destroyFilter; listRelease(*flist); *flist = NULL;
     }
 }
 void destroy_check_sql_where_clause(cswc_t *w) {
     releaseFilterD_KL(&w->wf);                           /* DESTROYED 065 */
     destroyFlist( &w->flist);
-    if (w->lvr)   sdsfree(w->lvr);
+    if (w->lvr) sdsfree(w->lvr);
 }
 
 bool leftoverParsingReply(redisClient *c, char *x) {
@@ -349,11 +348,6 @@ void explainCommand(redisClient *c) {
     else if (!strcasecmp(c->argv[0]->ptr, "SELECT")) sqlSelectCommand(c);
     c->argc    = oargc;                    /* so all argv[] get freed */
     c->Explain = 0;
-}
-void addReplyRow(cli *c, robj *r, int tmatch, aobj *apk, uchar *lruc) {
-    updateLru(c, tmatch, apk, lruc); /* NOTE: updateLRU (SELECT) */
-    if (OREDIS) addReply(c,     r);
-    else        addReplyBulk(c, r);
 }
 
 /* LruColInSelect LruColInSelect LruColInSelect LruColInSelect */
@@ -400,6 +394,8 @@ void sqlSelectCommand(redisClient *c) {
     }
     if (c->Explain) { explainRQ(c, &w, &wb);                goto sel_cmd_end; }
     //dumpW(printf, &w); dumpWB(printf, &wb);
+
+    if (EREDIS) embeddedSaveSelectedColumnNames(tmatch, cmatchs, qcols);
     if (w.wtype != SQL_SINGLE_LKP) { /* FK, RQ, IN */
         if (w.wf.imatch == -1) {
             addReply(c, shared.rangequery_index_not_found); goto sel_cmd_end;
@@ -414,7 +410,8 @@ void sqlSelectCommand(redisClient *c) {
         if (cstar) { addReply(c, shared.cone);              goto sel_cmd_end; }
         robj *r = outputRow(btr, rrow, qcols, cmatchs, apk, tmatch);
         addReply(c, shared.singlerow);
-        GET_LRUC addReplyRow(c, r, tmatch, apk, lruc);
+        GET_LRUC 
+        if (!addReplyRow(c, r, tmatch, apk, lruc))          goto sel_cmd_end;
         decrRefCount(r);
         if (wb.ovar) incrOffsetVar(c, &wb, 1);
     }

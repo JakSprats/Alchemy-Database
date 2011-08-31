@@ -2,8 +2,8 @@
 
 DIRS="1 2 3 4 5 6 7 8"
 PORTS="8080 8081 8082 8083 8084 8085 8086 8087"
-B_PORTS="9999"
-B_DIRS="1"
+B_PORTS="20000 20001"
+B_DIRS="1 2"
 
 echo killall ./alchemy-cli
 killall ./alchemy-cli
@@ -13,7 +13,8 @@ sleep 1
 if [ "$1" == "clean" ]; then
   echo killall -9 alchemy-server
   killall -9 alchemy-server
-  for d in $DIRS; do (cd SERVERS/$d; rm dump.rdb); done
+  for d in $DIRS; do   (cd SERVERS/$d;        rm dump.rdb); done
+  for d in $B_DIRS; do (cd SERVERS/BRIDGE/$d; rm dump.rdb); done
   exit 0;
 fi
 
@@ -39,14 +40,14 @@ sleep 2
 
 for d in $DIRS; do
   (cd SERVERS/$d
-    echo "(cd SERVERS/$d; ./alchemy-server redis.conf >> OUTPUT & </dev/null)"
-    ./alchemy-server redis.conf >> OUTPUT & </dev/null
+    echo "(cd SERVERS/$d; ../../alchemy-server redis.conf >> OUTPUT & </dev/null)"
+    ../..//alchemy-server redis.conf >> OUTPUT & </dev/null
   )
 done
 for d in $B_DIRS; do
 (cd SERVERS/BRIDGE/$d;
-  echo "(cd SERVERS/BRIDGE/$d; ./alchemy-server redis.conf >> OUTPUT & </dev/null)"
-  ./alchemy-server redis.conf >> OUTPUT & </dev/null
+  echo "(cd SERVERS/BRIDGE/$d; ../../../alchemy-server redis.conf >> OUTPUT & </dev/null)"
+  ../../../alchemy-server redis.conf >> OUTPUT & </dev/null
 )
 done
 

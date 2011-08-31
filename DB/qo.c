@@ -80,8 +80,10 @@ printf("MID assignFiltersToJoinPairs\n"); dumpJB(c, printf, jb);
   printf("POST determineChainHead\n"); dumpJB(c, printf, jb);
 #define DEBUG_OPT_SELFJ                                                 \
   printf("FINAL\n"); dumpJB(c, printf, jb);
-#define DEBUG_VALIDATE_CHAIN                                            \
-  printf("POST validateChain\n"); dumpJB(c, printf, jb);
+#define DEBUG_VALIDATE_CHAIN1                                           \
+  printf("POST validateChain1\n"); dumpJB(c, printf, jb);
+#define DEBUG_VALIDATE_CHAIN2                                           \
+  printf("POST validateChain2\n"); dumpJB(c, printf, jb);
 #define DEBUG_VAL_KLIST                                                 \
   printf("START: validateKlist\n");                                     \
   dumpFL(printf, "\t", "KLIST", *klist); dumpFL(printf, "\t", "FLIST", *flist);
@@ -691,13 +693,13 @@ start:
         }
         if (ok) break;
         else    { addReply(c, shared.join_chain); return 0; }
-    }                                                     //DEBUG_VALIDATE_CHAIN
+    }                                                    //DEBUG_VALIDATE_CHAIN1
     for (int j = 0; j < jb->hw; j++) {
         validateKlist(&jb->ij[j].lhs.klist, &jb->ij[j].flist, &jb->ij[j], 0);
     }
     validateKlist(&jb->fklist, &jb->fflist, &jb->ij[jb->hw - 1], 1);
     for (int j = 0; j < jb->hw; j++) reduceFlist(&jb->ij[j].flist);
-    reduceFlist(&jb->fflist);                             //DEBUG_VALIDATE_CHAIN
+    reduceFlist(&jb->fflist);                            //DEBUG_VALIDATE_CHAIN2
     return 1;
 }
 

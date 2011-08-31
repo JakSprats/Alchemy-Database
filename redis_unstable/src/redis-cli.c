@@ -511,8 +511,6 @@ static int cliSendCommand(int argc, char **argv, int repeat) {
 #ifndef ALCHEMY_SERVER
     if (!strcasecmp(command,"subscribe") ||
         !strcasecmp(command,"psubscribe")) config.pubsub_mode = 1;
-#endif
-#ifdef ALCHEMY_DATABASE
     if (!strcasecmp(command,"subpipe")) {
         config.pubsub_pipe = 1;
         command            = "subscribe"; //server expects "subscribe" command
@@ -851,7 +849,7 @@ static int noninteractive(int argc, char **argv) {
 }
 
 #ifdef ALCHEMY_SERVER
-  int compiler_warnings() {
+int compiler_warnings() {
       int argc = 0; char **argv = NULL;
 #else
 int main(int argc, char **argv) {

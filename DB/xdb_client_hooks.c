@@ -141,7 +141,8 @@ static void scan_mod(int *argc, char **argv) {
 }
 void DXDB_cliSendCommand(int *argc, char **argv) {
     //printf("DXDB_cliSendCommand\n");
-    if      (!strcasecmp(argv[0], "INSERT")) insert_vals_mod (argc, argv);
+    if      (!strcasecmp(argv[0], "INSERT") || !strcasecmp(argv[0], "INSERT"))
+                                             insert_vals_mod (argc, argv);
     else if (!strcasecmp(argv[0], "UPDATE")) update_vals_mod (argc, argv);
     else if (!strcasecmp(argv[0], "CREATE") &&
              !strcasecmp(argv[1], "TABLE"))  create_table_mod(argc, argv);

@@ -1,9 +1,14 @@
 
-function UserNode(num)
-  return (math.floor(tonumber(num) / AutoIncRange) % NumNodes) + 1;
+function UserNode(o_num)
+  local num   = tonumber(o_num);
+  local bid   = (math.floor(num  / AutoIncRange) % #BridgeData);
+  local lnid  = (num % AutoIncRange) % NumPeers;
+  if (lnid == 0) then lnid = NumPeers; end
+  return (bid * NumPeers) + lnid; -- TODO need a table FirstPeer[bid];
 end
 function GetHttpDomainPort(num)
-  local which = UserNode(num); --print ('num: ' .. num .. ' which: ' .. which);
+  local which = UserNode(num); 
+  --print ('GetHttpDomainPort: num: ' .. num .. ' which: ' .. which);
   return 'http://' .. NodeData[which]["domain"] .. ':' .. 
                       NodeData[which]["port"]   .. '/';
 end
@@ -16,7 +21,8 @@ function GetUsernameNode(username)
   for i = 1, #uns do
     local c = string.byte(uns, i);
     tot     = tot + tonumber(c);
-  end --print ('GetUsernameNode: username: ' .. username .. ' tot: ' .. tot);
+  end 
+  --print ('GetUsernameNode: username: ' .. username .. ' tot: ' .. tot);
   return UserNode(tot);
 end
 

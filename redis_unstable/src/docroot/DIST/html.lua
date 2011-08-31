@@ -212,7 +212,12 @@ var AlchemyNow  = new Date();
 var AlchemyNows = (AlchemyNow.getTime()/1000);
 </script>
 ]]);
-  local posts = redis("lrange", key, start, (start + count));
+  local posts;
+  --if (key == "global:timeline") then
+    posts = redis("zrevrange", key, start, (start + count));
+  --else 
+    --posts = redis("lrange", key, start, (start + count));
+  --end
   local c     = 0;
   for k,v in pairs(posts) do
       if (showPost(v)) then c = c + 1; end
@@ -271,8 +276,9 @@ function create_home(my_userid, my_username, start, nposts,
   output(my_username ..', what you are doing?');
 
   output(create_home_post_box());
-  output('<div id="homeinfobox">' .. nfollowers .. " followers<br>" ..
-                                    nfollowing .. " following<br></div></div>");
+  output('<div id="homeinfobox">' ..
+                 nfollowers .. " followers<br>" ..
+                 nfollowing .. " following<br></div></div>");
   showUserPostsWithPagination(page, nposts, false, my_userid, s, 10);
 end
 

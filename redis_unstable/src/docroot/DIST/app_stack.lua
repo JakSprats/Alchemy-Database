@@ -1,4 +1,6 @@
 
+AutoIncRange = 20; -- TODO testing OVERRIDE
+
 io.stdout:setvbuf("no"); -- flush stdout
 
 -- INLCUDES INLCUDES INLCUDES INLCUDES INLCUDES INLCUDES INLCUDES INLCUDES
@@ -13,15 +15,15 @@ end
 
 -- GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS
 -- one PK AutoInc for EACH table
-InitAutoInc('Next_sql_users_TransactionId');
-print ('Next_sql_users_TransactionId: ' .. AutoInc['Next_sql_users_TransactionId']);
-InitAutoInc('Next_sql_posts_TransactionId');
-print ('Next_sql_posts_TransactionId: ' .. AutoInc['Next_sql_posts_TransactionId']);
-InitAutoInc('Next_sql_follows_TransactionId');
-print ('Next_sql_follows_TransactionId: ' .. AutoInc['Next_sql_follows_TransactionId']);
+InitAutoInc('Next_sql_users_XactId');
+print ('Next_sql_users_XactId: ' .. AutoInc['Next_sql_users_XactId']);
+InitAutoInc('Next_sql_posts_XactId');
+print ('Next_sql_posts_XactId: ' .. AutoInc['Next_sql_posts_XactId']);
+InitAutoInc('Next_sql_follows_XactId');
+print ('Next_sql_follows_XactId: ' .. AutoInc['Next_sql_follows_XactId']);
 -- one GLOBAL AutoInc for "sync"
-InitAutoInc('Next_sync_TransactionId');
-print ('Next_sync_TransactionId: ' .. AutoInc['Next_sync_TransactionId']);
+InitAutoInc('Next_sync_XactId');
+print ('Next_sync_XactId: ' .. AutoInc['Next_sync_XactId']);
 
 -- USERLAND_GLOBALS USERLAND_GLOBALS USERLAND_GLOBALS USERLAND_GLOBALS
 InitAutoInc('NextUserId');
@@ -35,28 +37,6 @@ load_image('docroot/img/sfondo.png',  'sfondo.png');
 load_image('docroot/img/favicon.ico', 'favicon.ico');
 load_text( 'docroot/css/style.css',   'css/style.css');
 load_text( 'docroot/js/helper.js',    'helper.js');
-
--- PUBLISH_REPLICATION PUBLISH_REPLICATION PUBLISH_REPLICATION
-function publish_queue_sql(tbl, sqlbeg, sqlend)
-  local channel = 'sql';
-  local xactid  = IncrementAutoInc('Next_' .. channel .. '_' .. 
-                                              tbl     .. '_TransactionId');
-  local pmsg    = sqlbeg .. xactid .. sqlend;
-  redis("publish", channel, pmsg);
-  redis("zadd", 'Q_' .. channel, xactid, pmsg);
-end
-function publish_queue_sync(name, ...)
-  local channel = 'sync';
-  local xactid  = IncrementAutoInc('Next_' .. channel .. '_TransactionId');
-  local pmsg    = Redisify('LUA', name, MyNodeId, xactid, ...);
-  redis("publish", channel, pmsg);
-  redis("zadd", 'Q_' .. channel, xactid, pmsg);
-end
-function call_sync(func, name, ...)
-  local ret = func(0, 0, ...); -- LOCALLY: [nodeid, xactid] -> 0
-  publish_queue_sync(name, ...);
-  return ret;
-end
 
 -- SHARED_FUNCS SHARED_FUNCS SHARED_FUNCS SHARED_FUNCS SHARED_FUNCS
 function commit_follow(my_userid, userid, follow)
@@ -82,8 +62,8 @@ function local_register(my_userid, username, password)
 end
 
 function local_post(my_userid, postid, msg, ts)
-  redis("lpush", 'uid:' .. my_userid .. ':posts',   postid); -- U follow U
-  redis("lpush", 'uid:' .. my_userid .. ':myposts', postid); -- for /profile
+  redis("zadd", 'uid:' .. my_userid .. ':posts',   ts, postid); -- U follow U
+  redis("zadd", 'uid:' .. my_userid .. ':myposts', ts, postid); -- for /profile
   local sqlbeg = "INSERT INTO posts (pk, userid, ts, msg) VALUES (";
   local sqlend = "," .. my_userid .. "," .. ts .. ",'" .. msg .. "');";
   publish_queue_sql('posts', sqlbeg, sqlend);
@@ -106,9 +86,10 @@ end
 
 -- NOTE: register & logout can be OOO, shared vars MUST be stateless
 global_register = function(nodeid, xactid, my_userid, username)
-  print ('global_register: my_userid: ' .. my_userid);
+  print ('global_register: my_userid: ' .. my_userid ..
+                         ' username: '  .. username);
   -- do one-time SET's - this data is needed
-  if (xactid ~= 0) then update_remote_hw('sync', nodeid, xactid); end
+  if (xactid ~= 0) then update_remote_hw(nodeid, xactid); end
   redis("set",  'username:' .. username  .. ':id',       my_userid);
   redis("set",  'uid:'      .. my_userid .. ':username', username);
   redis("sadd", "global:users",                          my_userid);
@@ -123,7 +104,7 @@ global_register = function(nodeid, xactid, my_userid, username)
 end
 
 global_logout = function(nodeid, xactid, my_userid)
-  if (xactid ~= 0) then update_remote_hw('sync', nodeid, xactid); end
+  if (xactid ~= 0) then update_remote_hw(nodeid, xactid); end
   local oldauthsecret = get_sha1_variable('nlogouts', my_userid);
   -- combinatorial INCR operation governs flow
   local newauthsecret = incr_sha1_variable('nlogouts', my_userid);
@@ -148,7 +129,7 @@ function iter_global_post(o_tot, o_interval, o_progress,
   local max       = progress + interval;
   for k,v in pairs(followers) do
     if (count >= progress and count < max) then
-      redis("lpush", 'uid:' .. v .. ':posts', postid); -- TODO lpush NOT commutv
+      redis("zadd", 'uid:' .. v .. ':posts', ts, postid);
     end
     count = count + 1;
   end
@@ -161,8 +142,8 @@ end
 
 global_post = function(nodeid, xactid, my_userid, postid, ts, msg)
   print ('global_post: my_userid: ' .. my_userid .. ' ts: ' .. ts ..
-         ' msg: ' .. msg);
-  if (xactid ~= 0) then update_remote_hw('sync', nodeid, xactid); end
+         ' msg: ' .. msg .. ' xactid: ' .. xactid);
+  if (xactid ~= 0) then update_remote_hw(nodeid, xactid); end
   local post      = my_userid .. '|' .. ts .. '|' .. msg;
   redis("set", 'post:' .. postid, post);
   local followers = redis("smembers", 'uid:' .. my_userid .. ':followers');
@@ -171,18 +152,18 @@ global_post = function(nodeid, xactid, my_userid, postid, ts, msg)
                      my_userid, postid, ts, msg);
   else
     for k,v in pairs(followers) do
-      redis("lpush", 'uid:' .. v .. ':posts', postid); -- TODO lpush NOT commutv
+      redis("zadd", 'uid:' .. v .. ':posts', ts, postid);
     end
   end
-  -- Push post to timeline, and trim timeline to newest 1000 elements.
-  redis("lpush", "global:timeline", postid); -- TODO lpush NOT commutative
-  redis("ltrim", "global:timeline", 0, 1000);
+  -- Push post to timeline, and trim timeline to newest 100 elements.
+  redis("zadd",            "global:timeline", ts, postid);
+  redis("zremrangebyrank", "global:timeline", 100, -1);
 end
 
 global_follow = function(nodeid, xactid, my_userid, userid, follow)
   print ('global_follow: my_userid: ' .. my_userid .. ' userid: ' .. userid ..
          ' follow: ' .. follow);
-  if (xactid ~= 0) then update_remote_hw('sync', nodeid, xactid); end
+  if (xactid ~= 0) then update_remote_hw(nodeid, xactid); end
   if (UserNode(userid) == MyNodeId) then -- only for users ON THIS SHARD
     commit_follow(my_userid, userid, follow);
   end

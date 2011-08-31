@@ -1,7 +1,7 @@
 #ifndef XDB_COMMON__H 
 #define XDB_COMMON__H 
 
-#define ALCHEMY_VERSION "0.1.1"
+#define ALCHEMY_VERSION "0.2.1"
 
 #include <endian.h>
 #ifndef BYTE_ORDER
@@ -14,8 +14,13 @@
 #define REDIS_BTREE           5
 #define REDIS_LUA_TRIGGER     6
 
-#define bool   unsigned char
-#define uint32 unsigned int
+#define bool     unsigned char
+#define uchar    unsigned char
+#define ushort16 unsigned short
+#define uint32   unsigned int
+#define ulong    unsigned long
+#define lolo     long long
+#define ull      unsigned long long
 
 #define DEFINE_ALCHEMY_HTTP_INFO     \
   typedef struct alchemy_http_info { \
@@ -34,6 +39,25 @@
       list   *resp_hdr;              \
   } alchemy_http_info;
 
+typedef struct aobj { /* SIZE: 32 BYTES */
+    char   *s;
+    uint32  len;
+    uint32  i;
+    ulong   l;
+    float   f;
+    uchar   type;
+    uchar   enc;
+    uchar   freeme;
+    uchar   empty;
+} aobj;
+
+typedef struct embedded_row_t {
+    int           ncols;
+    struct aobj **cols;
+} erow_t;
+
+typedef bool select_callback(erow_t* erow);
+
 //TODO move this into a single struct, that can be memset(0)ed
 #define ALCHEMY_CLIENT_EXTENSIONS           \
     struct sockaddr_in  sa;                 \
@@ -42,7 +66,8 @@
     bool                InternalRequest;    \
     alchemy_http_info   http;               \
     int                 LastJTAmatch;       \
-    int                 NumJTAlias;
+    int                 NumJTAlias;         \
+    select_callback    *scb;
 
 #define SHARED_OBJ_DECLARATION \
     robj \

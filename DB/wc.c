@@ -34,6 +34,7 @@ char *strcasestr(const char *haystack, const char *needle); /*compiler warning*/
 #include "zmalloc.h"
 #include "redis.h"
 
+#include "embed.h"
 #include "internal_commands.h"
 #include "join.h"
 #include "index.h"
@@ -55,6 +56,8 @@ extern ja_t     JTAlias[MAX_JOIN_COLS];
 
 extern stor_cmd AccessCommands[];
 extern uchar    OP_len[NOP];
+
+extern uchar    OutputMode;
 
 // CONSTANT GLOBALS
 static char CLT = '<';
@@ -595,6 +598,7 @@ bool parseJoinReply(cli *c, jb_t *jb, char *clist, char *tlist, char *wc) {
                              jb->js, &jb->qcols, &jb->cstar)) return 0;
     bool ret = joinParseWCReply(c, jb, wc);
     if (!leftoverParsingReply(c, jb->lvr)) return 0;
+    if (EREDIS) embeddedSaveJoinedColumnNames(jb);
     return ret;
 }
 static void addQcol(jb_t *jb, int tmatch) {

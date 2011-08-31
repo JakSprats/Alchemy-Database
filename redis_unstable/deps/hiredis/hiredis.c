@@ -803,7 +803,11 @@ void __redisSetError(redisContext *c, int type, const sds errstr) {
     }
 }
 
+#ifdef ALCHEMY_DATABASE
+redisContext *redisContextInit(void) {
+#else
 static redisContext *redisContextInit(void) {
+#endif
     redisContext *c = calloc(sizeof(redisContext),1);
     c->err = 0;
     c->errstr = NULL;
@@ -888,7 +892,11 @@ int redisSetReplyObjectFunctions(redisContext *c, redisReplyObjectFunctions *fn)
 }
 
 /* Helper function to lazily create a reply reader. */
+#ifdef ALCHEMY_DATABASE
+void __redisCreateReplyReader(redisContext *c) {
+#else
 static void __redisCreateReplyReader(redisContext *c) {
+#endif
     if (c->reader == NULL) {
         c->reader = redisReplyReaderCreate();
         assert(redisReplyReaderSetReplyObjectFunctions(c->reader,c->fn) == REDIS_OK);

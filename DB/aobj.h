@@ -27,9 +27,9 @@ ALL RIGHTS RESERVED
 #define __ALSOSQL_AOBJ__H
 
 #include "adlist.h"
+#include "sds.h"
 #include "redis.h"
 
-#include "btreepriv.h"
 #include "query.h"
 #include "common.h"
 
@@ -39,7 +39,7 @@ bool initAobjInt(    aobj *a, ulong l);
 void initAobjLong(   aobj *a, ulong l);
 void initAobjString( aobj *a, char *s, int len);
 void initAobjFloat(  aobj *a, float f);
-void initAobjFromStr(aobj *a, char *s, int len, bool ctype);
+void initAobjFromStr(aobj *a, char *s, int len, uchar ctype);
 void releaseAobj(void *a);
 void destroyAobj(void *a);
 
@@ -47,7 +47,8 @@ void  aobjClone( aobj *dest, aobj *src);
 aobj *cloneAobj( aobj *a);
 void *vcloneAobj(void *a);
 void  convertSdsToAobj(sds s, aobj *a, uchar ctype);
-aobj *createAobjFromString(char *s, int len, bool ctype);
+aobj *createAobjFromString(char *s, int len, uchar ctype);
+aobj *createAobjFromLong  (ulong l);
 
 void convertFilterSDStoAobj(f_t *flt);
 

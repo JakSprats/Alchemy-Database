@@ -34,7 +34,11 @@ char *strcasestr(const char *haystack, const char *needle); /*compiler warning*/
 #include "redis.h"
 #include "zmalloc.h"
 
+#include "row.h"
 #include "parser.h"
+
+// GLOBALS
+extern uchar OutputMode;
 
 /* copy of strdup - compiles w/o warnings */
 inline char *_strdup(char *s) {
@@ -113,13 +117,21 @@ robj *_createStringObject(char *s) {
 
 robj *cloneRobj(robj *r) { // must be decrRefCount()ed
     if (!r) return NULL;
-    if (r->encoding == REDIS_ENCODING_RAW) {
-        return createStringObject(r->ptr, sdslen(r->ptr));
-    } else {        /* REDIS_ENCODING_INT */
-        robj *n     = createObject(REDIS_STRING, r->ptr);
-        n->encoding = REDIS_ENCODING_INT;
-        return n;
+    if (EREDIS) return cloneRobjErow(r);
+    else {
+        if (r->encoding == REDIS_ENCODING_RAW) {
+            return createStringObject(r->ptr, sdslen(r->ptr));
+        } else {        /* REDIS_ENCODING_INT */
+            robj *n     = createObject(REDIS_STRING, r->ptr);
+            n->encoding = REDIS_ENCODING_INT;
+            return n;
+        }
     }
+}
+void destroyCloneRobj(robj *r) {
+    if (!r) return;
+    if (EREDIS) decrRefCountErow(r);
+    else        decrRefCount(r);
 }
 
 robj **copyArgv(robj **argv, int argc) {

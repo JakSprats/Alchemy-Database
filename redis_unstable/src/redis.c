@@ -960,6 +960,7 @@ void initServer() {
     createSharedObjects();
     server.el = aeCreateEventLoop();
     server.db = zmalloc(sizeof(redisDb)*server.dbnum);
+#ifndef NO_MAIN
 
     if (server.port != 0) {
         server.ipfd = anetTcpServer(server.neterr,server.port,server.bindaddr);
@@ -980,6 +981,7 @@ void initServer() {
         redisLog(REDIS_WARNING, "Configured to not listen anywhere, exiting.");
         exit(1);
     }
+#endif
     for (j = 0; j < server.dbnum; j++) {
         server.db[j].dict = dictCreate(&dbDictType,NULL);
         server.db[j].expires = dictCreate(&keyptrDictType,NULL);
@@ -1016,10 +1018,12 @@ void initServer() {
     server.stat_fork_time = 0;
     server.unixtime = time(NULL);
     aeCreateTimeEvent(server.el, 1, serverCron, NULL, NULL);
+#ifndef NO_MAIN
     if (server.ipfd > 0 && aeCreateFileEvent(server.el,server.ipfd,AE_READABLE,
         acceptTcpHandler,NULL) == AE_ERR) oom("creating file event");
     if (server.sofd > 0 && aeCreateFileEvent(server.el,server.sofd,AE_READABLE,
         acceptUnixHandler,NULL) == AE_ERR) oom("creating file event");
+#endif
 
     if (server.appendonly) {
         server.appendfd = open(server.appendfilename,O_WRONLY|O_APPEND|O_CREAT,0644);
@@ -1846,6 +1850,39 @@ void redisAsciiArt(void) {
     zfree(buf);
 }
 
+#ifdef NO_MAIN
+extern char *ConfigFile; /* can be set via SetConfig() in embed.c */
+
+/* Embedded Alchemy initialises itself here, it doesnt listen on a port
+    but it does everything else */
+int initEmbedded() {
+    initServerConfig();
+    if (ConfigFile) {
+        resetServerSaveParams();
+        loadServerConfig(ConfigFile);
+    }
+    initServer();
+    redisLog(REDIS_NOTICE,"Server started, Alchemy version " ALCHEMY_VERSION);
+    long long start = ustime();
+    if (server.ds_enabled) {
+        redisLog(REDIS_NOTICE,"DB not loaded (running with disk back end)");
+    } else if (server.appendonly) {
+        if (loadAppendOnlyFile(server.appendfilename) == REDIS_OK)
+            redisLog(REDIS_NOTICE, 
+                            "DB loaded from append only file: %.3f seconds",
+                           (float)(ustime()-start)/1000000);
+    } else {
+        if (rdbLoad(server.dbfilename) == REDIS_OK)
+            redisLog(REDIS_NOTICE, "DB loaded from disk: %.3f seconds",
+                                  (float)(ustime()-start)/1000000);
+    }
+    DXDB_main();
+    redisLog(REDIS_NOTICE,"The server is now ready");
+    return 0;
+}
+#else
+int initEmbedded() { return 0; } // NEEDED for compilation
+
 int main(int argc, char **argv) {
     long long start;
 
@@ -1891,6 +1928,7 @@ int main(int argc, char **argv) {
     aeDeleteEventLoop(server.el);
     return 0;
 }
+#endif
 
 #ifdef HAVE_BACKTRACE
 static void *getMcontextEip(ucontext_t *uc) {

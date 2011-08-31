@@ -25,7 +25,7 @@ end
 
 function I_home(my_userid, my_username, s)
   setIsLoggedIn(my_userid); -- used for internal redirects
-  local nposts    = redis("llen",  "uid:" .. my_userid .. ":posts");
+  local nposts    = redis("zcard", "uid:" .. my_userid .. ":posts");
   local nflwers   = redis("scard", "uid:" .. my_userid .. ":followers");
   local nflwing   = redis("scard", "uid:" .. my_userid .. ":following");
   local my_userid = MyUserid;
@@ -69,7 +69,7 @@ function I_profile(userid, username, s)
   if (LoggedIn) then my_userid = MyUserid;
   else               my_userid = 0;       end
   local f = D_profile(isl, my_userid, userid);
-  local nposts = redis("llen", "uid:" .. userid .. ":myposts")
+  local nposts = redis("zcard", "uid:" .. userid .. ":myposts")
   if (CheckEtag('profile', isl, userid, nposts, s)) then return; end
   s = tonumber(s);
   if (s == nil) then s = 0; end
@@ -151,6 +151,7 @@ function WL_register(rw, o_username, o_password)
   local authsecret = call_sync(global_register, 'global_register',
                                my_userid,       username);
   local_register(my_userid, username, password);
+  setIsLoggedIn(my_userid);
 
   -- User registered -> Log him in
   SetHttpResponseHeader('Set-Cookie', 'auth=' .. authsecret .. 
@@ -159,7 +160,7 @@ function WL_register(rw, o_username, o_password)
   create_header(false, my_userid);
   output('<h2>Welcome aboard!</h2> Hey ' .. username ..
              ', now you have an account, <a href=' .. 
-            build_link(my_userid, "index_page") .. 
+            build_link(my_userid, "home") .. 
              '>a good start is to write your first message!</a>.');
   create_footer(false);
   return flush_output();
@@ -227,7 +228,7 @@ end
 
 function WL_timeline(rw)
   local n_users   = redis("scard",  "global:users");
-  local last_post = redis("lindex", "global:timeline", 0);
+  local last_post = redis("zrange", "global:timeline", 0, 0);
   if (CheckEtag('timeline',     n_users, last_post)) then return; end
   if (CacheExists('tineline',   n_users, last_post)) then
     return CacheGet('timeline', n_users, last_post);

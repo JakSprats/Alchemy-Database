@@ -47,6 +47,7 @@ ALL RIGHTS RESERVED
 extern r_tbl_t  Tbl[MAX_NUM_TABLES];
 extern r_ind_t  Index[MAX_NUM_INDICES];
 
+extern cli     *CurrClient;
 extern uchar    OutputMode; // NOTE: used by OREDIS
 
 extern bool  OB_asc  [MAX_ORDER_BY_COLS];
@@ -104,7 +105,7 @@ bool validateJoinOrderBy(cli *c, jb_t *jb) {
    dumpFL(printf, "\t", "JOIN FILTER", flist);               \
    if (rrow) {                                               \
        printf("  join_op ROW:\n");                           \
-       dumpRow(printf, g->co.btr, rrow, akey, w->wf.tmatch); \
+       dumpRow(printf, g->co.btr, rrow, apk, w->wf.tmatch);  \
    }
 #define JOP_DEBUG_1 \
     printf("  filters passed: qcols: %d tmatch: %d jan: %d\n", \
@@ -125,15 +126,15 @@ bool validateJoinOrderBy(cli *c, jb_t *jb) {
     {   printf("rrow: %p\n", rrow);                                       \
         uchar ctype = Tbl[w->obt[i]].col_type[w->obc[i]];           \
         printf("ASSIGN: "); dumpObKey(printf, i, jb->ob->keys[i], ctype); }
-#define JOP_DEBUG_6                                    \
-    printf("    join_op ROW:\n");                      \
-    dumpRow(printf, g->co.btr, rrow, akey, w->wf.tmatch); \
+#define JOP_DEBUG_6                                      \
+    printf("    join_op ROW:\n");                        \
+    dumpRow(printf, g->co.btr, rrow, apk, w->wf.tmatch); \
     dumpFL(printf, "\t", "JOIN-FFLIST", jb->fflist);
 #define DEBUG_PRE_RECURSE \
   printf("PRE RECURSE: join_op\n"); dumpW(printf, g2.co.w);
 #define DEBUG_JOIN_GEN \
     printf("joinGeneric W\n"); dumpW(printf, w); dumpWB(printf, &jb->wb); \
-    printf("joinGeneric JB\n"); dumpJB(c, printf, jb);
+    printf("joinGeneric JB\n"); dumpJB(CurrClient, printf, jb);
 #define DUMP_JOIN_QED \
   (*prn)("\t\tJoinQed: %d JoinLim: %ld JoinOfst: %ld\n", \
          JoinQed, JoinLim, JoinOfst);
@@ -142,18 +143,28 @@ bool validateJoinOrderBy(cli *c, jb_t *jb) {
   DUMP_JOIN_QED
 
 static bool checkOfst() {
-    if (JoinQed) return 1;
-    INCR(JoinLoops);
-    return (JoinLoops >= JoinOfst);
+    if (JoinQed) return 1; INCR(JoinLoops); return (JoinLoops >= JoinOfst);
 }
 static bool checkLimit() {
     if (JoinQed)       return 1;
     if (JoinLim == -1) return 1;
     if (JoinLim ==  0) return 0;
-    JoinLim--;
-    return 1;
+    JoinLim--; return 1;
 }
 
+static robj *EmbeddedJoinRobj = NULL;
+static robj *join_reply_embedded(range_t *g) {
+    if (!EmbeddedJoinRobj) EmbeddedJoinRobj = createObject(REDIS_STRING, NULL);
+    erow_t *er = malloc(sizeof(erow_t));
+    er->ncols  = g->se.qcols;
+    er->cols   = malloc(sizeof(aobj *) * g->se.qcols);
+    for (int i = 0; i < g->se.qcols; i++) {
+        er->cols[i] = createAobjFromString(Jcols[i].s, Jcols[i].len,
+                                           Jcols[i].type);
+    }
+    EmbeddedJoinRobj->ptr = er;
+    return EmbeddedJoinRobj;
+}
 static robj *join_reply_redis(range_t *g) {
     char  pbuf[128];
     sl_t  outs[g->se.qcols];
@@ -174,19 +185,31 @@ static robj *join_reply_norm(range_t *g) {
     totlen--; /* -1 no final comma */
     return write_output_row(g->se.qcols, 0, NULL, totlen, Jcols);
 }
-static void join_reply(range_t *g, long *card) {
-    jb_t *jb    = g->jb;   /* code compaction */
-    robj *r = (OREDIS) ? join_reply_redis(g) : join_reply_norm(g);
+static robj *outputJoinRow(range_t *g) {
+    if      (EREDIS) return join_reply_embedded(g);
+    else if (OREDIS) return join_reply_redis   (g);
+    else             return join_reply_norm    (g);
+}
+static bool addReplyJoinRow(cli *c, robj *r) {
+    return addReplyRow(c, r, -1, NULL, NULL);
+}
+static bool join_reply(range_t *g, long *card) {
+    bool  ret = 1;
+    jb_t *jb  = g->jb;   /* code compaction */
+    robj *r   = outputJoinRow(g);
     if (JoinQed) {
         jb->ob->row = cloneRobj(r);
         listAddNodeTail(g->co.ll, jb->ob);
         jb->ob      = cloneOb(jb->ob, jb->wb.nob);       /* DESTROY ME 057 */
     } else {
-        if (OREDIS) addReply(    g->co.c, r);
-        else        addReplyBulk(g->co.c, r);
+        if (!addReplyJoinRow(g->co.c, r)) { ret = 0; goto join_rep_end; }
     }
-    decrRefCount(r);
-    INCR(JoinCard); INCR(*card);
+    if (!(EREDIS)) INCR(*card);
+    INCR(JoinCard);
+
+join_rep_end:
+    if (!(EREDIS)) decrRefCount(r);
+    return ret;
 }
 
 static bool popKlist(range_t *g,   int   imatch, list **klist,
@@ -226,8 +249,7 @@ static bool join_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
     int   nfree = 0;
     for (int i = 0; i < g->se.qcols; i++) {
         if (jb->js[i].jan == w->wf.jan) {
-            Resp = getSCol(g->co.btr, rrow, jb->js[i].c, /* FREE ME 037 */
-                             apk, jb->js[i].t);
+            Resp = getSCol(g->co.btr, rrow, jb->js[i].c, apk, jb->js[i].t);//037
             Jcols[i].len    = Resp.len;
             Jcols[i].freeme = 0; /* freed via freeme[] */
             Jcols[i].type   = Tbl[jb->js[i].t].col_type[jb->js[i].c];
@@ -249,18 +271,20 @@ static bool join_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
         }
     }
     if (g->co.lvl == (uint32)jb->hw) {                             //JOP_DEBUG_6
+        bool lret = 1;
         if (passFilters(g->co.btr, apk, rrow, jb->fflist, tmatch)) {
             if (jb->cstar) { INCR(JoinCard); INCR(*card); }
             else if (checkOfst()) {
-                if (checkLimit()) join_reply(g, card);
+                if (checkLimit()) lret = join_reply(g, card);
             }
         }
         for (int i = 0; i < obnfree; i++) {
             free(jb->ob->keys[obfreei[i]]); jb->ob->keys[obfreei[i]] = NULL;
         }
         for (int i = 0; i < nfree; i++) free(freeme[i]); /* FREE 037 */
-        return 1;
+        return lret;
     }
+    bool ret = 1;
     { /* NOTE: this is the recursion step */
         aobj nk; initAobj(&nk); list *nkl; int nimatch; int jcmatch;
         ijp_t *ij   = &jb->ij[g->co.lvl];
@@ -300,6 +324,7 @@ static bool join_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
             if (w2.wf.imatch == -1) { JoinErr = 1; }
             else {
                 long rcard = keyOp(&g2, join_op); /* RECURSE */
+                if (rcard == -1) { JoinErr = 1; ret = 0; }
                 INCRBY(*card, rcard);
             }
         }
@@ -314,7 +339,7 @@ static bool join_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
     for (int i = 0; i < obnfree; i++) { /* just free this level's ob->leys[] */
         free(jb->ob->keys[obfreei[i]]); jb->ob->keys[obfreei[i]] = NULL;
     }
-    return 1;
+    return ret;
 }
 static void setupFirstJoinStep(jb_t *jb, cswc_t *w) {
     init_check_sql_where_clause(w, -1, NULL);
@@ -339,18 +364,23 @@ void joinGeneric(redisClient *c, jb_t *jb) {
     void *rlen        = addDeferredMultiBulkLength(c);
     long  card        = 0;
     Op(&g, join_op); /* NOTE Op() retval ignored as SELECTs can NOT FAIL */
-    if (JoinErr) { addReply(c, shared.join_qo_err); return; }
+    if (JoinErr) { addReply(c, shared.join_qo_err); goto join_gen_err; }
     card              = JoinCard;
     long sent         =  0;
     if (card) {
-        if (JoinQed) opSelectOnSort(c, ll, &jb->wb, g.co.ofree, &sent, -1);
-        else         sent = card;
+        if (JoinQed) {
+          if (!opSelectSort(c, ll, &jb->wb, g.co.ofree, &sent, -1))
+              goto join_gen_err;
+        } else {
+            sent = card;
+        }
     }
     if (JoinLim != -1 && sent < card) card = sent;
     if (jb->cstar) setDeferredMultiBulkLong(c, rlen, card);
     else           setDeferredMultiBulkLength(c, rlen, card);
     if (jb->wb.ovar) { incrOffsetVar(c, &jb->wb, card); } //TODO done use w
 
+join_gen_err:
     releaseOBsort(ll);
     releaseAobj(&w.wf.akey); releaseAobj(&w.wf.alow); releaseAobj(&w.wf.ahigh);
     return;

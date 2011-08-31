@@ -95,7 +95,9 @@ enum OP {NONE, EQ, NE, GT, GE, LT, LE, RQ, IN};
 
 #define OUTPUT_NORMAL     0
 #define OUTPUT_PURE_REDIS 1
+#define OUTPUT_EMBEDDED   2
 #define OREDIS OutputMode == OUTPUT_PURE_REDIS
+#define EREDIS OutputMode == OUTPUT_EMBEDDED
 
 #define FK_RQ(wtype) !(wtype == SQL_SINGLE_FK_LKP)
 

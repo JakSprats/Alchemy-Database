@@ -70,7 +70,10 @@ ifndef V
 #QUIET_LINK = @printf '    %b %b\n' $(LINKCOLOR)LINK$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR);
 endif
 
-OBJ = adlist.o ae.o anet.o dict.o redis.o sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o zipmap.o sha1.o ziplist.o release.o networking.o util.o object.o db.o replication.o rdb.o t_string.o t_list.o t_set.o t_zset.o t_hash.o config.o aof.o dscache.o pubsub.o multi.o debug.o sort.o intset.o syncio.o diskstore.o cluster.o crc16.o endian.o scripting.o
+OBJ1 = adlist.o ae.o anet.o dict.o
+OBJ2 = sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o zipmap.o sha1.o ziplist.o release.o networking.o util.o object.o db.o replication.o rdb.o t_string.o t_list.o t_set.o t_zset.o t_hash.o config.o aof.o dscache.o pubsub.o multi.o debug.o sort.o intset.o syncio.o diskstore.o cluster.o crc16.o endian.o scripting.o
+SERVEROBJ =  $(OBJ1) redis.o $(OBJ2)
+EMBEDDEDOBJ = $(OBJ1) embedded_redis.o embedded_test.o $(OBJ2)
 BENCHOBJ = ae.o anet.o redis-benchmark.o sds.o adlist.o zmalloc.o
 CLIOBJ = anet.o sds.o adlist.o redis-cli.o zmalloc.o release.o
 CHECKDUMPOBJ = redis-check-dump.o lzf_c.o lzf_d.o
@@ -83,8 +86,9 @@ CLIPRGNAME = alchemy-cli
 CHECKDUMPPRGNAME = alchemy-check-dump
 CHECKAOFPRGNAME = alchemy-check-aof
 GENBENCHPRGNAME = alchemy-gen-benchmark
+EMBEDDEDTESTPRGNAME = embedded_test
 
-all: alchemy-lib alchemy-benchmark alchemy-cli alchemy-check-dump alchemy-check-aof alchemy-server alchemy-gen-benchmark
+all: alchemy-lib alchemy-benchmark alchemy-cli alchemy-check-dump alchemy-check-aof alchemy-server alchemy-gen-benchmark embedded_test
 	@echo ""
 	@echo "Hint: To run 'make test' is a good idea ;)"
 	@echo ""
@@ -161,6 +165,9 @@ util.o: util.c fmacros.h util.h
 ziplist.o: ziplist.c zmalloc.h util.h ziplist.h endian.h
 zipmap.o: zipmap.c zmalloc.h endian.h
 zmalloc.o: zmalloc.c config.h zmalloc.h
+embedded_redis.o: redis.c redis.h fmacros.h config.h ae.h sds.h dict.h \
+  adlist.h zmalloc.h anet.h zipmap.h ziplist.h intset.h version.h util.h \
+  asciilogo.h
 
 .PHONY: dependencies
 
@@ -177,21 +184,19 @@ dependencies:
 ../deps/jemalloc/lib/libjemalloc.a:
 	cd ../deps/jemalloc && ./configure $(JEMALLOC_CFLAGS) --with-jemalloc-prefix=je_ --enable-cc-silence && $(MAKE) lib/libjemalloc.a
 
-alchemy-server: $(OBJ)
-	$(QUIET_CC)$(CC) -o $(PRGNAME) $(CCOPT) $(DEBUG) $(OBJ) $(CCLINK) $(ALLOC_LINK) -L../../DB/ -lx_db $(LUALIB) ../deps/hiredis/libhiredis.a ../deps/linenoise/linenoise.o
+alchemy-server: $(SERVEROBJ)
+	$(QUIET_CC)$(CC) -o $(PRGNAME) $(CCOPT) $(DEBUG) $(SERVEROBJ) $(CCLINK) $(ALLOC_LINK) -L../../DB/ -lx_db $(LUALIB) ../deps/hiredis/libhiredis.a ../deps/linenoise/linenoise.o
 
 alchemy-benchmark: dependencies $(BENCHOBJ)
 	@cd ../deps/hiredis && $(MAKE) static
 	$(QUIET_LINK)$(CC) -o $(BENCHPRGNAME) $(CCOPT) $(DEBUG) $(BENCHOBJ) ../deps/hiredis/libhiredis.a $(CCLINK) $(ALLOC_LINK)
 
 redis-benchmark.o:
-	$(CC) -c $(CFLAGS) -I../deps/hiredis $(DEBUG) $(COMPILE_TIME) $<
-	#$(QUIET_CC)$(CC) -c $(CFLAGS) -I../deps/hiredis $(DEBUG) $(COMPILE_TIME) $<
+	$(QUIET_CC)$(CC) -c $(CFLAGS) -I../deps/hiredis $(DEBUG) $(COMPILE_TIME) $<
 
 alchemy-gen-benchmark: dependencies $(GENBENCHOBJ)
 	@cd ../deps/hiredis && $(MAKE) static
 	$(QUIET_LINK)$(CC) -o $(GENBENCHPRGNAME) $(CCOPT) $(DEBUG) $(GENBENCHOBJ) ../deps/hiredis/libhiredis.a $(CCLINK) $(ALLOC_LINK)
-	#$(CC) -o $(GENBENCHPRGNAME) $(CCOPT) $(DEBUG) $(GENBENCHOBJ)
 
 alchemy-cli: dependencies $(CLIOBJ)
 	$(QUIET_LINK)$(CC) -o $(CLIPRGNAME) $(CCOPT) $(DEBUG) $(CLIOBJ) ../deps/hiredis/libhiredis.a ../deps/linenoise/linenoise.o $(CCLINK) $(ALLOC_LINK) ../../DB/xdb_client_hooks.o
@@ -207,6 +212,12 @@ alchemy-check-aof: $(CHECKAOFOBJ)
 
 alchemy-lib: dependencies $(ALLOC_DEP)
 	(cd ../../DB; make redis3)
+
+embedded_redis.o:
+	$(QUIET_CC)$(CC) -o embedded_redis.o -c $(CFLAGS) -I../deps/hiredis -I../deps/linenoise $(DEBUG) $(COMPILE_TIME) -DNO_MAIN redis.c
+
+embedded_test: $(EMBEDDEDOBJ)
+	$(QUIET_CC)$(CC) -o $(EMBEDDEDTESTPRGNAME) $(CCOPT) $(DEBUG) $(EMBEDDEDOBJ) $(CCLINK) $(ALLOC_LINK) -L../../DB/ -lx_db $(LUALIB) ../deps/hiredis/libhiredis.a ../deps/linenoise/linenoise.o
 
 # Because the jemalloc.h header is generated as a part of the jemalloc build
 # process, building it should complete before building any other object.

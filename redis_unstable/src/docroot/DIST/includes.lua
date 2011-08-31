@@ -8,6 +8,9 @@ dofile "./docroot/DIST/heartbeat.lua";
 -- AUTO_INC_COUNTER AUTO_INC_COUNTER AUTO_INC_COUNTER AUTO_INC_COUNTER
 dofile "./docroot/DIST/global_ops.lua";
 
+-- PUBLICATION PUBLICATION PUBLICATION PUBLICATION PUBLICATION PUBLICATION
+dofile "./docroot/DIST/publication.lua";
+
 -- DISTRIBUTED_LINKING DISTRIBUTED_LINKING DISTRIBUTED_LINKING
 dofile "./docroot/DIST/linking.lua";
 

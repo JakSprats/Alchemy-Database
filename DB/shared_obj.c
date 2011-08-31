@@ -32,8 +32,6 @@ ALL RIGHTS RESERVED
 
 void DXDB_createSharedObjects() {
     shared.singlerow = createObject(REDIS_STRING,sdsnew("*1\r\n"));
-    shared.inserted  = createObject(REDIS_STRING,sdsnew("+INSERTED\r\n"));
-    shared.upd8ed    = createObject(REDIS_STRING,sdsnew("+UPDATED\r\n"));
     shared.toomanytables = createObject(REDIS_STRING,sdsnew(
         "-ERR MAX tables reached (256)\r\n"));
     shared.missingcolumntype = createObject(REDIS_STRING,sdsnew(

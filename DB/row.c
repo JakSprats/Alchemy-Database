@@ -70,6 +70,9 @@ extern char STRCAT;
 #define RFLAG_6BIT_ZIP     8
 #define RFLAG_LZF_ZIP     16
 
+typedef robj *row_outputter(bt   *btr,       void *rrow, int   qcols,
+                            int   cmatchs[], aobj *apk,  int   tmatch);
+
 /* PROTOYPES */
 static bool evalExpr(redisClient *c, ue_t *ue, aobj *aval, uchar ctype);
 
@@ -451,6 +454,7 @@ int updateRow(cli  *c,      bt      *btr,    aobj  *apk,     void *orow,
             if (osflags[i] && osflags[i] != cr.iflags[i]) { ovrwr = 0; break; }
     }}
     if (ovrwr) { /* just OVERWRITE INTS & LONGS */
+printf("OVRWR\n");
         for (int i = 1; i < cr.ncols; i++) {
             if (osflags[i]) {
                 uint32 clen; uchar rflag;
@@ -659,6 +663,60 @@ inline aobj getSCol(bt *btr, void *rrow, int cmatch, aobj *apk, int tmatch) {
     return getRawCol(btr, rrow, cmatch, apk, tmatch, 1);
 }
 
+/* OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT */
+static void destroy_erow(erow_t *er) { //printf("destroy_embedded_row\n");
+    for (int i = 0; i < er->ncols; i++) destroyAobj(er->cols[i]);
+    free(er->cols);
+    free(er);
+}
+robj *cloneRobjErow(robj *r) {
+    if (!r) return NULL;
+    erow_t *er  = (erow_t *)r->ptr;
+    robj   *n   = createObject(REDIS_STRING, NULL);
+    erow_t *ner = malloc(sizeof(erow_t));
+    n->ptr      = ner;
+    ner->ncols  = er->ncols;
+    ner->cols   = malloc(sizeof(aobj *) * ner->ncols);
+    for (int i = 0; i < ner->ncols; i++) {
+        ner->cols[i] = cloneAobj(er->cols[i]);
+    }
+    return n;
+}
+void decrRefCountErow(robj *r) {
+    if (!r) return;
+    erow_t *er  = (erow_t *)r->ptr;
+    if (er) destroy_erow(er); /* destroy here (avoids deep redis integration) */
+    r->ptr      = NULL;       /* already destroyed */
+    decrRefCount(r);
+}
+bool addReplyRow(cli *c, robj *r, int tmatch, aobj *apk, uchar *lruc) {
+    if (lruc) updateLru(c, tmatch, apk, lruc); /* NOTE: updateLRU (SELECT) */
+    if      (EREDIS) {
+        erow_t *er  = (erow_t *)r->ptr;
+        bool    ret = c->scb ? (*c->scb)(er) : 1;
+        destroy_erow(er);   /* destroy here (avoids deep redis integration) */
+        r->ptr      = NULL; /* already destroyed */
+        return ret;
+    } else if (OREDIS) addReply(c,     r);
+      else             addReplyBulk(c, r);
+    return 1;
+}
+
+robj *EmbeddedRobj = NULL;
+static robj *orow_embedded(bt   *btr,       void *rrow, int   qcols,
+                           int   cmatchs[], aobj *apk,  int   tmatch) {
+    if (!EmbeddedRobj) EmbeddedRobj = createObject(REDIS_STRING, NULL);
+    erow_t *er = malloc(sizeof(erow_t));
+    er->ncols  = qcols;
+    er->cols   = malloc(sizeof(aobj *) * er->ncols);
+    for (int i = 0; i < er->ncols; i++) {
+        aobj  acol  = getCol(btr, rrow, cmatchs[i], apk, tmatch);
+        er->cols[i] = cloneAobj(&acol);
+        releaseAobj(&acol);
+    }
+    EmbeddedRobj->ptr = er;
+    return EmbeddedRobj;
+}
 #define OBUFF_SIZE 4096
 static char OutBuff[OBUFF_SIZE]; /*avoid malloc()s */
 
@@ -725,10 +783,13 @@ static robj *orow_normal(bt   *btr,       void *rrow, int   qcols,
 }
 robj *outputRow(bt   *btr,       void *rrow, int qcols,
                 int   cmatchs[], aobj *apk,  int tmatch) {
-    return OREDIS ? orow_redis (btr, rrow, qcols, cmatchs, apk, tmatch) :
-                    orow_normal(btr, rrow, qcols, cmatchs, apk, tmatch);
+    row_outputter *rop =  (EREDIS) ? orow_embedded :
+                         ((OREDIS) ? orow_redis    :
+                                     orow_normal);
+    return (*rop)(btr, rrow, qcols, cmatchs, apk, tmatch);
 }
 
+/* DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW */
 bool deleteRow(int tmatch, aobj *apk, int matches, int inds[]) {
     bt   *btr  = getBtr(tmatch);
     void *rrow = btFind(btr, apk);

@@ -102,7 +102,7 @@ void createLruIndex(cli *c) {
     addReply(c, shared.ok);
 }
 void updateLru(cli *c, int tmatch, aobj *apk, uchar *lruc) {
-    if (tmatch == -1)      return; /* from JOIN opSelectOnSort */
+    if (tmatch == -1)      return; /* from JOIN opSelectSort */
     if (!Tbl[tmatch].lrud) return;
     if (c->LruColInSelect) return; /* NOTE: otherwise TOO cyclical */
     r_tbl_t *rt = &Tbl[tmatch];
