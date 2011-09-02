@@ -244,6 +244,8 @@ static bool initLua(cli *c) {
     lua_setglobal(server.lua, "Redisify");
     lua_pushcfunction(server.lua, luaSha1Command);
     lua_setglobal(server.lua, "SHA1");
+    lua_pushcfunction(server.lua, luaSQLCommand);
+    lua_setglobal(server.lua, "SQL");
 
     lua_pushcfunction(server.lua, luaRemoteMessageCommand);
     lua_setglobal(server.lua, "RemoteMessage");

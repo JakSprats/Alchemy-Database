@@ -267,6 +267,25 @@ int luaRemotePipeCommand(lua_State *lua) {
   return luaRemoteRPC(lua, 0);
 }
 
+int luaSQLCommand(lua_State *lua) { //printf("SQL\n");
+    int  argc  = lua_gettop(lua);
+    if (argc != 1 || lua_type(lua, 1) != LUA_TSTRING) {
+        LUA_POP_WHOLE_STACK
+        luaPushError(lua, "Lua SQL() takes 1 string arg"); return 1;
+    }
+    size_t len;
+    char *s = (char *)lua_tolstring(lua, -1, &len);
+    lua_pop(lua, 1);
+    sds sql = sdsnewlen(s, len);
+    int  sargc;
+    sds *sargv = sdssplitargs(sql, &sargc);
+    DXDB_cliSendCommand(&sargc, sargv);
+    for (int j = 0; j < sargc; j++) {
+        lua_pushlstring(lua, sargv[j], sdslen(sargv[j]));
+    }
+    zfree(sargv);
+    return luaRedisCommand(lua);
+}
 
 int luaConvertToRedisProtocolCommand(lua_State *lua) { //printf("Redisify()\n");
     int  argc  = lua_gettop(lua);

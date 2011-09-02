@@ -35,6 +35,7 @@ void messageCommand   (redisClient *c);
 
 int luaConvertToRedisProtocolCommand(lua_State *lua);
 int luaSha1Command                  (lua_State *lua);
+int luaSQLCommand                   (lua_State *lua);
 
 int remoteMessage(sds ip, int port, sds cmd, bool wait,
                   redisReply **ret_reply);

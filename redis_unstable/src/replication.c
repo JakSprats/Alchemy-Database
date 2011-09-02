@@ -1,3 +1,6 @@
+#ifdef ALCHEMY_DATABASE
+  #include "xdb_hooks.h"
+#endif
 #include "redis.h"
 
 #include <sys/time.h>
