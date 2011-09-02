@@ -2,39 +2,59 @@
 AutoIncRange = 10000;
 
 NodeData = {};
-table.insert(NodeData, {ip     = "127.0.0.1",      port = 8080,
-                        domain = "www.retwis.com", synced = 0});
-table.insert(NodeData, {ip     = "127.0.0.1",      port = 8081,
-                        domain = "www.retwis.com", synced = 0});
-table.insert(NodeData, {ip     = "127.0.0.1",      port = 8082,
-                        domain = "www.retwis.com", synced = 0});
-table.insert(NodeData, {ip     = "127.0.0.1",      port = 8083,
-                        domain = "www.retwis.com", synced = 0});
-table.insert(NodeData, {ip     = "127.0.0.1",      port = 8084,
-                        domain = "www.retwis.com", synced = 0});
-table.insert(NodeData, {ip     = "127.0.0.1",      port = 8085,
-                        domain = "www.retwis.com", synced = 0});
-table.insert(NodeData, {ip     = "127.0.0.1",      port = 8086,
-                        domain = "www.retwis.com", synced = 0});
-table.insert(NodeData, {ip     = "127.0.0.1",      port = 8087,
-                        domain = "www.retwis.com", synced = 0});
+-- NODES
+table.insert(NodeData, {ip     = "127.0.0.1",      port = 8001,  isb    = false,
+                        domain = "www.retwis.com", synced = 0,   bridge = 1});
+table.insert(NodeData, {ip     = "127.0.0.1",      port = 8002,  isb    = false,
+                        domain = "www.retwis.com", synced = 0,   bridge =  1});
+table.insert(NodeData, {ip     = "127.0.0.1",      port = 8003,  isb    = false,
+                        domain = "www.retwis.com", synced = 0,   bridge =  1});
+table.insert(NodeData, {ip     = "127.0.0.1",      port = 8004,  isb    = false,
+                        domain = "www.retwis.com", synced = 0,   bridge =  1});
+table.insert(NodeData, {ip     = "127.0.0.1",      port = 9005,  isb    = false,
+                        domain = "www.retwis.com", synced = 0,   bridge =  2});
+table.insert(NodeData, {ip     = "127.0.0.1",      port = 9006,  isb    = false,
+                        domain = "www.retwis.com", synced = 0,   bridge =  2});
+table.insert(NodeData, {ip     = "127.0.0.1",      port = 9007,  isb    = false,
+                        domain = "www.retwis.com", synced = 0,   bridge =  2});
+table.insert(NodeData, {ip     = "127.0.0.1",      port = 9008,  isb    = false,
+                        domain = "www.retwis.com", synced = 0,   bridge =  2});
+-- BRIDGES
+table.insert(NodeData, {ip     = "127.0.0.1",      port = 20000, isb    = true;
+                        domain = "www.retwis.com", synced = 0,   bridge =  1});
+table.insert(NodeData, {ip     = "127.0.0.1",      port = 20001, isb    = true,
+                        domain = "www.retwis.com", synced = 0,   bridge =  2});
+
+-- COMPUTE_CLUSTER COMPUTE_CLUSTER COMPUTE_CLUSTER COMPUTE_CLUSTER
+AmBridge   = NodeData[MyNodeId]['isb'];
+
+IslandData = {};
+NumNodes   = -1;
+for inid, data in pairs(NodeData) do
+  if (data['isb'] == false) then
+    IslandData[inid] = tonumber(data['bridge']);
+    NumNodes = NumNodes + 1;
+  end
+end
 
 BridgeData = {};
-table.insert(BridgeData, {ip     = "127.0.0.1",      port = 20000,
-                          domain = "www.retwis.com", synced = 0});
-table.insert(BridgeData, {ip     = "127.0.0.1",      port = 20001,
-                          domain = "www.retwis.com", synced = 0});
+for inid, data in pairs(NodeData) do
+  if (data['isb']) then
+    table.insert(BridgeData, tonumber(data['bridge']), inid);
+  end
+end
 
--- CONSTANT CONSTANT CONSTANT CONSTANT CONSTANT CONSTANT CONSTANT CONSTANT
-IslandData    = {};
-IslandData[1] = 1; IslandData[2] = 1;   
-IslandData[3] = 1; IslandData[4] = 1;   
-IslandData[5] = 2; IslandData[6] = 2;   
-IslandData[7] = 2; IslandData[8] = 2;   
-
-MyGeneration = redis("get", "alchemy_generation");
-if (MyGeneration == nil) then MyGeneration = 0; end
-MyGeneration = MyGeneration + 1; -- This is the next generation
-redis("set", "alchemy_generation", MyGeneration);
-print('MyGeneration: ' .. MyGeneration);
-
+BridgeId   = tonumber(NodeData[MyNodeId]['bridge']);
+PeerData   =  {};
+for inid, data in pairs(NodeData) do
+  if (tonumber(data['bridge']) == BridgeId) then
+    table.insert(PeerData, inid);
+  end
+end
+if (AmBridge) then
+  NumPeers = #PeerData + #BridgeData - 1; -- HBs from ALL except self
+  NumHBs   = #PeerData + #BridgeData - 1; -- HBs from ALL except self
+else
+  NumPeers = #PeerData - 1; -- no bridge
+  NumHBs   = #PeerData - 2; -- no self, no bridge
+end

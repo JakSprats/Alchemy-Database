@@ -1,4 +1,12 @@
 
+-- GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS
+MyGeneration = redis("get", "alchemy_generation");
+if (MyGeneration == nil) then MyGeneration = 0; end
+MyGeneration = MyGeneration + 1; -- This is the next generation
+redis("set", "alchemy_generation", MyGeneration);
+print('MyGeneration: ' .. MyGeneration);
+
+-- FUNCTIONS FUNCTIONS FUNCTIONS FUNCTIONS FUNCTIONS FUNCTIONS FUNCTIONS
 function getGenerationName(nodeid) return 'GENERATION_' .. nodeid; end
 function getHWname        (nodeid) return 'HIGHWATER_'  .. nodeid; end
 
@@ -7,11 +15,11 @@ function aiweq(inid) return '[' .. inid .. ']='; end -- HELPER
 
 function GenerateBridgeHBCommand()-- this command will be remotely EVALed
   local b_gnr_cmd = 'B_GNR=' .. MyGeneration .. ';';
-  local b_hw_cmd  = 'B_HW={' .. aiweq(MyBridgeId) .. BridgeHW .. '};';
+  local b_hw_cmd  = 'B_HW={' .. aiweq(MyNodeId) .. BridgeHW .. '};';
   return b_hw_cmd .. b_gnr_cmd;
 end
 
-function GenerateHBCommand(isb) -- this command will be remotely EVALed
+function GenerateHBCommand() -- this command will be remotely EVALed
   local n_hw_cmd  = 'N_HW={';
   local n_gnr_cmd = 'N_GNR={';
   local i         = 1;
@@ -32,7 +40,7 @@ function GenerateHBCommand(isb) -- this command will be remotely EVALed
     end
     i = i + 1;
   end
-  if (isb == 1) then -- HBs from BRIDGES append BRIDGE's HW & GNR
+  if (AmBridge) then -- HBs from BRIDGES append BRIDGE's HW & GNR
       n_hw_cmd  = n_hw_cmd  .. ',' .. aiweq(-1) .. BridgeHW;
       n_gnr_cmd = n_gnr_cmd .. ',' .. aiweq(-1) .. MyGeneration;
   end
@@ -41,14 +49,12 @@ function GenerateHBCommand(isb) -- this command will be remotely EVALed
 end
 function HeartBeat() -- lua_cron function, called every second
   if (PingSyncAllNodes() == false) then return; end -- wait until synced
-  local isb;
-  if (MyBridgeId ~= -1) then isb = 1; else isb = 0; end
-  local cmd  = GenerateHBCommand(isb);
+  local cmd  = GenerateHBCommand();
   local msg  = Redisify('LUA', 'handle_heartbeat', MyNodeId, MyGeneration, cmd);
   print ('   HEARTBEAT: myid: ' .. MyNodeId .. ' cmd: ' .. cmd);
   redis("publish", 'sync', msg);
-  if (isb == 1) then
-    local myid = GetMyId(isb);
+  if (AmBridge) then
+    local myid = MyNodeId;
     cmd = cmd .. GenerateBridgeHBCommand();
     msg = Redisify('LUA', 'handle_bridge_heartbeat', myid, MyGeneration, cmd);
     print ('   BRIDGE_HEARTBEAT: myid: ' .. myid .. ' cmd: ' .. cmd);
@@ -78,7 +84,7 @@ function handle_heartbeat(nodeid, generation, hb_eval_cmd)
         local lgnr = redis("get", getGenerationName(inid));
         if (lgnr ~= nil) then
           if (tonumber(lgnr) ~= tonumber(gnr)) then
-            resync_ping(inid, 'sync', 0);
+            resync_ping(inid, 'sync');
           end
         end
       end
@@ -120,9 +126,7 @@ function update_remote_hw(nodeid, xactid)
   if     (hw == nil or hw == 0) then
     redis("set", hwname, xactid);
   else
-    local isb;
-    if (inid == -1) then isb = 1; else isb = 0; end
-    if (isb == 1) then
+    if (AmBridge) then
       if (hw == getPreviousBridgeAutoInc(xactid)) then
         redis("set", hwname, xactid);
       else
@@ -159,7 +163,7 @@ function handle_ooo(fromnode, hw, xactid)
   local msgs     = redis("zrangebyscore", "Q_sync", beg, fin);
   local pipeline = '';
   for k,v in pairs(msgs) do pipeline = pipeline .. v; end
-  local data     = GetNode(ifromnode);
+  local data     = NodeData[ifromnode];
   RemoteMessage(data["ip"], data["port"], pipeline);
 end
 function natural_net_recovery(hw)
@@ -205,9 +209,9 @@ function recover_from_ooo()
         end
       end
     else
-      local myid = GetMyId(0);
+      local myid = MyNodeId;
       local cmd  = Redisify('LUA', 'handle_ooo', myid, hw, xactid, 0);
-      local data = GetNode(inid);
+      local data = NodeData[inid];
       RemoteMessage(data["ip"], data["port"], cmd);
       redis("set", mabove, tostring(hw));
       redis("set", mbelow, xactid);
