@@ -67,6 +67,8 @@ typedef bool select_callback(erow_t* erow);
     alchemy_http_info   http;               \
     int                 LastJTAmatch;       \
     int                 NumJTAlias;         \
+    sds                 bindaddr;           \
+    int                 bindport;           \
     select_callback    *scb;
 
 #define SHARED_OBJ_DECLARATION \

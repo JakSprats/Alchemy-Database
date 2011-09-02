@@ -176,7 +176,11 @@ struct redisCommand redisCommandTable[] = {
     {"multi",multiCommand,1,0,NULL,0,0,0,0,0},
     {"exec",execCommand,1,REDIS_CMD_DENYOOM,NULL,0,0,0,0,0},
     {"discard",discardCommand,1,0,NULL,0,0,0,0,0},
+#ifdef ALCHEMY_DATABASE
+    {"sync",syncCommand,3,0,NULL,0,0,0,0,0},
+#else
     {"sync",syncCommand,1,0,NULL,0,0,0,0,0},
+#endif
     {"flushdb",flushdbCommand,1,0,NULL,0,0,0,0,0},
     {"flushall",flushallCommand,1,0,NULL,0,0,0,0,0},
     {"sort",sortCommand,-2,REDIS_CMD_DENYOOM,NULL,1,1,1,0,0},
@@ -1008,6 +1012,9 @@ void initServer() {
     server.lastsave = time(NULL);
     server.dirty = 0;
     server.stat_numcommands = 0;
+#ifdef ALCHEMY_DATABASE
+    server.stat_num_dirty_commands = 0;
+#endif
     server.stat_numconnections = 0;
     server.stat_expiredkeys = 0;
     server.stat_evictedkeys = 0;
@@ -1102,6 +1109,9 @@ void call(redisClient *c, struct redisCommand *cmd) {
     cmd->microseconds += ustime()-start;
     cmd->calls++;
 
+#ifdef ALCHEMY_DATABASE
+    DXDB_call(cmd, &dirty);
+#endif
     if (server.appendonly && dirty)
         feedAppendOnlyFile(cmd,c->db->id,c->argv,c->argc);
     if ((dirty || cmd->flags & REDIS_CMD_FORCE_REPLICATION) &&
@@ -1521,6 +1531,9 @@ sds genRedisInfoString(char *section) {
             "# Stats\r\n"
             "total_connections_received:%lld\r\n"
             "total_commands_processed:%lld\r\n"
+#ifdef ALCHEMY_DATABASE
+            "total_dirty_commands_processed:%lld\r\n"
+#endif
             "expired_keys:%lld\r\n"
             "evicted_keys:%lld\r\n"
             "keyspace_hits:%lld\r\n"
@@ -1530,6 +1543,9 @@ sds genRedisInfoString(char *section) {
             "latest_fork_usec:%lld\r\n",
             server.stat_numconnections,
             server.stat_numcommands,
+#ifdef ALCHEMY_DATABASE
+            server.stat_num_dirty_commands,
+#endif
             server.stat_expiredkeys,
             server.stat_evictedkeys,
             server.stat_keyspace_hits,

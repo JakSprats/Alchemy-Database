@@ -564,6 +564,9 @@ struct redisServer {
     /* Fields used only for stats */
     time_t stat_starttime;          /* server start time */
     long long stat_numcommands;     /* number of processed commands */
+#ifdef ALCHEMY_DATABASE
+    long long stat_num_dirty_commands; /* number of dirty commands */
+#endif
     long long stat_numconnections;  /* number of connections received */
     long long stat_expiredkeys;     /* number of expired keys */
     long long stat_evictedkeys;     /* number of evicted keys (maxmemory) */

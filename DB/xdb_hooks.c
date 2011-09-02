@@ -29,6 +29,7 @@ ALL RIGHTS RESERVED
 #include <arpa/inet.h>
 #include <assert.h>
 #include <strings.h>
+#include <unistd.h>
 
 #include "xdb_hooks.h"
 
@@ -36,6 +37,8 @@ ALL RIGHTS RESERVED
 #include "dict.h"
 #include "adlist.h"
 #include "rdb.h"
+
+#include "hiredis.h"
 
 #include "internal_commands.h"
 #include "ctable.h"
@@ -118,6 +121,9 @@ void btreeCommand     (redisClient *c);
 
 void messageCommand   (redisClient *c);
 
+void purgeCommand     (redisClient *c);
+void dirtyCommand     (redisClient *c);
+
 #ifdef REDIS3
   #define CMD_END       NULL,1,1,1,0,0
   #define GLOB_FUNC_END NULL,0,0,0,0,0
@@ -143,6 +149,9 @@ struct redisCommand DXDBCommandTable[] = {
 
     {"explain",    explainCommand,     7, 0,                   GLOB_FUNC_END},
     {"alter",      alterCommand,      -6, 0,                   GLOB_FUNC_END},
+
+    {"purge",      purgeCommand,       1, 0,                   GLOB_FUNC_END},
+    {"dirty",      dirtyCommand,      -1, 0,                   GLOB_FUNC_END},
 
     {"show",       showCommand,        2, 0,                   GLOB_FUNC_END},
     {"btree",      btreeCommand,       2, 0,                   GLOB_FUNC_END},
@@ -288,6 +297,12 @@ rcommand *DXDB_lookupCommand(sds name) {
     return cmd;
 }
 
+void DXDB_call(struct redisCommand *cmd, long long *dirty) {
+    if (cmd->proc == luafuncCommand) *dirty = 0;
+    if (*dirty) server.stat_num_dirty_commands++;
+}
+
+
 static void computeWS_WL_MinMax() {
     if (!WS_WL_Broadcast && WS_WL_Mask.s_addr && WS_WL_Addr.s_addr) {
         WS_WL_Subnet    = WS_WL_Addr.s_addr & WS_WL_Mask.s_addr;
@@ -353,13 +368,16 @@ int DXDB_loadServerConfig(int argc, sds *argv) {
 }
 
 void DXDB_createClient(redisClient *c) { //printf("DXDB_createClient\n");
-    c->NumJTAlias      =  0;
-    c->LastJTAmatch    = -1;
-    c->LruColInSelect  =  0;
     c->Explain         =  0;
+    c->LruColInSelect  =  0;
     c->InternalRequest =  0;
     bzero(&c->http, sizeof(alchemy_http_info));
     c->http.retcode    = 200; // DEFAULT to "HTTP 200 OK"
+    c->LastJTAmatch    = -1;
+    c->NumJTAlias      =  0;
+    c->bindaddr        =  NULL;
+    c->bindport        =  0;
+    c->scb             =  NULL;
 }
 
 int   DXDB_processCommand(redisClient *c) { //printf("DXDB_processCommand\n");
@@ -561,3 +579,51 @@ void luafuncCommand(redisClient *c) {
 
 extern struct sockaddr_in AcceptedClientSA;
 void DXDB_setClientSA(redisClient *c) { c->sa = AcceptedClientSA; }
+
+
+// PURGE PURGE PURGE PURGE PURGE PURGE PURGE PURGE PURGE PURGE PURGE PURGE
+void DXDB_syncCommand(redisClient *c) {
+    sds ds = sdscatprintf(sdsempty(), "DIRTY %lld\r\n", 
+                                       server.stat_num_dirty_commands);
+    robj *r = createStringObject(ds, sdslen(ds));
+    addReply(c, r); // SYNC DIRTY NUM
+    decrRefCount(r);
+    c->bindaddr = sdsdup(c->argv[1]->ptr);
+    c->bindport = atoi(c->argv[2]->ptr);
+}
+
+static bool checkPurge() {
+    listNode *ln; listIter li;
+    uint32    num_ok = 0;
+    sds       ds     = sdsnew("DIRTY\r\n"); //TODO does not need malloc'ing
+    listRewind(server.slaves, &li);
+    while((ln = listNext(&li))) {
+        cli *slave = ln->value;
+        redisReply *reply;
+        int fd = remoteMessage(slave->bindaddr, slave->bindport, ds, 1, &reply);
+        if (fd == -1) close(fd);
+        if (reply) {
+            assert(reply->type == REDIS_REPLY_INTEGER);
+            if (reply->integer == server.stat_num_dirty_commands) num_ok++;
+        }
+    }
+    sdsfree(ds);
+    return (server.slaves->len == num_ok);
+}
+void purgeCommand(redisClient *c) {
+    uint32 check_purge_usleep = 10000; // 10ms
+    while (!checkPurge()) {
+        redisLog(REDIS_WARNING, "Check PURGE on SLAVE failed, sleeping: %dus",
+                                 check_purge_usleep);
+        usleep(check_purge_usleep);
+    }
+    addReply(c, shared.ok);
+    aeProcessEvents(server.el, AE_ALL_EVENTS);
+    if (prepareForShutdown() == REDIS_OK) exit(0);
+}
+void dirtyCommand(redisClient *c) {
+    if (c->argc != 1) { /* strtoul OK delimed by sds */
+        server.stat_num_dirty_commands = strtoul(c->argv[1]->ptr, NULL, 10);
+    }
+    addReplyLongLong(c, server.stat_num_dirty_commands);
+}

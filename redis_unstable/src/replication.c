@@ -145,6 +145,9 @@ void syncCommand(redisClient *c) {
     c->repldbfd = -1;
     c->flags |= REDIS_SLAVE;
     c->slaveseldb = 0;
+#ifdef ALCHEMY_DATABASE
+    DXDB_syncCommand(c);
+#endif
     listAddNodeTail(server.slaves,c);
     return;
 }
@@ -406,7 +409,15 @@ void syncWithMaster(aeEventLoop *el, int fd, void *privdata, int mask) {
     }
 
     /* Issue the SYNC command */
+#ifdef ALCHEMY_DATABASE
+    char sbuf[64];
+    char *bindaddr = server.bindaddr ? server.bindaddr : "127.0.0.1";
+    snprintf(sbuf, 64, "SYNC %s %d\r\n", bindaddr, server.port);
+    sbuf[63] = '\0'; // PARANOIA
+    if (syncWrite(fd, sbuf, strlen(sbuf), server.repl_syncio_timeout) == -1) {
+#else
     if (syncWrite(fd,"SYNC \r\n",7,server.repl_syncio_timeout) == -1) {
+#endif
         redisLog(REDIS_WARNING,"I/O error writing to MASTER: %s",
             strerror(errno));
         goto error;

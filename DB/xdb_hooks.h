@@ -31,6 +31,7 @@ ALL RIGHTS RESERVED
 
 #include "xdb_common.h"
 
+
 void  DXDB_populateCommandTable(dict *server_commands);
 
 void  DXDB_createSharedObjects();
@@ -46,6 +47,8 @@ void  DXDB_createClient(redisClient *c);
 void  DXDB_emptyDb();
 
 rcommand *DXDB_lookupCommand(sds name);
+
+void      DXDB_call(struct redisCommand *cmd, long long *dirty);
 
 int           DXDB_processCommand(redisClient *c);
 unsigned char DXDB_processInputBuffer_begin(redisClient *c);
@@ -70,6 +73,8 @@ void DXDB_setClientSA(redisClient *c);
 int *DXDB_getKeysFromCommand(rcommand *cmd, robj **argv, int argc,
                              int *numkeys, int flags, sds *override_key,
                              unsigned char *err);
+
+void DXDB_syncCommand(redisClient *c);
 
 unsigned char isWhiteListedIp(redisClient *c); //TODO move to another file?
 

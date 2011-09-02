@@ -169,9 +169,24 @@ int luaRedisCommand(lua_State *lua) {
     }
 
     /* Run the command in the context of a fake client */
+#ifdef ALCHEMY_DATABASE
+    //NOTE: this is basically a copy of redis.c: call()
+    long long dirty = server.dirty, start = ustime();;
+#endif
     c->argv = argv;
     c->argc = argc;
     cmd->proc(c);
+#ifdef ALCHEMY_DATABASE
+    dirty = server.dirty-dirty;
+    cmd->microseconds += ustime()-start;
+    cmd->calls++;
+    DXDB_call(cmd, &dirty);
+    if (server.appendonly && dirty)
+        feedAppendOnlyFile(cmd,c->db->id,c->argv,c->argc);
+    if ((dirty || cmd->flags & REDIS_CMD_FORCE_REPLICATION) &&
+        listLength(server.slaves))
+        replicationFeedSlaves(server.slaves,c->db->id,c->argv,c->argc);
+#endif
 
     /* Convert the result of the Redis command into a suitable Lua type.
      * The first thing we need is to create a single string from the client

@@ -68,11 +68,11 @@ void messageCommand(redisClient *c) { //NOTE: this command does not reply
     cleanupFakeClient(rfc);
 }
 
-#define cntxt redisContext
-static int remoteMessage(sds ip, int port, sds cmd, bool wait) {
+int remoteMessage(sds ip, int port, sds cmd, bool wait,
+                  redisReply **ret_reply) {
     int fd         = -1;
     struct timeval tv; tv.tv_sec = 0; tv.tv_usec = 100000; // 100ms timeout
-    cntxt *context = redisConnectWithTimeout(ip, port, tv);
+    redisContext *context = redisConnectWithTimeout(ip, port, tv);
     if (!context || context->err)                                    goto rmend;
     context->obuf  = cmd;
     int wdone      = 0;
@@ -81,6 +81,7 @@ static int remoteMessage(sds ip, int port, sds cmd, bool wait) {
     } while (!wdone);
     context->obuf  = NULL;
 
+    redisReply *reply = NULL;
     if (wait) { // WAIT is for PINGs (wait for PONG) validate box is up
         struct pollfd fds[1];
         int timeout_msecs = 100; // 100ms timeout, this is a PING
@@ -95,8 +96,10 @@ static int remoteMessage(sds ip, int port, sds cmd, bool wait) {
             if (redisBufferRead(context)               == REDIS_ERR ||
                 redisGetReplyFromReader(context, &aux) == REDIS_ERR) goto rmend;
         } while (aux == NULL);
-        freeReplyObject(aux);
+        reply = aux;
     }
+    if (ret_reply)  *ret_reply = reply;
+    else if (reply) freeReplyObject(reply);
     fd = context->fd;
 
 rmend:
@@ -249,7 +252,7 @@ static int luaRemoteRPC(lua_State *lua, bool closer) {//printf("luaRemoeRPC\n");
     s           = (char *)lua_tolstring(lua, -1, &len);
     sds     ip  = sdsnewlen(s, len);                     // DESTROY ME 085
     lua_pop(lua, 1);
-    int     fd = remoteMessage(ip, port, cmd, 0);  // NON-blocking CMD
+    int     fd = remoteMessage(ip, port, cmd, 0, NULL); // NON-blocking CMD
     sdsfree(ip);                                         // DESTROYED 085
     if (closer) {                                  // NOT Pipe -> FIRE & FORGET
         if (fd != -1) { close(fd); }         return 0;
