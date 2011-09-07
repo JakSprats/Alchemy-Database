@@ -614,7 +614,7 @@ static bool update_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
         addRow2OBList(g->co.ll, g->co.wb, g->co.btr, apk, g->co.ofree,
                       rrow, apk);
     } else {
-        //TODO non-FK/PK updates can be done HERE inline
+        //TODO non-FK/PK updates can be done HERE inline (w/o Qing in the ll)
         aobj *cln  = cloneAobj(apk);
         listAddNodeTail(g->co.ll, cln); /* UGLY: build list of PKs to update */
     }

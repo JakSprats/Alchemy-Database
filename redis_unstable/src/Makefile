@@ -214,7 +214,7 @@ alchemy-lib: dependencies $(ALLOC_DEP)
 	(cd ../../DB; make redis3)
 
 embedded_redis.o:
-	$(QUIET_CC)$(CC) -o embedded_redis.o -c $(CFLAGS) -I../deps/hiredis -I../deps/linenoise $(DEBUG) $(COMPILE_TIME) -DNO_MAIN redis.c
+	$(QUIET_CC)$(CC) -o embedded_redis.o -c $(CFLAGS) $(DEBUG) $(COMPILE_TIME) -I$(LUAINC) -DNO_MAIN redis.c
 
 embedded_test: $(EMBEDDEDOBJ)
 	$(QUIET_CC)$(CC) -o $(EMBEDDEDTESTPRGNAME) $(CCOPT) $(DEBUG) $(EMBEDDEDOBJ) $(CCLINK) $(ALLOC_LINK) -L../../DB/ -lx_db $(LUALIB) ../deps/hiredis/libhiredis.a ../deps/linenoise/linenoise.o

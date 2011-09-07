@@ -37,11 +37,6 @@ ALL RIGHTS RESERVED
 #include "xdb_hooks.h"
 #include "messaging.h"
 
-// DEBUG
-#define DEBUG_C_ARGV(c) \
-  for (int i = 0; i < c->argc; i++) \
-    printf("%d: argv[%s]\n", i, (char *)c->argv[i]->ptr);
-
 //GLOBALS
 extern cli *CurrClient;
 

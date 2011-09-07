@@ -369,7 +369,7 @@ int DXDB_loadServerConfig(int argc, sds *argv) {
     return 1;
 }
 
-void DXDB_createClient(redisClient *c) { //printf("DXDB_createClient\n");
+static void initClient(redisClient *c) {       //printf("initClient\n");
     c->Explain         =  0;
     c->LruColInSelect  =  0;
     c->InternalRequest =  0;
@@ -379,6 +379,8 @@ void DXDB_createClient(redisClient *c) { //printf("DXDB_createClient\n");
     c->NumJTAlias      =  0;
     c->bindaddr        =  NULL;
     c->bindport        =  0;
+}
+void DXDB_createClient(redisClient *c) {       //printf("DXDB_createClient\n");
     c->scb             =  NULL;
 }
 
@@ -387,7 +389,7 @@ int   DXDB_processCommand(redisClient *c) { //printf("DXDB_processCommand\n");
     Operations++;
     CurrClient = c;
     CurrCard   =  0;
-    DXDB_createClient(c);
+    initClient(c);
     sds arg0       = c->argv[0]->ptr;
     sds arg2       = c->argc > 2 ? c->argv[2]->ptr : NULL;
     if (c->argc == 3 /* FIRST LINE OF HTTP REQUEST */                     &&

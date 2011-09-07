@@ -134,4 +134,8 @@ typedef bool select_callback(erow_t* erow);
     *constraint_nonuniq,     *constraint_viol,           \
     *subscribe_ping_err;
 
+#define DEBUG_C_ARGV(c) \
+  for (int i = 0; i < c->argc; i++) \
+    printf("%d: argv[%s]\n", i, (char *)c->argv[i]->ptr);
+
 #endif /* XDB_COMMON__H */

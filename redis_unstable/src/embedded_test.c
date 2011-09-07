@@ -24,7 +24,7 @@ void initValidation() {
 }
 void addCol1toValidation(unsigned int i) {
     if (Col1_seq) Col1_seq = sdscatprintf(Col1_seq,     "_%d", i);
-    else        Col1_seq = sdscatprintf(sdsempty(), "%d",  i);
+    else          Col1_seq = sdscatprintf(sdsempty(), "%d",  i);
 }
 
 static bool print_callback(erow_t* er) {
@@ -107,6 +107,9 @@ static void populate_foo(bool ddl_dbg, bool crud_dbg) {
 
     run_test(NULL, "CREATE INDEX i_foo ON foo (fk)",
              NULL, -1, NULL, ddl_dbg);
+
+    run_test(NULL, "DESC foo", NULL, -1, NULL, 1);
+    run_test(NULL, "DUMP foo", NULL, -1, NULL, 1);
 }
 static void addrows_to_foo(bool crud_dbg) {
     run_test(NULL, "INSERT INTO foo VALUES (4, 100, '4444a44444')",

@@ -57,7 +57,7 @@ static sds         *SelectedCols    = NULL;
 void SetConfig(char *file) { ConfigFile = file; }
 
 static inline void initEmbeddedClient() {
-    if (!EmbeddedCli) {
+    if (!EmbeddedCli) { //printf("initEmbeddedClient\n");
         EmbeddedCli         = createClient(-1);  /* no fd -> embedded */
         EmbeddedCli->flags |= REDIS_LUA_CLIENT; /* do not write to socket */
     }
@@ -223,7 +223,6 @@ eresp_t *e_alchemy(int argc, robj **rargv, select_callback *scb) {
 }
 
 eresp_t *e_alchemy_raw(char *sql, select_callback *scb) {
-    //printf("alchemy_raw\n");
     initEmbeddedAlchemy();
     int  argc;
     sds *argv = sdssplitargs(sql, &argc);
