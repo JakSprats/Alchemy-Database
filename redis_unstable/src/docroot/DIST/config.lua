@@ -52,8 +52,8 @@ for inid, data in pairs(NodeData) do
   end
 end
 if (AmBridge) then
-  NumPeers = #PeerData + #BridgeData - 1; -- HBs from ALL except self
-  NumHBs   = #PeerData + #BridgeData - 1; -- HBs from ALL except self
+  NumPeers = #PeerData + #BridgeData - 2; -- HBs from ALL except self (twice)
+  NumHBs   = #PeerData + #BridgeData - 2; -- HBs from ALL except self (twice)
 else
   NumPeers = #PeerData - 1; -- no bridge
   NumHBs   = #PeerData - 2; -- no self, no bridge

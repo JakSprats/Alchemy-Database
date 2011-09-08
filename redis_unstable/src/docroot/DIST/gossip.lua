@@ -66,17 +66,18 @@ function sync_pong_handler(o_pipeid, o_nodeid, o_channel)
   end
 end
 
-function resync_ping(inid, o_channelb)
+function resync_ping(inid, o_channel)
+  local data     = NodeData[inid];
+  if (data['synced'] == 0) then return; end
   print('resync_ping: inid: ' .. inid);
   StartSync      = os.time()
-  local data     = NodeData[inid];
   data['synced'] = 0;
   NumSynced      = NumSynced - 1;
   AllSynced      = false;
+  local channel  = tostring(o_channel);
   for k,v in pairs(SyncedPipeFD) do
     if (tonumber(v) == inid) then
       local fd      = tostring(k);
-      local channel = tostring(o_channel);
       print ('UnsubscribeFD: ' .. fd .. ' channel: ' .. channel);
       UnsubscribeFD(fd, channel);
       table.remove(SyncedPipeFD, k);
@@ -85,7 +86,6 @@ function resync_ping(inid, o_channelb)
   local sync_xactid;
   if (AmBridge) then sync_xactid = 0;
   else               sync_xactid = AutoInc['Next_sync_XactId']; end
-  sync_ping(inid, 'sync', sync_xactid);
 end
 
 function PingSyncAllNodes()
@@ -95,17 +95,17 @@ function PingSyncAllNodes()
   else               sync_xactid = AutoInc['Next_sync_XactId']; end
   for k, inid in pairs(PeerData) do -- First Sync w/ Peers
     if (inid ~= MyNodeId) then
-      local data = NodeData[inid];
-      if (data['synced'] == 0) then
+      if (NodeData[inid]['synced'] == 0) then
         sync_ping(inid, 'sync', sync_xactid);
       end
     end
   end
   if (AmBridge) then                -- Second if Bridge, sync w/ BridgePeers
     for k, inid in pairs(BridgeData) do
-      local data = NodeData[inid];
-      if (data['synced'] == 0) then
-        sync_ping(inid, 'sync_bridge', sync_xactid);
+      if (inid ~= MyNodeId) then
+        if (NodeData[inid]['synced'] == 0) then
+          sync_ping(inid, 'sync_bridge', sync_xactid);
+        end
       end
     end
   end
