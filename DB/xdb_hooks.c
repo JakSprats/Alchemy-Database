@@ -381,6 +381,7 @@ static void initClient(redisClient *c) {       //printf("initClient\n");
     c->bindport        =  0;
 }
 void DXDB_createClient(redisClient *c) {       //printf("DXDB_createClient\n");
+    initClient(c);
     c->scb             =  NULL;
 }
 

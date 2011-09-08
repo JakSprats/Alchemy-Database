@@ -1,10 +1,12 @@
 
--- GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS
-MyGeneration = redis("get", "alchemy_generation");
+local MyGeneration = redis("get", "alchemy_generation");
 if (MyGeneration == nil) then MyGeneration = 0; end
 MyGeneration = MyGeneration + 1; -- This is the next generation
 redis("set", "alchemy_generation", MyGeneration);
 print('MyGeneration: ' .. MyGeneration);
+
+local MyHB_ID = redis("get", "alchemy_heartbeat");
+if (MyHB_ID == nil) then MyHB_ID = 0; end
 
 -- FUNCTIONS FUNCTIONS FUNCTIONS FUNCTIONS FUNCTIONS FUNCTIONS FUNCTIONS
 function getGenerationName(nodeid) return 'GENERATION_' .. nodeid; end
@@ -13,10 +15,13 @@ function getHWname        (nodeid) return 'HIGHWATER_'  .. nodeid; end
 local BridgeHW = 0;
 function aiweq(inid) return '[' .. inid .. ']='; end -- HELPER
 
+function GenerateHBID()
+  return 'HB_ID=' .. MyHB_ID .. ';';
+end
 function GenerateBridgeHBCommand()-- this command will be remotely EVALed
   local b_gnr_cmd = 'B_GNR=' .. MyGeneration .. ';';
   local b_hw_cmd  = 'B_HW={' .. aiweq(MyNodeId) .. BridgeHW .. '};';
-  return b_hw_cmd .. b_gnr_cmd;
+  return GenerateHBID() .. b_hw_cmd .. b_gnr_cmd;
 end
 
 function GenerateHBCommand() -- this command will be remotely EVALed
@@ -45,10 +50,11 @@ function GenerateHBCommand() -- this command will be remotely EVALed
       n_gnr_cmd = n_gnr_cmd .. ',' .. aiweq(-1) .. MyGeneration;
   end
   n_hw_cmd  = n_hw_cmd  .. '};'; n_gnr_cmd = n_gnr_cmd .. '};';
-  return n_hw_cmd .. n_gnr_cmd;
+  return GenerateHBID() .. n_hw_cmd .. n_gnr_cmd;
 end
 function HeartBeat() -- lua_cron function, called every second
   if (PingSyncAllNodes() == false) then return; end -- wait until synced
+  MyHB_ID = MyHB_ID + 1; redis("set", "alchemy_heartbeat", MyHB_ID);
   local cmd  = GenerateHBCommand();
   local msg  = Redisify('LUA', 'handle_heartbeat', MyNodeId, MyGeneration, cmd);
   print ('   HEARTBEAT: myid: ' .. MyNodeId .. ' cmd: ' .. cmd);
@@ -63,12 +69,15 @@ function HeartBeat() -- lua_cron function, called every second
 end
 
 local SyncedHW = {}; local LastHB_SyncedHW = {}; local GenerationSet = {};
+local LastHB   = {};
 
 function handle_heartbeat(nodeid, generation, hb_eval_cmd)
   print ('handle_heartbeat: inid: ' .. nodeid .. ' hb_cmd: ' .. hb_eval_cmd)
   local inid = tonumber(nodeid);
   -- Lua eval - defines variables: [N_HW, N_GNR]
   assert(loadstring(hb_eval_cmd))()
+  if (LastHB[inid] ~= nil and HB_ID <= LastHB[inid]) then return; end
+  LastHB[inid] = tonumber(HB_ID);
   for num, data in pairs(N_HW) do
     local inum = tonumber(num);
     if (inum == MyNodeId) then
