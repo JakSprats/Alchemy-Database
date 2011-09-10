@@ -35,14 +35,14 @@ function IncrementAutoInc(name)
   redis("set", 'global:' .. name, AutoInc[name]);
   return AutoInc[name];
 end
-function getPreviousAutoInc(o_num)
+function getPrevAutoInc(o_num)
   local num = tonumber(o_num);
   --local was = num;
   local bid  = (math.floor(num  / AutoIncRange) % #BridgeData + 1);
   local prev = tonumber(num) - AutoIncStep;
   local nbid = (math.floor(prev / AutoIncRange) % #BridgeData + 1);
   if (bid ~= nbid) then prev = prev - AutoIncRange; end
-  --print ('getPreviousAutoInc: was: ' .. was .. ' prev: ' .. prev);
+  --print ('getPrevAutoInc: was: ' .. was .. ' prev: ' .. prev);
   return prev;
 end
 -- BRIDGE_AUTO_INC_COUNTER BRIDGE_AUTO_INC_COUNTER BRIDGE_AUTO_INC_COUNTER
@@ -65,14 +65,14 @@ function IncrementBridgeAutoInc(name)
   redis("set", 'global:' .. name, AutoInc[name]);
   return AutoInc[name];
 end
-function getPreviousBridgeAutoInc(o_num)
+function getPrevBridgeAutoInc(o_num)
   local num = tonumber(o_num);
   if (num == 1) then return 1; end
   --local was = num;
   num = num - 1;
   local bid = (num % AutoIncRange);
   if (bid == 0) then num = num - AutoIncRange; end
-  --print ('getPreviousBridgeAutoInc: was: ' .. was .. ' num: ' .. num);
+  --print ('getPrevBridgeAutoInc: was: ' .. was .. ' num: ' .. num);
   return num;
 end
 

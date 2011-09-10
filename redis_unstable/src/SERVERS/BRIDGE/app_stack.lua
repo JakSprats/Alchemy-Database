@@ -7,24 +7,27 @@ io.stdout:setvbuf("no"); -- flush stdout
 dofile "../includes.lua";
 
 -- GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS
-InitBridgeAutoInc('Next_sync_XactId');
-print ('Next_sync_XactId: ' .. AutoInc['Next_sync_XactId']);
+InitBridgeAutoInc('In_Xactid');
+print ('In_Xactid: ' .. AutoInc['In_Xactid']);
+InitBridgeAutoInc('Out_Xactid');
+print ('Out_Xactid: ' .. AutoInc['Out_Xactid']);
 
 -- FORWARDERS FORWARDERS FORWARDERS FORWARDERS FORWARDERS FORWARDERS
-function bridge_global_caller(nodeid, fname, bxactid, ...)-- NOTE: NO reordering
+function bridge_global_caller(nodeid, fname, orig_bxactid, ...)
+  local nbxactid = IncrementBridgeAutoInc('Out_Xactid'); -- BRIDGE REORDER (OUT)
   print ('bridge_global_caller: nodeid: '  .. nodeid .. ' fname: ' .. fname ..
-                              ' bxactid: ' .. bxactid);
-  update_bridge_hw(nodeid, bxactid);
+               ' orig_bxactid: ' .. orig_bxactid .. ' nbxactid: ' .. nbxactid);
+  update_bridge_hw(nodeid, orig_bxactid);
   local channel = 'sync';
-  local pmsg    = Redisify('LUA', fname, MyNodeId, bxactid, ...);
+  local pmsg    = Redisify('LUA', fname, MyNodeId, nbxactid, ...);
   --print ('bridge_global_caller: pmsg: ' .. pmsg);
   redis("publish", channel, pmsg);
-  redis("zadd", 'Q_' .. channel, bxactid, pmsg);
+  redis("zadd", 'Q_' .. channel, nbxactid, pmsg);
 end
 
 function queue_global_op(nodeid, xactid, fname, ...)
   update_hw(nodeid, xactid);
-  local bxactid = IncrementBridgeAutoInc('Next_sync_XactId'); -- BRIDGE REORDER
+  local bxactid = IncrementBridgeAutoInc('In_Xactid'); -- BRIDGE REORDER (IN)
   local channel = 'sync_bridge';
   print ('B: Q_global_op: bxactid: ' .. bxactid ..  ' -> xactid: '  .. xactid);
   local pmsg    = Redisify('LUA', 'bridge_global_caller',

@@ -22,8 +22,8 @@ print ('Next_sql_posts_XactId: ' .. AutoInc['Next_sql_posts_XactId']);
 InitAutoInc('Next_sql_follows_XactId');
 print ('Next_sql_follows_XactId: ' .. AutoInc['Next_sql_follows_XactId']);
 -- one GLOBAL AutoInc for "sync"
-InitAutoInc('Next_sync_XactId');
-print ('Next_sync_XactId: ' .. AutoInc['Next_sync_XactId']);
+InitAutoInc('In_Xactid');
+print ('In_Xactid: ' .. AutoInc['In_Xactid']);
 
 -- USERLAND_GLOBALS USERLAND_GLOBALS USERLAND_GLOBALS USERLAND_GLOBALS
 InitAutoInc('NextUserId');
@@ -89,7 +89,7 @@ global_register = function(nodeid, xactid, my_userid, username)
   print ('global_register: my_userid: ' .. my_userid ..
                          ' username: '  .. username .. ' xactid: ' .. xactid);
   -- do one-time SET's - this data is needed
-  if (xactid ~= 0) then update_hw(nodeid, xactid); end
+  if (xactid ~= 0 and update_hw(nodeid, xactid) == false) then return; end
   redis("set",  'username:' .. username  .. ':id',       my_userid);
   redis("set",  'uid:'      .. my_userid .. ':username', username);
   redis("sadd", "global:users",                          my_userid);
@@ -104,7 +104,7 @@ global_register = function(nodeid, xactid, my_userid, username)
 end
 
 global_logout = function(nodeid, xactid, my_userid)
-  if (xactid ~= 0) then update_hw(nodeid, xactid); end
+  if (xactid ~= 0 and update_hw(nodeid, xactid) == false) then return; end
   local oldauthsecret = get_sha1_variable('nlogouts', my_userid);
   -- combinatorial INCR operation governs flow
   local newauthsecret = incr_sha1_variable('nlogouts', my_userid);
@@ -143,7 +143,7 @@ end
 global_post = function(nodeid, xactid, my_userid, postid, ts, msg)
   print ('global_post: my_userid: ' .. my_userid .. ' ts: ' .. ts ..
          ' msg: ' .. msg .. ' xactid: ' .. xactid);
-  if (xactid ~= 0) then update_hw(nodeid, xactid); end
+  if (xactid ~= 0 and update_hw(nodeid, xactid) == false) then return; end
   local post      = my_userid .. '|' .. ts .. '|' .. msg;
   redis("set", 'post:' .. postid, post);
   local followers = redis("smembers", 'uid:' .. my_userid .. ':followers');
@@ -163,7 +163,7 @@ end
 global_follow = function(nodeid, xactid, my_userid, userid, follow)
   print ('global_follow: my_userid: ' .. my_userid .. ' userid: ' .. userid ..
          ' follow: ' .. follow);
-  if (xactid ~= 0) then update_hw(nodeid, xactid); end
+  if (xactid ~= 0 and update_hw(nodeid, xactid) == false) then return; end
   if (UserNode(userid) == MyNodeId) then -- only for users ON THIS SHARD
     commit_follow(my_userid, userid, follow);
   end

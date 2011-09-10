@@ -8,7 +8,7 @@ local Pipe_id      = 1;
 local StartSync    = os.time();
 
 function sync_ping(nodeid, channel, sync_xactid)
-  print('sync_ping to nodeid: ' .. nodeid .. ' channel: '     .. channel ..
+  print('sync_ping to nodeid: '      .. nodeid .. ' channel: ' .. channel ..
                     ' sync_xactid: ' .. sync_xactid);
   local inid = tonumber(nodeid);
   local data = NodeData[inid];
@@ -16,10 +16,14 @@ function sync_ping(nodeid, channel, sync_xactid)
   local cmd  = Redisify('LUA', 'sync_pong',
                                 myid, Pipe_id, channel, sync_xactid);
   --print ('PING command: ' .. cmd);
-  local fd   = RemotePipe(data['bip'], data['bport'], cmd);
+  local fd;
+  if (AmBridge and data['isb']) then
+    fd = RemotePipe(data['bip'], data['bport'], cmd);
+  else
+    fd = RemotePipe(data['fip'], data['fport'], cmd);
+  end
   if (fd == -1) then return; end
-  print ('PING to nodeid: ' .. nodeid .. '  fd: ' .. fd ..
-                ' bport: '   .. data['bport']);
+  print ('PING to nodeid: ' .. nodeid .. ' fd: ' .. fd);
   table.insert(PipeFD, Pipe_id, fd);
   Pipe_id    = Pipe_id + 1;
 end
@@ -83,12 +87,14 @@ function resync_ping(inid, o_channel) -- Narks node as down for PingSyncAllNodes
   end
   local sync_xactid;
   if (AmBridge) then sync_xactid = 0;
-  else               sync_xactid = AutoInc['Next_sync_XactId']; end
+  else               sync_xactid = AutoInc['In_Xactid']; end
 end
 
 function PingSyncAllNodes()
   if (AllSynced) then return true; end
-  local sync_xactid = AutoInc['Next_sync_XactId'];
+  local sync_xactid;
+  if (AmBridge) then sync_xactid = AutoInc['Out_Xactid'];
+  else               sync_xactid = AutoInc['In_Xactid'];  end
   for k, inid in pairs(PeerData) do -- First Sync w/ Peers
     if (inid ~= MyNodeId) then
       if (NodeData[inid]['synced'] == 0) then
@@ -97,6 +103,7 @@ function PingSyncAllNodes()
     end
   end
   if (AmBridge) then                -- Second if Bridge, sync w/ BridgePeers
+    sync_xactid = AutoInc['In_Xactid'];
     for k, inid in pairs(BridgeData) do
       if (inid ~= MyNodeId) then
         if (NodeData[inid]['synced'] == 0) then

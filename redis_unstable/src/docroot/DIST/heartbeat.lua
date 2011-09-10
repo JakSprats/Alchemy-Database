@@ -45,7 +45,7 @@ function GenerateHBCommand() -- this command will be remotely EVALed
   local i         = 1;
   for k, inid in pairs(PeerData) do
     if (inid == MyNodeId) then
-      n_hw_cmd  = n_hw_cmd  .. aiweq(inid) .. AutoInc['Next_sync_XactId'];
+      n_hw_cmd  = n_hw_cmd  .. aiweq(inid) .. AutoInc['In_Xactid'];
       n_gnr_cmd = n_gnr_cmd .. aiweq(inid) .. MyGeneration;
     else
       local hw  = redis("get", getHWname(inid));
@@ -109,7 +109,7 @@ function handle_HB_GNR(inid, GNR)
 end
 
 function handle_heartbeat(nodeid, hb_eval_cmd)
-  --print ('handle_heartbeat: inid: ' .. nodeid .. ' hb_cmd: ' .. hb_eval_cmd)
+  print ('handle_heartbeat: inid: ' .. nodeid .. ' hb_cmd: ' .. hb_eval_cmd)
   local inid = tonumber(nodeid);
   -- Lua eval - defines variables: [N_HW, N_GNR]
   assert(loadstring(hb_eval_cmd))()
@@ -123,12 +123,12 @@ function handle_heartbeat(nodeid, hb_eval_cmd)
     end
   end
   handle_HB_GNR(inid, N_GNR);
-  check_heartbeat()
+  --check_heartbeat()
 end
 
 function handle_bridge_heartbeat(nodeid, hb_eval_cmd)
-  --print ('handle_bridge_heartbeat: inid: '  .. nodeid ..
-                                --' hb_cmd: ' .. hb_eval_cmd)
+  print ('handle_bridge_heartbeat: inid: '  .. nodeid ..
+                                ' hb_cmd: ' .. hb_eval_cmd)
   local inid = tonumber(nodeid);
   -- Lua eval - defines variables: [N_HW, N_GNR, B_HW, B_GNR]
   assert(loadstring(hb_eval_cmd))()
@@ -154,10 +154,9 @@ function rexmit_ops(nodeid, beg, fin)
   --print ('pipeline: ' .. pipeline);
   RemoteMessage(NodeData[inid]["bip"], NodeData[inid]["bport"], pipeline);
 end
-function sync_ooo(inid, id, xactid)
-  print ('SYNC OOO inid: ' .. inid .. ' xactid: ' .. xactid .. ' id: ' .. id);
-  -- 1.) SYNC_OOO -> GET: [id-xactid] INCLUSIVE
-  local cmd = Redisify('LUA', 'rexmit_ops', MyNodeId, id, xactid);
+function sync_ooo(inid, beg, fin)
+  print ('SYNC OOO inid: ' .. inid .. ' beg: ' .. beg .. ' fin: ' .. fin);
+  local cmd = Redisify('LUA', 'rexmit_ops', MyNodeId, beg, fin);
   RemoteMessage(NodeData[inid]["bip"], NodeData[inid]["bport"], cmd);
 end
 
@@ -167,45 +166,32 @@ function mod_hw(nodeid, o_xactid, issync)
   local hwname = getHWname(nodeid);
   local hw     = tonumber(redis("get", hwname));
   local fromb  = NodeData[inid]['isb'];
-  local ooo    = false;
-  if     (hw == nil or hw == 0) then
-    local id = giveInitialAutoInc(inid);
-    if (id == xactid) then
-      print ('cherry set: ' .. hwname .. ' xactid: ' .. xactid);
-      redis("set", hwname, xactid);
-    else
-      sync_ooo(inid, id, xactid);
-    end
-  else
-    if (issync) then
+  if (hw == nil) then  -- CHERRY OP or SYNC
+    local beg = giveInitialAutoInc(inid);
+    if (beg == xactid) then redis("set", hwname, xactid);
+    else                    sync_ooo(inid, beg, xactid);   end
+  elseif (issync) then -- SYNC
       if (hw == xactid) then redis("set", hwname, xactid);
       else
-        local id;
-        if (fromb) then id = getNextBridgeAutoInc(hw);
-        else            id = getNextAutoInc(hw);       end
-        sync_ooo(inid, id, xactid);
+        local beg;
+        if (fromb) then beg = getNextBridgeAutoInc(hw);
+        else            beg = getNextAutoInc(hw);       end
+        sync_ooo(inid, beg, xactid);
+      end
+  else                 -- NORMAL OP
+    if (xactid < hw) then return false; end -- REPEAT GLOBAL OP
+    if (fromb) then
+      if (hw == getPrevBridgeAutoInc(xactid)) then redis("set", hwname, xactid);
+      else
+        sync_ooo(inid, getNextBridgeAutoInc(hw), getPrevBridgeAutoInc(xactid));
       end
     else
-      if (fromb) then
-        if (hw == getPreviousBridgeAutoInc(xactid)) then
-          redis("set", hwname, xactid);
-        else
-          print ('BRIDGE OOO: hwname: ' .. hwname .. ' got xactid: ' .. xactid .. ' hw: ' .. hw .. ' getPrev(): ' .. getPreviousBridgeAutoInc(xactid));
-          ooo = true;
-        end
-      else
-        if (hw == getPreviousAutoInc(xactid)) then
-          redis("set", hwname, xactid);
-        else
-          print ('NODE OOO: got xactid: ' .. xactid .. ' hw: ' .. hw .. ' getPrev(): ' .. getPreviousAutoInc(xactid));
-          ooo = true;
-        end
+      if (hw == getPrevAutoInc(xactid)) then redis("set", hwname, xactid);
+      else           sync_ooo(inid, getNextAutoInc(hw), getPrevAutoInc(xactid));
       end
     end
   end
-  if (ooo) then
-    --recover_from_ooo()
-  end
+  return true;
 end
 function sync_hw(nodeid, xactid)
   return mod_hw(nodeid, xactid, true);
@@ -229,27 +215,6 @@ function trim_sync_Q(hw)
   GlobalSyncedHW = hw;
 end
 --TODO
-function handle_ooo(fromnode, hw, xactid)
-  local ifromnode = tonumber(fromnode);
-  --print ('handle_ooo: fromnode: ' .. fromnode .. ' hw: ' .. hw .. 
-                    --' xactid: ' .. xactid);
-  local beg      = tonumber(hw)     + 1;
-  local fin      = tonumber(xactid) - 1;
-  local msgs     = redis("zrangebyscore", "Q_sync", beg, fin);
-  local pipeline = '';
-  for k,v in pairs(msgs) do pipeline = pipeline .. v; end
-  local data     = NodeData[ifromnode];
-  RemoteMessage(data["bip"], data["bport"], pipeline);
-end
---TODO
-function rexmit_ooo(hw)
-  for num, data in pairs(SyncedHW) do
-    if (tonumber(data) ~= tonumber(hw)) then
-      handle_ooo(num, data, (hw + 1));
-    end
-  end
-end
---TODO
 function check_heartbeat()
   local nnodes = 0;
   local lw     = -1;
@@ -263,33 +228,5 @@ function check_heartbeat()
   if (tonumber(SyncedHW[inid]) < tonumber(LastHB_SyncedHW[inid])) then
     rexmit_ooo(LastHB_SyncedHW[inid]); 
   end
-  LastHB_SyncedHW[inid] = AutoInc['Next_sync_XactId'];
-end
---TODO
-function recover_from_ooo()
- -- TODO handle multiple missing blocks
-    local mabove = 'HW_' .. nodeid .. '_mabove';
-    local mbelow = 'HW_' .. nodeid .. '_mbelow';
-    local o_mav  = redis("get", mabove);
-    if (o_mav ~= nil) then
-      local mav    = tonumber(o_mav);
-      if (tonumber(mav) == tonumber(getPreviousAutoInc(xactid))) then
-        local o_mbv = redis("get", mbelow);
-        if (o_mbv == nil) then print ('MBV ERROR'); return end
-        local mbv = tonumber(mav);
-        if (tonumber(xactid) == tonumber(getPreviousAutoInc(mbv))) then
-          redis("del", mabove, mbelow); -- OOO done
-        else
-          redis("set", mabove, xactid); -- some more OOO left
-        end
-      end
-    else
-      local myid = MyNodeId;
-      local cmd  = Redisify('LUA', 'handle_ooo', myid, hw, xactid, 0);
-      local data = NodeData[inid];
-      RemoteMessage(data["bip"], data["bport"], cmd);
-      redis("set", mabove, tostring(hw));
-      redis("set", mbelow, xactid);
-      redis("set", hwname, xactid); -- [mabove,mbelow] will catch OOO
-    end
+  LastHB_SyncedHW[inid] = AutoInc['In_Xactid'];
 end

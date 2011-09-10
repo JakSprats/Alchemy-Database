@@ -10,7 +10,7 @@ end
 
 function publish_queue_sync(fname, ...)
   local channel = 'sync';
-  local xactid  = IncrementAutoInc('Next_' .. channel .. '_XactId');
+  local xactid  = IncrementAutoInc('In_Xactid');
   local pmsg    = Redisify('LUA', fname, MyNodeId, xactid, ...);
   --print ('publish_queue_sync: pmsg: ' .. pmsg);
   redis("publish", channel, pmsg);
