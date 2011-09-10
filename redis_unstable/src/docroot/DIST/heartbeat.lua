@@ -1,9 +1,12 @@
 
+-- SETTINGS SETTINGS SETTINGS SETTINGS SETTINGS SETTINGS SETTINGS
+local TS_TIMEOUT = 10; -- no HB w/in TS_TIMEOUT secs -> resync
+
+-- GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS
 local MyGeneration = redis("get", "alchemy_generation");
 if (MyGeneration == nil) then MyGeneration = 0; end
 MyGeneration = MyGeneration + 1; -- This is the next generation
 redis("set", "alchemy_generation", MyGeneration);
-print('MyGeneration: ' .. MyGeneration);
 
 local MyHB_ID = redis("get", "alchemy_heartbeat");
 if (MyHB_ID == nil) then MyHB_ID = 0; end
@@ -12,8 +15,8 @@ if (MyHB_ID == nil) then MyHB_ID = 0; end
 function getGenerationName(nodeid) return 'GENERATION_' .. nodeid; end
 function getHWname        (nodeid) return 'HIGHWATER_'  .. nodeid; end
 
-local BridgeHW = 0;
-function aiweq(inid) return '[' .. inid .. ']='; end -- HELPER
+local BridgeHW = 0; -- TODO -> array
+function aiweq(inid) return '[' .. inid .. ']='; end -- HELPER FUNCTION
 
 function GenerateHBID()
   return 'HB_ID=' .. MyHB_ID .. ';HB_TS=' .. os.time() .. ';';
@@ -24,7 +27,6 @@ function GenerateBridgeHBCommand()-- this command will be remotely EVALed
   return GenerateHBID() .. b_hw_cmd .. b_gnr_cmd;
 end
 
-local TS_TIMEOUT = 10;
 local LastHB_TS  = {};
 function DetectStaleNodes(o_now)
   local now = tonumber(o_now);
@@ -33,8 +35,6 @@ function DetectStaleNodes(o_now)
       print ('TIMEOUT: inid: ' .. inid .. ' ts: ' .. ts .. ' now: ' .. now);
       LastHB_TS[inid] = nil;
       resync_ping(inid, 'sync');
-    else
-      print ('OK: inid: ' .. inid .. ' ts: ' .. ts .. ' now: ' .. now);
     end
   end
 end
@@ -68,13 +68,13 @@ function HeartBeat() -- lua_cron function, called every second
   MyHB_ID = MyHB_ID + 1; redis("set", "alchemy_heartbeat", MyHB_ID);
   local cmd  = GenerateHBCommand();
   local msg  = Redisify('LUA', 'handle_heartbeat', MyNodeId, cmd);
-  --print ('   HEARTBEAT: myid: ' .. MyNodeId .. ' cmd: ' .. cmd);
+  print ('   HEARTBEAT: myid: ' .. MyNodeId .. ' cmd: ' .. cmd);
   redis("publish", 'sync', msg);
   if (AmBridge) then
     local myid = MyNodeId;
     cmd = cmd .. GenerateBridgeHBCommand();
     msg = Redisify('LUA', 'handle_bridge_heartbeat', myid, cmd);
-    --print ('   BRIDGE_HEARTBEAT: myid: ' .. myid .. ' cmd: ' .. cmd);
+    print ('   BRIDGE_HEARTBEAT: myid: ' .. myid .. ' cmd: ' .. cmd);
     redis("publish", 'sync_bridge', msg);
   end
   DetectStaleNodes(os.time());
@@ -142,42 +142,83 @@ function handle_bridge_heartbeat(nodeid, hb_eval_cmd)
   handle_HB_GNR(inid, B_GNR);
 end
 
-function update_bridge_hw(bid, bxactid)
-  BridgeHW = bxactid;
-  --print ('BRIDGE: BridgeHW: ' .. BridgeHW);
+function rexmit_ops(nodeid, beg, fin)
+  local inid     = tonumber(nodeid);
+  print ('rexmit_ops: inid: ' .. inid .. ' beg: ' .. beg .. ' fin: ' .. fin);
+  local channel;
+  if (AmBridge) then channel = 'Q_sync_bridge';
+  else               channel = 'Q_sync';        end
+  local msgs     = redis("zrangebyscore", channel, beg, fin);
+  local pipeline = '';
+  for k,v in pairs(msgs) do pipeline = pipeline .. v; end
+  --print ('pipeline: ' .. pipeline);
+  RemoteMessage(NodeData[inid]["bip"], NodeData[inid]["bport"], pipeline);
+end
+function sync_ooo(inid, id, xactid)
+  print ('SYNC OOO inid: ' .. inid .. ' xactid: ' .. xactid .. ' id: ' .. id);
+  -- 1.) SYNC_OOO -> GET: [id-xactid] INCLUSIVE
+  local cmd = Redisify('LUA', 'rexmit_ops', MyNodeId, id, xactid);
+  RemoteMessage(NodeData[inid]["bip"], NodeData[inid]["bport"], cmd);
 end
 
-function update_remote_hw(nodeid, xactid)
-  local qname  = 'sync';
+function mod_hw(nodeid, o_xactid, issync)
   local inid   = tonumber(nodeid);
+  local xactid = tonumber(o_xactid);
   local hwname = getHWname(nodeid);
   local hw     = tonumber(redis("get", hwname));
-  local dbg    = hw; if (hw == nil) then dbg = "(nil)"; end
-  --print('update_remote_hw: nodeid: ' .. nodeid ..  ' xactid: ' .. xactid ..
-                         --' HW: '     .. dbg);
+  local fromb  = NodeData[inid]['isb'];
   local ooo    = false;
   if     (hw == nil or hw == 0) then
-    redis("set", hwname, xactid);
+    local id = giveInitialAutoInc(inid);
+    if (id == xactid) then
+      print ('cherry set: ' .. hwname .. ' xactid: ' .. xactid);
+      redis("set", hwname, xactid);
+    else
+      sync_ooo(inid, id, xactid);
+    end
   else
-    if (AmBridge) then
-      if (hw == getPreviousBridgeAutoInc(xactid)) then
-        redis("set", hwname, xactid);
+    if (issync) then
+      if (hw == xactid) then redis("set", hwname, xactid);
       else
-        ooo = true;
+        local id;
+        if (fromb) then id = getNextBridgeAutoInc(hw);
+        else            id = getNextAutoInc(hw);       end
+        sync_ooo(inid, id, xactid);
       end
     else
-      if (hw == getPreviousAutoInc(xactid)) then
-        redis("set", hwname, xactid);
+      if (fromb) then
+        if (hw == getPreviousBridgeAutoInc(xactid)) then
+          redis("set", hwname, xactid);
+        else
+          print ('BRIDGE OOO: hwname: ' .. hwname .. ' got xactid: ' .. xactid .. ' hw: ' .. hw .. ' getPrev(): ' .. getPreviousBridgeAutoInc(xactid));
+          ooo = true;
+        end
       else
-        ooo = true;
+        if (hw == getPreviousAutoInc(xactid)) then
+          redis("set", hwname, xactid);
+        else
+          print ('NODE OOO: got xactid: ' .. xactid .. ' hw: ' .. hw .. ' getPrev(): ' .. getPreviousAutoInc(xactid));
+          ooo = true;
+        end
       end
     end
   end
   if (ooo) then
-    print ('OOO');
     --recover_from_ooo()
   end
 end
+function sync_hw(nodeid, xactid)
+  return mod_hw(nodeid, xactid, true);
+end
+function update_hw(nodeid, xactid)
+  return mod_hw(nodeid, xactid, false);
+end
+function update_bridge_hw(nodeid, bxactid)
+  BridgeHW = bxactid;
+  print ('BRIDGE: BridgeHW: ' .. BridgeHW);
+  return mod_hw(nodeid, bxactid, false);
+end
+
 
 -- OOO_HANDLING OOO_HANDLING OOO_HANDLING OOO_HANDLING OOO_HANDLING
 --TODO
@@ -198,10 +239,10 @@ function handle_ooo(fromnode, hw, xactid)
   local pipeline = '';
   for k,v in pairs(msgs) do pipeline = pipeline .. v; end
   local data     = NodeData[ifromnode];
-  RemoteMessage(data["ip"], data["port"], pipeline);
+  RemoteMessage(data["bip"], data["bport"], pipeline);
 end
 --TODO
-function natural_net_recovery(hw)
+function rexmit_ooo(hw)
   for num, data in pairs(SyncedHW) do
     if (tonumber(data) ~= tonumber(hw)) then
       handle_ooo(num, data, (hw + 1));
@@ -220,7 +261,7 @@ function check_heartbeat()
   if (nnodes ~= NumHBs) then return; end
   trim_sync_Q(lw);
   if (tonumber(SyncedHW[inid]) < tonumber(LastHB_SyncedHW[inid])) then
-    natural_net_recovery(LastHB_SyncedHW[inid]); 
+    rexmit_ooo(LastHB_SyncedHW[inid]); 
   end
   LastHB_SyncedHW[inid] = AutoInc['Next_sync_XactId'];
 end
@@ -246,7 +287,7 @@ function recover_from_ooo()
       local myid = MyNodeId;
       local cmd  = Redisify('LUA', 'handle_ooo', myid, hw, xactid, 0);
       local data = NodeData[inid];
-      RemoteMessage(data["ip"], data["port"], cmd);
+      RemoteMessage(data["bip"], data["bport"], cmd);
       redis("set", mabove, tostring(hw));
       redis("set", mbelow, xactid);
       redis("set", hwname, xactid); -- [mabove,mbelow] will catch OOO

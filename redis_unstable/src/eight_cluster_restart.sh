@@ -5,6 +5,9 @@ PORTS="8001 8002 8003 8004 9005 9006 9007 9008"
 B_PORTS="20000 20001"
 B_DIRS="1 2"
 
+echo sudo killall stunnel
+sudo killall stunnel
+
 echo killall ./alchemy-cli
 killall ./alchemy-cli
 echo sleep 1
@@ -37,6 +40,11 @@ fi
 # TODO check that all are dead
 echo sleep 2
 sleep 2
+
+echo sudo stunnel SERVERS/BRIDGE/stunnel_client.conf;
+sudo stunnel SERVERS/BRIDGE/stunnel_client.conf;
+echo sudo stunnel SERVERS/BRIDGE/stunnel_server.conf 
+sudo stunnel SERVERS/BRIDGE/stunnel_server.conf 
 
 for d in $DIRS; do
   (cd SERVERS/$d

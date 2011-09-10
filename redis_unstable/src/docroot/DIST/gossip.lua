@@ -16,19 +16,18 @@ function sync_ping(nodeid, channel, sync_xactid)
   local cmd  = Redisify('LUA', 'sync_pong',
                                 myid, Pipe_id, channel, sync_xactid);
   --print ('PING command: ' .. cmd);
-  local fd   = RemotePipe(data['ip'], data['port'], cmd);
+  local fd   = RemotePipe(data['bip'], data['bport'], cmd);
   if (fd == -1) then return; end
   print ('PING to nodeid: ' .. nodeid .. '  fd: ' .. fd ..
-                ' port: '   .. data['port']);
+                ' bport: '   .. data['bport']);
   table.insert(PipeFD, Pipe_id, fd);
   Pipe_id    = Pipe_id + 1;
 end
 function sync_pong(other_node_id, pipeid, channel, sync_xactid)
   local myid  = MyNodeId;
-  print ('PONG: ON nodeid: ' .. myid .. ' to: '          .. other_node_id ..
+  print ('PONG: ON nodeid: ' .. myid .. ' to: '.. other_node_id ..
                  ' sync_xactid: ' .. sync_xactid);
-  --TODO: this is a 1off ERROR - this is not the NEXT msg
-  update_remote_hw(other_node_id, sync_xactid);
+  sync_hw(other_node_id, sync_xactid);
   local ncmd  = Redisify('LUA', 'sync_pong_handler',
                                 pipeid, myid, channel);
   --print ('ncmd: ' .. ncmd);
@@ -36,8 +35,7 @@ function sync_pong(other_node_id, pipeid, channel, sync_xactid)
   --print ('PONG command: ' .. cmd);
   local inid  = tonumber(other_node_id);
   local odata = NodeData[inid];
-  print ('RemoteMessage: port: ' .. odata['port']);
-  RemoteMessage(odata['ip'], odata['port'], cmd);
+  RemoteMessage(odata['bip'], odata['bport'], cmd);
 end
 function sync_pong_handler(o_pipeid, o_nodeid, o_channel)
   local inid      = tonumber(o_nodeid);
@@ -66,7 +64,7 @@ function sync_pong_handler(o_pipeid, o_nodeid, o_channel)
   end
 end
 
-function resync_ping(inid, o_channel)
+function resync_ping(inid, o_channel) -- Narks node as down for PingSyncAllNodes
   local data     = NodeData[inid];
   if (data['synced'] == 0) then return; end
   print('resync_ping: inid: ' .. inid);
@@ -90,9 +88,7 @@ end
 
 function PingSyncAllNodes()
   if (AllSynced) then return true; end
-  local sync_xactid;
-  if (AmBridge) then sync_xactid = 0;
-  else               sync_xactid = AutoInc['Next_sync_XactId']; end
+  local sync_xactid = AutoInc['Next_sync_XactId'];
   for k, inid in pairs(PeerData) do -- First Sync w/ Peers
     if (inid ~= MyNodeId) then
       if (NodeData[inid]['synced'] == 0) then
@@ -109,6 +105,6 @@ function PingSyncAllNodes()
       end
     end
   end
-  if (NumSynced == NumPeers) then return true;
-  else                             return false; end
+  if (NumSynced > 1) then return true;
+  else                    return false; end
 end

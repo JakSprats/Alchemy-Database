@@ -9,8 +9,8 @@ end
 function GetHttpDomainPort(num)
   local which = UserNode(num); 
   --print ('GetHttpDomainPort: num: ' .. num .. ' which: ' .. which);
-  return 'http://' .. NodeData[which]["domain"] .. ':' .. 
-                      NodeData[which]["port"]   .. '/';
+  return 'http://' .. NodeData[which]["fdomain"] .. ':' .. 
+                      NodeData[which]["fport"]   .. '/';
 end
 function IsCorrectNode(num)
   return (UserNode(num) == MyNodeId);
@@ -70,8 +70,8 @@ end
 function build_link_node(node, page, arg1, arg2, arg3)
   local path   = build_path(arg1, arg2, arg3);
   local oppath = build_op_path(page)
-  return 'http://' .. NodeData[node]["domain"] .. ':' .. 
-                      NodeData[node]["port"]   .. '/' .. 
+  return 'http://' .. NodeData[node]["fdomain"] .. ':' .. 
+                      NodeData[node]["fport"]   .. '/' .. 
                           page .. oppath .. path;
 end
 

@@ -1,55 +1,78 @@
 
 -- GLOBAL_AUTO_INC_COUNTER GLOBAL_AUTO_INC_COUNTER GLOBAL_AUTO_INC_COUNTER
 AutoInc = {};
+
+function giveInitialAutoInc(myid)
+  if (NodeData[myid]['isb']) then
+    local bid = tonumber(NodeData[myid]['bridge']) -- NOTE B2B IDs -> computed
+    return (1 + (bid - 1) * AutoIncRange);
+  else
+    local id = 1 + (BridgeId - 1) * AutoIncRange;
+    for inid, bid in pairs(IslandData) do
+      if (myid == inid)     then break; end
+      if (bid  == BridgeId) then id = id + 1; end
+    end
+    return id;
+  end
+end
 function InitAutoInc(name)
   local id = redis("get", 'global:' .. name);
   if (id == nil) then
-    id = 1 + (BridgeId - 1) * AutoIncRange;
-    for inid, bid in pairs(IslandData) do
-      if (MyNodeId == inid)     then break; end
-      if (bid      == BridgeId) then id = id + 1; end
-    end
+    id = giveInitialAutoInc(MyNodeId);
     redis("set", 'global:' .. name, id);
   end
   AutoInc[name] = id;
 end
+function getNextAutoInc(num)
+  local bid  = (math.floor(num / AutoIncRange) % #BridgeData + 1);
+  num        = num + AutoIncStep;
+  local nbid = (math.floor(num / AutoIncRange) % #BridgeData + 1);
+  if (bid ~= nbid) then num = num + AutoIncRange; end
+  return num;
+end
 function IncrementAutoInc(name)
-  local bid     = (math.floor(AutoInc[name] / AutoIncRange) % #BridgeData + 1);
-  AutoInc[name] = AutoInc[name] + NumPeers;
-  local nbid    = (math.floor(AutoInc[name] / AutoIncRange) % #BridgeData + 1);
-  if (bid ~= nbid) then AutoInc[name] = AutoInc[name] + AutoIncRange; end
+  AutoInc[name] = getNextAutoInc(AutoInc[name]);
   redis("set", 'global:' .. name, AutoInc[name]);
   return AutoInc[name];
 end
-function getPreviousAutoInc(num)
+function getPreviousAutoInc(o_num)
+  local num = tonumber(o_num);
+  --local was = num;
   local bid  = (math.floor(num  / AutoIncRange) % #BridgeData + 1);
-  local prev = tonumber(num) - NumPeers;
+  local prev = tonumber(num) - AutoIncStep;
   local nbid = (math.floor(prev / AutoIncRange) % #BridgeData + 1);
   if (bid ~= nbid) then prev = prev - AutoIncRange; end
+  --print ('getPreviousAutoInc: was: ' .. was .. ' prev: ' .. prev);
   return prev;
 end
 -- BRIDGE_AUTO_INC_COUNTER BRIDGE_AUTO_INC_COUNTER BRIDGE_AUTO_INC_COUNTER
 function InitBridgeAutoInc(name)
   local id = redis("get", 'global:' .. name);
   if (id == nil) then
-    id = 1 + (BridgeId - 1) * AutoIncRange;
+    id = giveInitialAutoInc(MyNodeId);
     redis("set", 'global:' .. name, id);
   end
   AutoInc[name] = id;
 end
+function getNextBridgeAutoInc(num)
+  num       = num + 1;
+  local bid = (num % AutoIncRange);
+  if (bid == 0) then num = num + AutoIncRange; end
+  return num;
+end
 function IncrementBridgeAutoInc(name)
-  AutoInc[name] = AutoInc[name] + 1;
-  local bid     = (AutoInc[name] % AutoIncRange);
-  if (bid == 0) then AutoInc[name] = AutoInc[name] + AutoIncRange; end
+  AutoInc[name] = getNextBridgeAutoInc(AutoInc[name]);
+  redis("set", 'global:' .. name, AutoInc[name]);
   return AutoInc[name];
 end
-function getPreviousBridgeAutoInc(num)
+function getPreviousBridgeAutoInc(o_num)
+  local num = tonumber(o_num);
   if (num == 1) then return 1; end
-local was = num;
-  num = num -1;
-  local bid     = (num % AutoIncRange);
+  --local was = num;
+  num = num - 1;
+  local bid = (num % AutoIncRange);
   if (bid == 0) then num = num - AutoIncRange; end
-print ('getPreviousBridgeAutoInc: was: ' .. was .. ' num: ' .. num);
+  --print ('getPreviousBridgeAutoInc: was: ' .. was .. ' num: ' .. num);
   return num;
 end
 
