@@ -1,6 +1,7 @@
 
 -- SETTINGS SETTINGS SETTINGS SETTINGS SETTINGS SETTINGS SETTINGS
-local TS_TIMEOUT = 10; -- no HB w/in TS_TIMEOUT secs -> resync
+--local TS_TIMEOUT = 10; -- no HB w/in TS_TIMEOUT secs -> resync
+local TS_TIMEOUT = 12; --TODO test valur for 10 sec HBs
 
 -- GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS
 local MyGeneration = redis("get", "alchemy_generation");
@@ -123,7 +124,7 @@ function handle_heartbeat(nodeid, hb_eval_cmd)
     end
   end
   handle_HB_GNR(inid, N_GNR);
-  --check_heartbeat()
+  --check_HB()
 end
 
 function handle_bridge_heartbeat(nodeid, hb_eval_cmd)
@@ -142,6 +143,8 @@ function handle_bridge_heartbeat(nodeid, hb_eval_cmd)
   handle_HB_GNR(inid, B_GNR);
 end
 
+-- OOO OOO OOO OOO OOO OOO OOO OOO OOO OOO OOO OOO OOO OOO OOO OOO OOO OOO
+local OOO_Ops = {};
 function rexmit_ops(nodeid, beg, fin)
   local inid     = tonumber(nodeid);
   print ('rexmit_ops: inid: ' .. inid .. ' beg: ' .. beg .. ' fin: ' .. fin);
@@ -154,42 +157,71 @@ function rexmit_ops(nodeid, beg, fin)
   --print ('pipeline: ' .. pipeline);
   RemoteMessage(NodeData[inid]["bip"], NodeData[inid]["bport"], pipeline);
 end
-function sync_ooo(inid, beg, fin)
-  print ('SYNC OOO inid: ' .. inid .. ' beg: ' .. beg .. ' fin: ' .. fin);
+function fetch_missing_ops(hw, inid, beg, fin)
+  print('FETCH: inid: ' .. inid .. ' beg: ' .. beg ..  ' fin: ' .. fin);
   local cmd = Redisify('LUA', 'rexmit_ops', MyNodeId, beg, fin);
   RemoteMessage(NodeData[inid]["bip"], NodeData[inid]["bport"], cmd);
 end
 
+function getPrevAInc(inid, xactid)
+  if (NodeData[inid]['isb']) then return getPrevBridgeAutoInc(xactid);
+  else                            return getPrevAutoInc      (xactid); end
+end
+function getNextAInc(inid, xactid)
+  if (NodeData[inid]['isb']) then return getNextBridgeAutoInc(xactid);
+  else                            return getNextAutoInc      (xactid); end
+end
+function this_op_mod_hw(hwname, inid, hw, xactid)
+  if (hw == getPrevAInc(inid, xactid)) then
+print('this_op_mod_hw: inid: ' .. inid .. ' SET->HW: ' .. xactid);
+    redis("set", hwname, xactid); return true;
+  end
+  return false;
+end
+function walk_ooo(hwname, inid, hw, nex)
+  while (OOO_Ops[nex] and this_op_mod_hw(hwname, inid, hw, nex)) do
+    OOO_Ops[nex] = nil; 
+    nex          = getNextAInc(inid, nex);
+  end
+end
+function next_op_mod_hw(hwname, inid, hw, nex)
+  if (this_op_mod_hw(hwname, inid, hw, nex)) then
+    walk_ooo(hwname, inid, hw, getNextAInc(inid, nex)); return true;
+  end
+  return false;
+end
+function ooo_op(xactid)
+  table.insert(OOO_Ops, xactid, true);
+  dump(OOO_Ops);
+end
+function repeat_op(hwname, inid, hw, xactid)
+  if (xactid <= hw)    then                                     return true; end
+  if (OOO_Ops[xactid]) then walk_ooo(hwname, inid, hw, xactid); return true; end
+  return false;
+end
+
+-- HW HW HW HW HW HW HW HW HW HW HW HW HW HW HW HW HW HW HW HW HW HW HW HW HW
 function mod_hw(nodeid, o_xactid, issync)
   local inid   = tonumber(nodeid);
   local xactid = tonumber(o_xactid);
-  local hwname = getHWname(nodeid);
+  local hwname = getHWname(inid);
   local hw     = tonumber(redis("get", hwname));
   local fromb  = NodeData[inid]['isb'];
-  if (hw == nil) then  -- CHERRY OP or SYNC
-    local beg = giveInitialAutoInc(inid);
-    if (beg == xactid) then redis("set", hwname, xactid);
-    else                    sync_ooo(inid, beg, xactid);   end
-  elseif (issync) then -- SYNC
-      if (hw == xactid) then redis("set", hwname, xactid);
+  if (issync) then -- SYNC
+      local beg;
+      if (hw == nil) then -- CHERRY SYNC
+        beg = giveInitialAutoInc(inid);
+        if (beg == xactid) then redis("set", hwname, xactid); return true; end;
       else
-        local beg;
-        if (fromb) then beg = getNextBridgeAutoInc(hw);
-        else            beg = getNextAutoInc(hw);       end
-        sync_ooo(inid, beg, xactid);
+        if (hw  == xactid) then redis("set", hwname, xactid); return true; end;
+        beg = getNextAInc(inid, hw);
       end
+      fetch_missing_ops(hw, inid, beg, xactid); -- ONLY sync or resync fetches
   else                 -- NORMAL OP
-    if (xactid < hw) then return false; end -- REPEAT GLOBAL OP
-    if (fromb) then
-      if (hw == getPrevBridgeAutoInc(xactid)) then redis("set", hwname, xactid);
-      else
-        sync_ooo(inid, getNextBridgeAutoInc(hw), getPrevBridgeAutoInc(xactid));
-      end
-    else
-      if (hw == getPrevAutoInc(xactid)) then redis("set", hwname, xactid);
-      else           sync_ooo(inid, getNextAutoInc(hw), getPrevAutoInc(xactid));
-      end
-    end
+    if (repeat_op     (hwname, inid, hw, xactid)) then return false; end
+    if (next_op_mod_hw(hwname, inid, hw, xactid) == false) then 
+      print ('OOO_OP: xactid: ' .. xactid .. ' hw: ' .. hw);
+      ooo_op(xactid); end
   end
   return true;
 end
@@ -205,8 +237,7 @@ function update_bridge_hw(nodeid, bxactid)
   return mod_hw(nodeid, bxactid, false);
 end
 
-
--- OOO_HANDLING OOO_HANDLING OOO_HANDLING OOO_HANDLING OOO_HANDLING
+-- Q_SYNC Q_SYNC Q_SYNC Q_SYNC Q_SYNC Q_SYNC Q_SYNC Q_SYNC Q_SYNC Q_SYNC
 --TODO
 local GlobalSyncedHW   = 0;
 function trim_sync_Q(hw)
@@ -215,7 +246,7 @@ function trim_sync_Q(hw)
   GlobalSyncedHW = hw;
 end
 --TODO
-function check_heartbeat()
+function check_HB()
   local nnodes = 0;
   local lw     = -1;
   for num, data in pairs(SyncedHW) do

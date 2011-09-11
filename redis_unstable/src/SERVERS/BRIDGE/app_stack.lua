@@ -26,7 +26,7 @@ function bridge_global_caller(nodeid, fname, orig_bxactid, ...)
 end
 
 function queue_global_op(nodeid, xactid, fname, ...)
-  update_hw(nodeid, xactid);
+  if (update_hw(nodeid, xactid) == false) then return; end -- REPEAT OP
   local bxactid = IncrementBridgeAutoInc('In_Xactid'); -- BRIDGE REORDER (IN)
   local channel = 'sync_bridge';
   print ('B: Q_global_op: bxactid: ' .. bxactid ..  ' -> xactid: '  .. xactid);
@@ -43,7 +43,8 @@ end
 --      1.) Alchemy config option: bridge_mode yes
 --      2.) any "MESSAGE -> LUA global_*" call will just call: queue_global_op
 global_register = function(nodeid, xactid, my_userid, username)
-  print ('B: global_register: my_userid: ' .. my_userid ..
+  print ('B: global_register: inid: '      .. nodeid    ..
+                            ' my_userid: ' .. my_userid ..
                             ' xactid: '    .. xactid);
   queue_global_op(nodeid, xactid, 'global_register', my_userid, username);
 end
@@ -53,13 +54,15 @@ global_logout = function(nodeid, xactid, my_userid)
 end
 
 global_post = function(nodeid, xactid, my_userid, postid, ts, msg)
-  print ('B: global_post: my_userid: ' .. my_userid .. ' ts: ' .. ts ..
-         ' msg: ' .. msg .. ' xactid: ' .. xactid);
+  print ('B: global_post: nodeid: '     .. nodeid    .. ' xactid: ' .. xactid ..
+                         ' my_userid: ' .. my_userid .. ' postid: ' .. postid ..
+                         ' ts: '        .. ts        .. ' msg: '    .. msg);
   queue_global_op(nodeid, xactid, 'global_post', my_userid, postid, ts, msg);
 end
 
 global_follow = function(nodeid, xactid, my_userid, userid, follow)
-  print ('B: global_follow: my_userid: ' .. my_userid ..
-                          ' userid: '    .. userid ..  ' follow: ' .. follow);
+  print ('B: global_follow: inid: '      .. nodeid    .. 
+                          ' my_userid: ' .. my_userid ..
+                          ' userid: '    .. userid    .. ' follow: ' .. follow);
   queue_global_op(nodeid, xactid, 'global_follow', my_userid, userid, follow);
 end

@@ -31,3 +31,6 @@ dofile "./docroot/DIST/html.lua";
 
 -- STATIC_FILES STATIC_FILES STATIC_FILES STATIC_FILES STATIC_FILES
 dofile "./docroot/DIST/static.lua";
+
+-- DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
+dofile "./docroot/DIST/dumper.lua";

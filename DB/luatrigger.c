@@ -67,7 +67,7 @@ int luaCronTimeProc(struct aeEventLoop *eventLoop, lolo id, void *clientData) {
 #endif
     }
     Operations = 0;
-    return 5000; /* 5000ms -> 5second */ //TODO TEST VALUE - slow things down
+    return 10000; /* 10000ms -> 10secs */ //TODO TEST VALUE - slow things down
     //return 1000; /* 1000ms -> 1second */
 }
 

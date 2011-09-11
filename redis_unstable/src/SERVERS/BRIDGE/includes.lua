@@ -10,3 +10,6 @@ dofile "./docroot/DIST/global_ops.lua";
 
 -- PUBLICATION PUBLICATION PUBLICATION PUBLICATION PUBLICATION PUBLICATION
 dofile "./docroot/DIST/publication.lua";
+
+-- DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
+dofile "./docroot/DIST/dumper.lua";
