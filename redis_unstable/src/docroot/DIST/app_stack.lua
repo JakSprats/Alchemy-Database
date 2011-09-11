@@ -155,9 +155,8 @@ global_post = function(nodeid, xactid, my_userid, postid, ts, msg)
       redis("zadd", 'uid:' .. v .. ':posts', ts, postid);
     end
   end
-  -- Push post to timeline, and trim timeline to newest 100 elements.
+  -- Push post to timeline
   redis("zadd",            "global:timeline", ts, postid);
-  redis("zremrangebyrank", "global:timeline", 100, -1);
 end
 
 global_follow = function(nodeid, xactid, my_userid, userid, follow)

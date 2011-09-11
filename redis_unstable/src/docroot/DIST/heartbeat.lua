@@ -28,7 +28,7 @@ function GenerateBridgeHBCommand()-- this command will be remotely EVALed
   return GenerateHBID() .. b_hw_cmd .. b_gnr_cmd;
 end
 
-local LastHB_TS  = {};
+local LastHB_TS = {};
 function DetectStaleNodes(o_now)
   local now = tonumber(o_now);
   for inid, ts in pairs(LastHB_TS) do
@@ -81,15 +81,14 @@ function HeartBeat() -- lua_cron function, called every second
   DetectStaleNodes(os.time());
 end
 
-local SyncedHW  = {}; local LastHB_SyncedHW = {}; local GenerationSet = {};
 local LastHB_ID = {};
-
 function handle_HB_ID_TS(inid, HB_ID, HB_TS)
   if (LastHB_ID[inid] ~= nil and HB_ID <= LastHB_ID[inid]) then return; end
   LastHB_ID[inid] = tonumber(HB_ID);
   LastHB_TS[inid] = tonumber(HB_TS);
 end
 
+local GenerationSet = {};
 function handle_HB_GNR(inid, GNR)
   for nid, gnr in pairs(GNR) do
     local i = tonumber(nid);
@@ -109,6 +108,7 @@ function handle_HB_GNR(inid, GNR)
   end
 end
 
+local SyncedHW = {};
 function handle_heartbeat(nodeid, hb_eval_cmd)
   print ('handle_heartbeat: inid: ' .. nodeid .. ' hb_cmd: ' .. hb_eval_cmd)
   local inid = tonumber(nodeid);
@@ -118,15 +118,15 @@ function handle_heartbeat(nodeid, hb_eval_cmd)
   for num, data in pairs(N_HW) do
     local inum = tonumber(num);
     if (inum == MyNodeId) then
-      --print ('X to NODE: SyncedHW[' .. inid .. ']: ' .. data);
-      SyncedHW[inid] = data;
-      if (LastHB_SyncedHW[inid] == nil) then LastHB_SyncedHW[inid] = data; end
+      --print('X to NODE: SyncedHW[' .. inid .. ']: ' .. data);
+      SyncedHW[inid] = tonumber(data);
     end
   end
   handle_HB_GNR(inid, N_GNR);
-  --check_HB()
+  check_HB(inid, false);
 end
 
+local SyncedBridgeHW = {};
 function handle_bridge_heartbeat(nodeid, hb_eval_cmd)
   print ('handle_bridge_heartbeat: inid: '  .. nodeid ..
                                 ' hb_cmd: ' .. hb_eval_cmd)
@@ -134,17 +134,16 @@ function handle_bridge_heartbeat(nodeid, hb_eval_cmd)
   -- Lua eval - defines variables: [N_HW, N_GNR, B_HW, B_GNR]
   assert(loadstring(hb_eval_cmd))()
   handle_HB_ID_TS(inid, HB_ID, HB_TS);
-  for num, data in pairs(N_HW) do
+  for num, data in pairs(B_HW) do
     local inum = tonumber(num);
-    --print ('BRIDGE to BRIDGE: SyncedHW[' .. inum .. ']: ' .. data);
-    SyncedHW[inum] = data;
-    if (LastHB_SyncedHW[inum] == nil) then LastHB_SyncedHW[inum] = data; end
+    --print ('BRIDGE to BRIDGE: SyncedBridgeHW[' .. inum .. ']: ' .. data);
+    SyncedBridgeHW[inum] = tonumber(data);
   end
   handle_HB_GNR(inid, B_GNR);
+  check_HB(inid, true);
 end
 
--- OOO OOO OOO OOO OOO OOO OOO OOO OOO OOO OOO OOO OOO OOO OOO OOO OOO OOO
-local OOO_Ops = {};
+-- NETWORK_DISCONNECT NETWORK_DISCONNECT NETWORK_DISCONNECT
 function rexmit_ops(nodeid, beg, fin)
   local inid     = tonumber(nodeid);
   print ('rexmit_ops: inid: ' .. inid .. ' beg: ' .. beg .. ' fin: ' .. fin);
@@ -163,43 +162,6 @@ function fetch_missing_ops(hw, inid, beg, fin)
   RemoteMessage(NodeData[inid]["bip"], NodeData[inid]["bport"], cmd);
 end
 
-function getPrevAInc(inid, xactid)
-  if (NodeData[inid]['isb']) then return getPrevBridgeAutoInc(xactid);
-  else                            return getPrevAutoInc      (xactid); end
-end
-function getNextAInc(inid, xactid)
-  if (NodeData[inid]['isb']) then return getNextBridgeAutoInc(xactid);
-  else                            return getNextAutoInc      (xactid); end
-end
-function this_op_mod_hw(hwname, inid, hw, xactid)
-  if (hw == getPrevAInc(inid, xactid)) then
-print('this_op_mod_hw: inid: ' .. inid .. ' SET->HW: ' .. xactid);
-    redis("set", hwname, xactid); return true;
-  end
-  return false;
-end
-function walk_ooo(hwname, inid, hw, nex)
-  while (OOO_Ops[nex] and this_op_mod_hw(hwname, inid, hw, nex)) do
-    OOO_Ops[nex] = nil; 
-    nex          = getNextAInc(inid, nex);
-  end
-end
-function next_op_mod_hw(hwname, inid, hw, nex)
-  if (this_op_mod_hw(hwname, inid, hw, nex)) then
-    walk_ooo(hwname, inid, hw, getNextAInc(inid, nex)); return true;
-  end
-  return false;
-end
-function ooo_op(xactid)
-  table.insert(OOO_Ops, xactid, true);
-  dump(OOO_Ops);
-end
-function repeat_op(hwname, inid, hw, xactid)
-  if (xactid <= hw)    then                                     return true; end
-  if (OOO_Ops[xactid]) then walk_ooo(hwname, inid, hw, xactid); return true; end
-  return false;
-end
-
 -- HW HW HW HW HW HW HW HW HW HW HW HW HW HW HW HW HW HW HW HW HW HW HW HW HW
 function mod_hw(nodeid, o_xactid, issync)
   local inid   = tonumber(nodeid);
@@ -207,21 +169,19 @@ function mod_hw(nodeid, o_xactid, issync)
   local hwname = getHWname(inid);
   local hw     = tonumber(redis("get", hwname));
   local fromb  = NodeData[inid]['isb'];
-  if (issync) then -- SYNC
+  if (issync) then        -- SYNC
       local beg;
       if (hw == nil) then -- CHERRY SYNC
         beg = giveInitialAutoInc(inid);
         if (beg == xactid) then redis("set", hwname, xactid); return true; end;
       else
         if (hw  == xactid) then redis("set", hwname, xactid); return true; end;
-        beg = getNextAInc(inid, hw);
+        if (NodeData[inid]['isb']) then beg = getNextBridgeAutoInc(hw);
+        else                            beg = getNextAutoInc      (hw); end
       end
       fetch_missing_ops(hw, inid, beg, xactid); -- ONLY sync or resync fetches
-  else                 -- NORMAL OP
-    if (repeat_op     (hwname, inid, hw, xactid)) then return false; end
-    if (next_op_mod_hw(hwname, inid, hw, xactid) == false) then 
-      print ('OOO_OP: xactid: ' .. xactid .. ' hw: ' .. hw);
-      ooo_op(xactid); end
+  else                    -- NORMAL OP
+    redis("set", hwname, xactid);
   end
   return true;
 end
@@ -238,26 +198,28 @@ function update_bridge_hw(nodeid, bxactid)
 end
 
 -- Q_SYNC Q_SYNC Q_SYNC Q_SYNC Q_SYNC Q_SYNC Q_SYNC Q_SYNC Q_SYNC Q_SYNC
---TODO
-local GlobalSyncedHW   = 0;
-function trim_sync_Q(hw)
-  if (GlobalSyncedHW == hw) then return; end
-  redis("zremrangebyscore", 'Q_sync', "-inf", hw);
-  GlobalSyncedHW = hw;
+local TrimHW = 0;
+function trim_sync_Q(hw, fromb)
+  if (TrimHW == hw) then return; end -- nothing changed
+  local channel;
+  if (fromb) then channel = 'Q_sync_bridge';
+  else            channel = 'Q_sync';        end
+  redis("zremrangebyscore", channel, "-inf", hw);
+  TrimHW = hw;
 end
---TODO
-function check_HB()
-  local nnodes = 0;
+function check_HB(inid, fromb)
+  local syncedhw; local num_hbs;
+  if (fromb)              then syncedhw = SyncedBridgeHW;
+  else                         syncedhw = SyncedHW;       end
+  if (AmBridge and fromb) then num_hbs  = NumHBBridges;
+  else                         num_hbs  = NumHBPeers;     end
+  local nnodes =  0;
   local lw     = -1;
-  for num, data in pairs(SyncedHW) do
+  for num, data in pairs(syncedhw) do
     nnodes = nnodes +1;
     if     (lw == -1)  then lw = data;
     elseif (data < lw) then lw = data; end
   end
-  if (nnodes ~= NumHBs) then return; end
-  trim_sync_Q(lw);
-  if (tonumber(SyncedHW[inid]) < tonumber(LastHB_SyncedHW[inid])) then
-    rexmit_ooo(LastHB_SyncedHW[inid]); 
-  end
-  LastHB_SyncedHW[inid] = AutoInc['In_Xactid'];
+  if (nnodes ~= num_hbs) then return; end
+  trim_sync_Q(lw, fromb);
 end

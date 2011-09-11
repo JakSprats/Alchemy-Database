@@ -70,9 +70,10 @@ for inid, data in pairs(NodeData) do
 end
 AutoIncStep = #PeerData - 1;
 if (AmBridge) then
-  NumPeers = #PeerData + #BridgeData - 2; -- HBs from ALL except self (twice)
-  NumHBs   = #PeerData + #BridgeData - 2; -- HBs from ALL except self (twice)
+  NumPeers     = #PeerData + #BridgeData - 2; -- HBs from ALL except self(twice)
+  NumHBBridges = #BridgeData - 1;             -- no self
 else
-  NumPeers = #PeerData - 1; -- no bridge
-  NumHBs   = #PeerData - 2; -- no self, no bridge
+  NumPeers     = #PeerData - 1;               -- no bridge
+  NumHBBridges = 0;
 end
+NumHBPeers = #PeerData - 1; -- no self
