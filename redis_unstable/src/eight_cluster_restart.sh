@@ -4,10 +4,10 @@ DIRS="1 2 3 4 5 6 7 8"
 PORTS="8001 8002 8003 8004 9005 9006 9007 9008"
 B_PORTS="20000 20001"
 B_DIRS="1 2"
+S_PORTS="18001 18002 18003 18004 19005 19006 19007 19008 30000 30001"
 
 echo sudo killall stunnel
 sudo killall stunnel
-
 echo killall ./alchemy-cli
 killall ./alchemy-cli
 echo sleep 1
@@ -21,13 +21,7 @@ if [ "$1" == "clean" ]; then
   exit 0;
 fi
 
-for p in $PORTS; do 
-  echo ./alchemy-cli -p $p SAVE
-  ./alchemy-cli -p $p SAVE
-  echo ./alchemy-cli -p $p SHUTDOWN
-  ./alchemy-cli -p $p SHUTDOWN
-done
-for p in $B_PORTS; do 
+for p in $PORTS $B_PORTS $S_PORTS; do 
   echo ./alchemy-cli -p $p SAVE
   ./alchemy-cli -p $p SAVE
   echo ./alchemy-cli -p $p SHUTDOWN
@@ -50,12 +44,20 @@ for d in $DIRS; do
   (cd SERVERS/$d
     echo "(cd SERVERS/$d; ../../alchemy-server redis.conf >> OUTPUT & </dev/null)"
     ../..//alchemy-server redis.conf >> OUTPUT & </dev/null
+    (cd SLAVE;
+      echo "(cd SERVERS/$d/SLAVE; ../../../alchemy-server redis.conf >> OUTPUT & </dev/null)"
+      ../../..//alchemy-server redis.conf >> OUTPUT & </dev/null
+    )
   )
 done
 for d in $B_DIRS; do
 (cd SERVERS/BRIDGE/$d;
   echo "(cd SERVERS/BRIDGE/$d; ../../../alchemy-server redis.conf >> OUTPUT & </dev/null)"
   ../../../alchemy-server redis.conf >> OUTPUT & </dev/null
+  (cd SLAVE;
+    echo "(cd SERVERS/BRIDGE/$d/SLAVE; ../../../alchemy-server redis.conf >> OUTPUT & </dev/null)"
+    ../../../../alchemy-server redis.conf >> OUTPUT & </dev/null
+  )
 )
 done
 

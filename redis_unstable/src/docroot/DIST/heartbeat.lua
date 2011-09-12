@@ -1,12 +1,8 @@
 
--- SETTINGS SETTINGS SETTINGS SETTINGS SETTINGS SETTINGS SETTINGS
---local TS_TIMEOUT = 10; -- no HB w/in TS_TIMEOUT secs -> resync
-local TS_TIMEOUT = 12; --TODO test valur for 10 sec HBs
-
 -- FUNCTIONS FUNCTIONS FUNCTIONS FUNCTIONS FUNCTIONS FUNCTIONS FUNCTIONS
 function getHWname        (nodeid) return 'HIGHWATER_'  .. nodeid; end
 
-local BridgeHW = 0; -- TODO -> array
+local BridgeHW = 0; -- TODO -> array + persistent
 function aiweq(inid) return '[' .. inid .. ']='; end -- HELPER FUNCTION
 
 function GenerateBridgeHBCommand()-- this command will be remotely EVALed
@@ -31,6 +27,7 @@ function GenerateHBCommand() -- this command will be remotely EVALed
   return n_hw_cmd;
 end
 function HeartBeat() -- lua_cron function, called every second
+  if (AmSlave) then InitServer(); return; end
   if (PingSyncAllNodes() == false) then return; end -- wait until synced
   local cmd  = GenerateHBCommand();
   local msg  = Redisify('LUA', 'handle_heartbeat', MyNodeId, cmd);

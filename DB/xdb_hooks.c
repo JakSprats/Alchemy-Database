@@ -228,7 +228,7 @@ static bool loadLuaHelperFile(cli *c, char *fname) {
         const char *lerr = lua_tostring(server.lua, -1);
         if (c) addReplySds(c, sdscatprintf(sdsempty(),
                            "-ERR luaL_loadfile: %s err: %s\r\n", fwpath, lerr));
-        else fprintf(stderr, "loadLuaHelperFile: err: %s\r\n", lerr);
+        else fprintf(stderr, "loadLuaHelperFile: %s err: %s\r\n", fwpath, lerr);
         lua_pop(server.lua, 1); /* pop error from stack */
         return 0;
     }
@@ -296,6 +296,8 @@ rcommand *DXDB_lookupCommand(sds name) {
     struct redisCommand *cmd = dictFetchValue(server.commands, name);
     if (WebServerMode > 0) {
         if (!CurrClient) return cmd; // called during load in whitelist
+        if (CurrClient == server.master) return cmd; // feed from master
+        if (CurrClient == server.lua_client) return cmd; // lua already internal
         if (!CurrClient->InternalRequest) {
             if (isWhiteListedIp(CurrClient)) return cmd;
             return cmd ? (cmd->proc == luafuncCommand) ? cmd : NULL : NULL;
@@ -305,7 +307,7 @@ rcommand *DXDB_lookupCommand(sds name) {
 }
 
 void DXDB_call(struct redisCommand *cmd, long long *dirty) {
-    if (cmd->proc == luafuncCommand) *dirty = 0;
+    if (cmd->proc == luafuncCommand || cmd->proc == messageCommand) *dirty = 0;
     if (*dirty) server.stat_num_dirty_commands++;
 }
 
@@ -385,9 +387,10 @@ static void initClient(redisClient *c) {       //printf("initClient\n");
     c->bindaddr        =  NULL;
     c->bindport        =  0;
 }
-void DXDB_createClient(redisClient *c) {       //printf("DXDB_createClient\n");
+void DXDB_createClient(int fd, redisClient *c) {//printf("DXDB_createClient\n");
     initClient(c);
     c->scb             =  NULL;
+    if (fd == -1) c->InternalRequest = 1;
 }
 
 int   DXDB_processCommand(redisClient *c) { //printf("DXDB_processCommand\n");

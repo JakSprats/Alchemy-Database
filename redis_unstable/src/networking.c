@@ -59,7 +59,7 @@ redisClient *createClient(int fd) {
     if (fd != -1) listAddNodeTail(server.clients,c);
     initClientMultiState(c);
 #ifdef ALCHEMY_DATABASE
-    DXDB_createClient(c);
+    DXDB_createClient(fd, c);
 #endif
     return c;
 }

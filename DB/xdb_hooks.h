@@ -42,7 +42,7 @@ void  DXDB_initServer();
 
 void  DXDB_main();
 
-void  DXDB_createClient(redisClient *c);
+void  DXDB_createClient(int fd, redisClient *c);
 
 void  DXDB_emptyDb();
 

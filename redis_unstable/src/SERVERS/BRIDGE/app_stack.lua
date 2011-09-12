@@ -4,13 +4,16 @@ AutoIncRange = 20; -- TODO testing OVERRIDE
 io.stdout:setvbuf("no"); -- flush stdout
 
 -- INLCUDES INLCUDES INLCUDES INLCUDES INLCUDES INLCUDES INLCUDES INLCUDES
-dofile "../includes.lua";
+dofile "./root/includes.lua";
 
--- GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS
-InitBridgeAutoInc('In_Xactid');
-print ('In_Xactid: ' .. AutoInc['In_Xactid']);
-InitBridgeAutoInc('Out_Xactid');
-print ('Out_Xactid: ' .. AutoInc['Out_Xactid']);
+function InitServer()
+  -- GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS
+  InitBridgeAutoInc('In_Xactid');
+  print ('In_Xactid: ' .. AutoInc['In_Xactid']);
+  InitBridgeAutoInc('Out_Xactid');
+  print ('Out_Xactid: ' .. AutoInc['Out_Xactid']);
+end
+InitServer();
 
 -- FORWARDERS FORWARDERS FORWARDERS FORWARDERS FORWARDERS FORWARDERS
 function bridge_global_caller(nodeid, fname, orig_bxactid, ...)

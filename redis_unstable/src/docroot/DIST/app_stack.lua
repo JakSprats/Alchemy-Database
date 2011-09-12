@@ -6,23 +6,27 @@ io.stdout:setvbuf("no"); -- flush stdout
 -- INLCUDES INLCUDES INLCUDES INLCUDES INLCUDES INLCUDES INLCUDES INLCUDES
 dofile "./docroot/DIST/includes.lua";
 
--- INIT INIT INIT INIT INIT INIT INIT INIT INIT INIT INIT INIT INIT INIT INIT
+-- INIT_SERVER INIT_SERVER INIT_SERVER INIT_SERVER INIT_SERVER INIT_SERVER
+function InitServer()
+  -- GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS
+  -- one GLOBAL AutoInc for "sync"
+  InitAutoInc('In_Xactid');
+  print ('In_Xactid: ' .. AutoInc['In_Xactid']);
+
+  -- USERLAND_GLOBALS USERLAND_GLOBALS USERLAND_GLOBALS USERLAND_GLOBALS
+  InitAutoInc('NextUserId');
+  print ('NextUserId: ' .. AutoInc['NextUserId']);
+  InitAutoInc('NextPostId');
+  print ('NextPostId: ' .. AutoInc['NextPostId']);
+end
+InitServer();
+
+-- INIT_PER_REQUEST INIT_PER_REQUEST INIT_PER_REQUEST INIT_PER_REQUEST
 function InitRequest() -- inits global vars included via "includes.lua"
   initPerRequestIsLoggedIn();
   initPerRequestIsDeflatable();
   initPerRequestInlineCache();
 end
-
--- GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS
--- one GLOBAL AutoInc for "sync"
-InitAutoInc('In_Xactid');
-print ('In_Xactid: ' .. AutoInc['In_Xactid']);
-
--- USERLAND_GLOBALS USERLAND_GLOBALS USERLAND_GLOBALS USERLAND_GLOBALS
-InitAutoInc('NextUserId');
-print ('NextUserId: ' .. AutoInc['NextUserId']);
-InitAutoInc('NextPostId');
-print ('NextPostId: ' .. AutoInc['NextPostId']);
 
 -- STATIC_FILES STATIC_FILES STATIC_FILES STATIC_FILES STATIC_FILES
 load_image('docroot/img/logo.png',    'logo.png');
