@@ -1,10 +1,10 @@
 
+SyncedPipeFD       = {}; -- {fd     -> inid} USED in publication.lua:publish()
 local AllSynced    = false;
 local NumSynced    = 0;
 local PipeFD       = {}; -- {pipeid -> fd}
-local SyncedPipeFD = {}; -- {fd     -> nodeid}
 
-local Pipe_id      = 1;
+local Pipe_id      = 1; -- used as incrementing counter
 local StartSync    = os.time();
 
 function sync_ping(nodeid, channel, sync_xactid)
@@ -49,7 +49,7 @@ function sync_pong_handler(o_pipeid, o_nodeid, o_channel)
     local fd      = tostring(PipeFD[pipeid]);
     local channel = tostring(o_channel);
     print ('sync_pong_handler inid: ' .. inid .. ' fd: ' .. fd);
-    SubscribeFD(fd, channel);       -- redis("publish", channel) -> fd
+    SubscribeFD(fd, channel);          -- redis("publish", channel) -> fd
     SyncedPipeFD[tonumber(fd)] = inid; -- means keep this one around
     data['synced']             = 1;
     NumSynced                  = NumSynced + 1;

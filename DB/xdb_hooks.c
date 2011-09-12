@@ -24,12 +24,15 @@ ALL RIGHTS RESERVED
 
  */
 
+#include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <assert.h>
 #include <strings.h>
-#include <unistd.h>
+
+//PROTOTYPES (annoying complier warnings) -- TODO include these :)
+int inet_aton(const char *cp, struct in_addr *inp);
 
 #include "xdb_hooks.h"
 
@@ -254,6 +257,8 @@ static bool initLua(cli *c) {
 
     lua_pushcfunction(server.lua, luaSubscribeFDCommand);
     lua_setglobal(server.lua, "SubscribeFD");
+    lua_pushcfunction(server.lua, luaGetFDForChannelCommand);
+    lua_setglobal(server.lua, "GetFDForChannel");
     lua_pushcfunction(server.lua, luaUnsubscribeFDCommand);
     lua_setglobal(server.lua, "UnsubscribeFD");
     lua_pushcfunction(server.lua, luaCloseFDCommand);

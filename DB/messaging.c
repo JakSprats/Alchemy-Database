@@ -34,6 +34,7 @@ ALL RIGHTS RESERVED
 #include "adlist.h"
 
 #include "rpipe.h"
+#include "xdb_client_hooks.h"
 #include "xdb_hooks.h"
 #include "messaging.h"
 
@@ -46,11 +47,12 @@ int processMultibulkBuffer(redisClient *c);
 // from scripting.c
 void luaPushError(lua_State *lua, char *error);
 void hashScript(char *digest, char *script, size_t len);
+int luaRedisCommand(lua_State *lua);
 
 static void ignoreFCP(void *v, lolo val, char *x, lolo xlen, long *card) {
-    v = NULL; val = 0; x = NULL; xlen = 0; card = NULL;
+    v = NULL; val = 0; x = NULL; xlen = 0; card = NULL; /* compiler warning */
 }
-void messageCommand(redisClient *c) { //NOTE: this command does not reply
+void messageCommand(redisClient *c) { //NOTE: this command does NOT reply
     //DEBUG_C_ARGV(c)
     redisClient  *rfc   = getFakeClient();
     rfc->reqtype        = REDIS_REQ_MULTIBULK;
@@ -162,6 +164,40 @@ int luaSubscribeFDCommand(lua_State *lua) {
     return 0;
 }
 
+int luaGetFDForChannelCommand(lua_State *lua) {
+    int  argc   = lua_gettop(lua);
+    if (argc != 1) {
+        LUA_POP_WHOLE_STACK
+        luaPushError(lua, "Lua GetFDForChannel(channel)"); return 1;
+    }
+    int t = lua_type(lua, 1);
+    if (t != LUA_TSTRING) {
+        LUA_POP_WHOLE_STACK
+        luaPushError(lua, "Lua GetFDForChannel(channel)"); return 1;
+    }
+    size_t   len;
+    char *s       = (char *)lua_tolstring(lua, -1, &len);
+    lua_pop(lua, 1);
+    robj *channel = createStringObject(s, len);
+
+
+    struct dictEntry *de = dictFind(server.pubsub_channels, channel);
+    if (de) {
+        listNode *ln; listIter li;
+        int   indx = 1;
+        list *list = dictGetEntryVal(de);
+        listRewind(list, &li);
+        lua_newtable(lua);                          /* Create new table */
+        while ((ln = listNext(&li))) {
+            redisClient *c = ln->value;
+            lua_pushnumber(lua, indx);              /* Push the table index */
+            lua_pushnumber(lua, (lua_Number)c->fd); /* Push the cell value */
+            lua_rawset(lua, -3);                    /* Stores pair in table */
+            indx++;
+        }
+        return 1;
+    } else return 0;
+}
 int luaUnsubscribeFDCommand(lua_State *lua) {
     int  argc   = lua_gettop(lua);
     if (argc != 2) {
@@ -264,17 +300,17 @@ int luaRemotePipeCommand(lua_State *lua) {
 }
 
 int luaSQLCommand(lua_State *lua) { //printf("SQL\n");
-    int  argc  = lua_gettop(lua);
+    int   argc  = lua_gettop(lua);
     if (argc != 1 || lua_type(lua, 1) != LUA_TSTRING) {
         LUA_POP_WHOLE_STACK
         luaPushError(lua, "Lua SQL() takes 1 string arg"); return 1;
     }
     size_t len;
-    char *s = (char *)lua_tolstring(lua, -1, &len);
+    char *s     = (char *)lua_tolstring(lua, -1, &len);
     lua_pop(lua, 1);
-    sds sql = sdsnewlen(s, len);
-    int  sargc;
-    sds *sargv = sdssplitargs(sql, &sargc);
+    sds   sql   = sdsnewlen(s, len);
+    int   sargc;
+    sds  *sargv = sdssplitargs(sql, &sargc);
     DXDB_cliSendCommand(&sargc, sargv);
     for (int j = 0; j < sargc; j++) {
         lua_pushlstring(lua, sargv[j], sdslen(sargv[j]));

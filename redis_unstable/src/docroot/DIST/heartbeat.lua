@@ -3,108 +3,45 @@
 --local TS_TIMEOUT = 10; -- no HB w/in TS_TIMEOUT secs -> resync
 local TS_TIMEOUT = 12; --TODO test valur for 10 sec HBs
 
--- GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS
-local MyGeneration = redis("get", "alchemy_generation");
-if (MyGeneration == nil) then MyGeneration = 0; end
-MyGeneration = MyGeneration + 1; -- This is the next generation
-redis("set", "alchemy_generation", MyGeneration);
-
-local MyHB_ID = redis("get", "alchemy_heartbeat");
-if (MyHB_ID == nil) then MyHB_ID = 0; end
-
 -- FUNCTIONS FUNCTIONS FUNCTIONS FUNCTIONS FUNCTIONS FUNCTIONS FUNCTIONS
-function getGenerationName(nodeid) return 'GENERATION_' .. nodeid; end
 function getHWname        (nodeid) return 'HIGHWATER_'  .. nodeid; end
 
 local BridgeHW = 0; -- TODO -> array
 function aiweq(inid) return '[' .. inid .. ']='; end -- HELPER FUNCTION
 
-function GenerateHBID()
-  return 'HB_ID=' .. MyHB_ID .. ';HB_TS=' .. os.time() .. ';';
-end
 function GenerateBridgeHBCommand()-- this command will be remotely EVALed
-  local b_gnr_cmd = 'B_GNR={' .. aiweq(MyNodeId) .. MyGeneration .. '};';
   local b_hw_cmd  = 'B_HW={'  .. aiweq(MyNodeId) .. BridgeHW     .. '};';
-  return GenerateHBID() .. b_hw_cmd .. b_gnr_cmd;
+  return b_hw_cmd;
 end
-
-local LastHB_TS = {};
-function DetectStaleNodes(o_now)
-  local now = tonumber(o_now);
-  for inid, ts in pairs(LastHB_TS) do
-    if ((tonumber(ts) + TS_TIMEOUT) < now) then
-      print ('TIMEOUT: inid: ' .. inid .. ' ts: ' .. ts .. ' now: ' .. now);
-      LastHB_TS[inid] = nil;
-      resync_ping(inid, 'sync');
-    end
-  end
-end
-
 function GenerateHBCommand() -- this command will be remotely EVALed
   local n_hw_cmd  = 'N_HW={';
-  local n_gnr_cmd = 'N_GNR={';
   local i         = 1;
   for k, inid in pairs(PeerData) do
     if (inid == MyNodeId) then
-      n_hw_cmd  = n_hw_cmd  .. aiweq(inid) .. AutoInc['In_Xactid'];
-      n_gnr_cmd = n_gnr_cmd .. aiweq(inid) .. MyGeneration;
+      n_hw_cmd = n_hw_cmd  .. aiweq(inid) .. AutoInc['In_Xactid'];
     else
-      local hw  = redis("get", getHWname(inid));
+      local hw = redis("get", getHWname(inid));
       if (hw == nil) then hw = '0'; end
-      local gnr = redis("get", getGenerationName(inid));
-      if (gnr == nil) then gnr = '0'; end
-      n_hw_cmd  = n_hw_cmd  .. aiweq(inid) .. hw;
-      n_gnr_cmd = n_gnr_cmd .. aiweq(inid) .. gnr;
+      n_hw_cmd = n_hw_cmd  .. aiweq(inid) .. hw;
     end
-    if (i ~= #PeerData) then
-      n_hw_cmd  = n_hw_cmd  .. ','; n_gnr_cmd = n_gnr_cmd .. ',';
-    end
+    if (i ~= #PeerData) then n_hw_cmd  = n_hw_cmd  .. ','; end
     i = i + 1;
   end
-  n_hw_cmd  = n_hw_cmd  .. '};'; n_gnr_cmd = n_gnr_cmd .. '};';
-  return GenerateHBID() .. n_hw_cmd .. n_gnr_cmd;
+  n_hw_cmd  = n_hw_cmd  .. '};';
+  return n_hw_cmd;
 end
 function HeartBeat() -- lua_cron function, called every second
   if (PingSyncAllNodes() == false) then return; end -- wait until synced
-  MyHB_ID = MyHB_ID + 1; redis("set", "alchemy_heartbeat", MyHB_ID);
   local cmd  = GenerateHBCommand();
   local msg  = Redisify('LUA', 'handle_heartbeat', MyNodeId, cmd);
   print ('   HEARTBEAT: myid: ' .. MyNodeId .. ' cmd: ' .. cmd);
-  redis("publish", 'sync', msg);
+  publish('sync', msg);
   if (AmBridge) then
     local myid = MyNodeId;
     cmd = cmd .. GenerateBridgeHBCommand();
     msg = Redisify('LUA', 'handle_bridge_heartbeat', myid, cmd);
     print ('   BRIDGE_HEARTBEAT: myid: ' .. myid .. ' cmd: ' .. cmd);
-    redis("publish", 'sync_bridge', msg);
-  end
-  DetectStaleNodes(os.time());
-end
-
-local LastHB_ID = {};
-function handle_HB_ID_TS(inid, HB_ID, HB_TS)
-  if (LastHB_ID[inid] ~= nil and HB_ID <= LastHB_ID[inid]) then return; end
-  LastHB_ID[inid] = tonumber(HB_ID);
-  LastHB_TS[inid] = tonumber(HB_TS);
-end
-
-local GenerationSet = {};
-function handle_HB_GNR(inid, GNR)
-  for nid, gnr in pairs(GNR) do
-    local i = tonumber(nid);
-    if (i == inid) then
-      if (GenerationSet[inid]) then
-        local lgnr = redis("get", getGenerationName(inid));
-        if (lgnr ~= nil) then
-          if (tonumber(lgnr) ~= tonumber(gnr)) then
-            print('handle_HB_GNR: lgnr: ' .. lgnr .. ' gnr: ' .. gnr);
-            resync_ping(inid, 'sync');
-          end
-        end
-      end
-      redis("set", getGenerationName(inid), gnr);
-      GenerationSet[inid] = true;
-    end
+    publish('sync_bridge', msg);
   end
 end
 
@@ -112,9 +49,7 @@ local SyncedHW = {};
 function handle_heartbeat(nodeid, hb_eval_cmd)
   print ('handle_heartbeat: inid: ' .. nodeid .. ' hb_cmd: ' .. hb_eval_cmd)
   local inid = tonumber(nodeid);
-  -- Lua eval - defines variables: [N_HW, N_GNR]
-  assert(loadstring(hb_eval_cmd))()
-  handle_HB_ID_TS(inid, HB_ID, HB_TS);
+  assert(loadstring(hb_eval_cmd))() -- Lua eval - defines vars: [N_HW]
   for num, data in pairs(N_HW) do
     local inum = tonumber(num);
     if (inum == MyNodeId) then
@@ -122,24 +57,19 @@ function handle_heartbeat(nodeid, hb_eval_cmd)
       SyncedHW[inid] = tonumber(data);
     end
   end
-  handle_HB_GNR(inid, N_GNR);
   check_HB(inid, false);
 end
 
 local SyncedBridgeHW = {};
 function handle_bridge_heartbeat(nodeid, hb_eval_cmd)
-  print ('handle_bridge_heartbeat: inid: '  .. nodeid ..
-                                ' hb_cmd: ' .. hb_eval_cmd)
   local inid = tonumber(nodeid);
-  -- Lua eval - defines variables: [N_HW, N_GNR, B_HW, B_GNR]
-  assert(loadstring(hb_eval_cmd))()
-  handle_HB_ID_TS(inid, HB_ID, HB_TS);
+  print ('handle_bridge_heartbeat: inid: ' .. inid .. ' hb_cmd: ' ..hb_eval_cmd)
+  assert(loadstring(hb_eval_cmd))() -- Lua eval - defines vars: [N_HW, B_HW]
   for num, data in pairs(B_HW) do
     local inum = tonumber(num);
     --print ('BRIDGE to BRIDGE: SyncedBridgeHW[' .. inum .. ']: ' .. data);
     SyncedBridgeHW[inum] = tonumber(data);
   end
-  handle_HB_GNR(inid, B_GNR);
   check_HB(inid, true);
 end
 

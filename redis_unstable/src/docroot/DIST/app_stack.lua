@@ -14,13 +14,6 @@ function InitRequest() -- inits global vars included via "includes.lua"
 end
 
 -- GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS
--- one PK AutoInc for EACH table
-InitAutoInc('Next_sql_users_XactId');
-print ('Next_sql_users_XactId: ' .. AutoInc['Next_sql_users_XactId']);
-InitAutoInc('Next_sql_posts_XactId');
-print ('Next_sql_posts_XactId: ' .. AutoInc['Next_sql_posts_XactId']);
-InitAutoInc('Next_sql_follows_XactId');
-print ('Next_sql_follows_XactId: ' .. AutoInc['Next_sql_follows_XactId']);
 -- one GLOBAL AutoInc for "sync"
 InitAutoInc('In_Xactid');
 print ('In_Xactid: ' .. AutoInc['In_Xactid']);
@@ -55,26 +48,15 @@ function local_register(my_userid, username, password)
   redis("set",  'uid:'      .. my_userid   .. ':password', password);
   -- keep a global list of local users (used later for MIGRATEs)
   redis("lpush", "local_user_id",                          my_userid);
-  local sqlbeg = "INSERT INTO users (pk, id, name, passwd) VALUES (";
-  local sqlend = "," .. my_userid .. ",'" ..
-                        username .. "','" .. password .. "');";
-  publish_queue_sql('users', sqlbeg, sqlend);
 end
 
 function local_post(my_userid, postid, msg, ts)
   redis("zadd", 'uid:' .. my_userid .. ':posts',   ts, postid); -- U follow U
   redis("zadd", 'uid:' .. my_userid .. ':myposts', ts, postid); -- for /profile
-  local sqlbeg = "INSERT INTO posts (pk, userid, ts, msg) VALUES (";
-  local sqlend = "," .. my_userid .. "," .. ts .. ",'" .. msg .. "');";
-  publish_queue_sql('posts', sqlbeg, sqlend);
 end
 
 function local_follow(my_userid, userid, follow)
   commit_follow(my_userid, userid, follow);
-  local sqlbeg = 
-         "INSERT INTO follows (pk, from_userid, to_userid, type) VALUES (";
-  local sqlend = "," .. my_userid .. "," .. userid .. "," .. follow .. ");";
-  publish_queue_sql('follows', sqlbeg, sqlend);
 end
 
 -- SYNC_FUNCS SYNC_FUNCS SYNC_FUNCS SYNC_FUNCS SYNC_FUNCS SYNC_FUNCS
@@ -137,7 +119,7 @@ function iter_global_post(o_tot, o_interval, o_progress,
   if (progress >= tot) then return; end
   local pmsg = Redisify('LUA', 'iter_global_post',
                         tot, interval, progress, my_userid, postid, ts, msg);
-  redis("publish", "echo", pmsg);
+  local_publish("echo", pmsg);
 end
 
 global_post = function(nodeid, xactid, my_userid, postid, ts, msg)

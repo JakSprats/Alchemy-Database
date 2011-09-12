@@ -199,7 +199,7 @@ function DataDumper(value, varname, fastmode, ident)
     return fcts[type(value)](value, ident, path)
   end
   if varname == nil then
-    varname = "return "
+    varname = "variable "
   elseif varname:match("^[%a_][%w_]*$") then
     varname = varname .. " = "
   end
@@ -230,5 +230,5 @@ end
 
 -- Define a shortcut function for testing
 function dump(...)
-  print(DataDumper(...), "\n---")
+  print(DataDumper(...), "")
 end

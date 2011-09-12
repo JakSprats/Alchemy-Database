@@ -43,6 +43,7 @@ int luaRemoteMessageCommand         (lua_State *lua);
 int luaRemotePipeCommand            (lua_State *lua);
 
 int luaSubscribeFDCommand           (lua_State *lua);
+int luaGetFDForChannelCommand       (lua_State *lua);
 int luaUnsubscribeFDCommand         (lua_State *lua);
 int luaCloseFDCommand               (lua_State *lua);
 
