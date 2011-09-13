@@ -19,7 +19,7 @@ function I_index_page(redirect, start)
 end
 function WL_index_page(rw, start)
   if (isLoggedIn()) then SetHttpRedirect(build_link(0, 'home')); return; end
-  InitRequest();
+  InitRequest(rw);
   return I_index_page(false, start);
 end
 
@@ -44,7 +44,7 @@ function WL_home(rw, s)
     if (IsCorrectNode(rw, my_userid) == false) then -- home ONLY to shard-node
       SetHttpRedirect(build_link(my_userid, 'home')); return;
     end
-    InitRequest();
+    InitRequest(rw);
     local my_username = redis("get", "uid:" .. my_userid .. ":username");
     return I_home(my_userid, my_username, s);
   end
@@ -97,7 +97,7 @@ function WL_profile(rw, userid, start)
   if (username == nil) then -- FOR: hackers doing userid scanning
     SetHttpRedirect(build_link(0, 'index_page')); return;
   end
-  InitRequest();
+  InitRequest(rw);
   return I_profile(userid, username, start);
 end
 
@@ -117,7 +117,7 @@ function WL_follow(rw, muserid, userid, follow) -- muserid used ONLY by haproxy
   if (username == nil) then -- FOR: hackers doing userid scanning
     SetHttpRedirect(build_link(0, 'home')); return;
   end
-  InitRequest();
+  InitRequest(rw);
   local_follow(my_userid, userid, follow);
   call_sync(global_follow, 'global_follow', my_userid, userid, follow);
   if (IsCorrectNode(rw, userid)) then -- profile ONLY to shard-node
@@ -139,13 +139,13 @@ function WL_register(rw, o_username, o_password)
     goback(0, "Sorry the selected username is already in use.");
     return flush_output();
   end
+  InitRequest(rw); -- must come before GetUsernameNode() in case SLAVE PROMOTION
   -- "username" assigned via global pool, so it must be sharded data
   local node = GetUsernameNode(username);
   if (node ~= MyNodeId) then -- register ONLY to shard-node
     SetHttpRedirect(build_link_node(node, 'register', o_username, o_password));
     return;
   end
-  InitRequest();
   -- Everything is ok, Register the user!
   local my_userid  = IncrementAutoInc('NextUserId');
   local authsecret = call_sync(global_register, 'global_register',
@@ -175,7 +175,7 @@ function WL_logout(rw, muserid) -- muserid used for URL haproxy LoadBalancing
     SetHttpRedirect(build_link(my_userid, 'logout', my_userid));
     return;
   end
-  InitRequest();
+  InitRequest(rw);
   call_sync(global_logout, 'global_logout', my_userid);
   return I_index_page(true, 0); -- internal redirect
 end
@@ -200,7 +200,7 @@ function WL_login(rw, o_username, o_password)
   if (realpassword ~= password) then
     goback(0, "Wrong username or password"); return flush_output();
   end
-  InitRequest();
+  InitRequest(rw);
   -- Username / password OK, set the cookie and internal redirect to home
   local authsecret   = redis("get", "uid:" .. my_userid .. ":auth");
   SetHttpResponseHeader('Set-Cookie', 'auth=' .. authsecret ..
@@ -216,7 +216,7 @@ function WL_post(rw, muserid, o_msg) -- muserid for URL haproxy LoadBalancing
   if (IsCorrectNode(rw, my_userid) == false) then -- post ONLY to shard-node
     SetHttpRedirect(build_link(my_userid, 'post', my_userid, o_msg)); return;
   end
-  InitRequest();
+  InitRequest(rw);
   local msg         = url_decode(o_msg);
   local ts          = gettime();
   local postid      = IncrementAutoInc('NextPostId');
@@ -233,7 +233,7 @@ function WL_timeline(rw)
   if (CacheExists('tineline',   n_users, last_post)) then
     return CacheGet('timeline', n_users, last_post);
   end
-  InitRequest();
+  InitRequest(rw);
   local my_userid;
   if (isLoggedIn()) then my_userid = MyUserid;
   else                   my_userid = 0;        end

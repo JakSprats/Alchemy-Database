@@ -12,8 +12,6 @@ echo sudo killall stunnel
 sudo killall stunnel
 echo killall ./alchemy-cli
 killall ./alchemy-cli
-echo sleep 1
-sleep 1
 
 if [ "$1" == "clean" ]; then
   echo killall -9 alchemy-server
@@ -21,19 +19,19 @@ if [ "$1" == "clean" ]; then
   for d in $DIRS; do   (cd SERVERS/$d;        rm dump.rdb); done
   for d in $B_DIRS; do (cd SERVERS/BRIDGE/$d; rm dump.rdb); done
   exit 0;
+else
+  for p in $PORTS $B_PORTS $S_PORTS; do 
+    echo ./alchemy-cli -p $p SAVE
+    ./alchemy-cli -p $p SAVE
+    echo ./alchemy-cli -p $p SHUTDOWN
+    ./alchemy-cli -p $p SHUTDOWN
+  done
+  if [ "$1" == "shutdown" ]; then
+    exit 0;
+  fi
 fi
 
-for p in $PORTS $B_PORTS $S_PORTS; do 
-  echo ./alchemy-cli -p $p SAVE
-  ./alchemy-cli -p $p SAVE
-  echo ./alchemy-cli -p $p SHUTDOWN
-  ./alchemy-cli -p $p SHUTDOWN
-done
-if [ "$1" == "shutdown" ]; then
-  exit 0;
-fi
-
-# TODO check that all are dead
+# TODO check that ALL are dead
 echo sleep 2
 sleep 2
 
@@ -44,29 +42,39 @@ sudo stunnel SERVERS/BRIDGE/stunnel_server.conf
 
 for d in $DIRS; do
   (cd SERVERS/$d
-    echo "(cd SERVERS/$d; ../../alchemy-server redis.conf >> OUTPUT & </dev/null)"
-    ../..//alchemy-server redis.conf >> OUTPUT & </dev/null
+    ../../alchemy-server redis.conf >> OUTPUT & </dev/null
+    PID=$!
+    echo "(cd SERVERS/$d; ../../alchemy-server redis.conf >> OUTPUT & </dev/null) PID: $PID"
     (cd SLAVE;
-      echo "(cd SERVERS/$d/SLAVE; ../../../alchemy-server redis.conf >> OUTPUT & </dev/null)"
-      ../../..//alchemy-server redis.conf >> OUTPUT & </dev/null
+      ../../../alchemy-server redis.conf >> OUTPUT & </dev/null
+      PID=$!
+      echo "(cd SERVERS/$d/SLAVE; ../../../alchemy-server redis.conf >> OUTPUT & </dev/null) PID: $PID"
     )
   )
-  echo "haproxy -f SERVERS/$d/haproxy.cfg >> HAPROXY_OUTPUT & </dev/null"
-  haproxy -f SERVERS/$d/haproxy.cfg >> HAPROXY_OUTPUT & </dev/null
 done
 for d in $B_DIRS; do
 (cd SERVERS/BRIDGE/$d;
-  echo "(cd SERVERS/BRIDGE/$d; ../../../alchemy-server redis.conf >> OUTPUT & </dev/null)"
   ../../../alchemy-server redis.conf >> OUTPUT & </dev/null
+  PID=$!
+  echo "(cd SERVERS/BRIDGE/$d; ../../../alchemy-server redis.conf >> OUTPUT & </dev/null) PID: $PID"
   (cd SLAVE;
-    echo "(cd SERVERS/BRIDGE/$d/SLAVE; ../../../alchemy-server redis.conf >> OUTPUT & </dev/null)"
     ../../../../alchemy-server redis.conf >> OUTPUT & </dev/null
+    PID=$!
+    echo "(cd SERVERS/BRIDGE/$d/SLAVE; ../../../alchemy-server redis.conf >> OUTPUT & </dev/null) PID: $PID"
   )
 )
 done
 
+#TODO check that ALL are UP
 echo sleep 2
 sleep 2
+echo HAPROXY
+for d in $DIRS; do
+  echo "haproxy -f SERVERS/$d/haproxy.cfg >> HAPROXY_OUTPUT & </dev/null"
+  haproxy -f SERVERS/$d/haproxy.cfg >> HAPROXY_OUTPUT & </dev/null
+done
+
+echo LOOPBACK PIPES
 for p in $PORTS; do 
   echo ./alchemy-cli -p $p -ph 127.0.0.1 -pp $p SUBPIPE
   ./alchemy-cli -p $p -ph 127.0.0.1 -pp $p SUBPIPE "echo" & < /dev/null

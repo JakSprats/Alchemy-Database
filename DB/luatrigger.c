@@ -45,6 +45,8 @@ ALL RIGHTS RESERVED
 extern r_tbl_t Tbl[MAX_NUM_TABLES];
 extern r_ind_t Index[MAX_NUM_INDICES];
 
+extern cli    *CurrClient;
+
 // GLOBALS
 ulong  Operations  = 0;
 char  *LuaCronFunc = NULL;
@@ -58,6 +60,7 @@ int luaCronTimeProc(struct aeEventLoop *eventLoop, lolo id, void *clientData) {
         lua_getfield(server.lua, LUA_GLOBALSINDEX, LuaCronFunc); /* func2call */
         lua_pushinteger(server.lua, Operations);             /* prepare param */
         struct timeval t1, t2; gettimeofday(&t1, NULL);
+        CurrClient = server.lua_client;
         lua_call(server.lua, 1, 0);
         gettimeofday(&t2, NULL);
 #if 0

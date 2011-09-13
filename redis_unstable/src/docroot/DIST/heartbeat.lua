@@ -1,10 +1,60 @@
 
+  -- HEARTBEAT GLOBALS
+local SyncedHW       = {};
+local SyncedBridgeHW = {};
+local TrimHW         = 0;
+local BridgeHW       = 0; -- TODO -> array + persistent
+
+-- SLAVE_FAILOVER SLAVE_FAILOVER SLAVE_FAILOVER SLAVE_FAILOVER
+function CheckSlaveLuaFunctions()
+  if (AmSlave == false) then return end;
+  local funcs = redis("lrange", "SLAVE_LUA_FUNCTIONS", 0, -1);
+  if (funcs ~= nil) then
+    for k, func in ipairs(funcs) do
+      assert(loadstring(func))() -- Lua eval - each func
+    end
+    redis("del", "SLAVE_LUA_FUNCTIONS");
+  end
+end
+
+DeadMasters = {}; -- USED in linking.lua: UserNode()
+function PromoteSlave(o_mynid) --print('PROMO4SLAVE');
+  local mynid = tonumber(o_mynid);
+  if (AmSlave == false) then -- SLAVE_LUA_FUNCTIONS will be run on SLAVEs
+    redis("rpush", "SLAVE_LUA_FUNCTIONS", "PromoteSlave(" .. mynid .. ")");
+  end
+  if (mynid == MyNodeId) then
+    redis("SLAVEOF", "NO", "ONE");                -- turn off replication
+  end
+  NodeData[mynid]['slave']   = false;             -- NodeData[] promotion
+  NodeData[mynid]['synced']  = false;             -- PING ME
+  local master               = MasterData[mynid];
+  NodeData[master]['active'] = false;             -- disable DOWNED master
+  NodeData[master]['synced'] = false;
+  ComputeCluster();                                -- recreate_cluster
+  DeadMasters[master]        = mynid;
+  if (mynid ~= MyNodeId) then
+    AllSynced       = false;            NumSynced        = NumSynced - 1;
+    SyncedHW[mynid] = SyncedHW[master]; SyncedHW[master] = nil;
+    local hwname    = getHWname(master);
+    local hw        = tonumber(redis("get", hwname));
+    redis("del", hwname);
+    if (hw ~= nil) then
+      hwname = getHWname(mynid); redis("set", hwname, hw); return hw;
+    end
+  end
+  return 0;
+end
+
+function HandleRW(rw) -- called per InitRequest()
+  if (AmSlave and rw == WRITE_OP_URL) then PromoteSlave(MyNodeId); end
+end
+
+-- HELPER_FUNCS HELPER_FUNCS HELPER_FUNCS HELPER_FUNCS HELPER_FUNCS
+function getHWname(inid) return 'HIGHWATER_'  .. inid; end
+function aiweq    (inid) return '[' .. inid .. ']=';   end
+
 -- FUNCTIONS FUNCTIONS FUNCTIONS FUNCTIONS FUNCTIONS FUNCTIONS FUNCTIONS
-function getHWname        (nodeid) return 'HIGHWATER_'  .. nodeid; end
-
-local BridgeHW = 0; -- TODO -> array + persistent
-function aiweq(inid) return '[' .. inid .. ']='; end -- HELPER FUNCTION
-
 function GenerateBridgeHBCommand()-- this command will be remotely EVALed
   local b_hw_cmd  = 'B_HW={'  .. aiweq(MyNodeId) .. BridgeHW     .. '};';
   return b_hw_cmd;
@@ -27,7 +77,7 @@ function GenerateHBCommand() -- this command will be remotely EVALed
   return n_hw_cmd;
 end
 function HeartBeat() -- lua_cron function, called every second
-  if (AmSlave) then InitServer(); return; end
+  if (AmSlave) then InitServerState(); return; end -- no HBs for SLAVEs
   if (PingSyncAllNodes() == false) then return; end -- wait until synced
   local cmd  = GenerateHBCommand();
   local msg  = Redisify('LUA', 'handle_heartbeat', MyNodeId, cmd);
@@ -42,7 +92,6 @@ function HeartBeat() -- lua_cron function, called every second
   end
 end
 
-local SyncedHW = {};
 function handle_heartbeat(nodeid, hb_eval_cmd)
   print ('handle_heartbeat: inid: ' .. nodeid .. ' hb_cmd: ' .. hb_eval_cmd)
   local inid = tonumber(nodeid);
@@ -57,7 +106,6 @@ function handle_heartbeat(nodeid, hb_eval_cmd)
   check_HB(inid, false);
 end
 
-local SyncedBridgeHW = {};
 function handle_bridge_heartbeat(nodeid, hb_eval_cmd)
   local inid = tonumber(nodeid);
   print ('handle_bridge_heartbeat: inid: ' .. inid .. ' hb_cmd: ' ..hb_eval_cmd)
@@ -97,6 +145,7 @@ function mod_hw(nodeid, o_xactid, issync)
   local hw     = tonumber(redis("get", hwname));
   local fromb  = NodeData[inid]['isb'];
   if (issync) then        -- SYNC
+      if (NodeData[inid]["slave"]) then hw = PromoteSlave(inid); end
       local beg;
       if (hw == nil) then -- CHERRY SYNC
         beg = giveInitialAutoInc(inid);
@@ -125,7 +174,6 @@ function update_bridge_hw(nodeid, bxactid)
 end
 
 -- Q_SYNC Q_SYNC Q_SYNC Q_SYNC Q_SYNC Q_SYNC Q_SYNC Q_SYNC Q_SYNC Q_SYNC
-local TrimHW = 0;
 function trim_sync_Q(hw, fromb)
   if (TrimHW == hw) then return; end -- nothing changed
   local channel;

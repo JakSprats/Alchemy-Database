@@ -6,14 +6,15 @@ io.stdout:setvbuf("no"); -- flush stdout
 -- INLCUDES INLCUDES INLCUDES INLCUDES INLCUDES INLCUDES INLCUDES INLCUDES
 dofile "./root/includes.lua";
 
-function InitServer()
+function InitServerState()
   -- GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS
   InitBridgeAutoInc('In_Xactid');
   print ('In_Xactid: ' .. AutoInc['In_Xactid']);
   InitBridgeAutoInc('Out_Xactid');
   print ('Out_Xactid: ' .. AutoInc['Out_Xactid']);
+  CheckSlaveLuaFunctions();
 end
-InitServer();
+InitServerState();
 
 -- FORWARDERS FORWARDERS FORWARDERS FORWARDERS FORWARDERS FORWARDERS
 function bridge_global_caller(nodeid, fname, orig_bxactid, ...)

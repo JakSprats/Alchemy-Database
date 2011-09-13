@@ -1,11 +1,12 @@
 
-SyncedPipeFD       = {}; -- {fd     -> inid} USED in publication.lua:publish()
-local AllSynced    = false;
-local NumSynced    = 0;
-local PipeFD       = {}; -- {pipeid -> fd}
+  -- GOSSIP GLOBALS
+AllSynced       = false;               -- USED in global_promote_slave()
+NumSynced       = 0;                   -- USED in global_promote_slave()
+SyncedPipeFD    = {}; -- {fd     -> inid} USED in publication.lua:publish()
+local PipeFD    = {}; -- {pipeid -> fd}
+local StartSync = os.time();
 
-local Pipe_id      = 1; -- used as incrementing counter
-local StartSync    = os.time();
+local Pipe_id   = 1; -- used as incrementing counter
 
 function sync_ping(nodeid, channel, sync_xactid)
   print('sync_ping to nodeid: '      .. nodeid .. ' channel: ' .. channel ..
@@ -23,8 +24,8 @@ function sync_ping(nodeid, channel, sync_xactid)
   end
   if (fd == -1) then return; end
   print ('PING to nodeid: ' .. nodeid .. ' fd: ' .. fd);
-  table.insert(PipeFD, Pipe_id, fd);
-  Pipe_id    = Pipe_id + 1;
+  PipeFD[Pipe_id] = fd;
+  Pipe_id         = Pipe_id + 1;
 end
 function sync_pong(other_node_id, pipeid, channel, sync_xactid)
   local myid  = MyNodeId;

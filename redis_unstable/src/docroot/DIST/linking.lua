@@ -1,8 +1,8 @@
 
 -- PAGE read/write OPS (CONSTANTS)
-GLOBAL_OP = 1;
-READ_OP   = 2;
-WRITE_OP  = 3;
+GLOBAL_OP = 1; GLOBAL_OP_URL = "g";
+WRITE_OP  = 2; WRITE_OP_URL  = "w";
+READ_OP   = 3; READ_OP_URL   = "r";
 PageOperations = {};
 PageOperations['register']   = WRITE_OP;
 PageOperations['logout']     = WRITE_OP;
@@ -19,7 +19,9 @@ function UserNode(o_num)
   local bid   = (math.floor(num  / AutoIncRange) % #BridgeData);
   local lnid  = (num % AutoIncRange) % NumPeers;
   if (lnid == 0) then lnid = NumPeers; end
-  return (bid * NumPeers) + lnid; -- TODO need a table FirstPeer[bid];
+  local node  = (bid * NumPeers) + lnid;
+  if (DeadMasters[node] ~= nil) then return DeadMasters[node];
+  else                               return node;              end
 end
 
 local LastGlobalRead = 0;
@@ -59,9 +61,9 @@ end
 
 function build_op_path(rw, page)
   local oppath;
-  if     (rw == GLOBAL_OP) then oppath = "/g";
-  elseif (rw == WRITE_OP)  then oppath = "/w";
-  elseif (rw == READ_OP)   then oppath = "/r";
+  if     (rw == GLOBAL_OP) then oppath = "/" .. GLOBAL_OP_URL;
+  elseif (rw == WRITE_OP)  then oppath = "/" .. WRITE_OP_URL;
+  elseif (rw == READ_OP)   then oppath = "/" .. READ_OP_URL;
   else                          assert(false, "Page: " .. page .. 
                                               " not in PageOperations[]");
   end
@@ -84,7 +86,7 @@ function build_link_node(node, page, arg1, arg2, arg3)
   local rw     = PageOperations[page];
   local path   = build_path(arg1, arg2, arg3);
   local oppath = build_op_path(rw, page)
-  return 'http://' .. NodeData[node]["fdomain"] .. ':' .. 
+  return 'http://' .. NodeData[node]["lbdomain"] .. ':' .. 
                       NodeData[node]["lbport"]   .. '/' .. 
                           page .. oppath .. path;
 end

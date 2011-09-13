@@ -7,25 +7,28 @@ io.stdout:setvbuf("no"); -- flush stdout
 dofile "./docroot/DIST/includes.lua";
 
 -- INIT_SERVER INIT_SERVER INIT_SERVER INIT_SERVER INIT_SERVER INIT_SERVER
-function InitServer()
+
+-- NOTE ALL GLOBAL VARIABLES MUST BE DECLARED HERE -> to exist on slaves
+function InitServerState()
   -- GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS
   -- one GLOBAL AutoInc for "sync"
   InitAutoInc('In_Xactid');
-  print ('In_Xactid: ' .. AutoInc['In_Xactid']);
+  print ('In_Xactid: '); dump(AutoInc['In_Xactid']);
 
   -- USERLAND_GLOBALS USERLAND_GLOBALS USERLAND_GLOBALS USERLAND_GLOBALS
   InitAutoInc('NextUserId');
-  print ('NextUserId: ' .. AutoInc['NextUserId']);
   InitAutoInc('NextPostId');
-  print ('NextPostId: ' .. AutoInc['NextPostId']);
+
+  CheckSlaveLuaFunctions();
 end
-InitServer();
+InitServerState();
 
 -- INIT_PER_REQUEST INIT_PER_REQUEST INIT_PER_REQUEST INIT_PER_REQUEST
-function InitRequest() -- inits global vars included via "includes.lua"
+function InitRequest(rw) -- inits global vars included via "includes.lua"
   initPerRequestIsLoggedIn();
   initPerRequestIsDeflatable();
   initPerRequestInlineCache();
+  HandleRW(rw);
 end
 
 -- STATIC_FILES STATIC_FILES STATIC_FILES STATIC_FILES STATIC_FILES
