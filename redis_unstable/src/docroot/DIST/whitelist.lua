@@ -41,7 +41,7 @@ function WL_home(rw, s)
     SetHttpRedirect(build_link(0, 'index_page')); return;
   else
     local my_userid   = MyUserid;
-    if (IsCorrectNode(my_userid) == false) then -- home ONLY to shard-node
+    if (IsCorrectNode(rw, my_userid) == false) then -- home ONLY to shard-node
       SetHttpRedirect(build_link(my_userid, 'home')); return;
     end
     InitRequest();
@@ -90,7 +90,7 @@ function WL_profile(rw, userid, start)
   if (is_empty(userid)) then
     SetHttpRedirect(build_link(0, 'index_page')); return;
   end
-  if (IsCorrectNode(userid) == false) then -- profile ONLY to shard-node
+  if (IsCorrectNode(rw, userid) == false) then -- profile ONLY to shard-node
     SetHttpRedirect(build_link(userid, 'profile', userid, start)); return;
   end
   local username = redis("get", "uid:" .. userid .. ":username");
@@ -109,7 +109,7 @@ function WL_follow(rw, muserid, userid, follow) -- muserid used ONLY by haproxy
   if (userid == my_userid) then -- FOR: URL hackers
     SetHttpRedirect(build_link(my_userid, 'home')); return;
   end
-  if (IsCorrectNode(my_userid) == false) then -- follow ONLY to shard-node
+  if (IsCorrectNode(rw, my_userid) == false) then -- follow ONLY to shard-node
     SetHttpRedirect(build_link(my_userid, 'follow', my_userid, userid, follow));
     return;
   end
@@ -120,7 +120,7 @@ function WL_follow(rw, muserid, userid, follow) -- muserid used ONLY by haproxy
   InitRequest();
   local_follow(my_userid, userid, follow);
   call_sync(global_follow, 'global_follow', my_userid, userid, follow);
-  if (IsCorrectNode(userid)) then -- profile ONLY to shard-node
+  if (IsCorrectNode(rw, userid)) then -- profile ONLY to shard-node
     return I_profile(userid, username, 0); -- internal redirect
   else
     D_profile(true, my_userid, userid); -- add [following, other_userid] cookies
@@ -171,7 +171,7 @@ function WL_logout(rw, muserid) -- muserid used for URL haproxy LoadBalancing
     SetHttpRedirect(build_link(muserid, 'index_page')); return;
   end
   local my_userid     = MyUserid;
-  if (IsCorrectNode(my_userid) == false) then -- logout BETTER at shard-node
+  if (IsCorrectNode(rw, my_userid) == false) then -- logout BETTER at shard-node
     SetHttpRedirect(build_link(my_userid, 'logout', my_userid));
     return;
   end
@@ -192,7 +192,7 @@ function WL_login(rw, o_username, o_password)
   if (my_userid == nil) then
     goback(0, "Wrong username or password"); return flush_output();
   end
-  if (IsCorrectNode(my_userid) == false) then -- login ONLY 2 shard-node
+  if (IsCorrectNode(rw, my_userid) == false) then -- login ONLY 2 shard-node
     SetHttpRedirect(build_link(my_userid, 'login', o_username, o_password));
     return;
   end
@@ -213,7 +213,7 @@ function WL_post(rw, muserid, o_msg) -- muserid for URL haproxy LoadBalancing
     SetHttpRedirect(build_link(muserid, 'index_page')); return;
   end
   local my_userid = MyUserid;
-  if (IsCorrectNode(my_userid) == false) then -- post ONLY to shard-node
+  if (IsCorrectNode(rw, my_userid) == false) then -- post ONLY to shard-node
     SetHttpRedirect(build_link(my_userid, 'post', my_userid, o_msg)); return;
   end
   InitRequest();

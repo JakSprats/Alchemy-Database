@@ -6,6 +6,8 @@ B_PORTS="20000 20001"
 B_DIRS="1 2"
 S_PORTS="18001 18002 18003 18004 19005 19006 19007 19008 30000 30001"
 
+echo sudo killall haproxy
+sudo killall haproxy
 echo sudo killall stunnel
 sudo killall stunnel
 echo killall ./alchemy-cli
@@ -49,6 +51,8 @@ for d in $DIRS; do
       ../../..//alchemy-server redis.conf >> OUTPUT & </dev/null
     )
   )
+  echo "haproxy -f SERVERS/$d/haproxy.cfg >> HAPROXY_OUTPUT & </dev/null"
+  haproxy -f SERVERS/$d/haproxy.cfg >> HAPROXY_OUTPUT & </dev/null
 done
 for d in $B_DIRS; do
 (cd SERVERS/BRIDGE/$d;

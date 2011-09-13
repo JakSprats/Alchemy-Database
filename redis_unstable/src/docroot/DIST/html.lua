@@ -1,6 +1,5 @@
 
 function create_navbar(my_userid)
-  local domain = GetHttpDomainPort(my_userid)
   if (LoggedIn) then
     output([[<div id="navbar">
       <a href="]] .. build_link(my_userid, 'home')     .. [[">home</a> |
