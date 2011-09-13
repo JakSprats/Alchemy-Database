@@ -387,3 +387,15 @@ int luaSha1Command(lua_State *lua) { //printf("SHA1\n");
     sdsfree(tok);                                        // DESTROYED 083
     return 1;
 }
+
+int luaIsConnectedToMaster(lua_State *lua) {
+    int  argc  = lua_gettop(lua);
+    if (argc) {
+        LUA_POP_WHOLE_STACK
+        luaPushError(lua, "Lua IsConnectedToMaster() has NO args"); return 1;
+    }
+    bool ret = (server.replstate != REDIS_REPL_NONE &&
+                server.replstate != REDIS_REPL_CONNECT);
+    lua_pushboolean(lua, ret);
+    return 1;
+}

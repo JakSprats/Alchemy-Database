@@ -9,6 +9,7 @@ dofile "./docroot/DIST/includes.lua";
 -- INIT_SERVER INIT_SERVER INIT_SERVER INIT_SERVER INIT_SERVER INIT_SERVER
 
 -- NOTE ALL GLOBAL VARIABLES MUST BE DECLARED HERE -> to exist on slaves
+local MasterConnection = false;
 function InitServerState()
   -- GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS GLOBALS
   -- one GLOBAL AutoInc for "sync"
@@ -19,7 +20,9 @@ function InitServerState()
   InitAutoInc('NextUserId');
   InitAutoInc('NextPostId');
 
-  CheckSlaveLuaFunctions();
+  if (AmSlave) then
+    CheckSlaveLuaFunctions(); CheckSlaveToMasterConnection();
+  end
 end
 InitServerState();
 

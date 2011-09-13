@@ -6,6 +6,13 @@ local TrimHW         = 0;
 local BridgeHW       = 0; -- TODO -> array + persistent
 
 -- SLAVE_FAILOVER SLAVE_FAILOVER SLAVE_FAILOVER SLAVE_FAILOVER
+function CheckSlaveToMasterConnection()
+  if     (IsConnectedToMaster()) then MasterConnection = true;
+  elseif (MasterConnection)      then 
+    print('ERROR: SLAVE LOST CONNECTION'); 
+    PromoteSlave(MyNodeId); MasterConnection = false;
+  end
+end
 function CheckSlaveLuaFunctions()
   if (AmSlave == false) then return end;
   local funcs = redis("lrange", "SLAVE_LUA_FUNCTIONS", 0, -1);
