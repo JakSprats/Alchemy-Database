@@ -6,12 +6,16 @@ B_PORTS="20000 20001"
 B_DIRS="1 2"
 S_PORTS="18001 18002 18003 18004 19005 19006 19007 19008 30000 30001"
 
-echo sudo killall haproxy
-sudo killall haproxy
+echo killall haproxy
+killall haproxy
 echo sudo killall stunnel
 sudo killall stunnel
 echo killall ./alchemy-cli
 killall ./alchemy-cli
+(cd SERVERS/BRIDGE/; # reset stunnel_server.conf
+  rm stunnel_server.conf
+  ln -s stunnel_server_STARTUP.conf stunnel_server.conf
+)
 
 if [ "$1" == "clean" ]; then
   echo killall -9 alchemy-server
@@ -35,10 +39,10 @@ fi
 echo sleep 2
 sleep 2
 
-echo sudo stunnel SERVERS/BRIDGE/stunnel_client.conf;
-sudo stunnel SERVERS/BRIDGE/stunnel_client.conf;
-echo sudo stunnel SERVERS/BRIDGE/stunnel_server.conf 
-sudo stunnel SERVERS/BRIDGE/stunnel_server.conf 
+echo "(cd SERVERS/BRIDGE/; sudo stunnel stunnel_client.conf)"
+(cd SERVERS/BRIDGE/; sudo stunnel stunnel_client.conf)
+echo "(cd SERVERS/BRIDGE/; sudo stunnel stunnel_server.conf)"
+(cd SERVERS/BRIDGE/; sudo stunnel stunnel_server.conf)
 
 for d in $DIRS; do
   (cd SERVERS/$d

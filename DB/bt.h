@@ -32,7 +32,7 @@ ALL RIGHTS RESERVED
 #include "aobj.h"
 #include "common.h"
 
-bt *abt_resize(bt *obtr, uchar trans);
+bt   *abt_resize(bt *obtr, uchar trans);
 
 bt   *createUUBT(int num, uchar btype);
 bt   *createLUBT(int num, uchar btype);
@@ -40,10 +40,9 @@ bt   *createULBT(int num, uchar btype);
 bt   *createLLBT(int num, uchar btype);
 
 bt   *createMCI_MIDBT(uchar ktype, int imatch);
-bt   *createIndexBT(uchar ktype, int imatch);
+bt   *createIndexBT  (uchar ktype, int imatch);
 bt   *createMCIndexBT(list *clist, int imatch);
-bt   *createDBT(uchar ktype, int tmatch);
-
+bt   *createDBT      (uchar ktype, int tmatch);
 
 /* different Btree types */
 #define BTREE_TABLE    0
@@ -55,10 +54,14 @@ bt   *createDBT(uchar ktype, int tmatch);
 
 /* INT Indexes have been optimised */
 #define INODE_I(btr) \
-  (btr->s.btype == BTREE_INODE && C_IS_I(btr->s.ktype))
+  (btr->s.btype == BTREE_INODE && \
+   C_IS_I(btr->s.ktype) &&        \
+   !(btr->s.bflag & BTFLAG_OBC)) 
 /* LONG Indexes have been optimised */
 #define INODE_L(btr) \
-  (btr->s.btype == BTREE_INODE && C_IS_L(btr->s.ktype))
+  (btr->s.btype == BTREE_INODE && \
+   C_IS_L(btr->s.ktype) &&        \
+   !(btr->s.bflag & BTFLAG_OBC)) 
 #define INODE(btr) (INODE_I(btr) || INODE_L(btr))
 
 /* UU tables containing ONLY [PK=INT,col1=INT]  have been optimised */
@@ -89,9 +92,11 @@ typedef struct ulong_ulong_key {
 #define LL(btr) (btr->s.bflag & BTFLAG_ULONG_ULONG)
 #define LL_SIZE 16
 
-/* Indexes containt INTs AND LONGs have been optimised */
-#define UP(btr) (btr->s.bflag & BTFLAG_UINT_PTR)
-#define LP(btr) (btr->s.bflag & BTFLAG_ULONG_PTR)
+/* Indexes containing INTs AND LONGs have been optimised */
+#define UP(btr)  (btr->s.bflag & BTFLAG_UINT_PTR)
+#define LUP(btr) (btr->s.bflag & BTFLAG_ULONG_PTR && \
+                  btr->s.bflag & BTFLAG_ULONG_UINT)
+#define LP(btr)  (btr->s.bflag & BTFLAG_ULONG_PTR)
 
 /* NOTE OTHER_BT covers UP & LP as they are [UL & LL] respectively */
 #define OTHER_BT(ibtr) (UU(ibtr) || UL(ibtr) || LU(ibtr) || LL(ibtr))
@@ -100,18 +105,21 @@ typedef struct ulong_ulong_key {
 /* NOTE: NORM_BT has a dependency on order of flags */
 #define NORM_BT(btr) (btr->s.bflag <= BTFLAG_UINT_UINT)
 
-int   btAdd(    bt *btr, aobj *apk, void *val);
-void *btFind(   bt *btr, aobj *apk);
+int   btAdd    (bt *btr, aobj *apk, void *val);
+void *btFind   (bt *btr, aobj *apk);
 int   btReplace(bt *btr, aobj *apk, void *val);
-int   btDelete( bt *btr, aobj *apk);
+int   btDelete (bt *btr, aobj *apk);
 
-void  btIndAdd(   bt *btr, aobj *akey, bt  *nbtr);
-bt   *btIndFind(  bt *btr, aobj *akey);
+void  btIndAdd   (bt *btr, aobj *akey, bt  *nbtr);
+bt   *btIndFind  (bt *btr, aobj *akey);
 int   btIndDelete(bt *btr, aobj *akey);
 
-bt   *createIndexNode(uchar pktyp);
-void  btIndNodeAdd(   bt *btr, aobj *apk);
-void *btIndNodeFind(  bt *btr, aobj *apk);
+bt   *createIndexNode(uchar pktyp, bool hasobc);
+void  btIndNodeAdd   (bt *btr, aobj *apk);
+void *btIndNodeFind  (bt *btr, aobj *apk);
 int   btIndNodeDelete(bt *btr, aobj *apk);
+
+void  btIndNodeOBCAdd   (bt *nbtr, aobj *apk, aobj *ocol);
+int   btIndNodeOBCDelete(bt *nbtr, aobj *apk, aobj *ocol);
 
 #endif /* __ALSO_SQL_BT_H */

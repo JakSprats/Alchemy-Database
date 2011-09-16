@@ -1,61 +1,9 @@
 
   -- HEARTBEAT GLOBALS
-local SyncedHW       = {};
-local SyncedBridgeHW = {};
-local TrimHW         = 0;
-local BridgeHW       = 0; -- TODO -> array + persistent
-
--- SLAVE_FAILOVER SLAVE_FAILOVER SLAVE_FAILOVER SLAVE_FAILOVER
-function CheckSlaveToMasterConnection()
-  if     (IsConnectedToMaster()) then MasterConnection = true;
-  elseif (MasterConnection)      then 
-    print('ERROR: SLAVE LOST CONNECTION'); 
-    PromoteSlave(MyNodeId); MasterConnection = false;
-  end
-end
-function CheckSlaveLuaFunctions()
-  if (AmSlave == false) then return end;
-  local funcs = redis("lrange", "SLAVE_LUA_FUNCTIONS", 0, -1);
-  if (funcs ~= nil) then
-    for k, func in ipairs(funcs) do
-      assert(loadstring(func))() -- Lua eval - each func
-    end
-    redis("del", "SLAVE_LUA_FUNCTIONS");
-  end
-end
-
-DeadMasters = {}; -- USED in linking.lua: UserNode()
-function PromoteSlave(o_mynid) --print('PROMO4SLAVE');
-  local mynid = tonumber(o_mynid);
-  if (AmSlave == false) then -- SLAVE_LUA_FUNCTIONS will be run on SLAVEs
-    redis("rpush", "SLAVE_LUA_FUNCTIONS", "PromoteSlave(" .. mynid .. ")");
-  end
-  if (mynid == MyNodeId) then
-    redis("SLAVEOF", "NO", "ONE");                -- turn off replication
-  end
-  NodeData[mynid]['slave']   = false;             -- NodeData[] promotion
-  NodeData[mynid]['synced']  = false;             -- PING ME
-  local master               = MasterData[mynid];
-  NodeData[master]['active'] = false;             -- disable DOWNED master
-  NodeData[master]['synced'] = false;
-  ComputeCluster();                                -- recreate_cluster
-  DeadMasters[master]        = mynid;
-  if (mynid ~= MyNodeId) then
-    AllSynced       = false;            NumSynced        = NumSynced - 1;
-    SyncedHW[mynid] = SyncedHW[master]; SyncedHW[master] = nil;
-    local hwname    = getHWname(master);
-    local hw        = tonumber(redis("get", hwname));
-    redis("del", hwname);
-    if (hw ~= nil) then
-      hwname = getHWname(mynid); redis("set", hwname, hw); return hw;
-    end
-  end
-  return 0;
-end
-
-function HandleRW(rw) -- called per InitRequest()
-  if (AmSlave and rw == WRITE_OP_URL) then PromoteSlave(MyNodeId); end
-end
+SyncedHW       = {}; -- USED by slave_failover.lua:PromoteSlave()
+SyncedBridgeHW = {}; -- USED by slave_failover.lua:PromoteSlave()
+local TrimHW   = 0;
+local BridgeHW = 0; -- TODO -> array + persistent
 
 -- HELPER_FUNCS HELPER_FUNCS HELPER_FUNCS HELPER_FUNCS HELPER_FUNCS
 function getHWname(inid) return 'HIGHWATER_'  .. inid; end

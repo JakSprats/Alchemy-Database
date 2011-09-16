@@ -33,14 +33,15 @@
 #define TRANS_TWO 2
 #define TRANS_ONE_MAX 64
 
-#define BTFLAG_NONE         0
-#define BTFLAG_AUTO_INC     1
-#define BTFLAG_UINT_UINT    2
-#define BTFLAG_UINT_ULONG   4
-#define BTFLAG_ULONG_UINT   8
-#define BTFLAG_ULONG_ULONG 16
-#define BTFLAG_UINT_PTR    32 /* UINT  Index */
-#define BTFLAG_ULONG_PTR   64 /* ULONG Index */
+#define BTFLAG_NONE          0
+#define BTFLAG_AUTO_INC      1
+#define BTFLAG_UINT_UINT     2
+#define BTFLAG_UINT_ULONG    4
+#define BTFLAG_ULONG_UINT    8
+#define BTFLAG_ULONG_ULONG  16
+#define BTFLAG_UINT_PTR     32 /* UINT  Index */
+#define BTFLAG_ULONG_PTR    64 /* ULONG Index */
+#define BTFLAG_OBC         128 /* ORDER BY Index */
 
 /* SIZE: 2ptr(16), 2L(16), 2INT(8), 4Ushort(8), 2uchar(2) 1BTS(6)-> 56B */
 typedef struct btree {

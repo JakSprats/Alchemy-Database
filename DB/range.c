@@ -105,12 +105,14 @@ typedef struct inner_bt_data {
     long    *card;
     long    *loops;
     bool    *brkr;
+    int      obc;
 } ibtd_t;
 static void init_ibtd(ibtd_t *d,    row_op *p,    range_t *g,     qr_t *q,
                       bt     *nbtr, long   *ofst, long    *card,  long *loops,
-                      bool   *brkr) {
+                      bool   *brkr, int     obc) {
     d->p    = p;    d->g    = g;    d->q      = q;     d->nbtr = nbtr;
     d->ofst = ofst; d->card = card; d->loops  = loops; d->brkr = brkr;
+    d->obc  = obc;
 }
 
 static void setRangeQueued(cswc_t *w, wob_t *wb, qr_t *q) {
@@ -232,8 +234,17 @@ static bool nodeBT_Op(ibtd_t *d) {                              //DEBUG_NODE_BT
             if      (!q->fk_lo && *d->loops < *d->ofst) continue;
             else if (wb->lim == *d->card)               break;
         }
-        void *rrow = btFind(d->g->co.btr, nbe->key);
-        if (!(*d->p)(d->g, nbe->key, rrow, q->qed, d->card)) { ret = 0; break; }
+        void *key; aobj akey; initAobj(&akey);
+        if (d->obc == -1) key = nbe->key;
+        else {
+            uchar ctype = Tbl[d->g->co.btr->s.num].col_type[0]; // PK_CTYPE
+            if      C_IS_I(ctype) initAobjInt (&akey, nbe->val);
+            else /* C_IS_L */     initAobjLong(&akey, nbe->val);
+            key = &akey;
+        }
+        void *rrow = btFind(d->g->co.btr, key);
+        releaseAobj(&akey);
+        if (!(*d->p)(d->g, key, rrow, q->qed, d->card)) { ret = 0; break; }
     } btReleaseRangeIterator(nbi);
     if (q->fk_lo)                         *d->ofst = 0; /* OFFSET fulfilled */
     if (q->fk_lim && wb->lim == *d->card) *d->brkr = 1; /* ORDERBY FK LIM*/
@@ -333,7 +344,7 @@ static long rangeOpFK(range_t *g, row_op *p) {                 //DEBUG_RANGE_FK
     long     loops = -1;
     long     card  =  0;
     btSIter *bi    = btGetRangeIter(ibtr, &w->wf.alow, &w->wf.ahigh);
-    init_ibtd(&d, p, g, q, NULL, &ofst, &card, &loops, &brkr);
+    init_ibtd(&d, p, g, q, NULL, &ofst, &card, &loops, &brkr, ri->obc);
     while ((be = btRangeNext(bi)) != NULL) {
         uint32 nmatch = 0;
         d.nbtr        = btMCIFindVal(w, be->val, &nmatch, ri);
@@ -363,7 +374,7 @@ static long singleOpFK(range_t *g, row_op *p) {               //DEBUG_SINGLE_FK
     long      ofst   = wb->ofst;
     long      loops  = -1;
     long      card   =  0;
-    init_ibtd(&d, p, g, q, nbtr, &ofst, &card, &loops, &Bdum);
+    init_ibtd(&d, p, g, q, nbtr, &ofst, &card, &loops, &Bdum, ri->obc);
     if (d.nbtr) {
         uint32 diff = nexpc - nmatch;
         if      (diff) { if (!runOnNode(d.nbtr, diff, nop, &d, ri)) return -1; }
@@ -414,7 +425,7 @@ static long inOpFK(range_t *g, row_op *p) {                //printf("inOpFK\n");
     long      ofst    = wb->ofst;
     long      loops   = -1;
     long      card    =  0;
-    init_ibtd(&d, p, g, q, NULL, &ofst, &card, &loops, &brkr);
+    init_ibtd(&d, p, g, q, NULL, &ofst, &card, &loops, &brkr, ri->obc);
     listIter *li      = listGetIterator(w->wf.inl, AL_START_HEAD);
     while((ln = listNext(li)) != NULL) {
         uint32  nmatch = 0;

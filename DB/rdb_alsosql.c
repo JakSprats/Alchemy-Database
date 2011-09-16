@@ -99,7 +99,7 @@ bool rdbLoadLuaTrigger(FILE *fp) {
     if (loadLtc(fp, &luat->add)              == 0)                  return 0;
     if (which == LUAT_WITH_DEL && loadLtc(fp, &luat->del) == 0)     return 0;
 
-    if (!newIndex(NULL, trname->ptr, tmatch, -1, NULL, 0, 0, 0, luat)) {
+    if (!newIndex(NULL, trname->ptr, tmatch, -1, NULL, 0, 0, 0, luat, -1)) {
                                                                     return 0;
     }
     decrRefCount(trname);
@@ -159,6 +159,8 @@ int rdbSaveBT(FILE *fp, bt *btr) {
         }
         if (rdbSaveLen(fp, ri->cnstr) == -1)                    return -1;
         if (rdbSaveLen(fp, ri->lru)   == -1)                    return -1;
+        // NOTE: obc: -1 not handled well, so incr on SAVE, decr on LOAD
+        if (rdbSaveLen(fp, (ri->obc + 1)) == -1)                return -1;//INCR
         if (fwrite(&(btr->s.ktype),    1, 1, fp) == 0)          return -1;
     }
     return 0;
@@ -202,8 +204,6 @@ static int rdbLoadRow(FILE *fp, bt *btr, int tmatch) {
     return 0;
 }
 
-//TODO minimize malloc defragmentation HERE as we know the size of each row
-//     i.e. use a custom memory management w/ zero fragmentation
 bool rdbLoadBT(FILE *fp) {
     uint32  u; uchar   btype;
     if (fread(&btype, 1, 1, fp) == 0)                               return 0;
@@ -213,16 +213,17 @@ bool rdbLoadBT(FILE *fp) {
     if (btype == BTREE_TABLE) { /* BTree w/ DATA */
         if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)         return 0;
         int imatch    = u;
-        r_tbl_t *rt   = &Tbl[tmatch];
+        r_tbl_t *rt   = &Tbl[tmatch]; bzero(rt, sizeof(r_tbl_t));
         bzero(rt, sizeof(r_tbl_t)); //TODO use initTable();
         rt->lruc      = rt->lrui       = rt->sk         = rt->fk_cmatch = \
                         rt->fk_otmatch = rt->fk_ocmatch = -1;
         //TODO [lruc, lrui, sk, fk_cmatch, fk_otmatch, fk_ocmatch] -> PERSISTENT
-        r_ind_t *ri   = &Index[imatch];
         rt->vimatch   = imatch;
+        r_ind_t *ri   = &Index[imatch]; bzero(ri, sizeof(r_ind_t));
         ri->virt      =  1;
         ri->table     =  tmatch;
         ri->column    =  0;
+        ri->obc       = -1;
         if (!(rt->name = rdbLoadStringObject(fp)))                  return 0;
         if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)         return 0;
         rt->col_count = u;
@@ -250,7 +251,7 @@ bool rdbLoadBT(FILE *fp) {
         if (Num_tbls < (tmatch + 1)) Num_tbls = tmatch + 1;
     } else {                        /* INDEX */
         int imatch  = tmatch;
-        r_ind_t *ri = &Index[imatch];
+        r_ind_t *ri = &Index[imatch]; bzero(ri, sizeof(r_ind_t));
         ri->obj     = rdbLoadStringObject(fp);
         if (!(ri->obj))                                             return 0;
         if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)         return 0;
@@ -284,6 +285,10 @@ bool rdbLoadBT(FILE *fp) {
             rt->lruc     = ri->column;
             rt->lrud     = (uint32)getLru(ri->table);
         }
+        ri->luat    = 0;
+        if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)         return 0;
+        // NOTE: obc: -1 not handled well, so incr on SAVE, decr on LOAD
+        ri->obc     = ((int)u) - 1; //DECR
         uchar ktype;
         if (fread(&ktype,    1, 1, fp) == 0)                        return 0;
         ri->btr = (ri->clist) ?  createMCIndexBT(ri->clist, imatch) :

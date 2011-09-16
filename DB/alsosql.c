@@ -80,45 +80,6 @@ char *RangeType[5] = {"ERROR", "SINGLE_PK", "RANGE", "IN", "SINGLE_FK"};
 /* PROTOTYPES */
 static int updateAction(cli *c, char *u_vallist, aobj *u_apk, int u_tmatch);
 
-//TODO this will be replace by "ALTER INDEX iname ORDER BY cname ASC"
-//TODO move this somewhere.c
-#include "bt_iterator.h"
-#include "stream.h"
-bool check_constraints(cli  *c,    bt     *btr,      int   tmatch, int ncols,
-                       char *vals, twoint  cofsts[], aobj *apk) {
-    r_tbl_t *rt    = &Tbl[tmatch];
-    if (!rt->rn) return 0;
-    r_ind_t *ri    = &Index[rt->rn->imatch];
-    //TODO acol & icol should be getCol(rrow), it is more efficient
-    char numbuf[32];
-    int  cmatch  = rt->rn->cmatch;
-    int  clen    = (cofsts[cmatch].j - cofsts[cmatch].i);
-    memcpy(numbuf, vals + cofsts[cmatch].i, clen); numbuf[clen] = '\0';
-    lolo cval    = (lolo)strtoul(numbuf, NULL, 10); /* OK: DELIM: \0 */
-    aobj acol;
-    if C_IS_I(rt->col_type[cmatch]) initAobjInt (&acol, cval);
-    else                            initAobjLong(&acol, cval);
-    int  icmatch = ri->column;
-    clen         = (cofsts[icmatch].j - cofsts[icmatch].i);
-    memcpy(numbuf, vals + cofsts[icmatch].i, clen); numbuf[clen] = '\0';
-    lolo icval   = (lolo)strtoul(numbuf, NULL, 10); /* OK: DELIM: \0 */
-    aobj icol;
-    if C_IS_I(rt->col_type[cmatch]) initAobjInt (&icol, icval);
-    else                            initAobjLong(&icol, icval);
-    bt      *ibtr   = getIBtr(rt->rn->imatch);
-    bt      *nbtr   = btIndFind(ibtr, &icol);
-    if (!nbtr) return 0;
-    aobj nabr;
-    if      (rt->rn->asc) { if (!assignMaxKey(nbtr, &nabr)) return 0; }
-    else                  { if (!assignMinKey(nbtr, &nabr)) return 0; }
-    void     *rrow  = btFind(btr, &nabr);
-    aobj      nabrc = getCol(btr, rrow, cmatch, apk, tmatch);
-    aobj_cmp *cmp   = rt->rn->asc ? aobjGT : aobjLT;
-    if ((*cmp)(&nabrc, &acol)) {
-        addReply(c, shared.constraint_viol); return 1;
-    }
-    return 0;
-}
 /* INSERT INSERT INSERT INSERT INSERT INSERT INSERT INSERT INSERT INSERT */
 static void addRowSizeReply(cli *c, int tmatch, bt *btr, int len) {
     char buf[128];
@@ -186,8 +147,6 @@ static uchar insertCommit(cli  *c,      robj **argv,   sds     vals,
         if (len == -1)                                         goto insc_end;
         ret = INS_UP;             /* negate presumed failure */
     } else {
-        if (check_constraints(c, btr, tmatch, lncols, mvals, cofsts, &apk))
-                                                                  goto insc_end;
         nrow = createRow(c, btr, tmatch, lncols, mvals, cofsts);
         if (!nrow) /* e.g. (UINT_COL > 4GB) error */           goto insc_end;
         if (matches) { /* Add to Indexes */
@@ -218,7 +177,6 @@ insc_end:
     printf("INSERT: cargv[%d]: %s\n", i, c->argv[i]->ptr);
 
 #define AEQ(a,b) !strcasecmp(c->argv[a]->ptr, b)
-
 
 void insertParse(cli *c, robj **argv, bool repl, int tmatch,
                  bool parse, sds *key) {
@@ -302,18 +260,10 @@ void init_check_sql_where_clause(cswc_t *w, int tmatch, sds token) {
     w->token     = token;
 }
 void destroyINLlist(list **inl) {
-    if (*inl)   {
-        (*inl)->free = destroyAobj;
-        listRelease(*inl);
-        *inl         = NULL;
-    }
+    if (*inl) { (*inl)->free = destroyAobj; listRelease(*inl); *inl = NULL; }
 }
 void releaseFlist(list **flist) {
-    if (*flist) {
-        (*flist)->free = NULL;
-        listRelease(*flist);
-        *flist         = NULL;
-    }
+    if (*flist) { (*flist)->free = NULL; listRelease(*flist); *flist = NULL; }
 }
 void destroyFlist(list **flist) {
     if (*flist) {

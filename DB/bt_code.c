@@ -134,15 +134,21 @@ static inline int _log2(unsigned int a, int nbits) {
 }
 
 #define DEBUG_KEY_OTHER                                                        \
+  if UU(btr) { uint32 key = (long)v / UINT_MAX;                                \
+               uint32 val = (long)v % UINT_MAX;                                \
+               printf("\t\tUU: v: %d KEY: %lu VAL: %lu\n", v, key, val); }     \
   if LU(btr) { luk *lu = (luk *)v; printf("\t\tLU: KEY: %lu VAL: %lu\n",       \
                                            lu->key, lu->val); }                \
   if UL(btr) { ulk *ul = (ulk *)v; printf("\t\tUL: KEY: %u  VAL: %lu\n",       \
                                            ul->key, ul->val); }                \
   if LL(btr) { llk *ll = (llk *)v; printf("\t\tLL: KEY: %lu VAL: %lu\n",       \
-                                           ll->key, ll->val); }
+                                           ll->key, ll->val); }                \
+  if ISVOID(btr) printf("\t\tVOID: p: %p lu: %lu\n", v, v);
 #define DEBUG_SET_KEY \
-  printf("setBTKey: btr: %p v: %p p: %p uint: %d uu: %d lu: %d ul: %d ll: %d\n", \
-          btr, v, p, ISUINT(btr), UU(btr), LU(btr), UL(btr), LL(btr));         \
+  printf("setBTKey: ksize: %d btr: %p v: %p p: %p uint: %d void: %d uu: %d " \
+         "lu: %d ul: %d ll: %d\n",                                           \
+          btr->s.ksize, btr, v, p, ISUINT(btr), ISVOID(btr), UU(btr),        \
+          LU(btr), UL(btr), LL(btr));                                        \
   DEBUG_KEY_OTHER
 #define DEBUG_AKEYS \
   printf("AKEYS: i: %d ofst: %d v: %p uint: %d uu: %d lu: %d ul: %d ll: %d\n", \
@@ -150,6 +156,8 @@ static inline int _log2(unsigned int a, int nbits) {
   DEBUG_KEY_OTHER
 #define DEBUG_KEYS \
   printf("KEYS: uint: %d void: %d i: %d\n", ISUINT(btr), ISVOID(btr), i);
+#define DEBUG_SETBTKEY_OTHERBT \
+  if (p) printf("setBTKey: memcpy to v: %p\n", v);
 
 /* NOTE KEYS can be (void *) or uint, [8 and 4 bytes], so logic is needed */
 #define ISVOID(btr)  (btr->s.ksize == VOIDSIZE)
@@ -157,7 +165,7 @@ static inline int _log2(unsigned int a, int nbits) {
 static inline void setBTKey(bt *btr, void **v, void *p) {
     if      ISVOID(btr) *v                  = p;   
     else if ISUINT(btr) *(int *)((long *)v) = (int)(long)p;
-    else { /* OTHER_BT */
+    else { /* OTHER_BT */                               //DEBUG_SETBTKEY_OTHERBT
         if (p) memcpy(v, p, btr->s.ksize);
         else   bzero(v,     btr->s.ksize);
     }                                                           //DEBUG_SET_KEY

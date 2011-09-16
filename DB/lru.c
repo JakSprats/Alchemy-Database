@@ -92,7 +92,7 @@ void createLruIndex(cli *c) {
     int  imatch  = Num_indx;
     sds  iname   = P_SDS_EMT "%s_%s", LRUINDEX_DELIM, tname); /* DEST 072 */
     bool ok      = newIndex(c, iname, tmatch, rt->col_count, NULL,
-                             CONSTRAINT_NONE, 0, 1, NULL); 
+                             CONSTRAINT_NONE, 0, 1, NULL, -1); 
     sdsfree(iname);                                            /*DESTROYED 072*/
     if (!ok) return;
     rt->lrui     = imatch;
@@ -115,7 +115,7 @@ void updateLru(cli *c, int tmatch, aobj *apk, uchar *lruc) {
         int     pktyp  = Tbl[tmatch].col_type[0];
         aobj ocol; initAobjInt(&ocol, oltime);
         aobj ncol; initAobjInt(&ncol, nltime); 
-        upIndex(ibtr, apk, &ocol, apk, &ncol, pktyp);
+        upIndex(ibtr, apk, &ocol, apk, &ncol, pktyp, NULL, NULL);
         releaseAobj(&ocol); releaseAobj(&ncol);
     } else { /* LRU empty -> run "UPDATE tbl SET LRU = now WHERE PK = apk" */
         char     LruBuf[32]; snprintf(LruBuf, 32, "%u", getLru(tmatch));

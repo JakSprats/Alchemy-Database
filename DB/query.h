@@ -34,14 +34,6 @@ ALL RIGHTS RESERVED
 #include "xdb_common.h"
 #include "common.h"
 
-typedef struct constraint {
-  sds  name;
-  int  tmatch;
-  int  cmatch;
-  int  imatch;
-  bool asc;
-} cst_t;
-
 typedef struct r_tbl {
     robj   *name;                            // TODO -> sds
     bt     *btr;
@@ -63,7 +55,6 @@ typedef struct r_tbl {
     int     fk_cmatch;  /* Foreign-key local column */
     int     fk_otmatch; /* Foreign-key other table's table */
     int     fk_ocmatch; /* Foreign-key other table's column */
-    cst_t  *rn;         /* CONSTRAINT intra-table dependency "RESPECTS INDEX" */
 } r_tbl_t;
 
 typedef struct r_ind {
@@ -78,6 +69,7 @@ typedef struct r_ind {
     uchar  cnstr;   /* CONSTRAINTS: [UNIQUE,,,]                           */
     bool   lru;     /* LRUINDEX                                           */
     bool   luat;    /* LUATRIGGER - call lua function per CRUD            */
+    int    obc;     /* ORDER BY col                                       */
 } r_ind_t;
 
 typedef struct update_expression {

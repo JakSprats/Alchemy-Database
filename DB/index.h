@@ -51,15 +51,16 @@ sds  getMCIlist(list *clist, int tmatch);
 bool addC2MCI(cli *c, int cmatch, list *clist);
 bool newIndex(cli    *c,     char   *iname, int  tmatch, int   cmatch,
               list   *clist, uchar   cnstr, bool virt,   bool  lru,
-              luat_t *luat);
+              luat_t *luat,  int     obc);
 void createIndex(cli *c);
 
 bool buildIndex(cli *c, bt *btr, bt_n *x, bt *ibtr, int imatch, bool nri);
 
 bool addToIndex (cli *c, bt *btr, aobj *apk,  void *rrow, int imatch);
 void delFromIndex       (bt *btr, aobj *apk,  void *rrow, int imatch);
-void upIndex            (bt *btr, aobj *aopk, aobj *ocol, 
-                                  aobj *anpk, aobj *ncol, int pktyp) ;
+void upIndex            (bt *btr, aobj *aopk,  aobj *ocol, 
+                                  aobj *anpk,  aobj *ncol, int pktyp,
+                                  aobj *oocol, aobj *nocol);
 bool updateIndex(cli *c, bt *btr, aobj *aopk, void *orow,
                                   aobj *anpk, void *nrow, int imatch);
 

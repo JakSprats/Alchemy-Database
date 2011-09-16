@@ -125,8 +125,10 @@ function ComputeCluster() -- NOTE: also used in promoteSelfToMaster()
   end
   NumHBPeers = #PeerData - 1; -- no self
 
-  redis("del", "SLAVE_LUA_FUNCTIONS");
 end
 
 ComputeCluster();
+
+redis("del", "SLAVE_LUA_FUNCTIONS"); -- reset state
+redis("del", "MASTER_DOWN");
 

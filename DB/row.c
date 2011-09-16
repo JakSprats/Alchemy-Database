@@ -454,7 +454,6 @@ int updateRow(cli  *c,      bt      *btr,    aobj  *apk,     void *orow,
             if (osflags[i] && osflags[i] != cr.iflags[i]) { ovrwr = 0; break; }
     }}
     if (ovrwr) { /* just OVERWRITE INTS & LONGS */
-printf("OVRWR\n");
         for (int i = 1; i < cr.ncols; i++) {
             if (osflags[i]) {
                 uint32 clen; uchar rflag;

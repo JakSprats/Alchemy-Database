@@ -248,6 +248,7 @@ function WL_timeline(rw)
 end
 
 -- DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
+
 function WL_hello_world() return 'HELLO WORLD'; end
 
 redis("set", 'HELLO WORLD', 'HELLO WORLD');

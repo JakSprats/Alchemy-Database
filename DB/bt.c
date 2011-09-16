@@ -77,6 +77,16 @@ bt *createLLBT(int num, uchar btype) {                //printf("createLLBT\n");
     bts.num   = num;
     return bt_create(llCmp, TRANS_ONE, &bts);
 }
+static bt *createOBT(uchar ktype, uchar vtype, int tmatch, uchar btype) {
+    if        (C_IS_I(ktype)) {
+        if (C_IS_I(vtype)) return createUUBT(tmatch, btype);
+        if (C_IS_L(vtype)) return createULBT(tmatch, btype);
+    } else if (C_IS_L(ktype)) {
+        if (C_IS_I(vtype)) return createLUBT(tmatch, btype);
+        if (C_IS_L(vtype)) return createLLBT(tmatch, btype);
+    }
+    return NULL;
+}
 #define ASSIGN_CMP(ktype)   C_IS_I(ktype) ? btIntCmp   : \
                           ( C_IS_L(ktype) ? btLongCmp  : \
                           ( C_IS_F(ktype) ? btFloatCmp : \
@@ -85,13 +95,8 @@ bt *createLLBT(int num, uchar btype) {                //printf("createLLBT\n");
 bt *createDBT(uchar ktype, int tmatch) {
     r_tbl_t *rt = &Tbl[tmatch];
     if (rt->col_count == 2) {
-        if (C_IS_I(ktype)) {
-            if (C_IS_I(rt->col_type[1])) return createUUBT(tmatch, BTREE_TABLE);
-            if (C_IS_L(rt->col_type[1])) return createULBT(tmatch, BTREE_TABLE);
-        } else if (C_IS_L(ktype)) {
-            if (C_IS_I(rt->col_type[1])) return createLUBT(tmatch, BTREE_TABLE);
-            if (C_IS_L(rt->col_type[1])) return createLLBT(tmatch, BTREE_TABLE);
-        }
+        bt *obtr = createOBT(ktype, rt->col_type[1], tmatch, BTREE_TABLE);
+        if (obtr) return obtr;
     }
     bts_t bts;
     bts.ktype    = ktype;
@@ -131,7 +136,17 @@ bt *createMCIndexBT(list *clist, int imatch) {
     uchar     ktype = rt->col_type[(int)(long)ln->value];
     return createIBT(ktype, imatch, BTREE_MCI);
 }
-bt *createIndexNode(uchar ktype) {                          /* INODE_BT */
+bt *createIndexNode(uchar ktype, uchar obctype) {                /* INODE_BT */
+    if (obctype != COL_TYPE_NONE) {
+        bt *btr       =  createOBT(obctype, ktype, -1, BTREE_INODE);
+        btr->s.bflag |= BTFLAG_OBC; // will fail INODE(btr) -> OBC is different
+        // NOTE: BTFLAG_*_PTR used as the RAW [VALUE] is pulled out in
+        //       parseStream() and passed to nodeBT_Op()
+        //       [UU,UL,LU,LL] are passed as [KEY,VALUE] to getRawCol()
+        btr->s.bflag |= (C_IS_I(obctype)) ? BTFLAG_UINT_PTR :
+                      /* C_IS_L(ktype) */   BTFLAG_ULONG_PTR;
+        return btr;
+    }
     bt_cmp_t cmp; bts_t bts;
     bts.ktype = ktype;
     bts.btype = BTREE_INODE;
@@ -247,9 +262,15 @@ int btIndDelete(bt *ibtr, aobj *akey) {
 }
 
 /* INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE */
-void *btIndNodeFind(  bt *nbtr, aobj *apk) { return abt_find(nbtr, apk); }
-void  btIndNodeAdd(   bt *nbtr, aobj *apk) { abt_insert(nbtr, apk, NULL); }
+void *btIndNodeFind  (bt *nbtr, aobj *apk) { return abt_find(nbtr, apk); }
+void  btIndNodeAdd   (bt *nbtr, aobj *apk) { abt_insert(nbtr, apk, NULL); }
 int   btIndNodeDelete(bt *nbtr, aobj *apk) {
-    abt_del(nbtr, apk);
-    return nbtr->numkeys;
+    abt_del(nbtr, apk); return nbtr->numkeys;
+}
+void  btIndNodeOBCAdd(bt *nbtr, aobj *apk, aobj *ocol) {
+    if      C_IS_I(apk->type) abt_insert(nbtr, ocol, apk->i);
+    else /* C_IS_L */         abt_insert(nbtr, ocol, apk->l);
+}
+int   btIndNodeOBCDelete(bt *nbtr, aobj *apk, aobj *ocol) {
+    abt_del(nbtr, ocol); return nbtr->numkeys;
 }

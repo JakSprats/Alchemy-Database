@@ -44,7 +44,7 @@ typedef int printer(const char *format, ...);
 #define COL_TYPE_LONG         1
 #define COL_TYPE_STRING       2
 #define COL_TYPE_FLOAT        3
-#define COL_TYPE_NONE         4
+#define COL_TYPE_NONE         4 //TODO should be 0 - dependency?
 
 #define PTR_SIZE    sizeof(char *)
 #define USHORT_SIZE sizeof(unsigned short)

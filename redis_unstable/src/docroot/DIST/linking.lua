@@ -30,7 +30,7 @@ function GetHttpDomainPort(rw, num)
   if     (rw == GLOBAL_OP) then -- ROUND-ROBIN ALL NODES
     LastGlobalRead = LastGlobalRead + 1;
     if (LastGlobalRead > #GlobalReadData) then LastGlobalRead = 1; end
-    which          = LastGlobalRead;
+    which          = GlobalReadData[LastGlobalRead];
   else
     which = UserNode(num); 
   end
@@ -39,9 +39,9 @@ function GetHttpDomainPort(rw, num)
                       NodeData[which]["lbport"]   .. '/';
 end
 function IsCorrectNode(rw, num)
-  if     (rw == GLOBAL_OP) then return true;
-  elseif (rw == WRITE_OP)  then return (UserNode(num) == MyNodeId);
-  elseif (rw == READ_OP)   then
+  if     (rw == GLOBAL_OP_URL) then return true;
+  elseif (rw == WRITE_OP_URL)  then return (UserNode(num) == MyNodeId);
+  elseif (rw == READ_OP_URL)   then
      local unode = UserNode(num);
      if (unode                == MyNodeId) then return true;  end
      if (MasterData[MyNodeId] == nil)      then return false; end
@@ -55,8 +55,12 @@ function GetUsernameNode(username)
     local c = string.byte(uns, i);
     tot     = tot + tonumber(c);
   end 
-  --print ('GetUsernameNode: username: ' .. username .. ' tot: ' .. tot);
-  return UserNode(tot);
+  math.randomseed(tot)
+  local upper=2147483647 -- max number random will take (2^31-1)
+  local r = math.random(1, upper);
+  print ('GetUsernameNode: username: ' .. username .. ' tot: ' .. tot ..
+                                ' r: ' .. r);
+  return UserNode(r);
 end
 
 function build_op_path(rw, page)
@@ -115,3 +119,23 @@ function isLoggedIn()
   end
   return false;
 end
+
+-- ENTITY_GROUP ENTITY_GROUP ENTITY_GROUP ENTITY_GROUP ENTITY_GROUP
+function GiveEntityList(userid)
+  if (userid == nil) then return nil; end
+  local el = {};
+  el["username"]  = redis("get",      "uid:" .. userid .. ":username");
+  if (el["username"] == nil) then return nil; end
+  el["userid"]    = redis("get",      "username:" .. el["username"] .. ":id");
+  el["password"]  = redis("get",      "uid:" .. userid .. ":password");
+  el["following"] = redis("smembers", "uid:" .. userid .. ":following");
+  el["posts"]     = redis("zrange",   "uid:" .. userid .. ":posts",   0, -1);
+  el["myposts"]   = redis("zrange",   "uid:" .. userid .. ":myposts", 0, -1);
+  for k, postid in pairs(el["myposts"]) do
+    el["post:" .. postid] = redis("get", "post:" .. postid);
+  end
+  el["auth"]      = redis("get",      "uid:" .. userid .. ":auth");
+  el["nlogouts"]  = redis("get",      "uid:" .. userid .. ":nlogouts");
+  return el;
+end
+

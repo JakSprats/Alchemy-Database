@@ -250,11 +250,7 @@ void descCommand(redisClient *c) {
                                   (char *)ort->name->ptr,
                                   (char *)ort->col_name[rt->fk_ocmatch]->ptr);
         }
-        if (rt->rn && rt->rn->cmatch == j) {
-            r->ptr = sdscatprintf(r->ptr, " - CONSTRAINT RESPECTS INDEX: %s",
-                                        (char *)Index[rt->rn->imatch].obj->ptr);
-        }
-        int   imatch = find_index(tmatch, j);
+        int imatch = find_index(tmatch, j);
         if (imatch != -1) {
             int loops = 0;
             while (1) {
@@ -275,6 +271,10 @@ void descCommand(redisClient *c) {
                                       isize);
                 if (idesc) sdsfree(idesc);               /* DESTROYED 051 */
                 if (ri->lru) r->ptr = sdscatprintf(r->ptr, " - LRUINDEX");
+                if (ri->obc != -1) {
+                    r->ptr = sdscatprintf(r->ptr, " - ORDER BY %s",
+                                            (char *)rt->col_name[ri->obc]->ptr);
+                }
                 if (nimatch == -1) break;
                 else               imatch = nimatch;
                 loops++;

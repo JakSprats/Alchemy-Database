@@ -436,10 +436,6 @@ function test_UU() {
   $CLI SELECT \* FROM UU  WHERE pk = 11
   $CLI update UU SET fk1=10 WHERE pk = 4
   $CLI SELECT \* FROM UU  WHERE pk =4
-  $CLI CREATE INDEX ind_UU_fk1 ON UU "(i)"
-  $CLI update UU SET fk1=99 WHERE i = 2;
-  $CLI update UU SET fk1=99 WHERE i = 4
-  $CLI SELECT \* FROM UU WHERE i = 99
   echo DUMP UU
   $CLI DUMP UU
 }
@@ -2241,13 +2237,6 @@ function init_cap_test() {
   $CLI CREATE TABLE cap "(pk INT, fk1 INT, t TEXT)"
   $CLI CREATE INDEX      i_cap  ON cap "(fk1)"
   $CLI CREATE LUATRIGGER lt_cap ON cap "cap(fk1)"
-
-  # TRIGGER -> LUA cap()
-  #$CLI CREATE TRIGGER t_cap ON cap "LUA return cap(\$fk1);"
-
-  # TRIGGER -> INSERT
-  #$CLI CREATE TABLE cnt_cap_fk "(fk INT, count INT)"
-  #$CLI CREATE TRIGGER t_m ON cap "INSERT INTO cnt_cap_fk VALUES (\$fk1, 1) ON DUPLICATE KEY UPDATE count = count + 1" "UPDATE cnt_cap_fk SET count=count-1 WHERE fk=\$fk1"
 }
 function cap_test() {
   init_cap_test
@@ -2292,19 +2281,36 @@ function alter_fk() {
   $CLI DESC child
 }
 
-function init_constraint_table() {
-  $CLI DROP TABLE ctest
-  $CLI CREATE TABLE ctest "(pk INT, fk INT, val INT)";
-  $CLI CREATE INDEX i_ctest ON ctest "(fk)"
-  $CLI CREATE CONSTRAINT c_ctest ON ctest "(val)" RESPECTS INDEX "(i_ctest)"
-  $CLI DESC ctest
+function test_orderby_index_uu_ul_lu_ll() {
+  A=0; T=0;$CLI CREATE TABLE ta "(pk INT, fk INT, ts INT, col TEXT)"; I=0;$CLI CREATE INDEX i_ta ON ta "(fk)" ORDER BY ts; P=0;$CLI INSERT INTO ta VALUES "(1,1,123456789,'one time')";$CLI INSERT INTO ta VALUES "(2,1,123456780,'TWO TIME')"; S=0;$CLI SELECT \* FROM ta WHERE "fk = 1"
+
+  B=0; T=0;$CLI CREATE TABLE tb "(pk INT, fk INT, ts LONG, col TEXT)"; I=0;$CLI CREATE INDEX i_tb ON tb "(fk)" ORDER BY ts; P=0;$CLI INSERT INTO tb VALUES "(1,1,123456789,'one time')";$CLI INSERT INTO tb VALUES "(2,1,123456780,'TWO TIME')"; S=0;$CLI SELECT \* FROM tb WHERE "fk = 1"
+
+  C=0; T=0;$CLI CREATE TABLE tc "(pk INT, fk LONG, ts INT, col TEXT)"; I=0;$CLI CREATE INDEX i_tc ON tc "(fk)" ORDER BY ts; P=0;$CLI INSERT INTO tc VALUES "(1,1,123456789,'one time')";$CLI INSERT INTO tc VALUES "(2,1,123456780,'TWO TIME')"; S=0;$CLI SELECT \* FROM tc WHERE "fk = 1"
+
+  D=0; T=0;$CLI CREATE TABLE td "(pk INT, fk LONG, ts LONG, col TEXT)"; I=0;$CLI CREATE INDEX i_td ON td "(fk)" ORDER BY ts; P=0;$CLI INSERT INTO td VALUES "(1,1,123456789,'one time')";$CLI INSERT INTO td VALUES "(2,1,123456780,'TWO TIME')"; S=0;$CLI SELECT \* FROM td WHERE "fk = 1"
+
+  E=0; T=0;$CLI CREATE TABLE te "(pk LONG, fk INT, ts INT, col TEXT)"; I=0;$CLI CREATE INDEX i_te ON te "(fk)" ORDER BY ts; P=0;$CLI INSERT INTO te VALUES "(1,1,123456789,'one time')";$CLI INSERT INTO te VALUES "(2,1,123456780,'TWO TIME')"; S=0;$CLI SELECT \* FROM te WHERE "fk = 1"
+
+  F=0; T=0;$CLI CREATE TABLE tf "(pk LONG, fk INT, ts LONG, col TEXT)"; I=0;$CLI CREATE INDEX i_tf ON tf "(fk)" ORDER BY ts; P=0;$CLI INSERT INTO tf VALUES "(1,1,123456789,'one time')";$CLI INSERT INTO tf VALUES "(2,1,123456780,'TWO TIME')"; S=0;$CLI SELECT \* FROM tf WHERE "fk = 1"
+  
+  G=0; T=0;$CLI CREATE TABLE tg "(pk LONG, fk LONG, ts INT, col TEXT)"; I=0;$CLI CREATE INDEX i_tg ON tg "(fk)" ORDER BY ts; P=0;$CLI INSERT INTO tg VALUES "(1,1,123456789,'one time')";$CLI INSERT INTO tg VALUES "(2,1,123456780,'TWO TIME')"; S=0;$CLI SELECT \* FROM tg WHERE "fk = 1"
+  
+  H=0; T=0;$CLI CREATE TABLE th "(pk LONG, fk LONG, ts LONG, col TEXT)"; I=0;$CLI CREATE INDEX i_th ON th "(fk)" ORDER BY ts; $CLI INSERT INTO th VALUES "(18446744073709551614,18446744073709551614,18446744073709551615,'one time')"; $CLI INSERT INTO th VALUES "(18446744073709551615,18446744073709551614,18446744073709551614,'TWO TIME')"; $CLI SELECT \* FROM th WHERE "fk = 18446744073709551614"
 }
-function insert_constraint_table() {
-  $CLI INSERT INTO ctest "(fk, val)" VALUES "(1, 10)"
-  $CLI INSERT INTO ctest "(fk, val)" VALUES "(1, 20)"
-  $CLI INSERT INTO ctest "(fk, val)" VALUES "(1, 30)"
-  $CLI INSERT INTO ctest "(fk, val)" VALUES "(2, 100)"
-  $CLI INSERT INTO ctest "(fk, val)" VALUES "(2, 200)"
-  $CLI INSERT INTO ctest "(fk, val)" VALUES "(2, 100)"
-  $CLI DUMP ctest
+
+function test_orderby_index_10_entries() {
+  $CLI CREATE TABLE ob "(pk INT, fk INT, ts INT, col TEXT)";
+  $CLI CREATE INDEX i_ob ON ob "(fk)" ORDER BY ts;
+  $CLI INSERT INTO ob VALUES "(,1,10,'ten')"
+  $CLI INSERT INTO ob VALUES "(,1,9, 'nine')"
+  $CLI INSERT INTO ob VALUES "(,1,8, 'eight')"
+  $CLI INSERT INTO ob VALUES "(,1,7, 'seven')"
+  $CLI INSERT INTO ob VALUES "(,1,6, 'six')"
+  $CLI INSERT INTO ob VALUES "(,1,5, 'five')"
+  $CLI INSERT INTO ob VALUES "(,1,4, 'four')"
+  $CLI INSERT INTO ob VALUES "(,1,3, 'three')"
+  $CLI INSERT INTO ob VALUES "(,1,2, 'two')"
+  $CLI INSERT INTO ob VALUES "(,1,1, 'one')"
+  $CLI SELECT \* FROM ob WHERE "fk = 1"
 }

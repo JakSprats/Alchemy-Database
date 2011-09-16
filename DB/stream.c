@@ -209,7 +209,7 @@ int luCmp(void *s1, void *s2) { /* 12 bytes [8:ULONG,4:UINT] */
     luk   *lu1 = (luk *)s1;
     luk   *lu2 = (luk *)s2;
     ulong  l1  = lu1->key;
-    ulong  l2  = lu2->key;          //printf("luCmp: 1: %lu 2: %lu\n", l1, l2);
+    ulong  l2  = lu2->key;
     return l1 == l2 ? 0 : (l1 > l2) ? 1 : -1;
 }
 int ulCmp(void *s1, void *s2) { /* 12 bytes [4:UINT,8:ULONG] */
@@ -301,7 +301,7 @@ char *createBTKey(aobj *akey, bool *med, uint32 *ksize, bt *btr) {
     } else if UU     (btr) { return (char *)((long)akey->i * UINT_MAX);
     } else if UL     (btr) { /* NOTE: UP() also */
         UL_BTKeyPtr.key = akey->i; return (char *)&UL_BTKeyPtr;
-    } else if LU     (btr) {
+    } else if LU     (btr) { /* NOTE: LUP() also */
         LU_BTKeyPtr.key = akey->l; return (char *)&LU_BTKeyPtr;
     } else if LL     (btr) { /* NOTE: LP() also */
         LL_BTKeyPtr.key = akey->l; return (char *)&LL_BTKeyPtr;
@@ -343,12 +343,16 @@ static uint32 skipToVal(uchar **stream, uchar ktype) {
     return klen;
 }
 
-ulk UL_ParseStreamPtr; llk LL_ParseStreamPtr; //TODO make static?
-uchar *parseStream(uchar *stream, bt *btr) {
+#define DEBUG_PARSE_STREAM \
+printf("parseStream: INODE: %d UU: %d UP: %d LU: %d LP: %d OTHER: %d\n", \
+                 INODE(btr), UU(btr), UP(btr), LU(btr), LP(btr), OTHER_BT(btr));
+
+uchar *parseStream(uchar *stream, bt *btr) { //DEBUG_PARSE_STREAM
     if      (!stream || INODE(btr)) return NULL;
-    else if UU(btr)                 return (uchar *)((long)stream % UINT_MAX);
-    else if UP(btr)                 return (uchar *)(*(ulk *)(stream)).val; 
-    else if LP(btr)                 return (uchar *)(*(llk *)(stream)).val; 
+    else if UU      (btr)           return (uchar *)((long)stream % UINT_MAX);
+    else if UP      (btr)           return (uchar *)(*(ulk *)(stream)).val; 
+    else if LUP     (btr)           return (uchar *)(*(luk *)(stream)).val; 
+    else if LP      (btr)           return (uchar *)(*(llk *)(stream)).val; 
     else if OTHER_BT(btr)           return stream;
     skipToVal(&stream, btr->s.ktype);
     if      (btr->s.btype == BTREE_TABLE)   return stream;
@@ -369,7 +373,7 @@ void convertStream2Key(uchar *stream, aobj *key, bt *btr) {
     } else if UL     (btr) { /* NOTE: UP() also */
         key->type = key->enc = COL_TYPE_INT;
         key->i    = (*(ulk *)(stream)).key;
-    } else if LU     (btr) {
+    } else if LU     (btr) { /* NOTE: LUP() also */
         key->type = key->enc = COL_TYPE_LONG;
         key->l    = (*(luk *)(stream)).key;
     } else if LL     (btr) { /* NOTE: LP() also */
@@ -420,7 +424,7 @@ uint32 getStreamRowSize(bt *btr, uchar *stream) { /* for rdbSaveAllRows() */
         if      INODE(btr) return 0;
         else if UU   (btr) return UU_SIZE;
         else if UL   (btr) return UL_SIZE; /* NOTE: UP() also */
-        else if LU   (btr) return LU_SIZE;
+        else if LU   (btr) return LU_SIZE; /* NOTE: LUP() also */
         else /* LL */      return LL_SIZE; /* NOTE: LP() also */
     }
 }
@@ -435,7 +439,7 @@ void *createStream(bt *btr, void *val, char *btkey, uint32 klen, uint32 *size) {
         UL_StreamPtr.key = ul->key;
         UL_StreamPtr.val = (ulong)val;
         return &UL_StreamPtr;
-    } else if LU   (btr) {
+    } else if LU   (btr) { /* NOTE: LUP() also */
         luk *lu          = (luk *)btkey;
         LU_StreamPtr.key = lu->key;
         LU_StreamPtr.val = (uint32)(long)val;
