@@ -51,7 +51,13 @@ void bt_dumptree(printer *prn, bt *btr, bool is_index) {
 static void dumpnode(printer *prn, bt *btr, bt_n *x, int depth, bool is_index) {
     int i;
 
-    if (!x->leaf) (*prn)("%d: NODE: %d -> (%p)\n", depth, x->n, (void *)x);
+    if (!x->leaf) 
+#ifdef BTREE_DEBUG
+                  (*prn)("%d: NODE[%d]: %d -> (%p)\n",
+                          depth, x->num, x->n, (void *)x);
+#else
+                  (*prn)("%d: NODE: %d -> (%p)\n", depth, x->n, (void *)x);
+#endif
     else          (*prn)("%d: LEAF: %d -> (%p)\n", depth, x->n, (void *)x);
 
     for (i = 0; i < x->n; i++) {
@@ -63,23 +69,27 @@ static void dumpnode(printer *prn, bt *btr, bt_n *x, int depth, bool is_index) {
             (*prn)("\tINDEX-KEY: "); dumpAobj(prn, &key);
             bt_dumptree(prn, (bt *)rrow, 0);
         } else {
+            //TODO UU & LUP
             if        UL(btr) { 
                 if UP(btr) (*prn)("\t\tUL: PTR: %p\t", rrow);
                 else {
                     ulk *ul = (ulk *)rrow;
-                    (*prn)("\t\tUL: KEY: %u  VAL: %lu\t", ul->key, ul->val); 
+                    (*prn)("\t\tUL[%d]: KEY: %u VAL: %lu\t",
+                                    i, ul->key, ul->val); 
                 }
             } else if LU(btr) { 
                 luk *lu = (luk *)rrow;
-                (*prn)("\t\tLU: KEY: %lu VAL: %lu\t", lu->key, lu->val);
+                (*prn)("\t\tLU[%d]: KEY: %lu VAL: %lu\t",
+                                i, lu->key, lu->val);
             } else if LL(btr) { 
                 if LP(btr) (*prn)("\t\tLL: PTR: %p\t", rrow);
                 else {
                     llk *ll = (llk *)rrow;
-                    (*prn)("\t\tLL: KEY: %lu VAL: %lu\t", ll->key, ll->val);
+                    (*prn)("\t\tLL[%d]: KEY: %lu VAL: %lu\t",
+                                    i, ll->key, ll->val);
                 }
             } else {
-                (*prn)("\t\tROW: %p\t", rrow);
+                (*prn)("\t\tROW[%d]: %p\t", i, rrow);
             }
             (*prn)("KEY: "); dumpAobj(prn, &key);
         }
@@ -144,6 +154,7 @@ int treeheight(bt *btr) {
 
 
 /* used for DEBUGGING the Btrees innards */
+//#define DUMP_BTREE_TO_STDOUT
 #include "alsosql.h"
 #include "index.h"
 extern struct redisServer server;
@@ -153,6 +164,9 @@ extern r_ind_t Index[MAX_NUM_INDICES];
 void btreeCommand(redisClient *c) {
     initQueueOutput();
     printer *prn = queueOutput;
+#ifdef DUMP_BTREE_TO_STDOUT
+    prn          = printf;
+#endif
     TABLE_CHECK_OR_REPLY(c->argv[1]->ptr,)
     MATCH_INDICES(tmatch)
     bt *btr = getBtr(tmatch);
@@ -168,4 +182,7 @@ void btreeCommand(redisClient *c) {
         }
     }
     dumpQueueOutput(c);
+#ifdef DUMP_BTREE_TO_STDOUT
+    fflush(NULL);
+#endif
 }

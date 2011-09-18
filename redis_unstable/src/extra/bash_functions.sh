@@ -2314,3 +2314,18 @@ function test_orderby_index_10_entries() {
   $CLI INSERT INTO ob VALUES "(,1,1, 'one')"
   $CLI SELECT \* FROM ob WHERE "fk = 1"
 }
+
+function insert_10K_t() {
+  $CLI DROP TABLE t
+  $CLI CREATE TABLE t "(pk INT, fk INT, val TEXT)"
+  $CLI CREATE INDEX i_t ON t "(fk)"
+  I=1;
+  FK=1;
+  while [ $I -lt 10000 ]; do
+    $CLI INSERT INTO t VALUES "(,$FK,'$I')";
+    if [ $[${I}%100] == 0 ]; then
+      FK=$[${FK}+1];
+    fi;
+    I=$[${I}+1];
+  done
+}

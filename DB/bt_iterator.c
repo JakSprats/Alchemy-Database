@@ -37,14 +37,22 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "bt_iterator.h"
 
-bt_ll_n *get_new_iter_child(btIterator *iter) {
+#define FFLUSH fflush(NULL);
+#define DUMP_CURR_KEY \
+  { void *curr = KEYS(iter->btr, iter->bln->self, iter->bln->ik); \
+    aobj  key; convertStream2Key(curr, &key, iter->btr);          \
+    printf("ik: %d\n", iter->bln->ik); dumpAobj(printf, &key); } FFLUSH
+
+bt_ll_n *get_new_iter_child(btIterator *iter) {//printf("get_new_iter_child\n");
     assert(iter->num_nodes < MAX_BTREE_DEPTH);
     bt_ll_n *nn = &(iter->nodes[iter->num_nodes]);
     bzero(nn, sizeof(bt_ll_n));
     iter->num_nodes++;
     return nn;
 }
-void become_child(btIterator *iter, bt_n* self) {
+
+// ASC_ITERATOR ASC_ITERATOR ASC_ITERATOR ASC_ITERATOR ASC_ITERATOR
+void become_child(btIterator *iter, bt_n* self) { // printf("become_child\n");
     iter->depth++;
     iter->bln->child->parent = iter->bln;
     iter->bln->child->ik     = 0;
@@ -60,8 +68,8 @@ static bool advance_node(btIterator *iter, bool recursed) {
     if (good)     { iter->bln->in++; return 1; }
     return 0;
 }
-static void iter_to_parent_recurse(btIterator *iter) {
-    if (!iter->bln->parent) { iter->finished = 1; return; }/* exit */
+static void iter_to_parent_recurse(btIterator *iter) { 
+    if (!iter->bln->parent) { iter->finished = 1; return; } /* finished */
     iter->depth--;
     bt   *btr    = iter->btr;
     void *child  = KEYS(btr, iter->bln->self, iter->bln->ik);
@@ -73,9 +81,8 @@ static void iter_to_parent_recurse(btIterator *iter) {
     }
 }
 static void iter_leaf(btIterator *iter) { // LEAF (n means numkeys)
-    bt_ll_n *bln = iter->bln;
-    if ((bln->ik + 1) < bln->self->n) bln->ik++;
-    else                              iter_to_parent_recurse(iter);
+    if ((iter->bln->ik + 1) < iter->bln->self->n) iter->bln->ik++;
+    else                                          iter_to_parent_recurse(iter);
 }
 static void become_child_recurse(btIterator *iter, bt_n* self) {
     become_child(iter, self);
@@ -91,15 +98,67 @@ static void iter_node(btIterator *iter) {
     if (!iter->bln->child) { iter->bln->child = get_new_iter_child(iter); }
     become_child_recurse(iter, NODES(btr, iter->bln->self)[iter->bln->in]);
 }
-void *btNext(btIterator *iter) {
+
+void *btNext(btIterator *iter) { //printf("btNext "); DUMP_CURR_KEY
     if (iter->finished) return NULL;
-    bt   *btr  = iter->btr;
-    void *curr = KEYS(btr, iter->bln->self, iter->bln->ik);
+    void *curr = KEYS(iter->btr, iter->bln->self, iter->bln->ik);
     if (iter->bln->self->leaf) (*iter->iLeaf)(iter);
     else                       (*iter->iNode)(iter);
     return curr;
 }
 
+// DESC_ITERATOR DESC_ITERATOR DESC_ITERATOR DESC_ITERATOR DESC_ITERATOR
+void become_child_rev(btIterator *iter, bt_n* self) {
+    iter->depth++;
+    iter->bln->child->parent = iter->bln;
+    iter->bln->child->ik     = self->n - 1;
+    iter->bln->child->in     = self->n;
+    iter->bln->child->self   = self;
+    iter->bln                = iter->bln->child;
+}
+static void become_child_recurse_rev(btIterator *iter, bt_n* self) {
+    become_child_rev(iter, self);
+    if (!iter->bln->self->leaf) { // depth-first
+        if (!iter->bln->child) iter->bln->child = get_new_iter_child(iter);
+        bt *btr = iter->btr;
+        become_child_recurse_rev(iter,
+                                 NODES(btr, iter->bln->self)[iter->bln->in]);
+    }
+}
+static bool retreat_node(btIterator *iter, bool recursed) {
+    if (recursed) {
+        if (iter->bln->ik) iter->bln->ik--;
+        if (iter->bln->in) { iter->bln->in--; return 1;}
+        else                                  return 0;
+    } else {
+        if (iter->bln->in == iter->bln->self->n) iter->bln->in--;
+        return 1;
+    }
+}
+static void iter_to_parent_recurse_rev(btIterator *iter) { 
+    if (!iter->bln->parent) { iter->finished = 1; return; } /* finished */
+    iter->depth--;
+    bt   *btr    = iter->btr;
+    void *child  = KEYS(btr, iter->bln->self, iter->bln->ik);
+    iter->bln    = iter->bln->parent;                      /* -> parent */
+    void *parent = KEYS(btr, iter->bln->self, iter->bln->ik);
+    int   x      = btr->cmp(child, parent);
+    if (x < 0) {
+        if (!retreat_node(iter, 1)) iter_to_parent_recurse_rev(iter);
+    }
+}
+static void iter_leaf_rev(btIterator *iter) {
+    if (iter->bln->ik) iter->bln->ik--;
+    else               iter_to_parent_recurse_rev(iter);
+}
+static void iter_node_rev(btIterator *iter) {
+    retreat_node(iter, 0);
+    bt *btr = iter->btr;
+    if (!iter->bln->child) iter->bln->child = get_new_iter_child(iter);
+    become_child_recurse_rev(iter, NODES(btr, iter->bln->self)[iter->bln->in]);
+}
+
+// INIT_ITERATOR INIT_ITERATOR INIT_ITERATOR INIT_ITERATOR INIT_ITERATOR
 static int btIterInit(bt *btr, bt_data_t bkey, struct btIterator *iter) {
     int ret = bt_init_iterator(btr, bkey, iter);
     if (ret) { /* range queries, find nearest match */
@@ -161,12 +220,15 @@ static void setHigh(btSIter *siter, aobj *high, uchar ktype) {
       else if (C_IS_L(ktype)) { siter->x.high  = high->l; }
       else if (C_IS_F(ktype)) { siter->x.highf = high->f; }
 }
-btSIter *btGetRangeIter(bt *btr, aobj *alow, aobj *ahigh) {
+
+btSIter *btGetRangeIter(bt *btr, aobj *alow, aobj *ahigh, bool asc) {
     if (!btr->root || !btr->numkeys) return NULL;
     bool med; uint32 ksize;                 //bt_dumptree(btr, btr->ktype);
-    btSIter *siter = createIterator(btr, iter_leaf, iter_node);
-    setHigh(siter, ahigh, btr->s.ktype);
-    char    *bkey  = createBTKey(alow, &med, &ksize, btr); /* DESTROY ME 032 */
+    btSIter *siter = createIterator(btr, asc ? iter_leaf : iter_leaf_rev, 
+                                         asc ? iter_node : iter_node_rev);
+
+    setHigh(siter, asc ? ahigh : alow, btr->s.ktype);
+    char    *bkey  = createBTKey(asc ? alow : ahigh, &med, &ksize, btr); //D032
     if (!bkey) return NULL;
     if (!btIterInit(btr, bkey, &(siter->x))) {
         btReleaseRangeIterator(siter);
@@ -175,7 +237,7 @@ btSIter *btGetRangeIter(bt *btr, aobj *alow, aobj *ahigh) {
     destroyBTKey(bkey, med);                             /* DESTROYED 032 */
     return siter;
 }
-btEntry *btRangeNext(btSIter *siter) {
+btEntry *btRangeNext(btSIter *siter, bool asc) {
     if (!siter) return NULL;
     void *be = btNext(&(siter->x));
     if (!be)    return NULL;
@@ -184,18 +246,22 @@ btEntry *btRangeNext(btSIter *siter) {
     if        (C_IS_I(siter->ktype) || C_IS_L(siter->ktype)) {
         ulong l = C_IS_I(siter->ktype) ? (ulong)(siter->key.i) : siter->key.l;
         if (l == siter->x.high)  siter->x.finished = 1;       /* exact match */
-        return ((l <= siter->x.high) ?  &(siter->be) : NULL);
+        return asc ? ((l <= siter->x.high) ?  &(siter->be) : NULL) :
+                     ((l >= siter->x.high) ?  &(siter->be) : NULL);
     } else if (C_IS_F(siter->ktype)) {
         float f = siter->key.f;
         if (f == siter->x.highf) siter->x.finished = 1;       /* exact match */
-        return ((f <= siter->x.highf) ? &(siter->be) : NULL);
+        return asc ? ((f <= siter->x.highf) ? &(siter->be) : NULL) :
+                     ((f >= siter->x.highf) ? &(siter->be) : NULL);
     } else { /* COL_TYPE_STRING */
         int r = strncmp(siter->key.s, siter->x.highs, siter->key.len);
         if (r == 0)              siter->x.finished = 1;       /* exact match */
-        return ((r <= 0) ?              &(siter->be) : NULL);
+        return asc ? ((r <= 0) ?              &(siter->be) : NULL) : 
+                     ((r >= 0) ?              &(siter->be) : NULL);
     }
 }
 
+// FULL_BTREE_ITERATOR FULL_BTREE_ITERATOR FULL_BTREE_ITERATOR
 bool assignMinKey(bt *btr, aobj *key) { //TODO combine w/ btIterInit()
     void *e = bt_min(btr);              //      iter can be initialised
     if (!e) return 0;                   //      w/ this lookup
@@ -208,14 +274,16 @@ bool assignMaxKey(bt *btr, aobj *key) {
     convertStream2Key(e, key, btr);
     return 1;
 }
-btSIter *btGetFullRangeIter(bt *btr) {
+
+btSIter *btGetFullRangeIter(bt *btr, bool asc) {
     if (!btr->root || !btr->numkeys) return NULL;
     aobj aL, aH;
     if (!assignMinKey(btr, &aL) || !assignMaxKey(btr, &aH)) return NULL;
     bool med; uint32 ksize;
-    btSIter *siter = createIterator(btr, iter_leaf, iter_node);
-    setHigh(siter, &aH, btr->s.ktype);
-    char    *bkey  = createBTKey(&aL, &med, &ksize, btr); /* DESTROY ME 030 */
+    btSIter *siter = createIterator(btr, asc ? iter_leaf : iter_leaf_rev,
+                                         asc ? iter_node : iter_node_rev);
+    setHigh(siter, asc ? &aH : &aL, btr->s.ktype);
+    char    *bkey  = createBTKey(asc ? &aL : &aH, &med, &ksize, btr); //DEST 030
     if (!bkey) return NULL;
     if (!btIterInit(btr, bkey, &(siter->x))) {
         btReleaseRangeIterator(siter);

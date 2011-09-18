@@ -122,8 +122,8 @@ bool appendOnlyDumpTable(FILE *fp, bt *btr, int tmatch) {
         char cmd2[]  = "*5\r\n$6\r\nINSERT\r\n$4\r\nINTO\r\n";
         char cvals[] = "$6\r\nVALUES\r\n";
         int  qcols   = get_all_cols(tmatch, cmatchs, 1);
-        btSIter *bi  = btGetFullRangeIter(btr);
-        while ((be = btRangeNext(bi)) != NULL) {
+        btSIter *bi  = btGetFullRangeIter(btr, 1);
+        while ((be = btRangeNext(bi, 1)) != NULL) {
             if (fwrite(cmd2 ,sizeof(cmd2) - 1, 1, fp) == 0)       goto aoft_err;
             if (fwriteBulkString(fp, tname, sdslen(tname)) == -1) goto aoft_err;
             if (fwrite(cvals ,sizeof(cvals) - 1, 1, fp) == 0)     goto aoft_err;

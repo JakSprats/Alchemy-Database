@@ -204,6 +204,9 @@ void *bt_malloc(bt *ibtr, int size) {                         //DEBUG_BT_MALLOC
     bt_incr_dsize(ibtr, size);
     return malloc(size);
 }
+#ifdef BTREE_DEBUG
+unsigned long BtreeNodeNum = 0;
+#endif
 static bt_n *allocbtreenode(bt *ibtr, bool leaf) {
     ibtr->numnodes++;
     size_t  size = leaf ? ibtr->kbyte : ibtr->nbyte;          //DEBUG_ALLOC_BTN
@@ -212,6 +215,9 @@ static bt_n *allocbtreenode(bt *ibtr, bool leaf) {
     bt_increment_used_memory(ibtr, size);
     bzero(btn, size);
     btn->leaf    = 1;
+#ifdef BTREE_DEBUG
+    btn->num     = BtreeNodeNum++;
+#endif
     return btn;
 }
 static bt *allocbtree() {

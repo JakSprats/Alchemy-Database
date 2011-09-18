@@ -115,20 +115,34 @@ static void init_ibtd(ibtd_t *d,    row_op *p,    range_t *g,     qr_t *q,
     d->obc  = obc;
 }
 
+//TODO OBY_INDEXES need specific Q-logic
 static void setRangeQueued(cswc_t *w, wob_t *wb, qr_t *q) {
     bzero(q, sizeof(qr_t));
     r_ind_t *ri     = (w->wf.imatch == -1) ? NULL: &Index[w->wf.imatch];
     bool     virt   = (w->wf.imatch == -1) ?  0  : ri->virt;
     int      cmatch = (w->wf.imatch == -1) ? -1  : ri->column ? ri->column : -1;
-    if (virt) {
-        q->pk       = (wb->nob > 1) ||
-                      (wb->nob == 1 && !(wb->asc[0] && !wb->obc[0]));
+    if (virt) { // NOTE: there is no inner_desc possible (no inner loop)
+        q->pk_desc  = (wb->nob >= 1 && (!wb->asc[0] && !wb->obc[0]));
+        q->pk       = (wb->nob > 1) || (wb->nob == 1 && wb->obc[0]);
         q->pk_lim   = (!q->pk    && (wb->lim  != -1));
         q->pk_lo    = (q->pk_lim && (wb->ofst != -1));
         q->qed      = q->pk;
     } else {
-        q->fk       = (wb->nob > 1) ||
-                      (wb->nob == 1 && !(wb->asc[0] && wb->obc[0] == cmatch));
+        q->fk_desc  = (wb->nob >= 1 && (!wb->asc[0] && wb->obc[0] == cmatch));
+        q->inr_desc = (wb->nob == 1 && (!wb->asc[0] && !wb->obc[0])) ||
+                      (wb->nob > 1 && /* ORDERBY FK, PK DESC */
+                        (wb->obc[0] == cmatch) && (!wb->asc[1] && !wb->obc[1]));
+        if (w->wtype & SQL_SINGLE_FK_LKP) {
+            q->fk   = (wb->nob > 2) ||// NoQ:[OBY FK|OBY PK|OBY FK,PK|OBY PK,FK]
+                      (wb->nob == 1 && wb->obc[0] && (wb->obc[0] != cmatch)) ||
+                      (wb->nob == 2 && 
+                        ((wb->obc[0] != cmatch) && (wb->obc[1])) && // FK,PK
+                        ((wb->obc[1] != cmatch) && (wb->obc[0])));  // PK,FK
+        } else { // FK RANGE QUERY
+            q->fk   = (wb->nob > 2) || // NoQ: [OBY FK| OBY FK,PK]
+                      (wb->nob == 1 && (wb->obc[0] != cmatch)) ||
+                      (wb->nob == 2 && (wb->obc[0] != cmatch) && (wb->obc[1]));
+        }
         q->fk_lim   = (!q->fk    && (wb->lim  != -1));
         q->fk_lo    = (q->fk_lim && (wb->ofst != -1));
         q->qed      = q->fk;
@@ -180,12 +194,13 @@ static long rangeOpPK(range_t *g, row_op *p) {                 //DEBUG_RANGE_PK
     qr_t    *q     = g->q;
     bt      *btr   = getBtr(w->wf.tmatch);
     g->co.btr      = btr;
+    bool     asc   = !q->pk_desc;
     long     loops = -1;
     long     card  =  0;
     btSIter *bi    = q->pk_lo ?
                       btGetXthIter(btr,   &w->wf.alow, &w->wf.ahigh, wb->ofst) :
-                      btGetRangeIter(btr, &w->wf.alow, &w->wf.ahigh);
-    while ((be = btRangeNext(bi)) != NULL) {
+                      btGetRangeIter(btr, &w->wf.alow, &w->wf.ahigh, asc);
+    while ((be = btRangeNext(bi, asc)) != NULL) {
         if (!pk_op_l(be->key, be->val, g, p, wb, q, &card, &loops, &brkr)) CBRK
         if (brkr) break;
     }
@@ -226,9 +241,10 @@ static bool nodeBT_Op(ibtd_t *d) {                              //DEBUG_NODE_BT
     wob_t   *wb       = d->g->co.wb; /* code compaction */
     *d->brkr          = 0;
     bool     gox      = (q->fk_lo && *d->ofst > 0);
+    bool     inr_asc  = !q->inr_desc;
     btSIter *nbi      = gox ? btGetFullXthIter(d->nbtr, *d->ofst) :
-                              btGetFullRangeIter(d->nbtr);
-    while ((nbe = btRangeNext(nbi)) != NULL) {
+                              btGetFullRangeIter(d->nbtr, inr_asc);
+    while ((nbe = btRangeNext(nbi, inr_asc)) != NULL) {
         INCR(*d->loops)
         if (q->fk_lim) {
             if      (!q->fk_lo && *d->loops < *d->ofst) continue;
@@ -238,8 +254,8 @@ static bool nodeBT_Op(ibtd_t *d) {                              //DEBUG_NODE_BT
         if (d->obc == -1) key = nbe->key;
         else {
             uchar ctype = Tbl[d->g->co.btr->s.num].col_type[0]; // PK_CTYPE
-            if      C_IS_I(ctype) initAobjInt (&akey, nbe->val);
-            else /* C_IS_L */     initAobjLong(&akey, nbe->val);
+            if      C_IS_I(ctype) initAobjInt (&akey, (uint32)(ulong)nbe->val);
+            else /* C_IS_L */     initAobjLong(&akey, (ulong)        nbe->val);
             key = &akey;
         }
         void *rrow = btFind(d->g->co.btr, key);
@@ -295,9 +311,11 @@ static bool runOnNode(bt      *ibtr, uint32  still,
                       node_op *nop,  ibtd_t *d,     r_ind_t *ri) {
     btEntry *nbe;                                           //DEBUG_RUN_ON_NODE
     still--;
-    bool     ret = 1; /* presume success */
-    btSIter *nbi = btGetFullRangeIter(ibtr);
-    while ((nbe = btRangeNext(nbi)) != NULL) {
+    bool     ret      = 1; /* presume success */
+    qr_t    *q        = d->g->q;     /* code compaction */
+    bool     inr_asc  = !q->inr_desc;
+    btSIter *nbi = btGetFullRangeIter(ibtr, inr_asc);
+    while ((nbe = btRangeNext(nbi, inr_asc)) != NULL) {
         d->nbtr        = nbe->val;
         if (still) { /* Recurse until node*/
             if (!runOnNode(d->nbtr, still, nop, d, ri)) { ret = 0; break; }
@@ -341,11 +359,12 @@ static long rangeOpFK(range_t *g, row_op *p) {                 //DEBUG_RANGE_FK
     node_op *nop   = UNIQ(ri->cnstr) ? uBT_Op : nodeBT_Op;
     uint32   nexpc = ri->clist ? (ri->clist->len - 1) : 0;
     long     ofst  = wb->ofst;
+    bool     asc   = !q->fk_desc;
     long     loops = -1;
     long     card  =  0;
-    btSIter *bi    = btGetRangeIter(ibtr, &w->wf.alow, &w->wf.ahigh);
+    btSIter *bi    = btGetRangeIter(ibtr, &w->wf.alow, &w->wf.ahigh, asc);
     init_ibtd(&d, p, g, q, NULL, &ofst, &card, &loops, &brkr, ri->obc);
-    while ((be = btRangeNext(bi)) != NULL) {
+    while ((be = btRangeNext(bi, asc)) != NULL) {
         uint32 nmatch = 0;
         d.nbtr        = btMCIFindVal(w, be->val, &nmatch, ri);
         if (d.nbtr) {
@@ -713,13 +732,14 @@ void dumpQueued(printer *prn, cswc_t *w, wob_t *wb, qr_t *q, bool debug) {
                                                  &Index[w->wf.imatch];
         bool     virt   = (w->wf.imatch == -1) ? 0    : ri->virt;
         int      cmatch = (w->wf.imatch == -1) ? -1   : ri->column;
-        if (virt) (*prn)("\t\tqpk: %d pklim: %d pklo: %d\n",
-                         q->pk, q->pk_lim, q->pk_lo);
-        else      (*prn)("\t\tqfk: %d fklim: %d fklo: %d\n",
-                         q->fk, q->fk_lim, q->fk_lo);
+        if (virt) (*prn)("\t\tqpk: %d pklim: %d pklo: %d desc: %d\n",
+                         q->pk, q->pk_lim, q->pk_lo, q->pk_desc);
+        else      (*prn)("\t\tqfk: %d fklim: %d fklo: %d desc: %d\n",
+                         q->fk, q->fk_lim, q->fk_lo, q->fk_desc);
         (*prn)("\t\tvirt: %d asc: %d obc: %d lim: %ld" \
-                    " ofst: %ld indcl: %d -> qed: %d\n",
-            virt, wb->asc[0], wb->obc[0], wb->lim, wb->ofst, cmatch, q->qed);
+                    " ofst: %ld indcol: %d inner_desc: %d -> qed: %d\n",
+            virt, wb->asc[0], wb->obc[0], wb->lim, wb->ofst,
+            cmatch, q->inr_desc, q->qed);
     } else {
         (*prn)("\t\tqed:\t%d\n", q->qed);
     }

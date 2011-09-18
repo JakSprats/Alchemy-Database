@@ -40,13 +40,16 @@ ALL RIGHTS RESERVED
 void initX_DB_Range(); /* NOTE: called on server startup */
 
 typedef struct queue_range_results {
-    bool pk;     /* range query on pk, ORDER BY col not pk */
-    bool pk_lim; /* pk LIMIT OFFSET */
-    bool pk_lo;  /* WHERE pk BETWEEN x AND Y ORDER BY pk LIMIT OFFSET */
-    bool fk;     /* range query on fk, ORDER BY col not fk */
-    bool fk_lim; /* fk LIMIT OFFSET */
-    bool fk_lo;  /* WHERE fk = x ORDER BY fk LIMIT OFFSET */
-    bool qed;    /* an additional sort will be required -> queued */
+    bool pk;       /* range query on pk, ORDER BY col not pk */
+    bool pk_lim;   /* pk LIMIT OFFSET */
+    bool pk_lo;    /* WHERE pk BETWEEN x AND Y ORDER BY pk LIMIT OFFSET */
+    bool pk_desc;  /* PK DESC iterator */
+    bool fk;       /* range query on fk, ORDER BY col not fk */
+    bool fk_lim;   /* fk LIMIT OFFSET */
+    bool fk_lo;    /* WHERE fk = x ORDER BY fk LIMIT OFFSET */
+    bool fk_desc;  /* FK DESC iterator */
+    bool inr_desc; /* ORDER BY FK DESC, PK DESC */
+    bool qed;      /* an additional sort will be required -> queued */
 } qr_t;
 
 /* NOTE: range_* structs are just skeletons,

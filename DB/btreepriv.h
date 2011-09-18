@@ -64,9 +64,13 @@ typedef struct btree {
     bts_t              s;        /*-------------------------------------| */
 } __attribute__ ((packed)) bt;
 
+//#define BTREE_DEBUG
 typedef struct btreenode { /* 2 bytes */
     int    n    : 31;      /* 2 billion entries */
     int    leaf : 1;
+#ifdef BTREE_DEBUG
+    unsigned long num;
+#endif
 } bt_n;
 
 void *KEYS(bt *btr, bt_n *x, int i);

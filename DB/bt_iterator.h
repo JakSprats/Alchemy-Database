@@ -87,12 +87,12 @@ void     become_child(btIterator *iter, bt_n* self);
 int      init_iterator(bt *btr, bt_data_t simkey, struct btIterator *iter);
 void    *btNext(btIterator *iter);
 
-btSIter *btGetRangeIter(    bt *btr, aobj *alow, aobj *ahigh);
-btSIter *btGetXthIter(      bt *btr, aobj *alow, aobj *ahigh, long x);
-btSIter *btGetFullXthIter(  bt *btr,                          long x);
-btSIter *btGetFullRangeIter(bt *btr);
+btSIter *btGetRangeIter    (bt *btr, aobj *alow, aobj *ahigh,         bool asc);
+btSIter *btGetXthIter      (bt *btr, aobj *alow, aobj *ahigh, long x);
+btSIter *btGetFullXthIter  (bt *btr,                          long x);
+btSIter *btGetFullRangeIter(bt *btr,                                  bool asc);
 
-btEntry *btRangeNext(           btSIter *iter);
+btEntry *btRangeNext           (btSIter *iter,                        bool asc);
 void     btReleaseRangeIterator(btSIter *iter);
 
 bool assignMinKey(bt *btr, aobj *key);
