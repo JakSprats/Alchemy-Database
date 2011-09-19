@@ -2299,7 +2299,7 @@ function test_orderby_index_uu_ul_lu_ll() {
   H=0; T=0;$CLI CREATE TABLE th "(pk LONG, fk LONG, ts LONG, col TEXT)"; I=0;$CLI CREATE INDEX i_th ON th "(fk)" ORDER BY ts; $CLI INSERT INTO th VALUES "(18446744073709551614,18446744073709551614,18446744073709551615,'one time')"; $CLI INSERT INTO th VALUES "(18446744073709551615,18446744073709551614,18446744073709551614,'TWO TIME')"; $CLI SELECT \* FROM th WHERE "fk = 18446744073709551614"
 }
 
-function test_orderby_index_10_entries() {
+function test_orderby_index_20_entries() {
   $CLI DROP TABLE ob
   $CLI CREATE TABLE ob "(pk INT, fk INT, ts INT, col TEXT)";
   $CLI CREATE INDEX i_ob ON ob "(fk)" ORDER BY ts;
@@ -2343,4 +2343,29 @@ function insert_10K_t() {
     fi;
     I=$[${I}+1];
   done
+}
+
+function test_mci_obyindex() {
+  $CLI DROP TABLE mci_ob
+  $CLI CREATE TABLE mci_ob "(pk INT, fk1 INT, fk2 INT, ts INT, col TEXT)";
+  $CLI CREATE INDEX i_mciob ON mci_ob "(fk1, fk2)" ORDER BY ts;
+  $CLI INSERT INTO mci_ob VALUES "(,1,1,200,'111')"
+  $CLI INSERT INTO mci_ob VALUES "(,1,1,199,'112')"
+  $CLI INSERT INTO mci_ob VALUES "(,1,1,198,'113')"
+  $CLI INSERT INTO mci_ob VALUES "(,1,1,197,'114')"
+  $CLI INSERT INTO mci_ob VALUES "(,1,1,196,'115')"
+  $CLI INSERT INTO mci_ob VALUES "(,1,1,195,'115')"
+  $CLI INSERT INTO mci_ob VALUES "(,1,2,180,'121')"
+  $CLI INSERT INTO mci_ob VALUES "(,1,2,179,'122')"
+  $CLI INSERT INTO mci_ob VALUES "(,1,2,178,'123')"
+  $CLI INSERT INTO mci_ob VALUES "(,1,2,177,'124')"
+  $CLI INSERT INTO mci_ob VALUES "(,2,2,160,'221')"
+  $CLI INSERT INTO mci_ob VALUES "(,2,2,159,'222')"
+  $CLI INSERT INTO mci_ob VALUES "(,2,2,158,'223')"
+  echo $CLI SELECT \* FROM mci_ob WHERE "fk1 = 1 AND fk2 = 1 ORDER BY ts"
+  $CLI SELECT \* FROM mci_ob WHERE "fk1 = 1 AND fk2 = 1 ORDER BY ts"
+  echo $CLI SELECT \* FROM mci_ob WHERE "fk1 = 1 AND fk2 = 2 ORDER BY ts"
+  $CLI SELECT \* FROM mci_ob WHERE "fk1 = 1 AND fk2 = 2 ORDER BY ts"
+  echo $CLI SELECT \* FROM mci_ob WHERE "fk1 = 2 AND fk2 = 2 ORDER BY ts"
+  $CLI SELECT \* FROM mci_ob WHERE "fk1 = 2 AND fk2 = 2 ORDER BY ts"
 }

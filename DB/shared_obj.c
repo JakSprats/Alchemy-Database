@@ -311,5 +311,5 @@ void DXDB_createSharedObjects() {
     shared.indexobcrpt            = createObject(REDIS_STRING,sdsnew(
         "-ERR CREATE INDEX ... ORDER BY PK - PK ordering is default, operation not needed\r\n"));
     shared.indexobcill            = createObject(REDIS_STRING,sdsnew(
-        "-ERR CREATE INDEX ... ORDER BY col - Lots of constraints: No MultipleColumnIndexes, Both indexed_column & order_by_column must be [INT|LONG] and can not be the same column\r\n"));
+        "-ERR CREATE INDEX ... ORDER BY col - Lots of constraints: No UniqueMultipleColumnIndexes, Both indexed_column & order_by_column must be [INT|LONG] and can not be the same column\r\n"));
 }

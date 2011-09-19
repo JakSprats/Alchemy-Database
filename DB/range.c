@@ -62,6 +62,9 @@ static bool Bdum; /* dummy variable */
   printf("rangeOpPK: imatch: %d\n", g->co.w->wf.imatch);
 #define DEBUG_NODE_BT                                         \
   printf("nodeBT_Op: nbtr->numkeys: %d\n", d->nbtr->numkeys);
+#define DEBUG_NODE_BT_OBC                                                  \
+  printf("nodeBT_Op: obc: %d val: %p key: ", d->obc, nbe->val);            \
+  dumpAobj(printf, &akey); printf("nbe_key: "); dumpAobj(printf, nbe->key);
 #define DEBUG_MCI_FIND                                        \
   printf("in btMCIFindVal: trgr: %d\n", trgr);
 #define DEBUG_MCI_FIND_MID                                    \
@@ -115,6 +118,17 @@ static void init_ibtd(ibtd_t *d,    row_op *p,    range_t *g,     qr_t *q,
     d->obc  = obc;
 }
 
+static bool mci_fk_queued(wob_t *wb, r_ind_t *ri) { //printf("mci_fk_queued\n");
+    uint32_t i;
+    for (i = 0; i < (uint32_t)ri->nclist && i < wb->nob; i++) {
+        if (wb->obc[i] != ri->bclist[i]) break;
+    }
+    if (i < wb->nob) {
+        int obc = (ri->obc == -1) ? 0 : ri->obc;
+        if (wb->obc[i] != obc) return 1; i++;
+    }
+    return (i != wb->nob);
+}
 static void setRangeQueued(cswc_t *w, wob_t *wb, qr_t *q) {
     bzero(q, sizeof(qr_t));
     r_ind_t *ri     = (w->wf.imatch == -1) ? NULL: &Index[w->wf.imatch];
@@ -133,17 +147,20 @@ static void setRangeQueued(cswc_t *w, wob_t *wb, qr_t *q) {
                       (wb->nob > 1 && (wb->obc[0] == cmatch) &&
                        (!wb->asc[1] && wb->obc[1] == obc)); // FK,PK DESC
         if (w->wtype & SQL_SINGLE_FK_LKP) {
-            q->fk   = (wb->nob > 2) ||// NoQ:[OBY FK|OBY PK|OBY FK,PK|OBY PK,FK]
-                      (wb->nob == 1 &&  // [FK}&[PK]
-                       (wb->obc[0] != cmatch) && (wb->obc[0] != obc)) ||
-                      (wb->nob == 2 &&  // [FK,PK]&[PK,FK]
-                      ((wb->obc[0] != cmatch) && (wb->obc[0] != obc)) &&
-                      ((wb->obc[1] != cmatch) && (wb->obc[1] != obc)));
-        } else { // FK RANGE QUERY
+            if (ri->nclist) q->fk = mci_fk_queued(wb, ri);
+            else { // NO-Q: [OBY FK|OBY PK|OBY FK,PK|OBY PK,FK]
+                q->fk = (wb->nob > 2) ||
+                        (wb->nob == 1 &&  // [FK}&[PK]
+                         (wb->obc[0] != cmatch) && (wb->obc[0] != obc)) ||
+                        (wb->nob == 2 &&  // [FK,PK]&[PK,FK]
+                         (!((wb->obc[0] == cmatch) && (wb->obc[1] == obc)) ||
+                          !((wb->obc[1] == cmatch) && (wb->obc[0] == obc))));
+            }
+        } else { // FK RANGE QUERY (clist[MCI] not yet supported)
             q->fk   = (wb->nob > 2) || // NoQ: [OBY FK| OBY FK,PK]
                       (wb->nob == 1 && (wb->obc[0] != cmatch)) ||
                       (wb->nob == 2 && 
-                       (wb->obc[0] != cmatch) && (wb->obc[1] != obc));
+                       !((wb->obc[0] == cmatch) && (wb->obc[1] == obc)));
         }
         q->fk_lim   = (!q->fk    && (wb->lim  != -1));
         q->fk_lo    = (q->fk_lim && (wb->ofst != -1));
@@ -254,7 +271,7 @@ static bool nodeBT_Op(ibtd_t *d) {                              //DEBUG_NODE_BT
         }
         void *key; aobj akey; initAobj(&akey);
         if (d->obc == -1) key = nbe->key;
-        else {
+        else {                                              //DEBUG_NODE_BT_OBC
             uchar ctype = Tbl[d->g->co.btr->s.num].col_type[0]; // PK_CTYPE
             if      C_IS_I(ctype) initAobjInt (&akey, (uint32)(ulong)nbe->val);
             else /* C_IS_L */     initAobjLong(&akey, (ulong)        nbe->val);

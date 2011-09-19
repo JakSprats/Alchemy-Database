@@ -262,12 +262,16 @@ int btIndDelete(bt *ibtr, aobj *akey) {
 }
 
 /* INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE */
+#define DEBUG_IN_ADD_OBC                                       \
+    printf("btIndNodeOBCAdd: apk : "); dumpAobj(printf, apk);  \
+    printf("btIndNodeOBCAdd: ocol: "); dumpAobj(printf, ocol);
+
 void *btIndNodeFind  (bt *nbtr, aobj *apk) { return abt_find(nbtr, apk); }
 void  btIndNodeAdd   (bt *nbtr, aobj *apk) { abt_insert(nbtr, apk, NULL); }
 int   btIndNodeDelete(bt *nbtr, aobj *apk) {
     abt_del(nbtr, apk); return nbtr->numkeys;
 }
-void  btIndNodeOBCAdd(bt *nbtr, aobj *apk, aobj *ocol) {
+void  btIndNodeOBCAdd(bt *nbtr, aobj *apk, aobj *ocol) { //DEBUG_IN_ADD_OBC
     if      C_IS_I(apk->type) abt_insert(nbtr, ocol, apk->i);
     else /* C_IS_L */         abt_insert(nbtr, ocol, apk->l);
 }
