@@ -25,7 +25,8 @@
 #include "query.h"
 #include "bt.h"
 
-static void dumpnode(printer *prn, bt *btr, bt_n *n, int depth, bool is_index);
+static void dumpnode(printer *prn, bt *btr, bt_n *n, int depth,
+                     bool is_index, int slot);
 int treeheight(bt *btr);
 
 void bt_dump_info(printer *prn, bt *btr) {
@@ -43,22 +44,24 @@ void bt_dump_info(printer *prn, bt *btr) {
 void bt_dumptree(printer *prn, bt *btr, bool is_index) {
     bt_dump_info(prn, btr);
     if (btr->root && btr->numkeys > 0) {
-        dumpnode(prn, btr, btr->root, 0, is_index);
+        dumpnode(prn, btr, btr->root, 0, is_index, 0);
     }
     (*prn)("\n");
 }
 
-static void dumpnode(printer *prn, bt *btr, bt_n *x, int depth, bool is_index) {
+static void dumpnode(printer *prn, bt *btr, bt_n *x,
+                     int depth, bool is_index, int slot) {
     int i;
 
     if (!x->leaf) 
 #ifdef BTREE_DEBUG
-                  (*prn)("%d: NODE[%d]: %d -> (%p)\n",
-                          depth, x->num, x->n, (void *)x);
+                  (*prn)("%d: NODE[%d]: n: %d scion: %d -> (%p) slot: %d\n",
+                          depth, x->num, x->n, x->scion, (void *)x, slot);
 #else
-                  (*prn)("%d: NODE: %d -> (%p)\n", depth, x->n, (void *)x);
+                  (*prn)("%d: NODE: n: %d scion: %d -> (%p)\n",
+                          depth, x->n, x->scion, (void *)x);
 #endif
-    else          (*prn)("%d: LEAF: %d -> (%p)\n", depth, x->n, (void *)x);
+    else          (*prn)("%d: LEAF: n: %d -> (%p)\n", depth, x->n, (void *)x);
 
     for (i = 0; i < x->n; i++) {
         void *be = KEYS(btr, x, i);
@@ -98,7 +101,7 @@ static void dumpnode(printer *prn, bt *btr, bt_n *x, int depth, bool is_index) {
     if (!x->leaf) {
         depth++;
         for (i = 0; i <= x->n; i++) {
-            dumpnode(prn, btr, NODES(btr, x)[i], depth, is_index);
+            dumpnode(prn, btr, NODES(btr, x)[i], depth, is_index, i);
         }
     }
 }

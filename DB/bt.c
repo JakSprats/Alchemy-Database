@@ -272,9 +272,9 @@ int   btIndNodeDelete(bt *nbtr, aobj *apk) {
     abt_del(nbtr, apk); return nbtr->numkeys;
 }
 void  btIndNodeOBCAdd(bt *nbtr, aobj *apk, aobj *ocol) { //DEBUG_IN_ADD_OBC
-    if      C_IS_I(apk->type) abt_insert(nbtr, ocol, apk->i);
-    else /* C_IS_L */         abt_insert(nbtr, ocol, apk->l);
+    if      C_IS_I(apk->type) abt_insert(nbtr, ocol, (void *)(long)apk->i);
+    else /* C_IS_L */         abt_insert(nbtr, ocol, (void *)      apk->l);
 }
-int   btIndNodeOBCDelete(bt *nbtr, aobj *apk, aobj *ocol) {
+int   btIndNodeOBCDelete(bt *nbtr, aobj *ocol) {
     abt_del(nbtr, ocol); return nbtr->numkeys;
 }

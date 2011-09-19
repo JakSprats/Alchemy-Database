@@ -65,9 +65,10 @@ typedef struct btree {
 } __attribute__ ((packed)) bt;
 
 //#define BTREE_DEBUG
-typedef struct btreenode { /* 2 bytes */
-    int    n    : 31;      /* 2 billion entries */
-    int    leaf : 1;
+typedef struct btreenode { /* 8 bytes */
+    unsigned int scion;       /* 4 billion scion possible */
+    int          n    : 31;   /* 2 billion entries (per bt_n)*/
+    int          leaf : 1;
 #ifdef BTREE_DEBUG
     unsigned long num;
 #endif

@@ -306,24 +306,34 @@ static bool split_leaf2left(bt *btr, bt_n *x, bt_n *y, bt_n *xp, int i) {
     y->n = t - 1;
     return 0;
 }
-#endif
 static bool btreesplitchild(bt *btr, bt_n *x, int i, bt_n *y) {
     ushort16 t = btr->t;
-#if 0
     if (i && y->leaf && (btr->s.bflag & BTFLAG_AUTO_INC)) {
         bt_n *xp = NODES(btr, x)[i - 1];
         if ((xp->n <= t - 1)) return split_leaf2left(btr, x, y, xp, i);
     }
 #endif
-    bt_n   *z = allocbtreenode(btr, y->leaf);
-    z->leaf   = y->leaf; /* duplicate leaf setting */
+
+static inline void incr_scion(bt_n *x, int n) {
+    x->scion += n;
+}
+static inline void decr_scion(bt_n *x, int n) {
+    x->scion -= n;
+}
+
+static bool btreesplitchild(bt *btr, bt_n *x, int i, bt_n *y) {
+    ushort16  t = btr->t;
+    bt_n     *z = allocbtreenode(btr, y->leaf);
+    z->leaf     = y->leaf; /* duplicate leaf setting */
     for (int j = 0; j < t - 1; j++) { // TODO single memcpy()
         setBTKey(btr, AKEYS(btr, z, j), KEYS(btr, y, j + t));
     }
-    y->n = t - 1; /* half num_nodes in Y */
-    z->n = t - 1; /* half num_nodes in Z */
+    y->n = t - 1; decr_scion(y, t);     /* half num_nodes in Y */
+    z->n = t - 1; incr_scion(z, t - 1); /* half num_nodes in Z */
     if (!y->leaf) { /* if it's an internal node, copy the ptr's too */
         for (int j = 0; j < t; j++) {
+            uint32_t scion   = NODES(btr, y)[j + t]->scion;
+            decr_scion(y, scion); incr_scion(z, scion);
             NODES(btr, z)[j] = NODES(btr, y)[j + t];
         }
     }
@@ -342,24 +352,23 @@ static bool btreesplitchild(bt *btr, bt_n *x, int i, bt_n *y) {
 }
 #define GETN(btr) ((2 * btr->t) - 1)
 static void btreeinsertnonfull(bt *btr, bt_n *x, bt_data_t k) {
-    int i = x->n - 1;
     if (x->leaf) { /* we are a leaf, just add it in */
-        i = findkindex(btr, x, k, NULL, NULL);
+        int i = findkindex(btr, x, k, NULL, NULL);
         if (i != x->n - 1) {
             memmove(AKEYS(btr, x, i + 2), AKEYS(btr, x, i + 1),
                     (x->n - i - 1) * btr->s.ksize);
         }
         setBTKey(btr, AKEYS(btr, x, i + 1), k);
-        x->n++;
+        x->n++; incr_scion(x, 1);
     } else { /* not leaf */
-        i = findkindex(btr, x, k, NULL, NULL) + 1;
+        int i = findkindex(btr, x, k, NULL, NULL) + 1;
         /* make sure that the next node isn't full */
         if (NODES(btr, x)[i]->n == GETN(btr)) {
             if (btreesplitchild(btr, x, i, NODES(btr, x)[i])) {
                 if (btr->cmp(k, KEYS(btr, x, i)) > 0) i++;
             }
         }
-        btreeinsertnonfull(btr, NODES(btr, x)[i], k);
+        btreeinsertnonfull(btr, NODES(btr, x)[i], k); incr_scion(x, 1);
     }
 }
 void bt_insert(bt *btr, bt_data_t k) {
@@ -369,6 +378,7 @@ void bt_insert(bt *btr, bt_data_t k) {
         btr->root        = s;
         s->leaf          = 0;
         s->n             = 0;
+        incr_scion(s, r->scion);
         NODES(btr, s)[0] = r;
         btreesplitchild(btr, s, 0, r);
         r                = s;
@@ -381,12 +391,12 @@ void bt_insert(bt *btr, bt_data_t k) {
 #define DEBUG_DEL_START \
   printf("START: ndk\n"); //bt_dumptree(printf, btr, 0);
 #define DEBUG_DEL_POST_S \
-  printf("POST_S: s: %d i: %d r: %d leaf: %d x.n: %d\n", s, i, r, x->leaf, x->n);
+  printf("POSTS: s: %d i: %d r: %d leaf: %d x.n: %d\n", s, i, r, x->leaf, x->n);
 #define DEBUG_DEL_CASE_1 \
   printf("ndk CASE_1    s: %d i: %d x->n: %d\n", s, i, x->n); \
   //bt_dumptree(printf, btr, 0);
 #define DEBUG_DEL_CASE_2 \
-  printf("ndk CASE_2b x[i].n: %d x[i+1].n: %d t: %d\n", \
+  printf("ndk CASE_2 x[i].n: %d x[i+1].n: %d t: %d\n", \
           NODES(btr, x)[i]->n, NODES(btr, x)[i + 1]->n, btr->t); \
   //bt_dumptree(printf, btr, 0);
 #define DEBUG_DEL_CASE_2a \
@@ -418,9 +428,11 @@ void *case_2c_ptr = NULL;
 #define MAX_KEY_SIZE 16 /* NOTE: ksize > 8 bytes needs buffer for CASE 1 */
 static char BT_DelBuf[MAX_KEY_SIZE];
 
+static inline void move_scion(bt *btr, bt_n *z, bt_n *y, int n) {
+    for (int i = 0; i < n; i++) { incr_scion(y, NODES(btr, z)[i]->scion); }
+}
 static bt_data_t nodedeletekey(bt *btr, bt_n *x, bt_data_t k, int s) {
-    bt_n *xp, *y, *z;
-    bt_data_t kp;
+    bt_n *xp, *y, *z; bt_data_t kp;
     int       i, yn, zn;
     int       ks = btr->s.ksize;
     int       r  = -1;
@@ -431,17 +443,15 @@ static bt_data_t nodedeletekey(bt *btr, bt_n *x, bt_data_t k, int s) {
                 case 1: r =  1; break;
                 case 2: r = -1; break;
             }
-        } else {
-            r = 0;
-        }
+        } else r = 0;
         switch (s) {
             case 1:  i = x->n - 1; break; /* max node */
             case 2:  i = -1;       break; /* min node */
             default: i = 42;       break; /* should NOT happen */
         }
-    } else {
-        i = findkindex(btr, x, k, &r, NULL);
-    }                                                        //DEBUG_DEL_POST_S
+    } else i = findkindex(btr, x, k, &r, NULL);              //DEBUG_DEL_POST_S
+
+    decr_scion(x, 1); // every nodedeletekey() will result in one less scion
 
     /* Case 1
      * If the key k is in node x and x is a leaf, delete the key k from x. */
@@ -497,8 +507,12 @@ static bt_data_t nodedeletekey(bt *btr, bt_n *x, bt_data_t k, int s) {
             z = NODES(btr, x)[i + 1];
             setBTKey(btr, AKEYS(btr, y, y->n++), k);
             memmove(AKEYS(btr, y, y->n), AKEYS(btr, z, 0), z->n * ks);
-            if (!y->leaf) memmove(NODES(btr, y) + y->n, NODES(btr, z),
-                                  (z->n + 1) * VOIDSIZE);
+            incr_scion(y, z->n);
+            if (!y->leaf) {
+                move_scion(btr, z, y, z->n + 1);
+                memmove(NODES(btr, y) + y->n, NODES(btr, z),
+                                              (z->n + 1) * VOIDSIZE);
+            }
             y->n += z->n;
             memmove(AKEYS(btr, x, i),AKEYS(btr, x, i + 1), (x->n - i - 1) * ks);
             memmove(NODES(btr, x) + i + 1, NODES(btr, x) + i + 2,
@@ -530,14 +544,15 @@ static bt_data_t nodedeletekey(bt *btr, bt_n *x, bt_data_t k, int s) {
             setBTKey(btr, AKEYS(btr, xp, 0), KEYS(btr, x, i - 1));
             setBTKey(btr, AKEYS(btr, x, i - 1), KEYS(btr, y, y->n - 1));
             if (!xp->leaf) NODES(btr, xp)[0] = NODES(btr, y)[y->n];
-            y->n--;
-            xp->n++;
+            y->n--;  decr_scion(y,  1);
+            xp->n++; incr_scion(xp, 1);
         } else if (i < x->n && (y = NODES(btr, x)[i + 1])->n >= btr->t) {
             /* right sibling has t keys */                 //DEBUG_DEL_CASE_3A2
             setBTKey(btr, AKEYS(btr, xp, xp->n++), KEYS(btr, x, i));
+            incr_scion(xp, 1);
             setBTKey(btr, AKEYS(btr, x, i), KEYS(btr, y, 0));
             if (!xp->leaf) NODES(btr, xp)[xp->n] = NODES(btr, y)[0];
-            y->n--;
+            y->n--;  decr_scion(y, 1);
             memmove(AKEYS(btr, y, 0), AKEYS(btr, y, 1), y->n * ks);
             if (!y->leaf) memmove(NODES(btr, y), NODES(btr, y) + 1,
                                   (y->n + 1) * VOIDSIZE);
@@ -550,9 +565,14 @@ static bt_data_t nodedeletekey(bt *btr, bt_n *x, bt_data_t k, int s) {
         else if (i > 0 && (y = NODES(btr, x)[i - 1])->n == btr->t - 1) {
             /* merge i with left sibling */                 //DEBUG_DEL_CASE_3B
             setBTKey(btr, AKEYS(btr, y, y->n++), KEYS(btr, x, i - 1));
+            incr_scion(y, 1);
             memmove(AKEYS(btr, y, y->n), AKEYS(btr, xp, 0), xp->n * ks);
-            if (!xp->leaf) memmove(NODES(btr, y) + y->n, NODES(btr, xp),
-                                    (xp->n + 1) * VOIDSIZE);
+            incr_scion(y, xp->n);
+            if (!xp->leaf) {
+                move_scion(btr, xp, y, xp->n + 1);
+                memmove(NODES(btr, y) + y->n, NODES(btr, xp),
+                                              (xp->n + 1) * VOIDSIZE);
+            }
             y->n += xp->n;
             memmove(AKEYS(btr, x, i - 1), AKEYS(btr, x, i), (x->n - i) * ks);
             memmove(NODES(btr, x) + i, NODES(btr, x) + i + 1,
@@ -563,9 +583,14 @@ static bt_data_t nodedeletekey(bt *btr, bt_n *x, bt_data_t k, int s) {
         } else if (i < x->n && (y = NODES(btr, x)[i + 1])->n == btr->t - 1) {
             /* merge i with right sibling */               //DEBUG_DEL_CASE_3B2
             setBTKey(btr, AKEYS(btr, xp, xp->n++), KEYS(btr, x, i));
+            incr_scion(xp, 1);
             memmove(AKEYS(btr, xp, xp->n), AKEYS(btr, y, 0), y->n * ks);
-            if (!xp->leaf) memmove(NODES(btr, xp) + xp->n, NODES(btr, y),
-                                   (y->n + 1) * VOIDSIZE);
+            incr_scion(xp, y->n);
+            if (!xp->leaf) {
+                move_scion(btr, y, xp, y->n + 1);
+                memmove(NODES(btr, xp) + xp->n, NODES(btr, y),
+                                                (y->n + 1) * VOIDSIZE);
+            }
             xp->n += y->n;
             memmove(AKEYS(btr, x, i),AKEYS(btr, x, i + 1), (x->n - i - 1) * ks);
             memmove(NODES(btr, x) + i + 1, NODES(btr, x) + i + 2,
@@ -573,7 +598,7 @@ static bt_data_t nodedeletekey(bt *btr, bt_n *x, bt_data_t k, int s) {
             x->n--;
             bt_free_btreenode(btr, y);
         }
-    }
+    } //printf("RECURSE\n");
     return nodedeletekey(btr, xp, k, s);
 }
 

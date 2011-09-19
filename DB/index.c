@@ -151,7 +151,7 @@ void destroy_index(bt *ibtr, bt_n *n) {
 static bool iRem(bt *ibtr, aobj *acol, aobj *apk, aobj *ocol) {
     bt  *nbtr    = btIndFind(ibtr, acol);
     ulong  size1 = nbtr->msize;
-    int  nkeys   = (ocol) ? btIndNodeOBCDelete(nbtr, apk, ocol) :
+    int  nkeys   = (ocol) ? btIndNodeOBCDelete(nbtr, ocol) :
                             btIndNodeDelete   (nbtr, apk);
     ibtr->msize -= (size1 - nbtr->msize);
     if (!nkeys) {
@@ -279,7 +279,7 @@ static void iRemMCI(bt *btr, aobj *apk, int imatch, void *rrow, aobj *ocol) {
         nkeys     = btIndNodeDelete(nbtr, &dcol); /* delete FinalCol from UBT */
         releaseAobj(&dcol); /* NOTE: I or L so not really needed */
     } else {
-        nkeys     = (ocol) ? btIndNodeOBCDelete(nbtr, apk, ocol) :
+        nkeys     = (ocol) ? btIndNodeOBCDelete(nbtr, ocol) :
                              btIndNodeDelete   (nbtr, apk);// del PK from NODEBT
     }
     ulong diff  = (size1 - nbtr->msize);      /* mem-bookeeping trickles up */
