@@ -295,6 +295,7 @@ btSIter *btGetFullRangeIter(bt *btr, bool asc) {
 }
 
 /* FIND_N_ITER FIND_N_ITER FIND_N_ITER FIND_N_ITER FIND_N_ITER FIND_N_ITER */
+//TODO Reverse Xth Iterator
 typedef struct three_longs {
     long l1; long l2; long l3;
 } tl_t;

@@ -2300,6 +2300,7 @@ function test_orderby_index_uu_ul_lu_ll() {
 }
 
 function test_orderby_index_10_entries() {
+  $CLI DROP TABLE ob
   $CLI CREATE TABLE ob "(pk INT, fk INT, ts INT, col TEXT)";
   $CLI CREATE INDEX i_ob ON ob "(fk)" ORDER BY ts;
   $CLI INSERT INTO ob VALUES "(,1,10,'ten')"
@@ -2312,7 +2313,21 @@ function test_orderby_index_10_entries() {
   $CLI INSERT INTO ob VALUES "(,1,3, 'three')"
   $CLI INSERT INTO ob VALUES "(,1,2, 'two')"
   $CLI INSERT INTO ob VALUES "(,1,1, 'one')"
-  $CLI SELECT \* FROM ob WHERE "fk = 1"
+  $CLI INSERT INTO ob VALUES "(,2,9, '29')"
+  $CLI INSERT INTO ob VALUES "(,2,8, '28')"
+  $CLI INSERT INTO ob VALUES "(,2,7, '27')"
+  $CLI INSERT INTO ob VALUES "(,2,6, '26')"
+  $CLI INSERT INTO ob VALUES "(,2,5, '25')"
+  $CLI INSERT INTO ob VALUES "(,2,4, '24')"
+  $CLI INSERT INTO ob VALUES "(,2,3, '23')"
+  $CLI INSERT INTO ob VALUES "(,2,2, '22')"
+  $CLI INSERT INTO ob VALUES "(,2,1, '21')"
+  echo $CLI SELECT \* FROM ob WHERE "fk = 1 ORDER BY ts"
+  $CLI SELECT \* FROM ob WHERE "fk = 1 ORDER BY ts"
+  echo $CLI SELECT \* FROM ob WHERE "fk = 2 ORDER BY ts"
+  $CLI SELECT \* FROM ob WHERE "fk = 2 ORDER BY ts"
+  echo $CLI SELECT \* FROM ob WHERE "fk = 2 ORDER BY ts DESC"
+  $CLI SELECT \* FROM ob WHERE "fk = 2 ORDER BY ts DESC"
 }
 
 function insert_10K_t() {

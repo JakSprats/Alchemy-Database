@@ -115,33 +115,35 @@ static void init_ibtd(ibtd_t *d,    row_op *p,    range_t *g,     qr_t *q,
     d->obc  = obc;
 }
 
-//TODO OBY_INDEXES need specific Q-logic
 static void setRangeQueued(cswc_t *w, wob_t *wb, qr_t *q) {
     bzero(q, sizeof(qr_t));
     r_ind_t *ri     = (w->wf.imatch == -1) ? NULL: &Index[w->wf.imatch];
-    bool     virt   = (w->wf.imatch == -1) ?  0  : ri->virt;
-    int      cmatch = (w->wf.imatch == -1) ? -1  : ri->column ? ri->column : -1;
+    int      obc    = (!ri || ri->obc == -1) ? 0 : ri->obc;
+    bool     virt   = ri ?  ri->virt : 0;
+    int      cmatch = ri ? ri->column ? ri->column : -1 : -1;
     if (virt) { // NOTE: there is no inner_desc possible (no inner loop)
-        q->pk_desc  = (wb->nob >= 1 && (!wb->asc[0] && !wb->obc[0]));
-        q->pk       = (wb->nob > 1) || (wb->nob == 1 && wb->obc[0]);
+        q->pk_desc  = (wb->nob >= 1 && (!wb->asc[0] && wb->obc[0] == obc));
+        q->pk       = (wb->nob > 1) || (wb->nob == 1 && wb->obc[0] != obc);
         q->pk_lim   = (!q->pk    && (wb->lim  != -1));
         q->pk_lo    = (q->pk_lim && (wb->ofst != -1));
         q->qed      = q->pk;
     } else {
         q->fk_desc  = (wb->nob >= 1 && (!wb->asc[0] && wb->obc[0] == cmatch));
-        q->inr_desc = (wb->nob == 1 && (!wb->asc[0] && !wb->obc[0])) ||
-                      (wb->nob > 1 && /* ORDERBY FK, PK DESC */
-                        (wb->obc[0] == cmatch) && (!wb->asc[1] && !wb->obc[1]));
+        q->inr_desc = (wb->nob == 1 && (!wb->asc[0] && wb->obc[0] == obc)) ||
+                      (wb->nob > 1 && (wb->obc[0] == cmatch) &&
+                       (!wb->asc[1] && wb->obc[1] == obc)); // FK,PK DESC
         if (w->wtype & SQL_SINGLE_FK_LKP) {
             q->fk   = (wb->nob > 2) ||// NoQ:[OBY FK|OBY PK|OBY FK,PK|OBY PK,FK]
-                      (wb->nob == 1 && wb->obc[0] && (wb->obc[0] != cmatch)) ||
-                      (wb->nob == 2 && 
-                        ((wb->obc[0] != cmatch) && (wb->obc[1])) && // FK,PK
-                        ((wb->obc[1] != cmatch) && (wb->obc[0])));  // PK,FK
+                      (wb->nob == 1 &&  // [FK}&[PK]
+                       (wb->obc[0] != cmatch) && (wb->obc[0] != obc)) ||
+                      (wb->nob == 2 &&  // [FK,PK]&[PK,FK]
+                      ((wb->obc[0] != cmatch) && (wb->obc[0] != obc)) &&
+                      ((wb->obc[1] != cmatch) && (wb->obc[1] != obc)));
         } else { // FK RANGE QUERY
             q->fk   = (wb->nob > 2) || // NoQ: [OBY FK| OBY FK,PK]
                       (wb->nob == 1 && (wb->obc[0] != cmatch)) ||
-                      (wb->nob == 2 && (wb->obc[0] != cmatch) && (wb->obc[1]));
+                      (wb->nob == 2 && 
+                       (wb->obc[0] != cmatch) && (wb->obc[1] != obc));
         }
         q->fk_lim   = (!q->fk    && (wb->lim  != -1));
         q->fk_lo    = (q->fk_lim && (wb->ofst != -1));
