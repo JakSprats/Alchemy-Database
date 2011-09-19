@@ -60,16 +60,18 @@ static bool Bdum; /* dummy variable */
   printf("singleOpPK: tmatch: %d\n", g->co.w->wf.tmatch);
 #define DEBUG_RANGE_PK                                        \
   printf("rangeOpPK: imatch: %d\n", g->co.w->wf.imatch);
-#define DEBUG_NODE_BT                                         \
+#define DEBUG_UBT_OP                                                       \
+  printf("uBT_Op: UniqueIndexVal: "); dumpAobj(printf, &UniqueIndexVal);
+#define DEBUG_NODE_BT                                                      \
   printf("nodeBT_Op: nbtr->numkeys: %d\n", d->nbtr->numkeys);
 #define DEBUG_NODE_BT_OBC                                                  \
   printf("nodeBT_Op: obc: %d val: %p key: ", d->obc, nbe->val);            \
   dumpAobj(printf, &akey); printf("nbe_key: "); dumpAobj(printf, nbe->key);
-#define DEBUG_MCI_FIND                                        \
+#define DEBUG_MCI_FIND                                                     \
   printf("in btMCIFindVal: trgr: %d\n", trgr);
-#define DEBUG_MCI_FIND_MID                                    \
+#define DEBUG_MCI_FIND_MID                                                 \
   dumpFilter(printf, flt, "\t");
-#define DEBUG_RUN_ON_NODE                                     \
+#define DEBUG_RUN_ON_NODE                                                  \
   printf("in runOnNode: ibtr: %p still: %u nop: %p\n", ibtr, still, nop);  \
   bt_dumptree(printf, ibtr, 0);
 #define DEBUG_SINGLE_FK                                       \
@@ -153,7 +155,7 @@ static void setRangeQueued(cswc_t *w, wob_t *wb, qr_t *q) {
                         (wb->nob == 1 &&  // [FK}&[PK]
                          (wb->obc[0] != cmatch) && (wb->obc[0] != obc)) ||
                         (wb->nob == 2 &&  // [FK,PK]&[PK,FK]
-                         (!((wb->obc[0] == cmatch) && (wb->obc[1] == obc)) ||
+                         (!((wb->obc[0] == cmatch) && (wb->obc[1] == obc)) &&
                           !((wb->obc[1] == cmatch) && (wb->obc[0] == obc))));
             }
         } else { // FK RANGE QUERY (clist[MCI] not yet supported)
@@ -232,7 +234,7 @@ void initX_DB_Range() { /* NOTE: called on server startup */
     initAobj(&UniqueIndexVal);
 }
 typedef bool node_op(ibtd_t *d);
-static bool uBT_Op(ibtd_t *d) {
+static bool uBT_Op(ibtd_t *d) {                                  //DEBUG_UBT_OP
     INCR(*d->loops)
     if (d->g->se.cstar) { INCR(*d->card) return 1; }
     qr_t  *q   = d->g->q;     /* code compaction */

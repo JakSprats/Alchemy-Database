@@ -341,19 +341,24 @@ static bool join_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
     }
     return ret;
 }
-static void setupFirstJoinStep(jb_t *jb, cswc_t *w) {
+static void setupFirstJoinStep(cswc_t *w, jb_t *jb, qr_t *q) {
     init_check_sql_where_clause(w, -1, NULL);
-    ijp_t  *ij  = &jb->ij[0];
-    promoteKLorFLtoW(w, &ij->lhs.klist, &ij->flist, 0);         //DEBUG_JOIN_GEN
-    r_ind_t *ri = &Index[w->wf.imatch];
-    JoinQed     = (jb->wb.nob && 
-                   (ri->table != jb->wb.obt[0] || ri->column != jb->wb.obc[0]));
-    JoinLim     = jb->wb.lim;
-    JoinOfst    = jb->wb.ofst;                                  //DEBUG_JOIN_QED
+    ijp_t *ij = &jb->ij[0];
+    promoteKLorFLtoW(w, &ij->lhs.klist, &ij->flist, 0);        //DEBUG_JOIN_GEN
+    setQueued(w, &jb->wb, q);
+    JoinQed   = q->qed;
+    if (!JoinQed) {
+        r_ind_t *ri = &Index[w->wf.imatch];
+        for (uint32_t i = 0; i < jb->wb.nob; i++) {
+            if (jb->wb.obt[i] != ri->table) { JoinQed = 1; break; }
+        }
+    }
+    JoinLim   = jb->wb.lim;
+    JoinOfst  = jb->wb.ofst;                                   //DEBUG_JOIN_QED
 }
 void joinGeneric(redisClient *c, jb_t *jb) {
     qr_t q; bzero(&q, sizeof(qr_t)); //TODO make GLOBAL
-    cswc_t w; setupFirstJoinStep(jb, &w);
+    cswc_t w; setupFirstJoinStep(&w, jb, &q);
     if (w.wf.imatch == -1) { addReply(c, shared.join_qo_err); return; }
     c->LruColInSelect = initLRUCS_J(jb);
     list *ll          = initOBsort(JoinQed, &jb->wb);
@@ -461,7 +466,8 @@ void dumpJB(cli *c, printer *prn, jb_t *jb) {
                  (lc == -1) ? "" : (char *)Tbl[lt].col_name[lc]->ptr);
     }
     if (c->Explain) {
-        cswc_t  w; setupFirstJoinStep(jb, &w);
+        qr_t q; bzero(&q, sizeof(qr_t));
+        cswc_t w; setupFirstJoinStep(&w, jb, &q);
         dumpFilter(prn, &w.wf, "\t");
         dumpFL(prn, "\t\t\t\t", "FLIST", jb->ij[0].flist);
     }

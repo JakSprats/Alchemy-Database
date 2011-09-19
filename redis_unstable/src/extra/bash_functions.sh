@@ -2369,3 +2369,38 @@ function test_mci_obyindex() {
   echo $CLI SELECT \* FROM mci_ob WHERE "fk1 = 2 AND fk2 = 2 ORDER BY ts"
   $CLI SELECT \* FROM mci_ob WHERE "fk1 = 2 AND fk2 = 2 ORDER BY ts"
 }
+
+function test_joins_w_order_by_permutations() {
+  $CLI DROP TABLE join_1
+  $CLI CREATE TABLE join_1 "(pk INT, fk1 INT, ts INT, col TEXT)"
+  $CLI CREATE INDEX i_j1 ON join_1 "(fk1)"
+  $CLI INSERT INTO join_1 VALUES "(,1,999,'11')"
+  $CLI INSERT INTO join_1 VALUES "(,1,998,'12')"
+  $CLI INSERT INTO join_1 VALUES "(,1,997,'13')"
+  $CLI INSERT INTO join_1 VALUES "(,1,996,'14')"
+  $CLI INSERT INTO join_1 VALUES "(,2,995,'21')"
+  $CLI INSERT INTO join_1 VALUES "(,2,994,'22')"
+  $CLI INSERT INTO join_1 VALUES "(,2,993,'23')"
+  $CLI INSERT INTO join_1 VALUES "(,2,992,'24')"
+  $CLI INSERT INTO join_1 VALUES "(,2,991,'25')"
+  $CLI DROP TABLE join_ob
+  $CLI CREATE TABLE join_ob "(pk INT, fk1 INT, ts INT, col TEXT)"
+  $CLI CREATE INDEX i_job ON join_ob "(fk1)" ORDER BY ts
+  $CLI INSERT INTO join_ob VALUES "(,1,999,'11')"
+  $CLI INSERT INTO join_ob VALUES "(,1,998,'12')"
+  $CLI INSERT INTO join_ob VALUES "(,1,997,'13')"
+  $CLI INSERT INTO join_ob VALUES "(,1,996,'14')"
+  $CLI INSERT INTO join_ob VALUES "(,2,995,'21')"
+  $CLI INSERT INTO join_ob VALUES "(,2,994,'22')"
+  echo $CLI EXPLAIN SELECT \* FROM "join_ob o, join_1 j" WHERE "o.fk1 = j.fk1 AND o.fk1 = 2 ORDER BY o.ts DESC"
+  PLAN=$($CLI EXPLAIN SELECT \* FROM "join_ob o, join_1 j" WHERE "o.fk1 = j.fk1 AND o.fk1 = 2 ORDER BY o.ts DESC")
+  echo -ne "${PLAN}" |grep JoinQed:
+  echo $CLI EXPLAIN SELECT \* FROM "join_ob o, join_1 j" WHERE "o.fk1 = j.fk1 AND o.fk1 = 2 ORDER BY o.fk1, o.ts"
+  PLAN=$($CLI EXPLAIN SELECT \* FROM "join_ob o, join_1 j" WHERE "o.fk1 = j.fk1 AND o.fk1 = 2 ORDER BY o.fk1, o.ts")
+  echo -ne "${PLAN}" |grep JoinQed:
+  echo $CLI EXPLAIN SELECT \* FROM "join_ob o, join_1 j" WHERE "o.fk1 = j.fk1 AND o.fk1 = 2 ORDER BY o.fk1, o.pk"
+  PLAN=$($CLI EXPLAIN SELECT \* FROM "join_ob o, join_1 j" WHERE "o.fk1 = j.fk1 AND o.fk1 = 2 ORDER BY o.fk1, o.pk")
+  echo -ne "${PLAN}" |grep JoinQed:
+  PLAN=$($CLI EXPLAIN SELECT \* FROM "join_ob o, join_1 j" WHERE "o.fk1 = j.fk1 AND o.fk1 = 2 ORDER BY o.fk1, o.ts, j.fk1")
+  echo -ne "${PLAN}" |grep JoinQed:
+}
