@@ -25,6 +25,9 @@
 #include "query.h"
 #include "bt.h"
 
+extern sds DumpOutput;
+
+// PROTOTYPES
 static void dumpnode(printer *prn, bt *btr, bt_n *n, int depth,
                      bool is_index, int slot);
 int treeheight(bt *btr);
@@ -47,6 +50,26 @@ void bt_dumptree(printer *prn, bt *btr, bool is_index) {
         dumpnode(prn, btr, btr->root, 0, is_index, 0);
     }
     (*prn)("\n");
+}
+
+uint32_t Scion = 0;
+static void sum_scion(bt *btr, bt_n *x, int depth, int treeheight) {
+    if (!x->leaf) {
+        depth++;
+        for (int i = 0; i <= x->n; i++) {
+            if (!i && depth == treeheight) Scion += x->scion;
+            sum_scion(btr, NODES(btr, x)[i], depth, treeheight);
+        }
+    }
+}
+void validate_root_scion(bt *btr) {
+    printf("validate_root_scion\n"); bt_dump_info(printf, btr);
+    if (btr->root && btr->numkeys > 0) {
+        Scion = 0;
+        uint32_t root_scion = btr->root->scion;
+        sum_scion(btr, btr->root, 0, treeheight(btr) - 2);
+        printf("root_scion: %d rest_scion: %d\n", root_scion, Scion);
+    }
 }
 
 static void dumpnode(printer *prn, bt *btr, bt_n *x,
@@ -107,16 +130,13 @@ static void dumpnode(printer *prn, bt *btr, bt_n *x,
 }
 
 static int checkbtreenode(bt *btr, bt_n *x, void *kmin, void *kmax, int isrut) {
-    int i;
-
     if (x == NULL){ /* check that the two keys are in order */
         if (btr->cmp(kmin, kmax) >= 0) return 0;
         else                           return 1;
     } else {
         if (!isrut && (x->n < btr->t - 1 || x->n > 2 * btr->t - 1)) {
             printf("node, to few or to many: %d\n", x->n);
-            bt_dumptree(printf, btr, 0);
-            exit(1);
+            bt_dumptree(printf, btr, 0); exit(1);
         }
         /* check subnodes */
         if (x->n == 0 && !x->leaf) {
@@ -130,6 +150,7 @@ static int checkbtreenode(bt *btr, bt_n *x, void *kmin, void *kmax, int isrut) {
         }
         if (!checkbtreenode(btr, NODES(btr, x)[0], kmin, KEYS(btr, x, 0), 0))
             return 0;
+        int i;
         for (i = 1; i < x->n; i++)
             if (!checkbtreenode(btr, NODES(btr, x)[i],
                                 KEYS(btr, x, i - 1), KEYS(btr, x, i), 0))
@@ -157,7 +178,6 @@ int treeheight(bt *btr) {
 
 
 /* used for DEBUGGING the Btrees innards */
-//#define DUMP_BTREE_TO_STDOUT
 #include "alsosql.h"
 #include "index.h"
 extern struct redisServer server;
@@ -167,12 +187,15 @@ extern r_ind_t Index[MAX_NUM_INDICES];
 void btreeCommand(redisClient *c) {
     initQueueOutput();
     printer *prn = queueOutput;
-#ifdef DUMP_BTREE_TO_STDOUT
-    prn          = printf;
-#endif
     TABLE_CHECK_OR_REPLY(c->argv[1]->ptr,)
     MATCH_INDICES(tmatch)
-    bt *btr = getBtr(tmatch);
+    bt   *btr   = getBtr(tmatch);
+    char *fname = NULL;
+   if (c->argc > 4 && (!strcasecmp(c->argv[2]->ptr, "TO") &&
+                       !strcasecmp(c->argv[3]->ptr, "FILE"))) {
+       fname = c->argv[4]->ptr;
+    }
+
     bt_dumptree(prn, btr, 0); //TODO put in sdsfunc
     if (matches) {
         for (int i = 0; i < matches; i++) {
@@ -184,8 +207,12 @@ void btreeCommand(redisClient *c) {
             }
         }
     }
-    dumpQueueOutput(c);
-#ifdef DUMP_BTREE_TO_STDOUT
-    fflush(NULL);
-#endif
+    if (fname) {
+        FILE *fp    = NULL;
+        if((fp = fopen(fname, "w")) == NULL) return;
+        fwrite(DumpOutput, sdslen(DumpOutput), 1, fp);
+        fclose(fp);
+        addReply(c, shared.ok);
+    }
+    else dumpQueueOutput(c);
 }

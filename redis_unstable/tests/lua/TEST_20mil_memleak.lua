@@ -1,7 +1,7 @@
 package.path = package.path .. ";;test/?.lua"
 require "is_external"
 
-local req    = 1000000;
+local req    = 20000000;
 local tbl    = "memleak";
 local pkname = "id";
 
@@ -19,11 +19,12 @@ function lua_check_tbl(req, tbl, pkname)
     for i= 1, req do
         local res = select(pkname, tbl, pkname .. ' = ' .. i);
         if (res == nil) then
-            print (tbl .. ' missing: ' .. i);
+            print ('ERROR: ' .. tbl .. ' missing: ' .. i); return;
         else
             local id  = res[1];
             if (tonumber(id) ~= i) then
-                print (tbl .. ' missing: ' .. i .. ' got: ' .. id);
+                print ('ERROR: ' .. tbl .. ' missing: ' .. i .. ' got: ' .. id);
+                return;
             end
         end
     end

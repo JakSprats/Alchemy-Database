@@ -2404,3 +2404,26 @@ function test_joins_w_order_by_permutations() {
   PLAN=$($CLI EXPLAIN SELECT \* FROM "join_ob o, join_1 j" WHERE "o.fk1 = j.fk1 AND o.fk1 = 2 ORDER BY o.fk1, o.ts, j.fk1")
   echo -ne "${PLAN}" |grep JoinQed:
 }
+
+function populate_table_t_w_3M_entries() {
+  $CLI DROP TABLE t
+  $CLI CREATE TABLE t "(pk INT, fk INT, val TEXT)"
+  $CLI CREATE INDEX i_t ON t "(fk)"
+  taskset -c 1 ./alchemy-gen-benchmark -n 3000000 -c 200 -s 1 -m 100,10000000 -A OK -Q INSERT INTO t VALUES "(00000000000001,00000000000001,'pagename_00000000000001')"
+}
+DECIMATE_START=3000000
+function decimate_table_t_w_3M_entries() {
+  DECIMATE_START=$[${DECIMATE_START}-999]
+  echo taskset -c 1 ./alchemy-gen-benchmark -c 200 -n 1000000 -r $DECIMATE_START -A INT -Q DELETE FROM t WHERE "pk=00000000000001"
+  taskset -c 1 ./alchemy-gen-benchmark -c 200 -n 1000000 -r $DECIMATE_START -A INT -Q DELETE FROM t WHERE "pk=00000000000001"
+  $CLI SCAN "COUNT(*)" FROM t
+}
+
+
+# 10million entries ONLY 3FK, good for testing LARGE indexes
+function populate_table_t_w_10M_3FK_entries() {
+  $CLI DROP TABLE t
+  $CLI CREATE TABLE t "(pk INT, fk INT, val TEXT)"
+  $CLI CREATE INDEX i_t ON t "(fk)"
+  taskset -c 1 ./alchemy-gen-benchmark -n 10000000 -c 200 -s 1 -m 3,10000000 -A OK -Q INSERT INTO t VALUES "(00000000000001,00000000000001,'pagename_00000000000001')"
+}

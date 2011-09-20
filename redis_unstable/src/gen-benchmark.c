@@ -506,10 +506,10 @@ static void usage(char *arg) {
     printf(" -i <incr_num>           Use incremental sequential keys\n");
     printf(" -m <modulo,,,,,,>       Modulo for foreign keys (2nd instance of \"0000\")\n");
     printf("  Using this option the benchmark will string replace queries\n");
-    printf("  in the form 000012345678 instead of constant 000000000001\n");
+    printf("  in the form 000012345678 instead of constant 00000000000001\n");
     printf("  The <keyspacelen> argument determines the max\n");
     printf("  number of values for the random number. For instance\n");
-    printf("  if set to 10 only (000000000000 - 000000000009) range will be generated.\n");
+    printf("  if set to 10 only (00000000000001 - 00000000000011) range will be generated.\n");
     printf(" -q                      Quiet. Just show query/sec values\n");
     printf(" -l                      Loop. Run the tests forever\n");
     exit(1);

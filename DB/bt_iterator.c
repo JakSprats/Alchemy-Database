@@ -41,9 +41,14 @@ ALL RIGHTS RESERVED
 #define DUMP_CURR_KEY \
   { void *curr = KEYS(iter->btr, iter->bln->self, iter->bln->ik); \
     aobj  key; convertStream2Key(curr, &key, iter->btr);          \
-    printf("ik: %d\n", iter->bln->ik); dumpAobj(printf, &key); } FFLUSH
+    printf("ik: %d key: ", iter->bln->ik); dumpAobj(printf, &key); } FFLUSH
+#define DEBUG_ITER_NODE \
+  printf("iter_node: ik: %d in: %d\n", iter->bln->ik, iter->bln->in);
 
-bt_ll_n *get_new_iter_child(btIterator *iter) {//printf("get_new_iter_child\n");
+#define GET_NEW_CHILD(iter) \
+ if (!iter->bln->child) { iter->bln->child = get_new_iter_child(iter); }
+
+bt_ll_n *get_new_iter_child(btIterator *iter) { //printf("get_newiterchild\n");
     assert(iter->num_nodes < MAX_BTREE_DEPTH);
     bt_ll_n *nn = &(iter->nodes[iter->num_nodes]);
     bzero(nn, sizeof(bt_ll_n));
@@ -52,7 +57,7 @@ bt_ll_n *get_new_iter_child(btIterator *iter) {//printf("get_new_iter_child\n");
 }
 
 // ASC_ITERATOR ASC_ITERATOR ASC_ITERATOR ASC_ITERATOR ASC_ITERATOR
-void become_child(btIterator *iter, bt_n* self) { // printf("become_child\n");
+void become_child(btIterator *iter, bt_n* self) {  //printf("become_child\n");
     iter->depth++;
     iter->bln->child->parent = iter->bln;
     iter->bln->child->ik     = 0;
@@ -60,15 +65,7 @@ void become_child(btIterator *iter, bt_n* self) { // printf("become_child\n");
     iter->bln->child->self   = self;
     iter->bln                = iter->bln->child;
 }
-static bool advance_node(btIterator *iter, bool recursed) {
-    if ((iter->bln->ik + 1) < iter->bln->self->n) iter->bln->ik++;
-    bool good = 0;
-    if (recursed) { if((iter->bln->in + 1) <  iter->bln->self->n) good = 1; }
-    else          { if((iter->bln->in + 1) <= iter->bln->self->n) good = 1; }
-    if (good)     { iter->bln->in++; return 1; }
-    return 0;
-}
-static void iter_to_parent_recurse(btIterator *iter) { 
+static void iter_to_parent_recurse(btIterator *iter) {  //printf("to_parent\n");
     if (!iter->bln->parent) { iter->finished = 1; return; } /* finished */
     iter->depth--;
     bt   *btr    = iter->btr;
@@ -77,26 +74,29 @@ static void iter_to_parent_recurse(btIterator *iter) {
     void *parent = KEYS(btr, iter->bln->self, iter->bln->ik);
     int   x      = btr->cmp(child, parent);
     if (x > 0) {
-        if (!advance_node(iter, 1)) iter_to_parent_recurse(iter);/*right-leaf*/
+        if ((iter->bln->ik + 1) < iter->bln->self->n) iter->bln->ik++;
+        if ((iter->bln->in + 1) < iter->bln->self->n) iter->bln->in++;
+        else iter_to_parent_recurse(iter);/*right-leaf*/
     }
 }
-static void iter_leaf(btIterator *iter) { // LEAF (n means numkeys)
+static void iter_leaf(btIterator *iter) { //printf("iter_leaf\n");
     if ((iter->bln->ik + 1) < iter->bln->self->n) iter->bln->ik++;
     else                                          iter_to_parent_recurse(iter);
 }
 static void become_child_recurse(btIterator *iter, bt_n* self) {
     become_child(iter, self);
     if (!iter->bln->self->leaf) { // depth-first
-        if (!iter->bln->child) iter->bln->child = get_new_iter_child(iter);
+        GET_NEW_CHILD(iter)
         bt *btr = iter->btr;
         become_child_recurse(iter, NODES(btr, iter->bln->self)[iter->bln->in]);
     }
 }
-static void iter_node(btIterator *iter) {
-    advance_node(iter, 0);
-    bt *btr = iter->btr;
-    if (!iter->bln->child) { iter->bln->child = get_new_iter_child(iter); }
-    become_child_recurse(iter, NODES(btr, iter->bln->self)[iter->bln->in]);
+static void iter_node(btIterator *iter) { //DEBUG_ITER_NODE
+    if ((iter->bln->ik + 1) <  iter->bln->self->n) iter->bln->ik++;
+    if ((iter->bln->in + 1) <= iter->bln->self->n) iter->bln->in++;
+    GET_NEW_CHILD(iter)
+    become_child_recurse(iter,
+                         NODES(iter->btr, iter->bln->self)[iter->bln->in]);
 }
 
 void *btNext(btIterator *iter) { //printf("btNext "); DUMP_CURR_KEY
@@ -119,12 +119,13 @@ void become_child_rev(btIterator *iter, bt_n* self) {
 static void become_child_recurse_rev(btIterator *iter, bt_n* self) {
     become_child_rev(iter, self);
     if (!iter->bln->self->leaf) { // depth-first
-        if (!iter->bln->child) iter->bln->child = get_new_iter_child(iter);
+        GET_NEW_CHILD(iter)
         bt *btr = iter->btr;
         become_child_recurse_rev(iter,
                                  NODES(btr, iter->bln->self)[iter->bln->in]);
     }
 }
+//TODO break this function out wherever it is called
 static bool retreat_node(btIterator *iter, bool recursed) {
     if (recursed) {
         if (iter->bln->ik) iter->bln->ik--;
@@ -154,7 +155,7 @@ static void iter_leaf_rev(btIterator *iter) {
 static void iter_node_rev(btIterator *iter) {
     retreat_node(iter, 0);
     bt *btr = iter->btr;
-    if (!iter->bln->child) iter->bln->child = get_new_iter_child(iter);
+    GET_NEW_CHILD(iter)
     become_child_recurse_rev(iter, NODES(btr, iter->bln->self)[iter->bln->in]);
 }
 
@@ -294,80 +295,127 @@ btSIter *btGetFullRangeIter(bt *btr, bool asc) {
     return siter;
 }
 
-/* FIND_N_ITER FIND_N_ITER FIND_N_ITER FIND_N_ITER FIND_N_ITER FIND_N_ITER */
+// SCION_ITERATOR SCION_ITERATOR SCION_ITERATOR SCION_ITERATOR SCION_ITERATOR
 //TODO Reverse Xth Iterator
-typedef struct three_longs {
-    long l1; long l2; long l3;
-} tl_t;
-static void iter_leaf_cnt(btIterator *iter) {
-    long cnt  = (long)(iter->bln->self->n - iter->bln->ik);
-    tl_t *tl  = (tl_t *)iter->data;
-    tl->l3    = tl->l2 - tl->l1;
-    //printf("LEAF: l1: %ld l2: %ld l3: %ld cn: %ld\n",
-    //          tl->l1, tl->l2, tl->l3, cnt);
-    tl->l1   += cnt; /* "count += n */
-    if (tl->l1 >= tl->l2) return;
+#define DEBUG_ITER_LEAF_CNT                                          \
+  printf("iter_leaf_cnt: key: "); DUMP_CURR_KEY                      \
+  printf("LEAF: ik: %d n: %d flcnt: %d cnt: %d ofst: %d\n",          \
+         iter->bln->ik, iter->bln->self->n, fl->cnt, cnt, fl->ofst);
+#define DEBUG_ITER_NODE_CNT                                          \
+  printf("iter_node_cnt\n");                                         \
+  printf("kid_in: %d kid: %p in: %d\n", kid_in, kid, iter->bln->in); \
+  printf("scioned: %d scion: %d diff: %d cnt: %d ofst: %d\n",        \
+          scioned, kid->scion, fl->diff, fl->cnt, fl->ofst);
+#define DEBUG_SCION_FIND \
+  printf("btScionFind: PRE _LOOP: ofst: %d key: ", ofst); \
+  btIterator *iter = &siter->x; DUMP_CURR_KEY
 
-    /* move to end of block */
-    iter->bln->ik = iter->bln->self->n ? iter->bln->self->n - 1 : 0;
+typedef struct four_longs {
+    long cnt; long ofst; long diff; long over;
+} fol_t;
+static void iter_leaf_cnt(btIterator *iter) {
+    long   cnt     = (long)(iter->bln->self->n - iter->bln->ik);
+    fol_t *fl      = (fol_t *)iter->data; //DEBUG_ITER_LEAF_CNT
+    if (fl->cnt + cnt >= fl->ofst) { fl->over = fl->ofst - fl->cnt; return; }
+    fl->cnt       += cnt;
+    fl->diff       = fl->ofst - fl->cnt;
+    iter->bln->ik  = iter->bln->self->n - 1; /* move to end of block */
+    iter->bln->in  = iter->bln->self->n;
     iter_to_parent_recurse(iter);
 }
-static void iter_node_cnt(btIterator *iter) {
-    tl_t *tl = (tl_t *)iter->data;
-    tl->l1++;/* "count++" */
-    tl->l3   = tl->l2 - tl->l1;
-    //printf("NODE: l1: %ld l2: %ld l3: %ld\n", tl->l1, tl->l2, tl->l3);
-    if (tl->l1 > tl->l2) return;
-    advance_node(iter, 0);
-    bt *btr  = iter->btr;
-    if (!iter->bln->child) { iter->bln->child = get_new_iter_child(iter); }
-    become_child_recurse(iter, NODES(btr, iter->bln->self)[iter->bln->in]);
+static void next_node_or_parent(btIterator *iter) {
+    if ((iter->bln->ik + 1) < iter->bln->self->n) iter->bln->ik++;
+    if ((iter->bln->in + 1) < iter->bln->self->n) iter->bln->in++;
+    else                                          iter_to_parent_recurse(iter);
 }
-static btSIter *XthIteratorFind(btSIter *siter, aobj *alow, long x, bt *btr) {
+static void iter_node_cnt(btIterator *iter) {
+    fol_t *fl      = (fol_t *)iter->data;
+    uchar  kid_in  = (iter->bln->in == iter->bln->self->n) ? iter->bln->in :
+                                                             iter->bln->in + 1;
+    bt_n  *kid     = NODES(iter->btr, iter->bln->self)[kid_in];
+    bool   scioned = (fl->diff > kid->scion); //DEBUG_ITER_NODE_CNT
+    if (scioned) {
+        fl->cnt  += kid->scion + 1; // +1 for NODE itself
+        fl->diff  = fl->ofst - fl->cnt;
+        next_node_or_parent(iter);
+        if (!fl->diff) { fl->over = 0; return; }
+    } else {
+        fl->cnt++;
+        fl->diff  = fl->ofst - fl->cnt;
+        if ((iter->bln->ik + 1) < iter->bln->self->n) iter->bln->ik++;
+        iter->bln->in++;
+        GET_NEW_CHILD(iter)
+        become_child_recurse(iter,
+                             NODES(iter->btr, iter->bln->self)[iter->bln->in]);
+        if (!fl->diff) { fl->over = 0; return; }
+    }
+}
+static bool XthIteratorFind(btSIter *siter, aobj *alow, long ofst, bt *btr) {
     bool med; uint32 ksize;
     char *bkey = createBTKey(alow, &med, &ksize, btr);   /* DESTROY ME 031 */
-    if (!bkey) return NULL;
+    if (!bkey) return 0;
     bt_init_iterator(btr, bkey, &(siter->x));
     destroyBTKey(bkey, med);                             /* DESTROYED 031 */
-
-    tl_t tl;
-    tl.l1         = 0; /* count */
-    tl.l2         = x; /* offset */
-    tl.l3         = 0; /* final difference */
-    siter->x.data = &tl;
+    siter->x.iNode = iter_node_cnt; siter->x.iLeaf = iter_leaf_cnt;//SCION ItR8r
+    fol_t fl; bzero(&fl, sizeof(fol_t)); fl.ofst = ofst; fl.over = -1;
+    siter->x.data = &fl;
     while (1) {
         void *be = btNext(&(siter->x));
         if (!be) break;
-        //printf("cnt: %d x: %ld\n", tl.l1, tl.l2);
-        if (tl.l1 >= tl.l2) {
-            //printf("leftover: %ld ik: %d\n", tl.l3, siter->x.bln->ik);
-            siter->x.bln->ik += tl.l3;
-            //printf("ik: %d n1: %d\n",siter->x.bln->ik, siter->x.bln->self->n);
+        if (fl.over != -1) {
+            //printf("ik: %d over: %d\n", siter->x.bln->ik, fl.over);
+            siter->x.bln->ik += fl.over;
             if (siter->x.bln->ik == siter->x.bln->self->n) {
-                //printf("XthIteratorFind iter_to_parent_recurse\n");
-                iter_to_parent_recurse(&(siter->x));
+                siter->x.bln->ik--; iter_to_parent_recurse(&(siter->x));
             }
             break;
         }
     }
-    /* reset to normal iterators */
-    siter->x.iNode = iter_node;
-    siter->x.iLeaf = iter_leaf;
-    return siter;
+    siter->x.iNode = iter_node; siter->x.iLeaf = iter_leaf; // normal ItR8r
+    return 1;
 }
-btSIter *btGetXthIter(bt *btr, aobj *alow, aobj *ahigh, long x) {
+btSIter *btGetXthIter(bt *btr, aobj *alow, aobj *ahigh, long ofst) {
     if (!btr->root || !btr->numkeys) return NULL;
     btSIter *siter = createIterator(btr, iter_leaf_cnt, iter_node_cnt);
     setHigh(siter, ahigh, btr->s.ktype);
-    return XthIteratorFind(siter, alow, x, btr);
+    if (!XthIteratorFind(siter, alow, ofst, btr)) return NULL;
+    return siter;
 }
-btSIter *btGetFullXthIter(bt *btr, long x) {
+
+static long btScionFind(btSIter *siter, bt_n *x, long ofst, bt *btr) {
+    // DEBUG_SCION_FIND
+    for (int i = 0; i <= x->n; i++) {
+        uint32_t scion = NODES(btr, x)[i]->scion;
+        //printf("%d: ofst: %ld scion: %d\n", i, ofst, scion);
+        if (scion == ofst) {
+            siter->x.bln->in = i;
+            siter->x.bln->ik = (i == siter->x.bln->self->n) ? i - 1 : i;
+            return 0;
+        } else if (scion > ofst) { //printf("MAKE CHILD: i: %d\n", i);
+            siter->x.bln->in = i;
+            siter->x.bln->ik = (i == siter->x.bln->self->n) ? i - 1 : i;
+            siter->x.bln->child = get_new_iter_child(&siter->x);
+            become_child(&siter->x, NODES(btr, x)[i]);
+            bt_n *kid = NODES(btr, x)[i];
+            if (!kid->leaf) {
+                return btScionFind(siter, kid, ofst, btr);
+            }
+            break;
+        } else ofst -= (scion + 1); // +1 for NODE itself
+    } //printf("btScionFind: POST_LOOP: ofst: %d\n", ofst);
+    siter->x.bln->ik = ofst;
+    return 0;
+}
+btSIter *btGetFullXthIter(bt *btr, long ofst) {
     if (!btr->root || !btr->numkeys) return NULL;
     aobj aL, aH;
     if (!assignMinKey(btr, &aL) || !assignMaxKey(btr, &aH)) return NULL;
-    btSIter *siter = createIterator(btr, iter_leaf_cnt, iter_node_cnt);
+    bool asc = 1;
+    btSIter *siter = createIterator(btr, asc ? iter_leaf : iter_leaf_rev, 
+                                         asc ? iter_node : iter_node_rev);
     setHigh(siter, &aH, btr->s.ktype);
-    siter          = XthIteratorFind(siter, &aL, x, btr);
+    btScionFind(siter, btr->root, ofst, btr);
     releaseAobj(&aL); releaseAobj(&aH);
+    //btIterator *iter = &siter->x; DUMP_CURR_KEY
     return siter;
 }

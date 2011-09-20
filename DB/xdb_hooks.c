@@ -146,7 +146,7 @@ struct redisCommand DXDBCommandTable[] = {
     {"dirty",      dirtyCommand,      -1, 0,                   GLOB_FUNC_END},
 
     {"show",       showCommand,        2, 0,                   GLOB_FUNC_END},
-    {"btree",      btreeCommand,       2, 0,                   GLOB_FUNC_END},
+    {"btree",      btreeCommand,      -2, 0,                   GLOB_FUNC_END},
 };
 
 
