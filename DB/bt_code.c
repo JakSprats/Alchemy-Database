@@ -679,7 +679,7 @@ int bt_init_iterator(bt *btr, bt_data_t k, btIterator *iter) {
 
         iter->bln->child = get_new_iter_child(iter);
         x                = NODES(btr, x)[i + 1];
-        become_child(iter, x);
+        to_child(iter, x);
     }
     return -1;
 }

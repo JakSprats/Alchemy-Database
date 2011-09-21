@@ -263,8 +263,8 @@ static bool nodeBT_Op(ibtd_t *d) {                              //DEBUG_NODE_BT
     *d->brkr          = 0;
     bool     gox      = (q->fk_lo && *d->ofst > 0);
     bool     inr_asc  = !q->inr_desc;
-    btSIter *nbi      = gox ? btGetFullXthIter(d->nbtr, *d->ofst) :
-                              btGetFullRangeIter(d->nbtr, inr_asc);
+    btSIter *nbi      = gox ? btGetFullXthIter  (d->nbtr, *d->ofst, inr_asc) :
+                              btGetFullRangeIter(d->nbtr,           inr_asc);
     while ((nbe = btRangeNext(nbi, inr_asc)) != NULL) {
         INCR(*d->loops)
         if (q->fk_lim) {

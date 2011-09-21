@@ -83,13 +83,13 @@ typedef struct btSIter { // btIterator(?500?) 1*char(1) int(1)
 #define RET_ONLY_RIGHT 2
 
 bt_ll_n *get_new_iter_child(btIterator *iter);
-void     become_child(btIterator *iter, bt_n* self);
+void     to_child(btIterator *iter, bt_n* self);
 int      init_iterator(bt *btr, bt_data_t simkey, struct btIterator *iter);
 void    *btNext(btIterator *iter);
 
 btSIter *btGetRangeIter    (bt *btr, aobj *alow, aobj *ahigh,         bool asc);
 btSIter *btGetXthIter      (bt *btr, aobj *alow, aobj *ahigh, long x);
-btSIter *btGetFullXthIter  (bt *btr,                          long x);
+btSIter *btGetFullXthIter  (bt *btr,                          long x, bool asc);
 btSIter *btGetFullRangeIter(bt *btr,                                  bool asc);
 
 btEntry *btRangeNext           (btSIter *iter,                        bool asc);
