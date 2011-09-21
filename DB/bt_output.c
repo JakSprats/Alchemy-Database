@@ -51,6 +51,14 @@ void bt_dumptree(printer *prn, bt *btr, bool is_index) {
     }
     (*prn)("\n");
 }
+void dump_node(bt *btr, bt_n *x) {
+    printf(" NODE: n: %d scion: %d -> (%p)\n", x->n, x->scion, (void *)x);
+    for (int i = 0; i < x->n; i++) {
+        void *be = KEYS(btr, x, i);
+        aobj  key; convertStream2Key(be, &key, btr);
+        printf("KEY: "); dumpAobj(printf, &key);
+    }   
+}
 
 uint32_t Scion = 0;
 static void sum_scion(bt *btr, bt_n *x, int depth, int treeheight) {

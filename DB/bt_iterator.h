@@ -88,7 +88,7 @@ int      init_iterator(bt *btr, bt_data_t simkey, struct btIterator *iter);
 void    *btNext(btIterator *iter);
 
 btSIter *btGetRangeIter    (bt *btr, aobj *alow, aobj *ahigh,         bool asc);
-btSIter *btGetXthIter      (bt *btr, aobj *alow, aobj *ahigh, long x);
+btSIter *btGetXthIter      (bt *btr, aobj *alow, aobj *ahigh, long x, bool asc);
 btSIter *btGetFullXthIter  (bt *btr,                          long x, bool asc);
 btSIter *btGetFullRangeIter(bt *btr,                                  bool asc);
 

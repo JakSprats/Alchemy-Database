@@ -208,7 +208,7 @@ static long singleOpPK(range_t *g, row_op *p) {               //DEBUG_SINGLE_PK
     else                                       return card;
 }
 static long rangeOpPK(range_t *g, row_op *p) {                 //DEBUG_RANGE_PK
-    btEntry *be;
+    btEntry *be; btSIter *bi;
     bool     brkr  = 0;
     cswc_t  *w     = g->co.w;
     wob_t   *wb    = g->co.wb;
@@ -218,9 +218,9 @@ static long rangeOpPK(range_t *g, row_op *p) {                 //DEBUG_RANGE_PK
     bool     asc   = !q->pk_desc;
     long     loops = -1;
     long     card  =  0;
-    btSIter *bi    = q->pk_lo ?
-                      btGetXthIter(btr,   &w->wf.alow, &w->wf.ahigh, wb->ofst) :
-                      btGetRangeIter(btr, &w->wf.alow, &w->wf.ahigh, asc);
+    if (q->pk_lo) bi = btGetXthIter  (btr, &w->wf.alow, &w->wf.ahigh,
+                                      wb->ofst, asc);
+    else          bi = btGetRangeIter(btr, &w->wf.alow, &w->wf.ahigh, asc);
     while ((be = btRangeNext(bi, asc)) != NULL) {
         if (!pk_op_l(be->key, be->val, g, p, wb, q, &card, &loops, &brkr)) CBRK
         if (brkr) break;

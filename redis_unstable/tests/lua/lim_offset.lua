@@ -11,7 +11,7 @@ local saver   = false;
 local mod     = 3;
 local tbl     = "ten_mill_mod_" .. mod;
 
-local c     = 200;
+local c       = 200;
 local req     = 10000000;
 
 
@@ -40,31 +40,43 @@ function test_PK_lim_offset_ten_mill_modX_fk()
   local lim     = 10;
   local debug_every = 50000;
   local nrows     = 10000000;
-  local start     = 1;
+  local start     = 1; --start = 5000000;
   print ('PK TEST PK TEST PK TEST PK TEST PK TEST PK TEST PK TEST');
-  local x = socket.gettime()*1000;
-  local y = x;
-  for i = start, nrows - lim do
-    local res = select('id', tbl,
-             'id BETWEEN 1 AND 10000000 ORDER BY id LIMIT ' .. lim ..
-                              ' OFFSET '.. i);
-    local first = tonumber(res[1]);
-    if (first ~= (i + 1)) then
-      print('PK: first: ' .. first .. ' should be: ' .. (i + 1));
-       return false;
-    end
-    for j = 1, (lim - 1) do
-      local one = tonumber(res[j]); local two = tonumber(res[j + 1]);
-      if (two - one ~= 1) then
-        print('id BETWEEN 1 AND 10000000 ORDER BY id LIMIT ' .. lim ..
-                              ' OFFSET '.. i);
-        print ('PK: ERROR: one: ' .. one .. ' two: ' .. two);
+  local pks = scan("id", tbl, "ORDER BY id DESC LIMIT 1");
+  local mpk = tonumber(pks[1]);
+  local x   = socket.gettime()*1000;
+  local y   = x;
+  for k = 0, 1 do
+    local asc, desc;
+    if (k == 0) then asc = false; desc = ' DESC '; print ('DESC TEST');
+    else             asc = true;  desc = '';       print ('ASC TEST');  end
+    for i = start, nrows - lim do
+      local res = scan('id', tbl, 'ORDER BY id ' .. desc ..
+                                  ' LIMIT ' .. lim ..  ' OFFSET '.. i);
+      local first = tonumber(res[1]);
+      if (asc          and first ~= (i + 1)    or
+          asc == false and first ~= (mpk - i)) then
+        print('ORDER BY id LIMIT ' .. lim ..  ' OFFSET '.. i);
+        if (asc) then
+          print('PK: first: ' .. first .. ' should be: ' .. (i + 1));
+        else
+          print('PK: first: ' .. first .. ' should be: ' .. (mpk - i));
+        end
         return false;
       end
-    end
-    if ((i % debug_every) == 0) then
-      is_external.print_diff_time('DEBUG: PK: iteration: ' .. i, x);
-      x = socket.gettime()*1000;
+      for j = 1, (lim - 1) do
+        local one = tonumber(res[j]); local two = tonumber(res[j + 1]);
+        if (asc          and (two - one ~= 1) or
+            asc == false and (one - two ~= 1)) then
+          print('ORDER BY id LIMIT ' .. lim ..  ' OFFSET '.. i);
+          print ('PK: ERROR: one: ' .. one .. ' two: ' .. two);
+          return false;
+        end
+      end
+      if ((i % debug_every) == 0) then
+        is_external.print_diff_time('DEBUG: PK: iteration: ' .. i, x);
+        x = socket.gettime()*1000;
+      end
     end
   end
   is_external.print_diff_time(
@@ -81,8 +93,8 @@ function test_FK_lim_offset_ten_mill_modX_fk()
   -- FK_TEST FK_TEST FK_TEST FK_TEST FK_TEST FK_TEST FK_TEST
   local pks = select("id", tbl, "fk=2 ORDER BY id DESC LIMIT 1");
   local mpk = tonumber(pks[1]);
-  local x = socket.gettime()*1000;
-  local y = x;
+  local x   = socket.gettime()*1000;
+  local y   = x;
   for k = 0, 1 do
     local asc, desc;
     if (k == 0) then asc = false; desc = ' DESC '; print ('DESC TEST');
@@ -123,6 +135,6 @@ end
 
 if is_external.yes == 1 then
   if (populater) then init_ten_mill_modX(); end
-  if (test_FK_lim_offset_ten_mill_modX_fk() == false) then return; end
   if (test_PK_lim_offset_ten_mill_modX_fk() == false) then return; end
+  if (test_FK_lim_offset_ten_mill_modX_fk() == false) then return; end
 end
