@@ -1,19 +1,15 @@
-package.path = package.path .. ";;test/?.lua"
-require "is_external"
-
-if is_external.yes == 1 then print = print;
-else              print = is_external.print; end
+package.path = package.path .. ";;./?.lua"
+dofile 'external_alchemy.lua';
+dofile 'debug.lua';
 
 local populater = false;
-local saver   = false;
---populater = true; saver = true;
+local saver     = false; --populater = true; saver = true;
 
-local mod     = 3;
-local tbl     = "ten_mill_mod_" .. mod;
+local mod       = 3;
+local tbl       = "ten_mill_mod_" .. mod;
 
-local c       = 200;
-local req     = 10000000;
-
+local c         = 200;
+local req       = 10000000;
 
 function init_ten_mill_modX()
   local indx = "ind_" .. tbl .. "_fk";
@@ -27,20 +23,19 @@ function init_ten_mill_modX()
   local x   = socket.gettime()*1000;
   print ('executing: (' .. icmd .. ')');
   os.execute(icmd);
-  is_external.print_diff_time('time: (' .. icmd .. ')', x);
+  x = debug_print('time: (' .. icmd .. ')', 1, 1, x);
   local x   = socket.gettime()*1000;
   if (saver) then
-    print ('save()'); is_external.print_diff_time('time: save()', x); save();
+    print ('save()'); save(); x = debug_print('time: save()', 1, 1, x);
   end
   return true;
 end
 
-function test_PK_lim_offset_ten_mill_modX_fk()
-  if is_external.yes == 0 then is_external.output = ''; end
-  local lim     = 10;
+function test_PK_lim_offset_ten_mill_modX()
+  local lim         = 10;
   local debug_every = 50000;
-  local nrows     = 10000000;
-  local start     = 1; --start = 5000000;
+  local nrows       = 10000000;
+  local start       = 1; --start = 5000000;
   print ('PK TEST PK TEST PK TEST PK TEST PK TEST PK TEST PK TEST');
   local pks = scan("id", tbl, "ORDER BY id DESC LIMIT 1");
   local mpk = tonumber(pks[1]);
@@ -73,19 +68,14 @@ function test_PK_lim_offset_ten_mill_modX_fk()
           return false;
         end
       end
-      if ((i % debug_every) == 0) then
-        is_external.print_diff_time('DEBUG: PK: iteration: ' .. i, x);
-        x = socket.gettime()*1000;
-      end
+      x = debug_print('DEBUG: PK: ' .. desc, debug_every, i, x);
     end
   end
-  is_external.print_diff_time(
-    'FINISHED: (test_PK_lim_offset_ten_mill_modX_fk) nrows: ' ..  nrows, y);
+  debug_print('FINISHED: (test_PK_lim_offset) nrows: ' .. nrows, 1, 1, y);
   return true;
 end
 
-function test_FK_lim_offset_ten_mill_modX_fk()
-  if is_external.yes == 0 then is_external.output = ''; end
+function test_FK_lim_offset_ten_mill_modX()
   local lim         = 10;
   local debug_every = 50000;
   local nrows       = 3000000;
@@ -122,19 +112,13 @@ function test_FK_lim_offset_ten_mill_modX_fk()
           return false;
         end
       end
-      if ((i % debug_every) == 0) then
-        is_external.print_diff_time('DEBUG: FK: iteration: ' .. i, x);
-        x = socket.gettime()*1000;
-      end
+      x = debug_print('DEBUG: FK: ' .. desc, debug_every, i, x);
     end
   end
-  is_external.print_diff_time(
-     'FINISHED: (test_FK_lim_offset_ten_mill_modX_fk) nrows: ' .. nrows ,y);
+  debug_print('FINISHED: (test_FK_lim_offset) nrows: ' .. nrows, 1, 1, y);
   return true;
 end
 
-if is_external.yes == 1 then
-  if (populater) then init_ten_mill_modX(); end
-  if (test_PK_lim_offset_ten_mill_modX_fk() == false) then return; end
-  if (test_FK_lim_offset_ten_mill_modX_fk() == false) then return; end
-end
+if (populater) then init_ten_mill_modX(); end
+if (test_PK_lim_offset_ten_mill_modX() == false) then return; end
+if (test_FK_lim_offset_ten_mill_modX() == false) then return; end
