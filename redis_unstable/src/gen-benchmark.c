@@ -78,10 +78,11 @@ static struct config {
     int          quiet;
     int          loop;
 
+    int          incr_seq;
     int          sequential;
+
     int          num_modulo;
     int          modulo[MAX_NUM_COLUMNS];
-    int          incr_seq;
 
     sds          query;
     int          qargc;
@@ -504,7 +505,7 @@ static void usage(char *arg) {
     printf(" -r <keyspacelen>        Use random keys\n");
     printf(" -s <sequence_start>     Use sequential keys\n");
     printf(" -i <incr_num>           Use incremental sequential keys\n");
-    printf(" -m <modulo,,,,,,>       Modulo for foreign keys (2nd instance of \"0000\")\n");
+    printf(" -m <modulo,,,,,,>       Modulo for foreign keys (2nd instance of \"0000\") or decrementing value if number is negative\n");
     printf("  Using this option the benchmark will string replace queries\n");
     printf("  in the form 000012345678 instead of constant 00000000000001\n");
     printf("  The <keyspacelen> argument determines the max\n");
@@ -524,6 +525,8 @@ static char *rand_replace(char *p, long r) {
 }
 
 #define MIN(A,B) ((A > B) ? B : A)
+#define MAX(A,B) ((A < B) ? B : A)
+
 static void randomizeClientKey(client c) {
     char *p = c->obuf;
     long  r;
@@ -536,10 +539,14 @@ static void randomizeClientKey(client c) {
         r      = orig_r;
         char x = *(p - 1);
         if (x == '(' || x == ',' || x == '_' || x == '=') {
-            if (hits > 0 && config.num_modulo) {
-                int m = MIN((hits - 1), (config.num_modulo - 1));
-                //printf("m: %d r: %ld c.m: %d\n", m, r, config.modulo[m]);
-                r %= config.modulo[m];
+            if (hits > 0 && hits <= config.num_modulo) {
+                int m    = hits - 1;
+                int decr = (config.modulo[m] > 0) ? 0 : 1;
+                //printf("dcr: %d r: %ld c.m: %d\n", decr, r, config.modulo[m]);
+                if (decr) {
+                    int val = (-1 * config.modulo[m]++); r = MAX(1, val);
+                }
+                else      r %= config.modulo[m];
             }
             if (!r) r = 1; /* 0 as a FK is BAD */
             p  = rand_replace(p, r);

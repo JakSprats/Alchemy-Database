@@ -95,7 +95,7 @@ function test_FK_lim_offset_ten_mill_modX()
       local first = tonumber(res[1]);
       if ((asc          and first ~= (i * mod + 2))or
            asc == false and (first ~= (mpk - mod * i))) then
-        print('fk=2 ORDER BY fk LIMIT ' .. lim .. ' OFFSET '..i);
+        print('fk=2 ORDER BY id LIMIT ' .. lim .. ' OFFSET '..i);
         if (asc) then
           print('FK: 1st: ' .. first .. ' correct: ' .. (i * mod + 2));
         else
@@ -107,7 +107,7 @@ function test_FK_lim_offset_ten_mill_modX()
         local one = tonumber(res[j]); local two = tonumber(res[j + 1]);
         if (asc          and (two - one ~= mod) or
             asc == false and (one - two ~= mod)) then
-          print('fk=2 ORDER BY fk LIMIT ' .. lim .. ' OFFSET ' .. i);
+          print('fk=2 ORDER BY id LIMIT ' .. lim .. ' OFFSET ' .. i);
           print ('FK: ERROR: one: ' .. one .. ' two: ' .. two);
           return false;
         end

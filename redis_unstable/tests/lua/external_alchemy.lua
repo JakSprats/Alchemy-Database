@@ -137,11 +137,6 @@ Redis.define_command('delete', {
 
 redis = Redis.connect('127.0.0.1', 6379);
 
--- LUA
-function luafunc(...)
-  return redis:luafunc(...);
-end
-
 -- SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL
 -- SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL
 function create_table(tname, col_defs)
@@ -174,8 +169,8 @@ function dump_to_file(tname, fname)
   return redis:dump(tname, 'TO', 'FILE', fname);
 end
 
-function create_index(iname, tname, column)
-  return redis:create('INDEX', iname, 'ON', tname, '(' .. column .. ')');
+function create_index(iname, tname, column, ...)
+  return redis:create('INDEX', iname, 'ON', tname, '(' .. column .. ')', ...);
 end
 function create_unique_index(iname, tname, column)
   return redis:create('UNIQUE', 'INDEX', iname, 'ON', tname, '(' .. column .. ')');

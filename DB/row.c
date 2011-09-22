@@ -385,7 +385,10 @@ static bool aobj_sflag(aobj *a, uchar *sflag) {
 #define OVRWR(i, ovrwr, ctype) /*NOTE: !indexed -> upIndex uses orow & nrow */ \
   (i && ovrwr && C_IS_NUM(ctype) && !Tbl[tmatch].col_indxd[i])
 
+#define UP_ERR goto up_end;
+
 //TODO too many arguments for a per-row-OP, merge into a struct
+//TODO set col1 = col2
 int updateRow(cli  *c,      bt      *btr,    aobj  *apk,     void *orow,
               int   tmatch, int     ncols,   int    matches, int   inds[],
               char *vals[], uint32  vlens[], uchar  cmiss[], ue_t  ue[])   {
@@ -406,22 +409,26 @@ int updateRow(cli  *c,      bt      *btr,    aobj  *apk,     void *orow,
             }
         } else if (ue[i].yes) {
             avs[i] = getCol(btr, orow, i, apk, tmatch);
-            if (avs[i].empty) { addReply(c, shared.up_on_mt_col); goto up_end; }
+            if (avs[i].empty) { addReply(c, shared.up_on_mt_col);     UP_ERR }
             if (!OVRWR(i, ovrwr, ctype) ||
                 !aobj_sflag(&avs[i], &osflags[i])) ovrwr = 0;
-            if (!evalExpr(c, &ue[i], &avs[i], ctype))             goto up_end;
+            if (!evalExpr(c, &ue[i], &avs[i], ctype))                 UP_ERR
         } else { /* comes from UPDATE VALUE LIST (no expression) */
             if OVRWR(i, ovrwr, ctype) {
                 aobj a = getCol(btr, orow, i, apk, tmatch);
                 if (!aobj_sflag(&a, &osflags[i])) ovrwr = 0;
             } else ovrwr = 0;
+            char *endptr  = NULL;
             if        C_IS_I(ctype) {
-                ulong l = strtoul(vals[i], NULL, 10); /* OK: DELIM: [\ ,=,\0] */
-                if (l >= TWO_POW_32) { addReply(c, shared.u2big); goto up_end; }
-                initAobjInt(&avs[i], l);
+                ulong l = strtoul(vals[i], &endptr, 10); // OK: DELIM: [\ ,=,\0]
+                if (endptr && !*endptr) { // valid ULONG
+                    if (l >= TWO_POW_32) { addReply(c, shared.u2big); UP_ERR }
+                    initAobjInt(&avs[i], l);
+                } else { addReply(c, shared.updatesyntax); UP_ERR }
             } else if C_IS_L(ctype) {
-                ulong l = strtoul(vals[i], NULL, 10); /* OK: DELIM: [\ ,=,\0] */
-                initAobjLong(&avs[i], l);
+                ulong l = strtoul(vals[i], &endptr, 10); // OK: DELIM: [\ ,=,\0]
+                if (endptr && !*endptr) initAobjLong(&avs[i], l); // valid ULONG
+                else                { addReply(c, shared.updatesyntax); UP_ERR }
             } else if C_IS_F(ctype) {
                 float f = atof(vals[i]);              /* OK: DELIM: [\ ,=,\0] */
                 initAobjFloat(&avs[i], f);
@@ -472,7 +479,7 @@ int updateRow(cli  *c,      bt      *btr,    aobj  *apk,     void *orow,
             for (int i = 0; i < matches; i++) {
                 if (!Index[inds[i]].luat) continue;
                 if (!updateIndex(c, btr, apk, orow, &avs[0], nrow, inds[i])) {
-                                                                  goto up_end;
+                                                                      UP_ERR
             }}
         }
         ret = getIorLKeyLen(apk) + getRowMallocSize(orow);
@@ -482,14 +489,14 @@ int updateRow(cli  *c,      bt      *btr,    aobj  *apk,     void *orow,
         if (!cmiss[0]) { /* PK update */
             for (int i = 0; i < matches; i++) { /* Redo ALL inds */
                 if (!updateIndex(c, btr, apk, orow, &avs[0], nrow, inds[i])) {
-                                                                  goto up_end;
+                                                                      UP_ERR
             }}
             btDelete(btr, apk);              /* DELETE row w/ OLD PK */
             ret = btAdd(btr, &avs[0], nrow); /* ADD row w/ NEW PK */
             UPDATE_AUTO_INC(rt->col_type[0], avs[0])
         } else {
             if (!upEffctdInds(c, btr, apk, orow, avs, nrow,
-                              matches, inds, cmiss))              goto up_end;
+                              matches, inds, cmiss))                  UP_ERR
             ret = btReplace(btr, apk, nrow); /* overwrite w/ new row */
         }
     }
