@@ -5,7 +5,7 @@ dofile 'debug.lua';
 local populater = false;
 local saver     = false; --populater = true; saver = true;
 
-local mod       = 3;
+local mod       = 4;
 local tbl       = "ten_mill_mod_" .. mod;
 
 local c         = 200;
@@ -26,7 +26,7 @@ function init_ten_mill_modX()
   x = debug_print('time: (' .. icmd .. ')', 1, 1, x);
   local x   = socket.gettime()*1000;
   if (saver) then
-    print ('save()'); save(); x = debug_print('time: save()', 1, 1, x);
+    print ('save()'); redis:save(); x = debug_print('time: save()', 1, 1, x);
   end
   return true;
 end

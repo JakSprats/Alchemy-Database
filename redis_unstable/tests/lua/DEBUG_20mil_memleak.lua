@@ -7,7 +7,7 @@ local fullcheck = false;
 
 local req         = 20000000;
 local tbl         = "memleak";
-tbl = "ten_mill_mod_3";
+tbl = "ten_mill_mod_4"; -- DEBUG
 local pkname      = "id";
 local debug_every = 50000;
 

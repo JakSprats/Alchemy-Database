@@ -6,7 +6,7 @@ local populater  = false;
 local saver      = false;
 -- populater = true; saver = true;
 
-local Mod        = "4,-110000000,9999999999";
+local Mod        = "4,-110000000,9999999999"; -- "-110000000" means DECREMENT
 local FKMod      = 4;
 local Tbl        = "ob_tenmill";
 local Col_decl   = "pk INT, fk INT, ts INT, col TEXT";
@@ -38,7 +38,7 @@ end
 function test_FK_OB_ten_mill(tbl, fkmod)
   local lim         = 10;
   local debug_every = 50000;
-  local nrows       = 3000000;
+  local nrows       = 2500000;
   local start       = 1;
   local pks = select("pk", tbl, "fk=2 ORDER BY ts LIMIT 1");
   local mpk = tonumber(pks[1]);
