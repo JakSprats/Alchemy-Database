@@ -607,7 +607,6 @@ bt_data_t bt_delete(bt *btr, bt_data_t k) {
     case_2c_ptr = NULL;                                       //DEBUG_DEL_START
     bt_data_t r = nodedeletekey(btr, btr->root, k, 0);
     btr->numkeys--;                                             //DEBUG_DEL_END
-
     /* remove empty non-leaf node from root, */
     if (!btr->root->n && !btr->root->leaf) { /* NOTE: tree decrease height */
         btr->numnodes--;
@@ -676,7 +675,6 @@ int bt_init_iterator(bt *btr, bt_data_t k, btIterator *iter) {
             if (i != (x->n - 1)) only_right = 0;
             return only_right ? RET_ONLY_RIGHT : RET_LEAF_EXIT;
         }
-
         iter->bln->child = get_new_iter_child(iter);
         x                = NODES(btr, x)[i + 1];
         to_child(iter, x);

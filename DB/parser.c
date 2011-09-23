@@ -57,7 +57,8 @@ inline char *_strnchr(char *s, int c, int len) {
     return NULL;
 }
 
-bool is_int(char *s) {
+//TODO "if (endptr && !*endptr)" is a better check
+bool is_int(char *s) { // Used in UPDATE EXPRESSIONS
     char *endptr;
     long val = strtol(s, &endptr, 10);
     val = 0; /* compiler warning */
@@ -65,7 +66,7 @@ bool is_int(char *s) {
     else                   return 1;
 }
 
-bool is_float(char *s) {
+bool is_float(char *s) { // Used in UPDATE EXPRESSIONS
     char *endptr;
     long val = strtod(s, &endptr);
     val = 0; /* compiler warning */
@@ -299,7 +300,6 @@ char *get_next_token_nonparaned_comma(char *token) {
    return token;
 }
 
-/* PIPE_PARSING PIPE_PARSING PIPE_PARSING PIPE_PARSING PIPE_PARSING */
 /* PIPE_PARSING PIPE_PARSING PIPE_PARSING PIPE_PARSING PIPE_PARSING */
 robj **parseScanCmdToArgv(char *as_cmd, int *argc) {
     int    rargc;

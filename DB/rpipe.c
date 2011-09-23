@@ -118,7 +118,7 @@ static char *rp2Func(char *reply, ADDER_FUNC_DECL, void *v, long *card) {
         case '$':
             p = rp2FuncBulk  (reply, adder, v, card); break;
         case '+': case '-':
-            p = strchr(reply + 1, '\r'); p += 2; break;
+            p = strchr(reply + 1, '\r'); p += 2;      break;
         case '*':
             p = rp2FuncMBulk (reply, adder, v, card); break;
     }
@@ -140,7 +140,6 @@ void fakeClientPipe(cli *rfc, void *v, ADDER_FUNC_DECL) {
         reply   = sdscatlen(reply, o->ptr, sdslen(o->ptr));
         listDelNode(rfc->reply, listFirst(rfc->reply));
     }
-
     long card = 0;
     rp2Func(reply, adder, v, &card);
     sdsfree(reply);

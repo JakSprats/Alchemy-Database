@@ -299,7 +299,6 @@ void DXDB_call(struct redisCommand *cmd, long long *dirty) {
     if (*dirty) server.stat_num_dirty_commands++;
 }
 
-
 static void computeWS_WL_MinMax() {
     if (!WS_WL_Broadcast && WS_WL_Mask.s_addr && WS_WL_Addr.s_addr) {
         WS_WL_Subnet    = WS_WL_Addr.s_addr & WS_WL_Mask.s_addr;
@@ -498,8 +497,8 @@ void DXDB_configGetCommand(redisClient *c, char *pattern, int *matches) {
 int DXDB_rdbSave(FILE *fp) { //printf("DXDB_rdbSave\n");
     for (int tmatch = 0; tmatch < Num_tbls; tmatch++) {
         r_tbl_t *rt = &Tbl[tmatch];
-        if (rdbSaveType        (fp, REDIS_BTREE) == -1) return -1;
-        if (rdbSaveBT          (fp, rt->btr)     == -1) return -1;
+        if (rdbSaveType        (fp, REDIS_BTREE) == -1)               return -1;
+        if (rdbSaveBT          (fp, rt->btr)     == -1)               return -1;
         MATCH_INDICES(tmatch)
         if (matches) {
             for (int i = 0; i < matches; i++) {
@@ -508,8 +507,8 @@ int DXDB_rdbSave(FILE *fp) { //printf("DXDB_rdbSave\n");
                     if (rdbSaveType    (fp, REDIS_LUA_TRIGGER) == -1) return -1;
                     if (rdbSaveLuaTrigger(fp, ri)              == -1) return -1;
                 } else {
-                    if (rdbSaveType        (fp, REDIS_BTREE) == -1) return -1;
-                    if (rdbSaveBT          (fp, ri->btr)     == -1) return -1;
+                    if (rdbSaveType        (fp, REDIS_BTREE) == -1)   return -1;
+                    if (rdbSaveBT          (fp, ri->btr)     == -1)   return -1;
                 }
             }
         }
@@ -573,14 +572,14 @@ void DBXD_genRedisInfoString(sds info) {
              WebServerIndexFunc);
 }
 
+extern struct sockaddr_in AcceptedClientSA;
+void DXDB_setClientSA(redisClient *c) { c->sa = AcceptedClientSA; }
+
+// LUA_COMMAND LUA_COMMAND LUA_COMMAND LUA_COMMAND LUA_COMMAND LUA_COMMAND
 void luafuncCommand(redisClient *c) {
     if (luafunc_call(c, c->argc, c->argv)) return;
     luaReplyToRedisReply(c, server.lua);
 }
-
-extern struct sockaddr_in AcceptedClientSA;
-void DXDB_setClientSA(redisClient *c) { c->sa = AcceptedClientSA; }
-
 
 // PURGE PURGE PURGE PURGE PURGE PURGE PURGE PURGE PURGE PURGE PURGE PURGE
 void DXDB_syncCommand(redisClient *c) {

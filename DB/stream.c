@@ -241,11 +241,6 @@ static inline uchar *getString(uchar *s, uint32 *slen) {
     return s;
 }
 
-int btIntCmp(void *a, void *b) {
-    uint32 key1 = streamIntToUInt(a, NULL);
-    uint32 key2 = streamIntToUInt(b, NULL);
-    return key1 == key2 ? 0 : (key1 > key2) ? 1 : -1;
-}
 static bool cr8BTKInt(aobj *akey, uint32 *ksize, uchar *btkey) {
     uchar sflag;
     ulong l = (ulong)akey->i;
@@ -253,11 +248,6 @@ static bool cr8BTKInt(aobj *akey, uint32 *ksize, uchar *btkey) {
     if (l >= TWO_POW_32) return 0;
     writeUIntCol(&btkey, sflag, l);
     return 1;
-}
-int btLongCmp(void *a, void *b) {
-    ulong key1 = streamLongToULong(a, NULL);
-    ulong key2 = streamLongToULong(b, NULL);
-    return key1 == key2 ? 0 : (key1 > key2) ? 1 : -1;
 }
 static void cr8BTKLong(aobj *akey, uint32 *ksize, uchar *btkey) {
     uchar sflag;
@@ -268,6 +258,16 @@ static void cr8BTKLong(aobj *akey, uint32 *ksize, uchar *btkey) {
 static void cr8BTKFloat(aobj *akey, uint32 *ksize, uchar *btkey) {
     writeFloatCol(&btkey, akey->f);
     *ksize = 4;
+}
+int btIntCmp(void *a, void *b) {
+    uint32 key1 = streamIntToUInt(a, NULL);
+    uint32 key2 = streamIntToUInt(b, NULL);
+    return key1 == key2 ? 0 : (key1 > key2) ? 1 : -1;
+}
+int btLongCmp(void *a, void *b) {
+    ulong key1 = streamLongToULong(a, NULL);
+    ulong key2 = streamLongToULong(b, NULL);
+    return key1 == key2 ? 0 : (key1 > key2) ? 1 : -1;
 }
 int btFloatCmp(void *a, void *b) {
     float key1 = streamFloatToFloat(a, NULL);
@@ -323,10 +323,9 @@ char *createBTKey(aobj *akey, bool *med, uint32 *ksize, bt *btr) {
             key        = btkey + 4;
         }
         memcpy(key, akey->s, akey->len); /* after LEN, copy raw STRING */
-    } else if (C_IS_L(ktype))      cr8BTKLong( akey, ksize, btkey);
-      else if (C_IS_F(ktype))      cr8BTKFloat(akey, ksize, btkey);
-      else if (C_IS_I(ktype)) {
-          if (!cr8BTKInt(akey, ksize, btkey)) return NULL;
+    } else if (C_IS_L(ktype))        cr8BTKLong (akey, ksize, btkey);
+      else if (C_IS_F(ktype))        cr8BTKFloat(akey, ksize, btkey);
+      else if (C_IS_I(ktype)) { if (!cr8BTKInt(akey, ksize, btkey)) return NULL;
     }
     return (char *)btkey;
 }
@@ -394,7 +393,7 @@ void convertStream2Key(uchar *stream, aobj *key, bt *btr) {
             if (getSflag(*stream)) {  // tiny STRING
                 key->type = key->enc = COL_TYPE_STRING;
                 key->s    = (char *)getTString(stream, &key->len);
-            } else {           // STRING
+            } else {                  // STRING
                 key->type = key->enc = COL_TYPE_STRING;
                 key->s    = (char *)getString(stream, &key->len);
             }
@@ -436,24 +435,21 @@ void *createStream(bt *btr, void *val, char *btkey, uint32 klen, uint32 *size) {
     } else if UU   (btr) { return (void *)((long)btkey + (long)val); /* merge */
     } else if UL   (btr) { /* NOTE: UP() also */
         ulk *ul          = (ulk *)btkey;
-        UL_StreamPtr.key = ul->key;
-        UL_StreamPtr.val = (ulong)val;
+        UL_StreamPtr.key = ul->key; UL_StreamPtr.val = (ulong)val;
         return &UL_StreamPtr;
     } else if LU   (btr) { /* NOTE: LUP() also */
         luk *lu          = (luk *)btkey;
-        LU_StreamPtr.key = lu->key;
-        LU_StreamPtr.val = (uint32)(long)val;
+        LU_StreamPtr.key = lu->key; LU_StreamPtr.val = (uint32)(long)val;
         return &LU_StreamPtr;
     } else if LL   (btr) { /* NOTE: LP() also */
         llk *ll          = (llk *)btkey;
-        LL_StreamPtr.key = ll->key;
-        LL_StreamPtr.val = (ulong)val;
+        LL_StreamPtr.key = ll->key; LL_StreamPtr.val = (ulong)val;
         return &LL_StreamPtr;
     }
     uint32  vlen      = getStreamVlen(btr, val);
     *size             = klen + vlen;                      //DEBUG_CREATE_STREAM
     char   *bt_val    = (btr->s.btype == BTREE_TABLE) ? row_malloc(btr, *size) :
-                                                        bt_malloc( btr, *size);
+                                                        bt_malloc (btr, *size);
     char   *o_bt_val  = bt_val;
     memcpy(bt_val, btkey, klen);
     bt_val           += klen;

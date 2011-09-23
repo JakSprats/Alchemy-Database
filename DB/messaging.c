@@ -52,8 +52,9 @@ int luaRedisCommand(lua_State *lua);
 static void ignoreFCP(void *v, lolo val, char *x, lolo xlen, long *card) {
     v = NULL; val = 0; x = NULL; xlen = 0; card = NULL; /* compiler warning */
 }
-void messageCommand(redisClient *c) { //NOTE: this command does NOT reply
-    //DEBUG_C_ARGV(c)
+
+//NOTE: this command does NOT reply
+void messageCommand(redisClient *c) { //DEBUG_C_ARGV(c)
     redisClient  *rfc   = getFakeClient();
     rfc->reqtype        = REDIS_REQ_MULTIBULK;
     rfc->argc           = 0;
@@ -66,8 +67,7 @@ void messageCommand(redisClient *c) { //NOTE: this command does NOT reply
     cleanupFakeClient(rfc);
 }
 
-int remoteMessage(sds ip, int port, sds cmd, bool wait,
-                  redisReply **ret_reply) {
+int remoteMessage(sds ip, int port, sds cmd, bool wait, redisReply **ret_rpl) {
     int fd         = -1;
     struct timeval tv; tv.tv_sec = 0; tv.tv_usec = 100000; // 100ms timeout
     redisContext *context = redisConnectWithTimeout(ip, port, tv);
@@ -77,8 +77,7 @@ int remoteMessage(sds ip, int port, sds cmd, bool wait,
     do {
         if (redisBufferWrite(context, &wdone) == REDIS_ERR)          goto rmend;
     } while (!wdone);
-    context->obuf  = NULL;
-
+    context->obuf     = NULL;
     redisReply *reply = NULL;
     if (wait) { // WAIT is for PINGs (wait for PONG) validate box is up
         struct pollfd fds[1];
@@ -96,8 +95,8 @@ int remoteMessage(sds ip, int port, sds cmd, bool wait,
         } while (aux == NULL);
         reply = aux;
     }
-    if (ret_reply)  *ret_reply = reply;
-    else if (reply) freeReplyObject(reply);
+    if      (ret_rpl) *ret_rpl = reply;
+    else if (reply)   freeReplyObject(reply);
     fd = context->fd;
 
 rmend:
@@ -158,8 +157,7 @@ int luaSubscribeFDCommand(lua_State *lua) {
     cli *rc  = createClient(-1);                         // DESTROY ME 086
     rc->fd   = fd;                               // fd for remote-subscription
     DXDB_setClientSA(rc);
-    rc->argc = 1;
-    rc->argv = rargv;
+    rc->argc = 1; rc->argv = rargv;
     subscribeClient(rc, rc->argv, 0, 1);
     return 0;
 }
@@ -179,7 +177,6 @@ int luaGetFDForChannelCommand(lua_State *lua) {
     char *s       = (char *)lua_tolstring(lua, -1, &len);
     lua_pop(lua, 1);
     robj *channel = createStringObject(s, len);
-
 
     struct dictEntry *de = dictFind(server.pubsub_channels, channel);
     if (de) {
@@ -224,8 +221,7 @@ int luaUnsubscribeFDCommand(lua_State *lua) {
 
     struct dictEntry *de = dictFind(server.pubsub_channels, channel);
     if (de) {
-        listNode *ln;
-        listIter  li;
+        listNode *ln; listIter  li;
         list *list = dictGetEntryVal(de);
         listRewind(list, &li);
         while ((ln = listNext(&li))) {
@@ -330,9 +326,7 @@ int luaConvertToRedisProtocolCommand(lua_State *lua) { //printf("Redisify()\n");
     while(1) {
         int t = lua_type(lua, 1);
         if (t == LUA_TNIL) {
-            argv[i] = sdsempty();
-            lua_pop(lua, 1);
-            break;
+            argv[i] = sdsempty(); lua_pop(lua, 1); break;
         } else if (t == LUA_TSTRING) {
             size_t len;
             char *s = (char *)lua_tolstring(lua, -1, &len);
@@ -367,8 +361,7 @@ int luaSha1Command(lua_State *lua) { //printf("SHA1\n");
     while(1) {
         int t = lua_type(lua, 1);
         if (t == LUA_TNIL) {
-            lua_pop(lua, 1);
-            break;
+            lua_pop(lua, 1); break;
         } else if (t == LUA_TSTRING) {
             size_t len;
             char *s = (char *)lua_tolstring(lua, -1, &len);

@@ -64,9 +64,7 @@ static two_sds *init_two_sds(sds a, sds b) {
 static void free_two_sds(void *v) {
     if (!v) return;
     two_sds *ss = (two_sds *)v;
-    sdsfree(ss->a);
-    sdsfree(ss->b);
-    free(ss);
+    sdsfree(ss->a); sdsfree(ss->b); free(ss);
 }
 
 #define SEND_REPLY_FROM_STRING(s)                 \
@@ -81,8 +79,8 @@ static void free_two_sds(void *v) {
   SEND_REPLY_FROM_STRING(s) }
 #define SEND_405                                                 \
   { sds s = c->http.proto_1_1 ?                                  \
-             sdsnew("HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\n\r\n") : \
-             sdsnew("HTTP/1.0 405 Method Not Allowed\r\nContent-Length: 0\r\n\r\n");  \
+      sdsnew("HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\n\r\n") : \
+      sdsnew("HTTP/1.0 405 Method Not Allowed\r\nContent-Length: 0\r\n\r\n");  \
   SEND_REPLY_FROM_STRING(s) }
 
 static void send_http_response_header_extended(cli *c, sds s) {
@@ -128,6 +126,7 @@ static void send_http_reponse_header(cli *c, sds body) {
   else                     /* 304 */ send_http_304_reponse_header(c);
 }
 
+// HTTP_LUA_COMMANDS HTTP_LUA_COMMANDS HTTP_LUA_COMMANDS HTTP_LUA_COMMANDS
 static void addHttpResponseHeader(sds name, sds value) {
     if (!CurrClient->http.resp_hdr) {
         CurrClient->http.resp_hdr       = listCreate(); 
@@ -165,6 +164,7 @@ int luaSetHttp304Command(lua_State *lua) {
     return 0;
 }
 
+// HTTP_REQ_RESP_SESSION HTTP_REQ_RESP_SESSION HTTP_REQ_RESP_SESSION
 int start_http_session(cli *c) {
     if      (!strcasecmp(c->argv[2]->ptr, "HTTP/1.1")) {
         c->http.ka        = 1; // Default: keep-alive -> ON in HTTP 1.1
@@ -233,11 +233,11 @@ void end_http_session(cli *c) {
                          od->type == REDIS_STRING) {
                         o = od;
                         addHttpResponseHeader(sdsnew("Content-Encoding"),
-                         sdsnew("deflate"));
+                                              sdsnew("deflate"));
                     }
                 }
                 addHttpResponseHeader(sdsnew("Expires"),
-                         sdsnew("Wed, 09 Jun 2021 10:18:14 GMT;"));
+                                      sdsnew("Wed, 09 Jun 2021 10:18:14 GMT;"));
                 send_http_200_reponse_header(c, o->ptr);
                 addReply(c, o);
             }
@@ -289,6 +289,7 @@ void end_http_session(cli *c) {
     }
 }
 
+// LUA_SCRIPT_TO_HTTP_RESPONSE LUA_SCRIPT_TO_HTTP_RESPONSE
 static robj *luaReplyToHTTPReply(lua_State *lua) {
     robj *r = createObject(REDIS_STRING, NULL);
     int   t = lua_type(lua,1);
@@ -421,10 +422,8 @@ bool luafunc_call(redisClient *c, int argc, robj **argv) {
         }
         lua_setglobal(server.lua, "COOKIE");
     } else { // Make empty tables, to not break lua scripts
-        lua_newtable(server.lua);
-        lua_setglobal(server.lua, "HTTP_HEADER");
-        lua_newtable(server.lua);
-        lua_setglobal(server.lua, "COOKIE");
+        lua_newtable(server.lua); lua_setglobal(server.lua, "HTTP_HEADER");
+        lua_newtable(server.lua); lua_setglobal(server.lua, "COOKIE");
     }
 
     // Set hook to stop script execution if it takes too long
@@ -447,8 +446,7 @@ bool luafunc_call(redisClient *c, int argc, robj **argv) {
                                             fname, lua_tostring(server.lua,-1));
         if (c->http.mode == HTTP_MODE_ON) {
             send_http_200_reponse_header(c, err);
-            SEND_REPLY_FROM_STRING(err);
-            sdsfree(err);
+            SEND_REPLY_FROM_STRING(err); sdsfree(err);
         } else {
             addReplyErrorFormat(c, "%s", err);
         }

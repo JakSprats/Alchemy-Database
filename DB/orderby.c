@@ -116,8 +116,9 @@ list *initOBsort(bool qed, wob_t *wb) {
             OB_asc[i]   = wb->asc[i];
             OB_ctype[i] = Tbl[wb->obt[i]].col_type[wb->obc[i]];
         }
-    }
-    return qed ? listCreate() : NULL ;                   /* DESTROY 009 */
+    }                                                         // \/ DESTROY 009
+    if (qed) { list *ll = listCreate(); ll->free = destroyAobj; return ll; }
+    else                                                        return NULL;
 }
 void releaseOBsort(list *ll) {
     if (ll) listRelease(ll);                             /* DESTROYED 009 */
@@ -161,29 +162,13 @@ obsl_t * cloneOb(obsl_t *ob, uint32 nob) { /* JOIN's API */
     ob2->lruc = ob->lruc;
     return ob2;
 }
-void dumpObKey(printer *prn, int i, void *key, uchar ctype) {
-    if        (C_IS_I(ctype)) {
-        (*prn)("\t\t%d: i: %d\n", i, (int)(long)key);
-    } else if (C_IS_S(ctype)) {
-        (*prn)("\t\t%d: s: %s\n", i, (char *)key);
-    } else {/* COL_TYPE_FLOAT */ 
-        float f;
-        memcpy(&f, &key, FSIZE);
-        (*prn)("\t\t%d: f: %f\n", i, f);
-    }
-}
-void dumpOb(printer *prn, obsl_t *ob) {
-    (*prn)("\tdumpOB START: nob: %u\n", OB_nob);
-    for (uint32 i = 0; i < OB_nob; i++) {
-        dumpObKey(prn, i, ob->keys[i], OB_ctype[i]);
-    }
-    (*prn)("\tEND dumpOB\n");
-}
+
 void assignObEmptyKey(obsl_t *ob, uchar ctype, int i) {
-    if      (C_IS_I(ctype))    ob->keys[i] = 0;
+    if      (C_IS_NUM(ctype))  ob->keys[i] = 0;
     else if (C_IS_F(ctype))    memcpy(&ob->keys[i], &Fmin, FSIZE);
     else /* COL_TYPE_STRING */ ob->keys[i] = NULL;
 }
+//TODO C_IS_L
 void assignObKey(wob_t *wb, bt *btr, void *rrow, aobj *apk, int i, obsl_t *ob) {
     void  *key;
     uchar  ctype = Tbl[wb->obt[i]].col_type[wb->obc[i]];
@@ -231,4 +216,24 @@ void sortOBCleanup(obsl_t **vector, int vlen, bool ofree) {
     for (int i = 0; i < vlen; i++) {
         destroy_obsl((obsl_t *)vector[i], ofree);
     }
+}
+
+// DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
+void dumpObKey(printer *prn, int i, void *key, uchar ctype) {
+    if        (C_IS_I(ctype)) {
+        (*prn)("\t\t%d: i: %d\n", i, (int)(long)key);
+    } else if (C_IS_S(ctype)) {
+        (*prn)("\t\t%d: s: %s\n", i, (char *)key);
+    } else {/* COL_TYPE_FLOAT */ 
+        float f;
+        memcpy(&f, &key, FSIZE);
+        (*prn)("\t\t%d: f: %f\n", i, f);
+    }
+}
+void dumpOb(printer *prn, obsl_t *ob) {
+    (*prn)("\tdumpOB START: nob: %u\n", OB_nob);
+    for (uint32 i = 0; i < OB_nob; i++) {
+        dumpObKey(prn, i, ob->keys[i], OB_ctype[i]);
+    }
+    (*prn)("\tEND dumpOB\n");
 }

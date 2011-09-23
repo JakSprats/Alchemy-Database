@@ -273,7 +273,7 @@ static bool nodeBT_Op(ibtd_t *d) {                              //DEBUG_NODE_BT
         }
         void *key; aobj akey; initAobj(&akey);
         if (d->obc == -1) key = nbe->key;
-        else {                                              //DEBUG_NODE_BT_OBC
+        else {  /* ORDER BY INDEX query */                  //DEBUG_NODE_BT_OBC
             uchar ctype = Tbl[d->g->co.btr->s.num].col_type[0]; // PK_CTYPE
             if      C_IS_I(ctype) initAobjInt (&akey, (uint32)(ulong)nbe->val);
             else /* C_IS_L */     initAobjLong(&akey, (ulong)        nbe->val);
@@ -323,8 +323,7 @@ bt *btMCIFindVal(cswc_t *w, bt *nbtr, uint32 *nmatch, r_ind_t *ri) {
             INCR(*nmatch)
             nbtr      = xbtr;
             i++;
-        }
-        listReleaseIterator(li);
+        } listReleaseIterator(li);
     }
     return nbtr;
 }
@@ -431,7 +430,8 @@ long keyOp(range_t *g, row_op *p) {
     return (g->co.w->wtype & SQL_SINGLE_LKP) ?      singleOpPK(g, p) :
                                                     rangeOp(   g, p);
 }
-    
+
+// TODO inOPs should use a BT not a LL -> do a bt_find()
 static long inOpPK(range_t *g, row_op *p) {                //printf("inOpPK\n");
     listNode  *ln;
     bool       brkr   = 0;
@@ -447,8 +447,7 @@ static long inOpPK(range_t *g, row_op *p) {                //printf("inOpPK\n");
         void *rrow = btFind(g->co.btr, apk);
         if (rrow && !pk_op_l(apk, rrow, g, p, wb, q, &card, &loops, &brkr)) CBRK
         if (brkr) break;
-    }
-    listReleaseIterator(li);
+    } listReleaseIterator(li);
     return card;
 }
 static long inOpFK(range_t *g, row_op *p) {                //printf("inOpFK\n");
@@ -477,11 +476,10 @@ static long inOpFK(range_t *g, row_op *p) {                //printf("inOpFK\n");
             else if (!(*nop)(&d))                                       CBRK
         }
         if (brkr) break;
-    }
-    listReleaseIterator(li);
+    } listReleaseIterator(li);
     return card;
 }
-long inOp(range_t *g, row_op *p) {
+static long inOp(range_t *g, row_op *p) {
     return Index[g->co.w->wf.imatch].virt ? inOpPK(g, p) : inOpFK(g, p);
 }
 long Op(range_t *g, row_op *p) {
@@ -504,8 +502,7 @@ bool passFilters(bt *btr, aobj *akey, void *rrow, list *flist, int tmatch) {
                 aobj *a2  = ln2->value;
                 ret       = (*OP_CMP[EQ])(a2, &a);        //DEBUG_PASS_FILT_INL
                 if (ret) break;                   /* break INNER-LOOP on hit */
-            }
-            listReleaseIterator(li2);
+            } listReleaseIterator(li2);
             releaseAobj(&a);
             if (!ret) break;                      /* break OUTER-LOOP on miss */
         } else if (flt->alow.type != COL_TYPE_NONE) {
@@ -519,8 +516,7 @@ bool passFilters(bt *btr, aobj *akey, void *rrow, list *flist, int tmatch) {
             releaseAobj(&a);
             if (!ret) break;                      /* break OUTER-LOOP on miss */
         }
-    }
-    listReleaseIterator(li);
+    } listReleaseIterator(li);
     return ret;
 }
 
@@ -541,9 +537,7 @@ static bool select_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
         }
         if (!(EREDIS)) decrRefCount(r);
     }
-    INCR(*card)
-    CurrCard = *card;
-    return ret;
+    INCR(*card) CurrCard = *card; return ret;
 }
 bool opSelectSort(cli  *c,    list *ll,   wob_t *wb,
                   bool ofree, long *sent, int    tmatch) {
@@ -581,9 +575,7 @@ void iselectAction(cli *c,         cswc_t *w,     wob_t *wb,
         if (q.qed) {
             if (!opSelectSort(c, ll, wb, g.co.ofree,
                               &sent, w->wf.tmatch)) goto isel_end;
-        } else {
-            sent = card;
-        }
+        } else sent = card;
     }
     if (wb->lim != -1 && sent < card) card = sent;
     if      (cstar)  addReplyLongLong(c, card);
@@ -605,8 +597,7 @@ static bool dellist_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
         aobj *cln  = cloneAobj(apk);
         listAddNodeTail(g->co.ll, cln); /* UGLY: build list of PKs to delete */
     }
-    INCR(*card) CurrCard = *card;
-    return 1;
+    INCR(*card) CurrCard = *card; return 1;
 }
 static void opDeleteSort(list *ll,    cswc_t *w,      wob_t *wb,   bool  ofree,
                          long  *sent, int     matches, int   inds[]) {
@@ -614,9 +605,8 @@ static void opDeleteSort(list *ll,    cswc_t *w,      wob_t *wb,   bool  ofree,
     long     ofst = wb->ofst;
     for (int i = 0; i < (int)listLength(ll); i++) {
         if (wb->lim != -1 && *sent == wb->lim) break;
-        if (ofst > 0) {
-            ofst--;
-        } else {
+        if (ofst > 0) ofst--;
+        else {
             *sent       = *sent + 1;
             obsl_t *ob  = v[i];
             aobj   *apk = ob->row;
@@ -638,17 +628,15 @@ void ideleteAction(redisClient *c, cswc_t *w, wob_t *wb) {
 
     long sent = 0;
     if (card) {
-        if (q.qed) {
-            opDeleteSort(ll, w, wb, g.co.ofree, &sent, matches, inds);
-        } else {
+        if (q.qed) opDeleteSort(ll, w, wb, g.co.ofree, &sent, matches, inds);
+        else {
             listNode  *ln;
             listIter  *li = listGetIterator(ll, AL_START_HEAD);
             while((ln = listNext(li)) != NULL) {
                 aobj *apk = ln->value;
                 deleteRow(w->wf.tmatch, apk, matches, inds);
                 sent++;
-            }
-            listReleaseIterator(li);
+            } listReleaseIterator(li);
         }
     }
     if (wb->lim != -1 && sent < card) card = sent;
@@ -669,8 +657,7 @@ static bool update_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
         aobj *cln  = cloneAobj(apk);
         listAddNodeTail(g->co.ll, cln); /* UGLY: build list of PKs to update */
     }
-    INCR(*card) CurrCard = *card;
-    return 1;
+    INCR(*card) CurrCard = *card; return 1;
 }
 static bool opUpdateSort(cli   *c,  list *ll,    cswc_t  *w,
                          wob_t *wb, bool  ofree, long    *sent,
@@ -720,9 +707,10 @@ void iupdateAction(cli  *c,      cswc_t *w,       wob_t *wb,
     long sent    = 0;
     bool err     = 0;
     if (card) {
-        if (q.qed) { if (!opUpdateSort(c, ll, w, wb, g.co.ofree, &sent,
-                                       btr, ncols, &g)) return; } /* MCI VIOL */
-        else {
+        if (q.qed) {
+            if (!opUpdateSort(c, ll, w, wb, g.co.ofree,
+                              &sent, btr, ncols, &g))   return; // MCI VIOL
+        } else {
             listNode  *ln;
             listIter  *li = listGetIterator(ll, AL_START_HEAD);
             while((ln = listNext(li)) != NULL) {
@@ -734,8 +722,7 @@ void iupdateAction(cli  *c,      cswc_t *w,       wob_t *wb,
                     err = 1; break;
                 }
                 sent++;
-            }
-            listReleaseIterator(li);
+            } listReleaseIterator(li);
         }
     }
     if (!err) {
@@ -747,6 +734,7 @@ void iupdateAction(cli  *c,      cswc_t *w,       wob_t *wb,
     releaseOBsort(ll);
 }
 
+// DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
 void dumpQueued(printer *prn, cswc_t *w, wob_t *wb, qr_t *q, bool debug) {
     if (debug) {
         r_ind_t *ri     = (w->wf.imatch == -1) ? NULL :

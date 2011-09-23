@@ -123,6 +123,8 @@ static void init_cz(cz_t *cz, cr_t *cr) {
     cz->type = CZIP_NONE;
     cz->sixn = cz->lzf_n = 0;
 }
+
+//TODO: make cz_t "static global" to avoid stack allocation? it is BIG
 #define INIT_CZIP cz_t cz; init_cz(&cz, cr);
 static void destroy_cz(cz_t *cz) {
     for (uint32 j = 0; j < cz->sixn;  j++) free(cz->sixs[j]);  /*FREED 022 */
@@ -238,15 +240,12 @@ static void *createRowBlob(int ncols, uchar rflag, uint32 rlen) {
 }
 static int set_col_offst(uchar *row, int i, uchar rflag, int cofst[]) {
     if        (rflag & RFLAG_1BYTE_INT) {
-        *row = (uchar)cofst[i];
-        return 1;
+        *row = (uchar)cofst[i];            return 1;
     } else if (rflag & RFLAG_2BYTE_INT) {
         ushort16 m = (ushort16)cofst[i];
-        memcpy(row, &m, USHORT_SIZE);
-        return USHORT_SIZE;
+        memcpy(row, &m, USHORT_SIZE);      return USHORT_SIZE;
     } else {        /* RFLAG_4BYTE_INT */
-        memcpy(row, &cofst[i], UINT_SIZE);
-        return UINT_SIZE;
+        memcpy(row, &cofst[i], UINT_SIZE); return UINT_SIZE;
     }
 }
 static uchar *writeRow(cr_t *cr) {
@@ -269,15 +268,11 @@ static uchar *writeRow(cr_t *cr) {
             writeFloatCol(&row, cr->fcols[i]);
         } else {/* COL_TYPE_STRING */
             if (       cz.type == CZIP_SIX) {
-                memcpy(row, cz.sixs[k], cz.sixl[k]);
-                row += cz.sixl[k];
-                k++;
+                memcpy(row, cz.sixs[k], cz.sixl[k]); row += cz.sixl[k]; k++;
             } else if (cz.type == CZIP_LZF) {
-                row = writeLzfCol(row, &cz, k);
-                k++;
+                row = writeLzfCol(row, &cz, k);                         k++;
             } else {
-                memcpy(row, cr->strs[i], cr->slens[i]);
-                row += cr->slens[i];
+                memcpy(row, cr->strs[i], cr->slens[i]); row += cr->slens[i];
            }
         }
     }
@@ -289,8 +284,8 @@ static uchar *writeRow(cr_t *cr) {
   if C_IS_NUM(ctype) printf(" iflags: %d col: %u", cr.iflags[i], cr.icols[i]); \
   printf("\n");
 
-char *EmptyStringCol = "''";
-char *EmptyCol       = "";
+static char *EmptyStringCol = "''";
+static char *EmptyCol       = "";
 void *createRow(cli    *c,    bt     *btr,      int tmatch, int  ncols,
                 char   *vals, twoint  cofsts[]) {
     if OTHER_BT(btr) { /* UU,UL,LU,LL rows no malloc, 'void *' of 1st COL */
@@ -524,22 +519,18 @@ static uchar *getRowPayload(uchar  *row,   uchar  *rflag,
     row             += (*ncols * sflag);              /* SKIP cofsts */
     uint32 meta_len  = row - o_row;
     if        (*rflag & RFLAG_1BYTE_INT) {            /* rlen is final cofst */
-        uchar *x = (uchar*)row - 1;
-        *rlen    = (uint32)*x;
+        uchar *x = (uchar*)row - 1; *rlen    = (uint32)*x;
     } else if (*rflag & RFLAG_2BYTE_INT) {
-        uchar *x = row - 2;
-        *rlen    = (uint32)(*((unsigned short *)x));
+        uchar *x = row - 2;         *rlen    = (uint32)(*((unsigned short *)x));
     } else {         /* RFLAG_4BYTE_INT */
-        uchar *x = row - 4;
-        *rlen    = *((uint32 *)x);
+        uchar *x = row - 4;         *rlen    = *((uint32 *)x);
     }
     *rlen = *rlen + meta_len;
     return row;
 }
 uint32 getRowMallocSize(uchar *stream) {
     uchar rflag; uint32 rlen; uint32 ncols;
-    getRowPayload(stream, &rflag, &ncols, &rlen);
-    return rlen;
+    getRowPayload(stream, &rflag, &ncols, &rlen); return rlen;
 }
 
 static char RawCols[MAX_COLUMN_PER_TABLE][32]; /* NOTE: avoid malloc's */
@@ -615,7 +606,7 @@ uchar *getColData(void *orow, int cmatch, uint32 *clen, uchar *rflag) {
 }
 aobj getRawCol(bt  *btr,    void *orow, int cmatch, aobj *apk,
                int  tmatch, bool force_s) {
-    if        UU(btr) { /* OTHER_BT values are either in PK or BT - no ROW */
+    if        UU(btr) { /* OTHER_BT values are either in PK or BT -> no ROW */
         ulong key = cmatch ? (ulong)orow        : apk->i;
         return colFromUU(key, force_s, cmatch);
     } else if UL(btr) {
@@ -675,7 +666,7 @@ static void destroy_erow(erow_t *er) { //printf("destroy_embedded_row\n");
     free(er->cols);
     free(er);
 }
-robj *cloneRobjErow(robj *r) {
+robj *cloneRobjErow(robj *r) { // NOTE Used in cloneRobj()
     if (!r) return NULL;
     erow_t *er  = (erow_t *)r->ptr;
     robj   *n   = createObject(REDIS_STRING, NULL);
@@ -688,7 +679,7 @@ robj *cloneRobjErow(robj *r) {
     }
     return n;
 }
-void decrRefCountErow(robj *r) {
+void decrRefCountErow(robj *r) { // NOTE Used in cloneRobj()
     if (!r) return;
     erow_t *er  = (erow_t *)r->ptr;
     if (er) destroy_erow(er); /* destroy here (avoids deep redis integration) */
@@ -880,7 +871,7 @@ static bool evalExpr(redisClient *c, ue_t *ue, aobj *aval, uchar ctype) {
         memcpy(s,             aval->s,  aval->len);
         memcpy(s + aval->len, ue->pred, ue->plen);
         s[len]       = '\0';
-        //TODO MEMLEAK
+        //TODO MEMLEAK (adding info later: byproduct of a previous SEGV-hunt)
         //free(aval->s);
         aval->freeme = 1; /* this new string must be freed later */
         aval->s      = s;

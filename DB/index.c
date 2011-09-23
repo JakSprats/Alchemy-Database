@@ -57,7 +57,7 @@ extern ulong    CurrCard;
 int     Num_indx;
 r_ind_t Index[MAX_NUM_INDICES];
 
-//TODO move to parser.c or somewhere else
+//TODO move to colparse.c
 /* HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS */
 int find_index(int tmatch, int cmatch) {
     for (int i = 0; i < Num_indx; i++) {
@@ -431,11 +431,9 @@ bool newIndex(cli    *c,     char   *iname, int  tmatch, int   cmatch,
        rt->col_indxd[ri->column] = 1; ri->nclist  = 0; ri->bclist  = NULL;
     }
     if (virt) {
-        ri->btr     = NULL;
-        rt->vimatch = imatch;
+        ri->btr     = NULL;       rt->vimatch = imatch;
     } else if (ri->luat) {
-        ri->btr     = (bt *)luat;
-        luat->num   = imatch;
+        ri->btr     = (bt *)luat; luat->num   = imatch;
     } else {
         ri->btr = (ri->clist) ? createMCIndexBT(ri->clist,          imatch) :
         /* normal & lru */      createIndexBT(rt->col_type[cmatch], imatch);
@@ -484,13 +482,11 @@ sds getMCIlist(list *clist, int tmatch) { // NOTE: used in DESC & AOF
 bool addC2MCI(cli *c, int cmatch, list *clist) {
     if (cmatch == -1) {
         listRelease(clist);
-        if (c) addReply(c, shared.indextargetinvalid);
-        return 0;
+        if (c) addReply(c, shared.indextargetinvalid); return 0;
     }
     if (!cmatch) {
         listRelease(clist);
-        if (c) addReply(c, shared.mci_on_pk);
-        return 0;
+        if (c) addReply(c, shared.mci_on_pk); return 0;
     }
     listAddNodeTail(clist, (void *)(long)cmatch);
     return 1;

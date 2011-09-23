@@ -93,9 +93,8 @@ void init_range(range_t *g, redisClient *c,  cswc_t *w,     wob_t *wb,
                 qr_t    *q, list        *ll, uchar   ofree, jb_t  *jb);
 
 typedef bool row_op(range_t *g, aobj *apk, void *rrow, bool q, long *card);
-long keyOp(range_t *g, row_op *p);
-long inOp(range_t *g, row_op *p);
-long Op(range_t *g, row_op *p);
+long keyOp(range_t *g, row_op *p); // Also Used in JOINs
+long Op(range_t *g, row_op *p);    // Also Used in JOINs
 
 bool passFilters(bt *btr, aobj *akey, void *rrow, list *flist, int tmatch);
 

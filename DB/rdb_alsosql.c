@@ -166,9 +166,7 @@ int rdbSaveBT(FILE *fp, bt *btr) {
     return 0;
 }
 
-ulk UL_RDBPointer;
-luk LU_RDBPointer;
-llk LL_RDBPointer;
+ulk UL_RDBPointer; luk LU_RDBPointer; llk LL_RDBPointer;
 static int rdbLoadRow(FILE *fp, bt *btr, int tmatch) {
     void   *UUbuf;
     uint32  ssize;
@@ -180,18 +178,15 @@ static int rdbLoadRow(FILE *fp, bt *btr, int tmatch) {
         bt_insert(btr, UUbuf);
     } else if LU(btr) {
         luk *lu           = (luk *)stream;
-        LU_RDBPointer.key = lu->key;
-        LU_RDBPointer.val = lu->val;
+        LU_RDBPointer.key = lu->key; LU_RDBPointer.val = lu->val;
         bt_insert(btr, &LU_RDBPointer);
     } else if UL(btr) {
         ulk *ul           = (ulk *)stream;
-        UL_RDBPointer.key = ul->key;
-        UL_RDBPointer.val = ul->val;
+        UL_RDBPointer.key = ul->key; UL_RDBPointer.val = ul->val;
         bt_insert(btr, &UL_RDBPointer);
     } else if LL(btr) {
         llk *ll           = (llk *)stream;
-        LL_RDBPointer.key = ll->key;
-        LL_RDBPointer.val = ll->val;
+        LL_RDBPointer.key = ll->key; LL_RDBPointer.val = ll->val;
         bt_insert(btr, &LL_RDBPointer);
     } else {
         bt_insert(btr, stream);
@@ -260,9 +255,7 @@ bool rdbLoadBT(FILE *fp) {
         if (u == 1) { /* Single Column */
             if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)     return 0;
             ri->column = (int)u;
-            ri->nclist = 0;
-            ri->bclist = NULL;
-            ri->clist  = NULL;
+            ri->nclist = 0; ri->bclist = NULL; ri->clist  = NULL;
         } else { /* MultipleColumnIndexes */
             Tbl[ri->table].nmci++;
             ri->nclist  = u;
@@ -299,7 +292,7 @@ bool rdbLoadBT(FILE *fp) {
     return 1;
 }
 
-void rdbLoadFinished() {
+void rdbLoadFinished() { // Indexes are built AFTER data is loaded
     for (int imatch = 0; imatch < Num_indx; imatch++) {
         r_ind_t *ri = &Index[imatch];
         if (ri->virt) continue;

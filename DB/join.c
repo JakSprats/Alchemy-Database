@@ -57,20 +57,15 @@ extern uchar OB_ctype[MAX_ORDER_BY_COLS];
 extern char *EMPTY_STRING;
 extern char  OUTPUT_DELIM;
 
-bool JoinErr   =  0; // TODO push into JoinBlock
-long JoinCard  =  0;
-long JoinLoops =  0;
-long JoinLim   = -1;
-long JoinOfst  = -1;
-bool JoinQed   =  0;
+// TODO push into JoinBlock & -> single struct
+bool JoinErr   =  0; long JoinCard  =  0; long JoinLoops =  0;
+long JoinLim   = -1; long JoinOfst  = -1; bool JoinQed   =  0;
 
 static aobj Resp;
 static sl_t Jcols[MAX_JOIN_COLS];
 
 static char *memclone(char *s, int len) {
-    char *x = malloc(len);
-    memcpy(x, s, len);
-    return x;
+    char *x = malloc(len); memcpy(x, s, len); return x;
 }
 
 void init_ijp(ijp_t *ij) {
@@ -247,7 +242,7 @@ static bool join_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
     GET_LRUC updateLru(g->co.c, tmatch, apk, lruc); /* NOTE: updateLRU (JOIN) */
     char *freeme[g->se.qcols];                                     //JOP_DEBUG_1
     int   nfree = 0;
-    for (int i = 0; i < g->se.qcols; i++) {
+    for (int i = 0; i < g->se.qcols; i++) { // Extract queried columns
         if (jb->js[i].jan == w->wf.jan) {
             Resp = getSCol(g->co.btr, rrow, jb->js[i].c, apk, jb->js[i].t);//037
             Jcols[i].len    = Resp.len;
@@ -260,7 +255,7 @@ static bool join_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
     }
     int obfreei[jb->wb.nob];
     int obnfree = 0;
-    if (jb->wb.nob) {
+    if (jb->wb.nob) { // if ORDERBY store OBC's
         if (!jb->ob) jb->ob = create_obsl(NULL, jb->wb.nob); /*DESTROY ME 057*/
         for (uint32 i = 0; i < jb->wb.nob; i++) {
             if (jb->wb.obt[i] == tmatch) {
@@ -270,7 +265,7 @@ static bool join_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
             }
         }
     }
-    if (g->co.lvl == (uint32)jb->hw) {                             //JOP_DEBUG_6
+    if (g->co.lvl == (uint32)jb->hw) { // Deepest Join Step        //JOP_DEBUG_6
         bool lret = 1;
         if (passFilters(g->co.btr, apk, rrow, jb->fflist, tmatch)) {
             if (jb->cstar) { INCR(JoinCard); INCR(*card); }
@@ -376,9 +371,7 @@ void joinGeneric(redisClient *c, jb_t *jb) {
         if (JoinQed) {
           if (!opSelectSort(c, ll, &jb->wb, g.co.ofree, &sent, -1))
               goto join_gen_err;
-        } else {
-            sent = card;
-        }
+        } else sent = card;
     }
     if (JoinLim != -1 && sent < card) card = sent;
     if (jb->cstar) setDeferredMultiBulkLong(c, rlen, card);

@@ -51,7 +51,12 @@ extern cli    *CurrClient;
 ulong  Operations  = 0;
 char  *LuaCronFunc = NULL;
 
+#define SLOW_LUA_TRIGGER //TODO TEST VALUE - slow things down
+
 #define MIN_MSEC_SIGNIFICANT 2
+
+//TODO LuaCronFuncs should return the MS they want to be called again with
+
 /* NOTE: this calls lua routines every second from a server cron -> an event */
 /*  luacronfunc(Operations) -> use Operations to estimate current load */
 int luaCronTimeProc(struct aeEventLoop *eventLoop, lolo id, void *clientData) {
@@ -70,8 +75,11 @@ int luaCronTimeProc(struct aeEventLoop *eventLoop, lolo id, void *clientData) {
 #endif
     }
     Operations = 0;
-    return 10000; /* 10000ms -> 10secs */ //TODO TEST VALUE - slow things down
-    //return 1000; /* 1000ms -> 1second */
+#ifdef SLOW_LUA_TRIGGER
+    return 10000; /* 10000ms -> 10secs */
+#else
+    return 1000; /* 1000ms -> 1second */
+#endif
 }
 
 /* LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER */
@@ -85,7 +93,8 @@ static void destroy_lua_trigger(luat_t *luat) {//printf("destroy_luatrigger\n");
 }
 
 //TODO "lfunc(col1, col2, col3) -> OK
-//TODO "lfunc(1, 45, 'xyz', col1, col2, col3) -> NOT OK
+//     "lfunc(1, 45, 'xyz', col1, col2, col3) -> NOT OK
+//      i.e. validate nargc -> throw error
 static bool pLTCerr(cli *c) {
     addReply(c, shared.luat_c_decl); return 0;
 }
@@ -134,7 +143,7 @@ void createLuaTrigger(cli *c) {
     char *dcmd   = (c->argc > 6) ? c->argv[6]->ptr : NULL;
     luaTAdd(c, trname, c->argv[4]->ptr, c->argv[5]->ptr, dcmd);
 }
-sds getLUATlist(ltc_t *ltc, int tmatch) {
+sds getLUATlist(ltc_t *ltc, int tmatch) { // Used in DESC & AOF
     sds cmd = sdsdup(ltc->fname);
     cmd     = sdscatlen(cmd, "(", 1);
     for (int j = 0; j < ltc->ncols; j++) {
@@ -149,12 +158,8 @@ sds getLUATlist(ltc_t *ltc, int tmatch) {
 void dropLuaTrigger(cli *c) {
     char *iname = c->argv[2]->ptr;
     int   imatch  = match_index_name(iname);
-    if (imatch == -1) {
-        addReply(c, shared.nullbulk);        return;
-    }
-    if (!Index[imatch].luat) {
-        addReply(c, shared.drop_luatrigger); return;
-    }
+    if (imatch == -1)        { addReply(c, shared.nullbulk);        return; }
+    if (!Index[imatch].luat) { addReply(c, shared.drop_luatrigger); return; }
     emptyIndex(imatch);
     addReply(c, shared.cone);
 }

@@ -153,4 +153,3 @@ void DXDB_cliSendCommand(int *argc, char **argv) {
     else if (!strcasecmp(argv[0], "SCAN"))   scan_mod        (argc, argv);
 
 }
-

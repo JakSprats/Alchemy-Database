@@ -104,11 +104,10 @@ static enum OP findOperator(char *val, uint32 vlen, char **spot) {
             }
         }
     }
-    *spot = NULL;
-    return NONE;
+    *spot = NULL;                         return NONE;
 }
 
-/* "OFFSET M" if M is a redis variable, this is a cursor call */
+/* "OFFSET M" if M is a redis variable, ALCHEMY CURSOR */
 static bool setOffsetReply(cli *c, wob_t *wb, char *nextp) {
     if (ISALPHA(*nextp)) { /* OFFSET "var" - used in cursors */
         int   len  = get_token_len(nextp);
@@ -155,8 +154,7 @@ static bool parseOBYcol(redisClient  *c,
     char *prd   = _strnchr(*token, '.', tlen);
     if (prd) { /* JOIN */
         if ((wb->obt[wb->nob] = find_table_n(*token, prd - *token)) == -1) {
-            addReply(c, shared.join_order_by_tbl);
-            return 0;
+            addReply(c, shared.join_order_by_tbl);          return 0;
         }
         char *cname = prd + 1;
         int   clen  = get_tlen_delim2(cname, ',');
@@ -164,14 +162,12 @@ static bool parseOBYcol(redisClient  *c,
         if (!clen) { addReply(c, shared.join_order_by_col); return 0; }
         wb->obc[wb->nob] = find_column_n(wb->obt[wb->nob], cname, clen);
         if (wb->obc[wb->nob] == -1) {
-            addReply(c, shared.join_order_by_col);
-            return 0;
+            addReply(c, shared.join_order_by_col);          return 0;
         }
     } else {  /* RANGE_QUERY or IN_QUERY */
         wb->obc[wb->nob] = find_column_n(tmatch, *token, tlen);
         if (wb->obc[wb->nob] == -1) {
-            addReply(c, shared.order_by_col_not_found);
-            return 0;
+            addReply(c, shared.order_by_col_not_found);     return 0;
         }
         wb->obt[wb->nob] = tmatch;
     }
@@ -204,18 +200,16 @@ static bool parseOBYcol(redisClient  *c,
 }
 static bool parseOrderBy(cli *c, char *by, int tmatch, wob_t *wb, char **fin) {
     if (strncasecmp(by, "BY ", 3)) {
-        addReply(c, shared.wc_orderby_no_by);
-        return 0;
+        addReply(c, shared.wc_orderby_no_by);                    return 0;
     }
     char *token = next_token(by);
-    if (!token) { addReply(c, shared.wc_orderby_no_by); return 0; }
+    if (!token) { addReply(c, shared.wc_orderby_no_by);          return 0; }
     bool more = 1; /* more OBC to parse */
     while (more) {
         if (wb->nob == MAX_ORDER_BY_COLS) {
-            addReply(c, shared.toomany_nob);
-            return 0;
+            addReply(c, shared.toomany_nob);                     return 0;
         }
-        if (!parseOBYcol(c, &token, tmatch, wb, fin, &more)) return 0;
+        if (!parseOBYcol(c, &token, tmatch, wb, fin, &more))     return 0;
     }
     if (token) {
         if (!strncasecmp(token, "LIMIT ", 6)) {
@@ -227,10 +221,9 @@ static bool parseOrderBy(cli *c, char *by, int tmatch, wob_t *wb, char **fin) {
                 if (!strncasecmp(token, "OFFSET", 6)) {
                     token  = next_token(token);
                     if (!token) {
-                        addReply(c, shared.oby_ofst_needs_num);
-                        return 0;
+                        addReply(c, shared.oby_ofst_needs_num);  return 0;
                     }
-                    if (!setOffsetReply(c, wb, token)) return 0;
+                    if (!setOffsetReply(c, wb, token))           return 0;
                     token   = next_token(token);
                 }
             }
@@ -244,20 +237,14 @@ bool parseWCEnd(redisClient *c, char *token, cswc_t *w, wob_t *wb) {
     if (!strncasecmp(token, "ORDER ", 6)) {
         char *by      = next_token(token);
         if (!by) {
-            w->lvr = NULL;
-            addReply(c, shared.wc_orderby_no_by);
-            return 0;
+            w->lvr = NULL; addReply(c, shared.wc_orderby_no_by); return 0;
         }
         char *lfin    = NULL;
         if (!parseOrderBy(c, by, w->wf.tmatch, wb, &lfin)) {
-            w->lvr = NULL;
-            return 0;
+            w->lvr = NULL;                                       return 0;
         }
-        if (lfin) {
-            token     = lfin;
-        } else {
-            w->lvr    = NULL; /* negate parse error */
-        }
+        if (lfin) token     = lfin;
+        else      w->lvr    = NULL; /* negate parse error */
     }
     return 1;
 }
@@ -268,8 +255,7 @@ static bool pRangeReply(cli *c, char *frst, char **fin, uchar ctype, f_t *flt) {
     int   flen   = and - frst;
     SKIP_SPACES(and) /* find start of value */
     if (strncasecmp(and, "AND ", 4)) {
-        addReply(c, shared.whereclause_no_and);
-        return 0;
+        addReply(c, shared.whereclause_no_and); return 0;
     }
     char *second = next_token(and);
     if (!second) goto parse_range_err;
@@ -297,12 +283,12 @@ static void addSelectToINL(void *v, lolo val, char *x, lolo xlen, long *card) {
     list **inl = (list **)v;
     if (x) listAddNodeTail(*inl, sdsnewlen(x, xlen));
     else   {
-        sds s = sdscatprintf(sdsempty(), "%lld", val);
+        sds s = sdscatprintf(sdsempty(), "%lld", val); // DESTROT ME ???
         listAddNodeTail(*inl, s);
     }
     INCR(*card);
 }
-static bool parseWC_IN_NRI(redisClient *c, list **inl, char *s, int slen) {
+static bool parseWC_IN_CMD(redisClient *c, list **inl, char *s, int slen) {
     int axs = getAccessCommNum(s);
     if (axs == -1) { addReply(c, shared.accesstypeunknown); return 0; }
     int     argc;
@@ -310,7 +296,7 @@ static bool parseWC_IN_NRI(redisClient *c, list **inl, char *s, int slen) {
     sds x = sdsnewlen(s, slen);
     rargv = (*AccessCommands[axs].parse)(x, &argc);
     sdsfree(x);
-    if (!rargv) { addReply(c, shared.where_in_select); return 0; }
+    if (!rargv) { addReply(c, shared.where_in_select);      return 0; }
     redisClient *rfc = getFakeClient(); // frees last rfc->rargv[] + content
     rfc->argv        = rargv;
     rfc->argc        = argc;
@@ -323,8 +309,7 @@ static bool parseWC_IN_NRI(redisClient *c, list **inl, char *s, int slen) {
 static char *checkIN_Clause(redisClient *c, char *token) {
     char *end = str_matching_end_paren(token);
     if (!end || (*token != '(')) {
-        addReply(c, shared.whereclause_in_err);
-        return NULL;
+        addReply(c, shared.whereclause_in_err); return NULL;
     }
     return end;
 }
@@ -340,7 +325,7 @@ static bool parseWC_IN(cli *c, char *tok, list **inl, uchar ctype, char **fin) {
     if (piped) {
         char *s    = tok;
         int   slen = end - s;
-        if (!parseWC_IN_NRI(c, inl, s, slen)) return 0;
+        if (!parseWC_IN_CMD(c, inl, s, slen)) return 0;
     } else {
         char *s   = tok;
         char *beg = s;
@@ -383,7 +368,7 @@ static bool parseWC_IN(cli *c, char *tok, list **inl, uchar ctype, char **fin) {
 typedef bool parse_inum(cli *c, char *token, int tlen, f_t *flt);
 static bool parseInumTblCol(cli *c, char *token, int tlen, f_t *flt) {
     char *nextp = _strnchr(token, '.', tlen);
-    if (!nextp) { addReply(c, shared.badindexedcolumnsyntax); return 0; }
+    if (!nextp) { addReply(c, shared.badindexedcolumnsyntax);      return 0; }
     flt->tmatch = find_table_n(token, nextp - token);
     flt->jan    = c->LastJTAmatch;
     if (flt->tmatch == -1) { addReply(c, shared.nonexistenttable); return 0; }
@@ -453,12 +438,12 @@ static uchar parseWCTokRelation(cli *c,   cswc_t *w,   char  *token, char **fin,
 static bool addIndexes2Join(redisClient *c, f_t *flt, jb_t *jb) {
     init_ijp(&jb->ij[jb->n_jind]);
     if (flt->key && !flt->iss && ISALPHA(*flt->key)) {   /* JOIN INDEX */
-        if (flt->op != EQ) { addReply(c, shared.join_noteq); return 0; }
+        if (flt->op != EQ) { addReply(c, shared.join_noteq);      return 0; }
         f_t f2; initFilter(&f2); /* NOTE f2 does not need to be released */
         if (!parseInumTblCol(c, flt->key, sdslen(flt->key), &f2)) return 0;
         if (Tbl[flt->tmatch].col_type[flt->cmatch] !=
             Tbl[f2.tmatch  ].col_type[f2.cmatch  ]    ) {
-            addReply(c, shared.join_coltypediff); return 0;
+            addReply(c, shared.join_coltypediff);                 return 0;
         }
         memcpy(&jb->ij[jb->n_jind].rhs, &f2, sizeof(f_t));/*NOW: must return 1*/
     }
@@ -549,13 +534,11 @@ static bool joinParseWCReply(redisClient *c, jb_t *jb, char *wc) {
     if (prs == PARSE_GEN_ERR) genericParseError(c, SQL_SELECT);
     if (prs != PARSE_OK) goto j_p_wc_end;
     if (w.lvr) {
-        jb->lvr = sdsdup(w.lvr);                         /* DESTROY ME 050 */
-        goto j_p_wc_end;
+        jb->lvr = sdsdup(w.lvr);                 goto j_p_wc_end; // DEST ME 050
     }
-    if (!validateJoinOrderBy(c, jb)) goto j_p_wc_end;
+    if (!validateJoinOrderBy(c, jb))             goto j_p_wc_end;
     if (jb->n_jind < 1) {
-        addReply(c, shared.toofewindicesinjoin);
-        goto j_p_wc_end;
+        addReply(c, shared.toofewindicesinjoin); goto j_p_wc_end;
     }
     ret = 1;        /* negate presumed failure */
 
@@ -571,8 +554,7 @@ void init_join_block(jb_t *jb) {
     jb->fkimatch = -1;
 }
 static void releaseIJ(ijp_t *ij) {
-    releaseFilterR_KL(&ij->lhs);
-    releaseFilterR_KL(&ij->rhs);
+    releaseFilterR_KL(&ij->lhs); releaseFilterR_KL(&ij->rhs);
     releaseFlist( &ij->flist); /* flist is referential, dont destroy */
 }
 void destroy_join_block(cli *c, jb_t *jb) {
@@ -595,9 +577,9 @@ bool parseJoinReply(cli *c, jb_t *jb, char *clist, char *tlist, char *wc) {
                              &numt, ts, jans, NULL, NULL, &Bdum)) return 0;
     /* Check all tbl.cols in "SELECT tbl1.col1, tbl2.col2,,,,," */
     if (!parseCommaSpaceList(c, clist, 0, 0, 1, -1, NULL, &numt, ts, jans,
-                             jb->js, &jb->qcols, &jb->cstar)) return 0;
+                             jb->js, &jb->qcols, &jb->cstar))     return 0;
     bool ret = joinParseWCReply(c, jb, wc);
-    if (!leftoverParsingReply(c, jb->lvr)) return 0;
+    if (!leftoverParsingReply(c, jb->lvr))                        return 0;
     if (EREDIS) embeddedSaveJoinedColumnNames(jb);
     return ret;
 }
@@ -607,8 +589,7 @@ static void addQcol(jb_t *jb, int tmatch) {
        if (jb->js[j].t == tmatch) { hit = 1; break; }
    }
    if (!hit) {
-       jb->js[jb->qcols].t = tmatch;
-       jb->js[jb->qcols].c = 0; /* PK */
+       jb->js[jb->qcols].t = tmatch; jb->js[jb->qcols].c = 0; /* PK */
        jb->qcols++;
    }
 }
