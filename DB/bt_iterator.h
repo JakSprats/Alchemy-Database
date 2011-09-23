@@ -35,6 +35,7 @@ ALL RIGHTS RESERVED
 typedef struct btEntry {
     void *key;
     void *val;
+    void *stream; // some iterators need the raw stream (INDEX CURSORS)
 } btEntry;
 
 typedef struct bTreeLinkedListNode { // 3ptr(24) 2int(8) -> 32 bytes

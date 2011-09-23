@@ -122,9 +122,8 @@ int get_all_cols(int tmatch, int cs[], bool lru2) {
 /* set "OFFSET var" for next cursor iteration */
 void incrOffsetVar(redisClient *c, wob_t *wb, long incr) {
     robj *ovar = createStringObject(wb->ovar, sdslen(wb->ovar));
-    if (wb->lim > incr) {
-        dbDelete(c->db, ovar);
-    } else {
+    if (wb->lim > incr) dbDelete(c->db, ovar);
+    else {
         lolo  value = (wb->ofst == -1) ? (lolo)incr :
                                          (lolo)wb->ofst + (lolo)incr;
         robj *val   = createStringObjectFromLongLong(value);

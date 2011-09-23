@@ -76,7 +76,8 @@ int rdbSaveLuaTrigger(FILE *fp, r_ind_t *ri) {
     return 0;
 }
 static bool loadLtc(FILE *fp, ltc_t *ltc) {
-    robj *o = rdbLoadStringObject(fp);
+    robj *o;
+    if (!(o = rdbLoadStringObject(fp)))                             return 0;
     ltc->fname = sdsdup(o->ptr);
     decrRefCount(o);
     uint32 u;
@@ -91,7 +92,8 @@ static bool loadLtc(FILE *fp, ltc_t *ltc) {
 bool rdbLoadLuaTrigger(FILE *fp) {
     uint32 u;
     luat_t *luat   = init_lua_trigger();
-    robj   *trname = rdbLoadStringObject(fp);
+    robj   *trname;
+    if (!(trname = rdbLoadStringObject(fp)))                        return 0;
     if ((u     = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)         return 0;
     int     tmatch = (int)u;
     uchar which;
@@ -99,7 +101,8 @@ bool rdbLoadLuaTrigger(FILE *fp) {
     if (loadLtc(fp, &luat->add)              == 0)                  return 0;
     if (which == LUAT_WITH_DEL && loadLtc(fp, &luat->del) == 0)     return 0;
 
-    if (!newIndex(NULL, trname->ptr, tmatch, -1, NULL, 0, 0, 0, luat, -1)) {
+    if (!newIndex(NULL, trname->ptr, tmatch, -1, NULL, 0, 0, 0,
+                  luat, -1, NULL)) {
                                                                     return 0;
     }
     decrRefCount(trname);
@@ -217,8 +220,8 @@ bool rdbLoadBT(FILE *fp) {
         r_ind_t *ri   = &Index[imatch]; bzero(ri, sizeof(r_ind_t));
         ri->virt      =  1;
         ri->table     =  tmatch;
-        ri->column    =  0;
-        ri->obc       = -1;
+        ri->column    =  0; /* PK */
+        ri->obc       = -1; ri->done      =  1; ri->ofname    = NULL;
         if (!(rt->name = rdbLoadStringObject(fp)))                  return 0;
         if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)         return 0;
         rt->col_count = u;
@@ -247,7 +250,7 @@ bool rdbLoadBT(FILE *fp) {
     } else {                        /* INDEX */
         int imatch  = tmatch;
         r_ind_t *ri = &Index[imatch]; bzero(ri, sizeof(r_ind_t));
-        ri->obj     = rdbLoadStringObject(fp);
+        if (!(ri->obj = rdbLoadStringObject(fp)))                   return 0;
         if (!(ri->obj))                                             return 0;
         if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)         return 0;
         ri->table   = (int)u;
@@ -282,6 +285,8 @@ bool rdbLoadBT(FILE *fp) {
         if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)         return 0;
         // NOTE: obc: -1 not handled well, so incr on SAVE, decr on LOAD
         ri->obc     = ((int)u) - 1; //DECR
+        ri->done    = 1;
+        ri->ofname  = NULL;
         uchar ktype;
         if (fread(&ktype,    1, 1, fp) == 0)                        return 0;
         ri->btr = (ri->clist) ?  createMCIndexBT(ri->clist, imatch) :
@@ -296,9 +301,7 @@ void rdbLoadFinished() { // Indexes are built AFTER data is loaded
     for (int imatch = 0; imatch < Num_indx; imatch++) {
         r_ind_t *ri = &Index[imatch];
         if (ri->virt) continue;
-        bt   *ibtr = getIBtr(imatch);
-        if (!ibtr)    continue; /* if deleted */
         bt   *btr  = getBtr(ri->table);
-        buildIndex(NULL, btr, btr->root, ibtr, imatch, 0);
+        buildIndex(NULL, btr, imatch, NULL, -1);
     }
 }

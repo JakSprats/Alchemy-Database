@@ -231,6 +231,20 @@ static void outputAdvancedIndexInfo(redisClient *c, int tmatch, long *card) {
         }
     }
 }
+static void outputPartialIndex(cli *c, int tmatch, int imatch, robj *r) {
+    r_tbl_t *rt = &Tbl  [tmatch];
+    r_ind_t *ri = &Index[imatch];
+    robj *ovar = createStringObject(ri->ofname, sdslen(ri->ofname));
+    robj *o    = lookupKeyRead(c->db, ovar);
+    if (o) {
+        long long sofar;
+        if (getLongLongFromObject(o, &sofar) == REDIS_OK) {
+            double perc = (((double)sofar / (double)rt->btr->numkeys) * 100.00);
+            r->ptr = sdscatprintf(r->ptr, " [completed: %d/%d -> %.4g%]",
+                                          sofar, rt->btr->numkeys, perc);
+        }
+    }
+}
 
 void descCommand(redisClient *c) {
     TABLE_CHECK_OR_REPLY(c->argv[1]->ptr,)
@@ -250,12 +264,12 @@ void descCommand(redisClient *c) {
                                   (char *)ort->name->ptr,
                                   (char *)ort->col_name[rt->fk_ocmatch]->ptr);
         }
-        int imatch = find_index(tmatch, j);
+        int imatch = find_partial_index(tmatch, j);
         if (imatch != -1) {
             int loops = 0;
             while (1) {
                 r_ind_t *ri      = &Index[imatch];
-                int      nimatch = find_next_index(tmatch, j, imatch);
+                int      nimatch = find_next_partial_index(tmatch, j, imatch);
                 ull      isize   = 0;
                 if (!ri->virt && !ri->luat) {
                     bt *ibtr = getIBtr(imatch);
@@ -263,18 +277,21 @@ void descCommand(redisClient *c) {
                 }
                 sds idesc = NULL;
                 if (ri->clist) idesc = getMCIlist(ri->clist, tmatch);/*DEST051*/
-                r->ptr = sdscatprintf(r->ptr, "%s%sINDEX: %s%s%s [BYTES: %lld]",
-                                      loops ? ", " : " - ", 
-                                      ri->cnstr ? " UNIQUE " : "",
-                                      (char *)ri->obj->ptr,
-                                      idesc ? " " : "", idesc ? idesc : "",
-                                      isize);
+                r->ptr = sdscatprintf(r->ptr, 
+                                      "%s%s%sINDEX: %s%s%s [BYTES: %lld]",
+                                        loops ? ", " : " - ", 
+                                        ri->cnstr ? " UNIQUE " : "",
+                                        ri->done  ? "" : " PARTIAL ",
+                                        (char *)ri->obj->ptr,
+                                        idesc ? " " : "", idesc ? idesc : "",
+                                        isize);
                 if (idesc) sdsfree(idesc);               /* DESTROYED 051 */
                 if (ri->lru) r->ptr = sdscatprintf(r->ptr, " - LRUINDEX");
                 if (ri->obc != -1) {
                     r->ptr = sdscatprintf(r->ptr, " - ORDER BY %s",
                                             (char *)rt->col_name[ri->obc]->ptr);
                 }
+                if (!ri->done) outputPartialIndex(c, tmatch, imatch, r);
                 if (nimatch == -1) break;
                 else               imatch = nimatch;
                 loops++;

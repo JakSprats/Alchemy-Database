@@ -499,7 +499,7 @@ int DXDB_rdbSave(FILE *fp) { //printf("DXDB_rdbSave\n");
         r_tbl_t *rt = &Tbl[tmatch];
         if (rdbSaveType        (fp, REDIS_BTREE) == -1)               return -1;
         if (rdbSaveBT          (fp, rt->btr)     == -1)               return -1;
-        MATCH_INDICES(tmatch)
+        MATCH_PARTIAL_INDICES(tmatch)
         if (matches) {
             for (int i = 0; i < matches; i++) {
                 r_ind_t *ri = &Index[inds[i]];

@@ -232,7 +232,8 @@ btEntry *btRangeNext(btSIter *siter, bool asc) {
     if (!siter) return NULL;
     void *be = btNext(&(siter->x)); if (!be) return NULL;
     convertStream2Key(be, siter->be.key, siter->x.btr);
-    siter->be.val = parseStream(be, siter->x.btr);
+    siter->be.val    = parseStream(be, siter->x.btr);
+    siter->be.stream = be;
     if        (C_IS_I(siter->ktype) || C_IS_L(siter->ktype)) {
         ulong l = C_IS_I(siter->ktype) ? (ulong)(siter->key.i) : siter->key.l;
         if (l == siter->x.high)  siter->x.finished = 1;       /* exact match */

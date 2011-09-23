@@ -2419,7 +2419,6 @@ function decimate_table_t_w_3M_entries() {
   $CLI SCAN "COUNT(*)" FROM t
 }
 
-
 # 10million entries ONLY 3FK, good for testing LARGE indexes
 function populate_table_t_w_10M_3FK_entries() {
   $CLI DROP TABLE t

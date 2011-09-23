@@ -89,9 +89,10 @@ static void createTableCommitReply(redisClient *c,
     }
 
     /* BTREE implies an index on "tbl_pk_index" -> autogenerate */
-    int  vimatch  = Num_indx;
-    sds  iname    = P_SDS_EMT "%s_%s_%s", tname, cnames[0], INDEX_DELIM); //D073
-    bool ok       = newIndex(c, iname, Num_tbls, 0, NULL, 0, 1, 0, NULL, -1);
+    int  vimatch = Num_indx;
+    sds  iname   = P_SDS_EMT "%s_%s_%s", tname, cnames[0], INDEX_DELIM); //D073
+    bool ok      = newIndex(c, iname, Num_tbls, 0, NULL, 0, 1,
+                            0, NULL, -1,        NULL);
     sdsfree(iname);                                      /* DESTROYED 073 */
     if (!ok) return;
     addReply(c, shared.ok); /* commited */

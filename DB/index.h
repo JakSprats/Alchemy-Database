@@ -39,6 +39,10 @@ int find_index(     int tmatch, int cmatch);
 int find_next_index(int tmatch, int cmatch, int j);
 int match_index(    int tmatch, int inds[]);
 int match_index_name(char *iname);
+int find_partial_index(int tmatch, int cmatch);        // Used by INDEX CURSORs
+int find_next_partial_index(int tmatch, int cmatch, int imatch); // for DESC
+int match_partial_index_name(char *iname); // Used by DROP INDEX|LUATRIGGER
+int match_partial_index(int tmatch, int inds[]); // RDBSAVE partial indexes 2
 
 //TODO turn into function
 /* MATCH_INDICES(tmatch)
@@ -46,15 +50,18 @@ int match_index_name(char *iname);
 #define MATCH_INDICES(tmatch)                 \
     int   inds[MAX_COLUMN_PER_TABLE];         \
     int   matches = match_index(tmatch, inds);
+#define MATCH_PARTIAL_INDICES(tmatch)                 \
+    int   inds[MAX_COLUMN_PER_TABLE];         \
+    int   matches = match_partial_index(tmatch, inds);
 
 sds  getMCIlist(list *clist, int tmatch);
 bool addC2MCI(cli *c, int cmatch, list *clist);
 bool newIndex(cli    *c,     char   *iname, int  tmatch, int   cmatch,
               list   *clist, uchar   cnstr, bool virt,   bool  lru,
-              luat_t *luat,  int     obc);
+              luat_t *luat,  int     obc,   sds  ofname);
 void createIndex(cli *c);
 
-bool buildIndex(cli *c, bt *btr, bt_n *x, bt *ibtr, int imatch, bool nri);
+long buildIndex(cli *c,  bt *btr, int imatch, sds ofname, long limit);
 
 bool addToIndex (cli *c, bt *btr, aobj *apk,  void *rrow, int imatch);
 void delFromIndex       (bt *btr, aobj *apk,  void *rrow, int imatch);

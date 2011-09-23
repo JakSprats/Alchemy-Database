@@ -127,7 +127,7 @@ void DXDB_createSharedObjects() {
         "-ERR SYNTAX: SELECT ... WHERE x IN ([SELECT|SCAN])\r\n"));
 
     shared.createsyntax = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: \"CREATE TABLE tablename (columnname type,,,,)\" OR \"CREATE INDEX indexname ON tablename (columnname) [ORDER BY othercolumn]\" OR \"CREATE LRUINDEX ON tablename\" OR \"CREATE LUATRIGGER luatriggername ON tablename ADD_LUA_CALL DEL_LUA_CALL\"\r\n"));
+        "-ERR SYNTAX: \"CREATE TABLE tablename (columnname type,,,,)\" OR \"CREATE INDEX indexname ON tablename (columnname) [ORDER BY othercolumn] [OFFSET X]\" OR \"CREATE LRUINDEX ON tablename\" OR \"CREATE LUATRIGGER luatriggername ON tablename ADD_LUA_CALL DEL_LUA_CALL\"\r\n"));
     shared.dropsyntax = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: DROP TABLE tablename OR DROP INDEX indexname OR DROP LUATRIGGER\r\n"));
     shared.altersyntax = createObject(REDIS_STRING,sdsnew(
@@ -312,4 +312,7 @@ void DXDB_createSharedObjects() {
         "-ERR CREATE INDEX ... ORDER BY PK - PK ordering is default, operation not needed\r\n"));
     shared.indexobcill            = createObject(REDIS_STRING,sdsnew(
         "-ERR CREATE INDEX ... ORDER BY col - Lots of constraints: No UniqueMultipleColumnIndexes, Both indexed_column & order_by_column must be [INT|LONG] and can not be the same column\r\n"));
+
+    shared.indexcursorerr         = createObject(REDIS_STRING,sdsnew(
+        "-ERR CREATE INDEX ... OFFEST LIMIT error\r\n"));
 }
