@@ -36,19 +36,12 @@
 
 #define SDS_ABORT_ON_OOM
 
+#include "sds.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#include "sds.h"
 #include "zmalloc.h"
-
-#ifdef ALCHEMY_DATABASE
-size_t sdslen(const sds s) {
-    struct sdshdr *sh = (void*)(s-(sizeof(struct sdshdr)));
-    return sh->len;
-}
-#endif
 
 static void sdsOomAbort(void) {
     fprintf(stderr,"SDS: Out Of Memory (SDS_ABORT_ON_OOM defined)\n");
@@ -58,11 +51,7 @@ static void sdsOomAbort(void) {
 sds sdsnewlen(const void *init, size_t initlen) {
     struct sdshdr *sh;
 
-    if (init) {
-        sh = zmalloc(sizeof(struct sdshdr)+initlen+1);
-    } else {
-        sh = zcalloc(sizeof(struct sdshdr)+initlen+1);
-    }
+    sh = zmalloc(sizeof(struct sdshdr)+initlen+1);
 #ifdef SDS_ABORT_ON_OOM
     if (sh == NULL) sdsOomAbort();
 #else
@@ -70,8 +59,10 @@ sds sdsnewlen(const void *init, size_t initlen) {
 #endif
     sh->len = initlen;
     sh->free = 0;
-    if (initlen && init)
-        memcpy(sh->buf, init, initlen);
+    if (initlen) {
+        if (init) memcpy(sh->buf, init, initlen);
+        else memset(sh->buf,0,initlen);
+    }
     sh->buf[initlen] = '\0';
     return (char*)sh->buf;
 }
@@ -85,6 +76,11 @@ sds sdsnew(const char *init) {
     return sdsnewlen(init, initlen);
 }
 
+size_t sdslen(const sds s) {
+    struct sdshdr *sh = (void*) (s-(sizeof(struct sdshdr)));
+    return sh->len;
+}
+
 sds sdsdup(const sds s) {
     return sdsnewlen(s, sdslen(s));
 }
@@ -92,6 +88,11 @@ sds sdsdup(const sds s) {
 void sdsfree(sds s) {
     if (s == NULL) return;
     zfree(s-sizeof(struct sdshdr));
+}
+
+size_t sdsavail(sds s) {
+    struct sdshdr *sh = (void*) (s-(sizeof(struct sdshdr)));
+    return sh->free;
 }
 
 void sdsupdatelen(sds s) {
@@ -305,17 +306,12 @@ int sdscmp(sds s1, sds s2) {
  */
 sds *sdssplitlen(char *s, int len, char *sep, int seplen, int *count) {
     int elements = 0, slots = 5, start = 0, j;
-    sds *tokens;
 
-    if (seplen < 1 || len < 0) return NULL;
-
-    tokens = zmalloc(sizeof(sds)*slots);
+    sds *tokens = zmalloc(sizeof(sds)*slots);
 #ifdef SDS_ABORT_ON_OOM
     if (tokens == NULL) sdsOomAbort();
-#else
-    if (tokens == NULL) return NULL;
 #endif
-
+    if (seplen < 1 || len < 0 || tokens == NULL) return NULL;
     if (len == 0) {
         *count = 0;
         return tokens;
@@ -370,7 +366,6 @@ cleanup:
         int i;
         for (i = 0; i < elements; i++) sdsfree(tokens[i]);
         zfree(tokens);
-        *count = 0;
         return NULL;
     }
 #endif
@@ -406,11 +401,11 @@ sds sdscatrepr(sds s, char *p, size_t len) {
         case '"':
             s = sdscatprintf(s,"\\%c",*p);
             break;
-        case '\n': s = sdscatlen(s,"\\n",2); break;
-        case '\r': s = sdscatlen(s,"\\r",2); break;
-        case '\t': s = sdscatlen(s,"\\t",2); break;
-        case '\a': s = sdscatlen(s,"\\a",2); break;
-        case '\b': s = sdscatlen(s,"\\b",2); break;
+        case '\n': s = sdscatlen(s,"\\n",1); break;
+        case '\r': s = sdscatlen(s,"\\r",1); break;
+        case '\t': s = sdscatlen(s,"\\t",1); break;
+        case '\a': s = sdscatlen(s,"\\a",1); break;
+        case '\b': s = sdscatlen(s,"\\b",1); break;
         default:
             if (isprint(*p))
                 s = sdscatprintf(s,"%c",*p);
@@ -558,6 +553,29 @@ void sdssplitargs_free(sds *argv, int argc) {
 
     for (j = 0 ;j < argc; j++) sdsfree(argv[j]);
     zfree(argv);
+}
+
+/* Modify the string substituting all the occurrences of the set of
+ * characters specifed in the 'from' string to the corresponding character
+ * in the 'to' array.
+ *
+ * For instance: sdsmapchars(mystring, "ho", "01", 2)
+ * will have the effect of turning the string "hello" into "0ell1".
+ *
+ * The function returns the sds string pointer, that is always the same
+ * as the input pointer since no resize is needed. */
+sds sdsmapchars(sds s, char *from, char *to, size_t setlen) {
+    size_t j, i, l = sdslen(s);
+
+    for (j = 0; j < l; j++) {
+        for (i = 0; i < setlen; i++) {
+            if (s[j] == from[i]) {
+                s[j] = to[i];
+                break;
+            }
+        }
+    }
+    return s;
 }
 
 #ifdef SDS_TEST_MAIN

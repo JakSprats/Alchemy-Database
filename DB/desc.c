@@ -335,7 +335,7 @@ void descCommand(redisClient *c) {
 }
 
 void showCommand(redisClient *c) {
-    if        (!strcmp("TABLES",  c->argv[1]->ptr)) {
+    if        (!strcasecmp("TABLES",  c->argv[1]->ptr)) {
         void *rlen = addDeferredMultiBulkLength(c);
         long  card = 0;
         for (int i = 0; i < Num_tbls; i++) {
@@ -357,7 +357,7 @@ void showCommand(redisClient *c) {
             decrRefCount(r);
         }
         setDeferredMultiBulkLength(c, rlen, card);
-    } else if (!strcmp("INDEXES", c->argv[1]->ptr)) {
+    } else if (!strcasecmp("INDEXES", c->argv[1]->ptr)) {
         void *rlen = addDeferredMultiBulkLength(c);
         long  card = 0;
         for (int i = 0; i < Num_indx; i++) {

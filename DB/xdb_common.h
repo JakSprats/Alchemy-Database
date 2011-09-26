@@ -3,6 +3,13 @@
 
 #define ALCHEMY_VERSION "0.2.1"
 
+#define REDIS_BTREE           5
+#define REDIS_LUA_TRIGGER     6
+
+#define OUTPUT_NORMAL     0
+#define OUTPUT_PURE_REDIS 1
+#define OUTPUT_EMBEDDED   2
+
 #include <endian.h>
 #ifndef BYTE_ORDER
   #define BYTE_ORDER LITTLE_ENDIAN
@@ -11,8 +18,6 @@
 #define cli redisClient
 #define rcommand struct redisCommand
 
-#define REDIS_BTREE           5
-#define REDIS_LUA_TRIGGER     6
 
 #define bool     unsigned char
 #define uchar    unsigned char

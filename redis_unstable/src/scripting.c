@@ -1,9 +1,17 @@
+#ifdef ALCHEMY_DATABASE
+  #include "xdb_hooks.h"
+#endif
 #include "redis.h"
 #include "sha1.h"
 
 #include <lua.h>
 #include <lauxlib.h>
 #include <lualib.h>
+#include <ctype.h>
+
+#ifdef ALCHEMY_DATABASE
+extern uchar    OutputMode;
+#endif
 
 char *redisProtocolToLuaType_Int(lua_State *lua, char *reply);
 char *redisProtocolToLuaType_Bulk(lua_State *lua, char *reply);
@@ -68,7 +76,7 @@ char *redisProtocolToLuaType_Bulk(lua_State *lua, char *reply) {
 
     string2ll(reply+1,p-reply-1,&bulklen);
     if (bulklen == -1) {
-        lua_pushnil(lua);
+        lua_pushboolean(lua,0);
         return p+2;
     } else {
         lua_pushlstring(lua,p+2,bulklen);
@@ -104,7 +112,7 @@ char *redisProtocolToLuaType_MultiBulk(lua_State *lua, char *reply) {
     string2ll(reply+1,p-reply-1,&mbulklen);
     p += 2;
     if (mbulklen == -1) {
-        lua_pushnil(lua);
+        lua_pushboolean(lua,0);
         return p;
     }
     lua_newtable(lua);
@@ -172,11 +180,14 @@ int luaRedisCommand(lua_State *lua) {
 #ifdef ALCHEMY_DATABASE
     //NOTE: this is basically a copy of redis.c: call()
     long long dirty = server.dirty, start = ustime();;
+    uchar o_outputmode = OutputMode;
+    OutputMode         = OUTPUT_PURE_REDIS; // best output mode for LUA tables
 #endif
     c->argv = argv;
     c->argc = argc;
     cmd->proc(c);
 #ifdef ALCHEMY_DATABASE
+    OutputMode         = o_outputmode;
     dirty = server.dirty-dirty;
     cmd->microseconds += ustime()-start;
     cmd->calls++;
@@ -187,6 +198,7 @@ int luaRedisCommand(lua_State *lua) {
         listLength(server.slaves))
         replicationFeedSlaves(server.slaves,c->db->id,c->argv,c->argc);
 #endif
+
 
     /* Convert the result of the Redis command into a suitable Lua type.
      * The first thing we need is to create a single string from the client
@@ -210,11 +222,43 @@ int luaRedisCommand(lua_State *lua) {
     for (j = 0; j < c->argc; j++)
         decrRefCount(c->argv[j]);
     zfree(c->argv);
-#ifdef ALCHEMY_DATABASE
-    c->argc = 0;
-#endif
 
     return 1;
+}
+
+int luaLogCommand(lua_State *lua) {
+    int j, argc = lua_gettop(lua);
+    int level;
+    sds log;
+
+    if (argc < 2) {
+        luaPushError(lua, "redis.log() requires two arguments or more.");
+        return 1;
+    } else if (!lua_isnumber(lua,-argc)) {
+        luaPushError(lua, "First argument must be a number (log level).");
+        return 1;
+    }
+    level = lua_tonumber(lua,-argc);
+    if (level < REDIS_DEBUG || level > REDIS_WARNING) {
+        luaPushError(lua, "Invalid debug level.");
+        return 1;
+    }
+
+    /* Glue together all the arguments */
+    log = sdsempty();
+    for (j = 1; j < argc; j++) {
+        size_t len;
+        char *s;
+
+        s = (char*)lua_tolstring(lua,(-argc)+j,&len);
+        if (s) {
+            if (j != 1) log = sdscatlen(log," ",1);
+            log = sdscatlen(log,s,len);
+        }
+    }
+    redisLog(level,log);
+    sdsfree(log);
+    return 0;
 }
 
 void luaMaskCountHook(lua_State *lua, lua_Debug *ar) {
@@ -233,9 +277,44 @@ void scriptingInit(void) {
     lua_State *lua = lua_open();
     luaL_openlibs(lua);
 
-    /* Register the 'r' command */
+#ifdef ALCHEMY_DATABASE
     lua_pushcfunction(lua,luaRedisCommand);
     lua_setglobal(lua,"redis");
+    lua_pushcfunction(lua,luaLogCommand);
+    lua_setglobal(lua,"log");
+#else
+    /* Register the redis commands table and fields */
+    lua_newtable(lua);
+
+    /* redis.call */
+    lua_pushstring(lua,"call");
+    lua_pushcfunction(lua,luaRedisCommand);
+    lua_settable(lua,-3);
+
+    /* redis.log and log levels. */
+    lua_pushstring(lua,"log");
+    lua_pushcfunction(lua,luaLogCommand);
+    lua_settable(lua,-3);
+
+    lua_pushstring(lua,"LOG_DEBUG");
+    lua_pushnumber(lua,REDIS_DEBUG);
+    lua_settable(lua,-3);
+
+    lua_pushstring(lua,"LOG_VERBOSE");
+    lua_pushnumber(lua,REDIS_VERBOSE);
+    lua_settable(lua,-3);
+
+    lua_pushstring(lua,"LOG_NOTICE");
+    lua_pushnumber(lua,REDIS_NOTICE);
+    lua_settable(lua,-3);
+
+    lua_pushstring(lua,"LOG_WARNING");
+    lua_pushnumber(lua,REDIS_WARNING);
+    lua_settable(lua,-3);
+
+    /* Finally set the table as 'redis' global var. */
+    lua_setglobal(lua,"redis");
+#endif
 
     /* Create the (non connected) client that we use to execute Redis commands
      * inside the Lua interpreter */
@@ -266,17 +345,17 @@ void hashScript(char *digest, char *script, size_t len) {
 }
 
 void luaReplyToRedisReply(redisClient *c, lua_State *lua) {
-    int t = lua_type(lua,1);
+    int t = lua_type(lua,-1);
 
     switch(t) {
     case LUA_TSTRING:
-        addReplyBulkCBuffer(c,(char*)lua_tostring(lua,1),lua_strlen(lua,1));
+        addReplyBulkCBuffer(c,(char*)lua_tostring(lua,-1),lua_strlen(lua,-1));
         break;
     case LUA_TBOOLEAN:
-        addReply(c,lua_toboolean(lua,1) ? shared.cone : shared.czero);
+        addReply(c,lua_toboolean(lua,-1) ? shared.cone : shared.nullbulk);
         break;
     case LUA_TNUMBER:
-        addReplyLongLong(c,(long long)lua_tonumber(lua,1));
+        addReplyLongLong(c,(long long)lua_tonumber(lua,-1));
         break;
     case LUA_TTABLE:
         /* We need to check if it is an array, an error, or a status reply.
@@ -286,8 +365,10 @@ void luaReplyToRedisReply(redisClient *c, lua_State *lua) {
         lua_gettable(lua,-2);
         t = lua_type(lua,-1);
         if (t == LUA_TSTRING) {
-            addReplySds(c,sdscatprintf(sdsempty(),
-                    "-%s\r\n",(char*)lua_tostring(lua,-1)));
+            sds err = sdsnew(lua_tostring(lua,-1));
+            sdsmapchars(err,"\r\n","  ",2);
+            addReplySds(c,sdscatprintf(sdsempty(),"-%s\r\n",err));
+            sdsfree(err);
             lua_pop(lua,2);
             return;
         }
@@ -297,8 +378,10 @@ void luaReplyToRedisReply(redisClient *c, lua_State *lua) {
         lua_gettable(lua,-2);
         t = lua_type(lua,-1);
         if (t == LUA_TSTRING) {
-            addReplySds(c,sdscatprintf(sdsempty(),
-                    "+%s\r\n",(char*)lua_tostring(lua,-1)));
+            sds ok = sdsnew(lua_tostring(lua,-1));
+            sdsmapchars(ok,"\r\n","  ",2);
+            addReplySds(c,sdscatprintf(sdsempty(),"+%s\r\n",ok));
+            sdsfree(ok);
             lua_pop(lua,1);
         } else {
             void *replylen = addDeferredMultiBulkLength(c);
@@ -312,17 +395,9 @@ void luaReplyToRedisReply(redisClient *c, lua_State *lua) {
                 if (t == LUA_TNIL) {
                     lua_pop(lua,1);
                     break;
-                } else if (t == LUA_TSTRING) {
-                    size_t len;
-                    char *s = (char*) lua_tolstring(lua,-1,&len);
-
-                    addReplyBulkCBuffer(c,s,len);
-                    mbulklen++;
-                } else if (t == LUA_TNUMBER) {
-                    addReplyLongLong(c,(long long)lua_tonumber(lua,-1));
-                    mbulklen++;
                 }
-                lua_pop(lua,1);
+                luaReplyToRedisReply(c, lua);
+                mbulklen++;
             }
             setDeferredMultiBulkLength(c,replylen,mbulklen);
         }
@@ -346,7 +421,7 @@ void luaSetGlobalArray(lua_State *lua, char *var, robj **elev, int elec) {
     lua_setglobal(lua,var);
 }
 
-void evalCommand(redisClient *c) {
+void evalGenericCommand(redisClient *c, int evalsha) {
     lua_State *lua = server.lua;
     char funcname[43];
     long long numkeys;
@@ -363,11 +438,32 @@ void evalCommand(redisClient *c) {
      * defined into the Lua state */
     funcname[0] = 'f';
     funcname[1] = '_';
-    hashScript(funcname+2,c->argv[1]->ptr,sdslen(c->argv[1]->ptr));
+    if (!evalsha) {
+        /* Hash the code if this is an EVAL call */
+        hashScript(funcname+2,c->argv[1]->ptr,sdslen(c->argv[1]->ptr));
+    } else {
+        /* We already have the SHA if it is a EVALSHA */
+        int j;
+        char *sha = c->argv[1]->ptr;
+
+        for (j = 0; j < 40; j++)
+            funcname[j+2] = tolower(sha[j]);
+        funcname[42] = '\0';
+    }
+
     lua_getglobal(lua, funcname);
     if (lua_isnil(lua,1)) {
-        /* Function not defined... let's define it. */
-        sds funcdef = sdsempty();
+        sds funcdef;
+      
+        /* Function not defined... let's define it if we have the
+         * body of the funciton. If this is an EVALSHA call we can just
+         * return an error. */
+        if (evalsha) {
+            addReply(c, shared.noscripterr);
+            lua_pop(lua,1); /* remove the nil from the stack */
+            return;
+        }
+        funcdef = sdsempty();
 
         lua_pop(lua,1); /* remove the nil from the stack */
         funcdef = sdscat(funcdef,"function ");
@@ -421,8 +517,26 @@ void evalCommand(redisClient *c) {
         addReplyErrorFormat(c,"Error running script (call to %s): %s\n",
             funcname, lua_tostring(lua,-1));
         lua_pop(lua,1);
+        lua_gc(lua,LUA_GCCOLLECT,0);
         return;
     }
     selectDb(c,server.lua_client->db->id); /* set DB ID from Lua client */
     luaReplyToRedisReply(c,lua);
+    lua_gc(lua,LUA_GCSTEP,1);
+}
+
+void evalCommand(redisClient *c) {
+    evalGenericCommand(c,0);
+}
+
+void evalShaCommand(redisClient *c) {
+    if (sdslen(c->argv[1]->ptr) != 40) {
+        /* We know that a match is not possible if the provided SHA is
+         * not the right length. So we return an error ASAP, this way
+         * evalGenericCommand() can be implemented without string length
+         * sanity check */
+        addReply(c, shared.noscripterr);
+        return;
+    }
+    evalGenericCommand(c,1);
 }

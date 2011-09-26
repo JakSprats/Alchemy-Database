@@ -93,9 +93,6 @@ enum OP {NONE, EQ, NE, GT, GE, LT, LE, RQ, IN};
 #define CONSTRAINT_UNIQUE 1
 #define UNIQ(cnstr) (cnstr == CONSTRAINT_UNIQUE)
 
-#define OUTPUT_NORMAL     0
-#define OUTPUT_PURE_REDIS 1
-#define OUTPUT_EMBEDDED   2
 #define OREDIS OutputMode == OUTPUT_PURE_REDIS
 #define EREDIS OutputMode == OUTPUT_EMBEDDED
 

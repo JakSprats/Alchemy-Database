@@ -42,20 +42,6 @@ struct sdshdr {
     char buf[];
 };
 
-#ifdef ALCHEMY_DATABASE
-size_t sdslen(const sds s);
-#else
-static inline size_t sdslen(const sds s) {
-    struct sdshdr *sh = (void*)(s-(sizeof(struct sdshdr)));
-    return sh->len;
-}
-#endif
-
-static inline size_t sdsavail(const sds s) {
-    struct sdshdr *sh = (void*)(s-(sizeof(struct sdshdr)));
-    return sh->free;
-}
-
 sds sdsnewlen(const void *init, size_t initlen);
 sds sdsnew(const char *init);
 sds sdsempty();
@@ -89,5 +75,6 @@ sds sdsfromlonglong(long long value);
 sds sdscatrepr(sds s, char *p, size_t len);
 sds *sdssplitargs(char *line, int *argc);
 void sdssplitargs_free(sds *argv, int argc);
+sds sdsmapchars(sds s, char *from, char *to, size_t setlen);
 
 #endif
