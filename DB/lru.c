@@ -92,7 +92,7 @@ void createLruIndex(cli *c) {
     int  imatch  = Num_indx;
     sds  iname   = P_SDS_EMT "%s_%s", LRUINDEX_DELIM, tname); /* DEST 072 */
     bool ok      = newIndex(c, iname, tmatch, rt->col_count, NULL,
-                             CONSTRAINT_NONE, 0, 1, NULL, -1, NULL);
+                             CONSTRAINT_NONE, 0, 1, NULL, -1, 0);
     sdsfree(iname);                                            /*DESTROYED 072*/
     if (!ok) return;
     rt->lrui     = imatch;

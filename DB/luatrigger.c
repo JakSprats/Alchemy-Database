@@ -125,7 +125,7 @@ void luaTAdd(cli *c, sds trname, sds tname, sds acmd, sds dcmd) {
             addReply(c, shared.luat_decl_fmt); goto luatadd_err;
         }
     }
-    if (!newIndex(c, trname, tmatch, -1, NULL, 0, 0, 0, luat, -1, NULL)) {
+    if (!newIndex(c, trname, tmatch, -1, NULL, 0, 0, 0, luat, -1, 0)) {
                                                goto luatadd_err;
     }
     addReply(c, shared.ok);

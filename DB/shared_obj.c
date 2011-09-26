@@ -314,5 +314,5 @@ void DXDB_createSharedObjects() {
         "-ERR CREATE INDEX ... ORDER BY col - Lots of constraints: No UniqueMultipleColumnIndexes, Both indexed_column & order_by_column must be [INT|LONG] and can not be the same column\r\n"));
 
     shared.indexcursorerr         = createObject(REDIS_STRING,sdsnew(
-        "-ERR CREATE INDEX ... OFFEST LIMIT error\r\n"));
+        "-ERR CREATE INDEX ... OFFEST NUM error - caveats: PK must be [INT|LONG], NUM must be positive\r\n"));
 }

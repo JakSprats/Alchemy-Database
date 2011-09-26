@@ -102,9 +102,7 @@ bool rdbLoadLuaTrigger(FILE *fp) {
     if (which == LUAT_WITH_DEL && loadLtc(fp, &luat->del) == 0)     return 0;
 
     if (!newIndex(NULL, trname->ptr, tmatch, -1, NULL, 0, 0, 0,
-                  luat, -1, NULL)) {
-                                                                    return 0;
-    }
+                  luat, -1,          0))                            return 0;
     decrRefCount(trname);
     return 1;
 }
@@ -221,7 +219,8 @@ bool rdbLoadBT(FILE *fp) {
         ri->virt      =  1;
         ri->table     =  tmatch;
         ri->column    =  0; /* PK */
-        ri->obc       = -1; ri->done      =  1; ri->ofname    = NULL;
+        ri->obc       = -1;
+        ri->done      =  1; ri->ofst = -1;
         if (!(rt->name = rdbLoadStringObject(fp)))                  return 0;
         if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)         return 0;
         rt->col_count = u;
@@ -285,8 +284,7 @@ bool rdbLoadBT(FILE *fp) {
         if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)         return 0;
         // NOTE: obc: -1 not handled well, so incr on SAVE, decr on LOAD
         ri->obc     = ((int)u) - 1; //DECR
-        ri->done    = 1;
-        ri->ofname  = NULL;
+        ri->done    =  1; ri->ofst = -1;
         uchar ktype;
         if (fread(&ktype,    1, 1, fp) == 0)                        return 0;
         ri->btr = (ri->clist) ?  createMCIndexBT(ri->clist, imatch) :
@@ -300,8 +298,9 @@ bool rdbLoadBT(FILE *fp) {
 void rdbLoadFinished() { // Indexes are built AFTER data is loaded
     for (int imatch = 0; imatch < Num_indx; imatch++) {
         r_ind_t *ri = &Index[imatch];
+        if (!ri->obj) continue; // previously deleted
         if (ri->virt) continue;
         bt   *btr  = getBtr(ri->table);
-        buildIndex(NULL, btr, imatch, NULL, -1);
+        buildIndex(NULL, btr, imatch, -1);
     }
 }

@@ -200,11 +200,11 @@ void sqlDumpCommand(redisClient *c) {
  
 ull get_sum_all_index_size_for_table(int tmatch) {
     ull isize = 0;
-    for (int i = 0; i < Num_indx; i++) {
-        r_ind_t *ri = &Index[i];
-        if (!ri->virt && !ri->luat && ri->table == tmatch) {
-            bt   *ibtr  = getIBtr(i);
-            isize      += ibtr->msize;
+    MATCH_INDICES(tmatch)
+    for (int i = 0; i < matches; i++) {
+        r_ind_t *ri = &Index[inds[i]];
+        if (!ri->virt && !ri->luat) {
+            bt *ibtr = getIBtr(inds[i]); isize += ibtr->msize;
         }
     }
     return isize;
@@ -231,19 +231,12 @@ static void outputAdvancedIndexInfo(redisClient *c, int tmatch, long *card) {
         }
     }
 }
-static void outputPartialIndex(cli *c, int tmatch, int imatch, robj *r) {
+static void outputPartialIndex(int tmatch, int imatch, robj *r) {
     r_tbl_t *rt = &Tbl  [tmatch];
     r_ind_t *ri = &Index[imatch];
-    robj *ovar = createStringObject(ri->ofname, sdslen(ri->ofname));
-    robj *o    = lookupKeyRead(c->db, ovar);
-    if (o) {
-        long long sofar;
-        if (getLongLongFromObject(o, &sofar) == REDIS_OK) {
-            double perc = (((double)sofar / (double)rt->btr->numkeys) * 100.00);
-            r->ptr = sdscatprintf(r->ptr, " [completed: %d/%d -> %.4g%]",
-                                          sofar, rt->btr->numkeys, perc);
-        }
-    }
+    double perc = (((double)ri->ofst / (double)rt->btr->numkeys) * 100.00);
+    r->ptr      = sdscatprintf(r->ptr, " [completed: %ld/%d -> %.4g%]",
+                                       ri->ofst, rt->btr->numkeys, perc);
 }
 
 void descCommand(redisClient *c) {
@@ -291,7 +284,7 @@ void descCommand(redisClient *c) {
                     r->ptr = sdscatprintf(r->ptr, " - ORDER BY %s",
                                             (char *)rt->col_name[ri->obc]->ptr);
                 }
-                if (!ri->done) outputPartialIndex(c, tmatch, imatch, r);
+                if (!ri->done) outputPartialIndex(tmatch, imatch, r);
                 if (nimatch == -1) break;
                 else               imatch = nimatch;
                 loops++;

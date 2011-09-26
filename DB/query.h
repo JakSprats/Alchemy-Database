@@ -70,8 +70,8 @@ typedef struct r_ind {
     bool   lru;     /* LRUINDEX                                           */
     bool   luat;    /* LUATRIGGER - call lua function per CRUD            */
     int    obc;     /* ORDER BY col                                       */
-    sds    ofname;  /* CREATE INDEX OFFSET name of CURSOR                 */
     bool   done;    /* CREATE INDEX OFFSET -> not done until finished     */
+    long   ofst;    /* CREATE INDEX OFFSET partial indexes current offset */
 } r_ind_t;
 
 typedef struct update_expression {
