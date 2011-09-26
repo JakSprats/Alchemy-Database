@@ -2302,7 +2302,7 @@ function test_orderby_index_uu_ul_lu_ll() {
 function test_orderby_index_20_entries() {
   $CLI DROP TABLE ob
   $CLI CREATE TABLE ob "(pk INT, fk INT, ts INT, col TEXT)";
-  $CLI CREATE INDEX i_ob ON ob "(fk)" ORDER BY ts;
+  $CLI CREATE INDEX i_ob ON ob "(fk)" ORDER BY ts
   $CLI INSERT INTO ob VALUES "(,1,10,'ten')"
   $CLI INSERT INTO ob VALUES "(,1,9, 'nine')"
   $CLI INSERT INTO ob VALUES "(,1,8, 'eight')"

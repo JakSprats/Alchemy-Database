@@ -119,7 +119,7 @@ void  btIndNodeAdd   (bt *btr, aobj *apk);
 void *btIndNodeFind  (bt *btr, aobj *apk);
 int   btIndNodeDelete(bt *btr, aobj *apk);
 
-void  btIndNodeOBCAdd   (bt *nbtr, aobj *apk, aobj *ocol);
-int   btIndNodeOBCDelete(bt *nbtr,            aobj *ocol);
+bool  btIndNodeOBCAdd   (cli *c, bt *nbtr, aobj *apk, aobj *ocol);
+int   btIndNodeOBCDelete(        bt *nbtr,            aobj *ocol);
 
 #endif /* __ALSO_SQL_BT_H */

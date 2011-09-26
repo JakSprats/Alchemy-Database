@@ -170,7 +170,7 @@ unsigned long emptyTable(int tmatch) {
     bt_destroy(rt->btr);
     bzero(rt, sizeof(r_tbl_t));
     rt->vimatch = rt->lruc = rt->lrui    = -1; //TODO use initTable()
-    deleted++; //TODO shuffle tables to make space for deleted indices
+    deleted++;
     return deleted;
 }
 static void dropTable(redisClient *c) {

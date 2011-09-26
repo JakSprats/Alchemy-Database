@@ -315,4 +315,7 @@ void DXDB_createSharedObjects() {
 
     shared.indexcursorerr         = createObject(REDIS_STRING,sdsnew(
         "-ERR CREATE INDEX ... OFFEST NUM error - caveats: PK must be [INT|LONG], NUM must be positive\r\n"));
+
+    shared.obindexviol            = createObject(REDIS_STRING,sdsnew(
+        "-ERR ORDER BY INDEX - ordered by column has a repeat value, this is analagous to a duplicate PK and a violation\r\n"));
 }

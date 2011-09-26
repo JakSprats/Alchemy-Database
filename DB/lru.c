@@ -115,7 +115,7 @@ void updateLru(cli *c, int tmatch, aobj *apk, uchar *lruc) {
         int     pktyp  = Tbl[tmatch].col_type[0];
         aobj ocol; initAobjInt(&ocol, oltime);
         aobj ncol; initAobjInt(&ncol, nltime); 
-        upIndex(ibtr, apk, &ocol, apk, &ncol, pktyp, NULL, NULL);
+        upIndex(c, ibtr, apk, &ocol, apk, &ncol, pktyp, NULL, NULL);
         releaseAobj(&ocol); releaseAobj(&ncol);
     } else { /* LRU empty -> run "UPDATE tbl SET LRU = now WHERE PK = apk" */
         char     LruBuf[32]; snprintf(LruBuf, 32, "%u", getLru(tmatch));

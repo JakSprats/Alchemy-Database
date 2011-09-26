@@ -138,7 +138,8 @@ typedef bool select_callback(erow_t* erow);
     *constraint_not_num,     *constraint_table_mismatch, \
     *constraint_nonuniq,     *constraint_viol,           \
     *indexobcerr,            *indexobcrpt,               \
-    *indexobcill,            *indexcursorerr;
+    *indexobcill,            *indexcursorerr,            \
+    *obindexviol;
 
 #define DEBUG_C_ARGV(c) \
   for (int i = 0; i < c->argc; i++) \
