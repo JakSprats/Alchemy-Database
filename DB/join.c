@@ -356,7 +356,7 @@ void joinGeneric(redisClient *c, jb_t *jb) {
     cswc_t w; setupFirstJoinStep(&w, jb, &q);
     if (w.wf.imatch == -1) { addReply(c, shared.join_qo_err); return; }
     c->LruColInSelect = initLRUCS_J(jb);
-    list *ll          = initOBsort(JoinQed, &jb->wb);
+    list *ll          = initOBsort(JoinQed, &jb->wb, 0);
     range_t g;
     init_range(&g, c, &w, &jb->wb, &q, ll, OBY_FREE_ROBJ, jb);
     g.se.qcols        = jb->qcols;

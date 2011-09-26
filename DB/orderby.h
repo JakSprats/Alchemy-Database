@@ -32,7 +32,7 @@ ALL RIGHTS RESERVED
 #include "query.h"
 #include "common.h"
 
-list *initOBsort(bool qed, wob_t *wb);
+list *initOBsort(bool qed, wob_t *wb, bool rcrud);
 void releaseOBsort(list *ll);
 
 obsl_t *create_obsl(void *row, uint32 nob);

@@ -563,7 +563,7 @@ void iselectAction(cli *c,         cswc_t *w,     wob_t *wb,
                    int  cmatchs[], int     qcols, bool   cstar) {
     range_t g; qr_t    q;
     setQueued(w, wb, &q);
-    list *ll     = initOBsort(q.qed, wb);
+    list *ll     = initOBsort(q.qed, wb, 0);
     init_range(&g, c, w, wb, &q, ll, OBY_FREE_ROBJ, NULL);
     g.se.cstar   = cstar;
     g.se.qcols   = qcols;
@@ -619,7 +619,7 @@ static void opDeleteSort(list *ll,    cswc_t *w,      wob_t *wb,   bool  ofree,
 void ideleteAction(redisClient *c, cswc_t *w, wob_t *wb) {
     range_t g; qr_t    q;
     setQueued(w, wb, &q);
-    list *ll   = initOBsort(1, wb);
+    list *ll   = initOBsort(q.qed, wb, 1);
     if (!q.qed) ll->free = destroyAobj;
     init_range(&g, c, w, wb, &q, ll, OBY_FREE_AOBJ, NULL);
     long  card = Op(&g, dellist_op);
@@ -691,7 +691,7 @@ void iupdateAction(cli  *c,      cswc_t *w,       wob_t *wb,
                    ue_t  ue[]) {
     range_t g; qr_t    q;
     setQueued(w, wb, &q);
-    list *ll     = initOBsort(1, wb);
+    list *ll     = initOBsort(q.qed, wb, 1);
     init_range(&g, c, w, wb, &q, ll, OBY_FREE_AOBJ, NULL);
     bt   *btr    = getBtr(w->wf.tmatch);
     g.up.btr     = btr;
