@@ -29,6 +29,11 @@ ALL RIGHTS RESERVED
 
 #include "redis.h"
 
+#include "query.h"
+
+sds createAlterTableFulltext(r_tbl_t *rt, r_ind_t *ri, int cmatch, bool nl);
+sds dumpSQL_Index(char *mtname, r_tbl_t *rt, r_ind_t *ri, int tmatch, bool nl);
+
 void sqlDumpCommand(redisClient *c);
 
 ull get_sum_all_index_size_for_table(int tmatch);

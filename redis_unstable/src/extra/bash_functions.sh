@@ -4,34 +4,34 @@ CLI="./alchemy-cli"
 
 function init_external() {
   $CLI CREATE TABLE external "(id int primary key, division int, health int, salary FLOAT, name TEXT)"
-  $CLI CREATE INDEX external:division:index ON external "(division)"
-  $CLI CREATE INDEX external:health:index   ON external "(health)"
+  $CLI CREATE INDEX external_division_index ON external "(division)"
+  $CLI CREATE INDEX external_health_index   ON external "(health)"
 }
 function init_healthplan() {
   $CLI CREATE TABLE healthplan "(id int primary key, name TEXT)"
 }
 function init_division() {
   $CLI CREATE TABLE division "(id int primary key, name TEXT, location TEXT)"
-  $CLI CREATE INDEX division:name:index ON division "(name)"
+  $CLI CREATE INDEX division_name_index ON division "(name)"
 }
 function init_subdivision() {
   $CLI CREATE TABLE subdivision "(id int primary key, division int, name TEXT)"
-  $CLI CREATE INDEX subdivision:division:index ON subdivision "(division)"
+  $CLI CREATE INDEX subdivision_division_index ON subdivision "(division)"
 }
 function init_employee() {
   $CLI CREATE TABLE employee "(id int primary key, division int, salary FLOAT, name TEXT)"
-  $CLI CREATE INDEX employee:name:index     ON employee "(name)"
-  $CLI CREATE INDEX employee:division:index ON employee "(division)"
+  $CLI CREATE INDEX employee_name_index     ON employee "(name)"
+  $CLI CREATE INDEX employee_division_index ON employee "(division)"
 }
 function init_customer() {
   $CLI CREATE TABLE customer "(id int primary key, employee int, name TEXT, hobby TEXT)"
-  $CLI CREATE INDEX customer:employee:index ON customer "(employee)"
-  $CLI CREATE INDEX customer:hobby:index    ON customer "(hobby)"
+  $CLI CREATE INDEX customer_employee_index ON customer "(employee)"
+  $CLI CREATE INDEX customer_hobby_index    ON customer "(hobby)"
 }
 function init_worker() {
   $CLI CREATE TABLE worker "(id int primary key, division int, health int, salary FLOAT, name TEXT)"
-  $CLI CREATE INDEX worker:division:index ON worker "(division)"
-  $CLI CREATE INDEX worker:health:index   ON worker "(health)"
+  $CLI CREATE INDEX worker_division_index ON worker "(division)"
+  $CLI CREATE INDEX worker_health_index   ON worker "(health)"
 }
 
 function insert_external() {
@@ -251,7 +251,6 @@ function ideleter_customer() {
   $CLI DELETE FROM customer WHERE "employee BETWEEN 4 AND 5"
 }
 
-
 function join_div_extrnl() {
   echo externals
   echo SELECT division.name,division.location,external.name,external.salary FROM division,external WHERE division.id=external.division AND division.id BETWEEN 11 AND 80
@@ -334,7 +333,6 @@ function sql_orderby_test() {
 function orderbyer() {
   echo ORDERBYER
   sql_orderby_test
-  istore_customer_hobby_order_by_denorm_to_many_lists
 }
 
 function select_count_range() {
@@ -592,7 +590,7 @@ function test_x3() {
 function init_x4() {
   $CLI DROP   TABLE X4
   $CLI CREATE TABLE X4 "(id int, f float, t text)";
-  $CLI CREATE INDEX X4:f:index ON X4 "(f)"
+  $CLI CREATE INDEX X4_f_index ON X4 "(f)"
 }
 function insert_x4() {
   $CLI INSERT INTO X4 VALUES "(1,1.11,'text1')";
@@ -746,31 +744,43 @@ function all_tests() {
   mci_test
   second_mci_test
   dmci_test
+  $CLI DEBUG RELOAD
 
   #selfjoin
   #many_selfjoin
 
-  test_UU
   pk_tester
   int_limit_test
   long_limit_test
-  test_LU
-  test_UL
+  $CLI DEBUG RELOAD
+
+  test_UU && test_LU && test_UL && test_LL
+  $CLI DEBUG RELOAD
 
   test_uniq_UL && test_uniq_LU && test_uniq_LL
+  $CLI DEBUG RELOAD
 
   mci_full_delete
   dmci_full_delete
+  $CLI DEBUG RELOAD
 
   test_cols3
   test_AA_backdoor
   test_update_overwrite
+  $CLI DEBUG RELOAD
+
   test_partial
   test_alter
   test_lru
+  $CLI DEBUG RELOAD
+
   test_replace
   test_insert_output
   test_iup
+  $CLI DEBUG RELOAD
+
+  create_1000_tables
+  create_100_columns
   $CLI DEBUG RELOAD
 }
 function all_tests_plus_benchmarks() {
@@ -796,10 +806,10 @@ function populate_join_fk_test() {
   $CLI CREATE TABLE master     "(id INT, val TEXT)"
 
   $CLI CREATE TABLE reference1 "(id INT, master_id INT, val TEXT)"
-  $CLI CREATE INDEX reference1:master_id:index ON reference1 "(master_id)"
+  $CLI CREATE INDEX reference1_master_id_index ON reference1 "(master_id)"
 
   $CLI CREATE TABLE reference2 "(id INT, master_id INT, val TEXT)"
-  $CLI CREATE INDEX reference2:master_id:index ON reference2 "(master_id)"
+  $CLI CREATE INDEX reference2_master_id_index ON reference2 "(master_id)"
 
   $CLI INSERT INTO master VALUES "(1,'MASTER_ONE')"
   $CLI INSERT INTO master VALUES "(2,'MASTER_TWO')"
@@ -831,8 +841,8 @@ function populate_join_fk_test() {
 
 function index_size_test() {
   $CLI CREATE TABLE istest "(id INT, fk1 INT, fk2 INT, val TEXT)"
-  $CLI CREATE INDEX istest:fk1:index ON istest "(fk1)"
-  $CLI CREATE INDEX istest:fk2:index ON istest "(fk2)"
+  $CLI CREATE INDEX istest_fk1_index ON istest "(fk1)"
+  $CLI CREATE INDEX istest_fk2_index ON istest "(fk2)"
   $CLI desc istest
   $CLI INSERT INTO istest VALUES "(1,101,201,'ONE')"
   $CLI desc istest
@@ -1066,7 +1076,7 @@ function run_lua_tests() {
 
 function multiple_column_orderby_init() {
   $CLI DROP   TABLE obycol
-  $CLI CREATE TABLE obycol "(id INT, i INT, j INT, k INT, l LONG, m INT, s TEXT)"
+  $CLI CREATE TABLE obycol "(id INT, i INT, j INT, k INT, l BIGINT, m INT, s TEXT)"
 }
 function multiple_column_orderby_insert() {
   $CLI INSERT INTO obycol VALUES "(1,1,1,2,4,1,'ONE')"   "RETURN SIZE"
@@ -1486,7 +1496,7 @@ function init_mercadolibre() {
   C=200
   N=10000000
   $CLI DROP   TABLE item_words
-  $CLI CREATE TABLE item_words "(id INT, seller_id INT, word_id INT, item_id LONG, status INT, ltype INT, bmode INT, labels INT, cat INT)"
+  $CLI CREATE TABLE item_words "(id INT, seller_id INT, word_id INT, item_id BIGINT, status INT, ltype INT, bmode INT, labels INT, cat INT)"
   $CLI CREATE UNIQUE INDEX ind_IW_sw2i ON item_words "(seller_id, word_id, item_id)"
   amem_pre
   time taskset -c 1 $BENCH -q -c $C -n $N -s 1 -m "1,199999,19999,9,49,49,49,199" -A OK -Q INSERT INTO item_words VALUES "(00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001,00000000000001)"
@@ -1507,7 +1517,6 @@ function delete_mercadolibre() {
   echo DELETE item_words word_id=00000000000001 OPT: $OPT
   time taskset -c 1 $BENCH  -c $C -n $N $OPT -A OK -Q DELETE FROM item_words WHERE "word_id=00000000000001 AND seller_id = 1";
 }
-
 
 function test_init_mercadolibre() {
   C=50
@@ -1609,7 +1618,7 @@ function test_UL() {
 
 function init_LU() {
   $CLI DROP   TABLE LU
-  $CLI CREATE TABLE LU "(pk LONG, fk1 INT)";
+  $CLI CREATE TABLE LU "(pk BIGINT, fk1 INT)";
 }
 function insert_LU() {
   $CLI INSERT INTO LU VALUES "(1,                    1)"
@@ -1646,7 +1655,7 @@ function test_LU_longs() {
 # TODO function init_uniq_UU() { -> UU
 function init_uniq_LU() {
   $CLI DROP   TABLE U_LU
-  $CLI CREATE TABLE U_LU "(pk LONG, fk1 long, fk2 INT)";
+  $CLI CREATE TABLE U_LU "(pk BIGINT, fk1 long, fk2 INT)";
   $CLI CREATE UNIQUE INDEX i_ULU ON U_LU "(fk1, fk2)";
 }
 function insert_uniq_LU() {
@@ -1710,7 +1719,7 @@ function test_uniq_UL() {
 
 function init_LL() {
   $CLI DROP   TABLE LL
-  $CLI CREATE TABLE LL "(pk LONG, fk1 LONG)";
+  $CLI CREATE TABLE LL "(pk BIGINT, fk1 BIGINT)";
 }
 function insert_LL() {
   $CLI INSERT INTO LL VALUES "(1,                    1)"
@@ -1729,7 +1738,7 @@ function test_LL() {
 
 function init_uniq_LL() {
   $CLI DROP   TABLE U_LL
-  $CLI CREATE TABLE U_LL "(pk LONG, fk1 long, fk2 long)";
+  $CLI CREATE TABLE U_LL "(pk BIGINT, fk1 long, fk2 long)";
   $CLI CREATE UNIQUE INDEX i_ULL ON U_LL "(fk1, fk2)";
 }
 function insert_uniq_LL() {
@@ -1820,7 +1829,7 @@ function delete_other_bts() {
 
 function init_cols3() {
   $CLI DROP   TABLE cols3
-  $CLI CREATE TABLE cols3 "(pk LONG, fk1 LONG, fk2 LONG)"
+  $CLI CREATE TABLE cols3 "(pk BIGINT, fk1 BIGINT, fk2 BIGINT)"
   $CLI CREATE INDEX i1_c3 ON cols3 "(fk1)"
   $CLI CREATE INDEX i2_c3 ON cols3 "(fk2)"
 }
@@ -1968,7 +1977,7 @@ function test_alter() {
   $CLI INSERT INTO AT VALUES "(,2,88)"
   $CLI INSERT INTO AT VALUES "(,3,99)"
   $CLI ALTER TABLE AT ADD COLUMN fk3 INT
-  $CLI ALTER TABLE AT ADD COLUMN fk4 LONG
+  $CLI ALTER TABLE AT ADD COLUMN fk4 BIGINT
   $CLI ALTER TABLE AT ADD COLUMN fk5 FLOAT
   $CLI ALTER TABLE AT ADD COLUMN fk6 TEXT
   echo 2 errors
@@ -2018,7 +2027,7 @@ function test_lru() {
   $CLI SCAN \* FROM LRU ORDER BY c2 LIMIT 4
   if [ -n "$1" ]; then echo sleep $SLEEP_TIME; sleep $SLEEP_TIME; fi
   echo UPDATE LRU SET c1=1 WHERE pk BETWEEN 3 AND 5
-  $CLI UPDATE LRU SET c1=1 WHERE pk BETWEEN 3 AND 5
+  $CLI UPDATE LRU SET "c1=1" WHERE "pk BETWEEN 3 AND 5"
   if [ -n "$1" ]; then echo sleep $SLEEP_TIME; sleep $SLEEP_TIME; fi
   echo JOIN
   init_UU; insert_UU
@@ -2032,6 +2041,27 @@ function test_lru() {
   $CLI DUMP LRU
   $CLI DUMP LRU TO FILE /tmp/XXX; cut -f 4 -d \, /tmp/XXX |sort |uniq -c
 }
+function init_lru_join_row_rewrite_bug() {
+  $CLI DROP   TABLE LRU
+  $CLI CREATE TABLE LRU "(pk INT, c1 INT, c2 INT)"
+  $CLI INSERT INTO LRU VALUES "(,9,666)"
+  $CLI INSERT INTO LRU VALUES "(,11,777)"
+  $CLI INSERT INTO LRU VALUES "(,22,888)"
+  $CLI INSERT INTO LRU VALUES "(,33,999)"
+  $CLI INSERT INTO LRU VALUES "(,44,111)"
+  $CLI INSERT INTO LRU VALUES "(,55,222)"
+  $CLI INSERT INTO LRU VALUES "(,66,999)"
+  $CLI INSERT INTO LRU VALUES "(,88,222)"
+  $CLI INSERT INTO LRU VALUES "(,99,333)"
+  $CLI CREATE LRUINDEX ON LRU
+  $CLI ALTER TABLE LRU ADD COLUMN c3 INT
+}
+function lru_join_row_rewrite_bug() {
+  init_lru_join_row_rewrite_bug
+  init_UU; insert_UU
+  $CLI SELECT \* FROM "LRU l, UU u" WHERE "u.pk = l.pk AND l.pk BETWEEN 6 AND 7 AND l.c2=222"
+}
+
 function lru_test_iterations() {
   init_lru
   I=0
@@ -2284,19 +2314,19 @@ function alter_fk() {
 function test_orderby_index_uu_ul_lu_ll() {
   A=0; T=0;$CLI CREATE TABLE ta "(pk INT, fk INT, ts INT, col TEXT)"; I=0;$CLI CREATE INDEX i_ta ON ta "(fk)" ORDER BY ts; P=0;$CLI INSERT INTO ta VALUES "(1,1,123456789,'one time')";$CLI INSERT INTO ta VALUES "(2,1,123456780,'TWO TIME')"; S=0;$CLI SELECT \* FROM ta WHERE "fk = 1"
 
-  B=0; T=0;$CLI CREATE TABLE tb "(pk INT, fk INT, ts LONG, col TEXT)"; I=0;$CLI CREATE INDEX i_tb ON tb "(fk)" ORDER BY ts; P=0;$CLI INSERT INTO tb VALUES "(1,1,123456789,'one time')";$CLI INSERT INTO tb VALUES "(2,1,123456780,'TWO TIME')"; S=0;$CLI SELECT \* FROM tb WHERE "fk = 1"
+  B=0; T=0;$CLI CREATE TABLE tb "(pk INT, fk INT, ts BIGINT, col TEXT)"; I=0;$CLI CREATE INDEX i_tb ON tb "(fk)" ORDER BY ts; P=0;$CLI INSERT INTO tb VALUES "(1,1,123456789,'one time')";$CLI INSERT INTO tb VALUES "(2,1,123456780,'TWO TIME')"; S=0;$CLI SELECT \* FROM tb WHERE "fk = 1"
 
-  C=0; T=0;$CLI CREATE TABLE tc "(pk INT, fk LONG, ts INT, col TEXT)"; I=0;$CLI CREATE INDEX i_tc ON tc "(fk)" ORDER BY ts; P=0;$CLI INSERT INTO tc VALUES "(1,1,123456789,'one time')";$CLI INSERT INTO tc VALUES "(2,1,123456780,'TWO TIME')"; S=0;$CLI SELECT \* FROM tc WHERE "fk = 1"
+  C=0; T=0;$CLI CREATE TABLE tc "(pk INT, fk BIGINT, ts INT, col TEXT)"; I=0;$CLI CREATE INDEX i_tc ON tc "(fk)" ORDER BY ts; P=0;$CLI INSERT INTO tc VALUES "(1,1,123456789,'one time')";$CLI INSERT INTO tc VALUES "(2,1,123456780,'TWO TIME')"; S=0;$CLI SELECT \* FROM tc WHERE "fk = 1"
 
-  D=0; T=0;$CLI CREATE TABLE td "(pk INT, fk LONG, ts LONG, col TEXT)"; I=0;$CLI CREATE INDEX i_td ON td "(fk)" ORDER BY ts; P=0;$CLI INSERT INTO td VALUES "(1,1,123456789,'one time')";$CLI INSERT INTO td VALUES "(2,1,123456780,'TWO TIME')"; S=0;$CLI SELECT \* FROM td WHERE "fk = 1"
+  D=0; T=0;$CLI CREATE TABLE td "(pk INT, fk BIGINT, ts BIGINT, col TEXT)"; I=0;$CLI CREATE INDEX i_td ON td "(fk)" ORDER BY ts; P=0;$CLI INSERT INTO td VALUES "(1,1,123456789,'one time')";$CLI INSERT INTO td VALUES "(2,1,123456780,'TWO TIME')"; S=0;$CLI SELECT \* FROM td WHERE "fk = 1"
 
-  E=0; T=0;$CLI CREATE TABLE te "(pk LONG, fk INT, ts INT, col TEXT)"; I=0;$CLI CREATE INDEX i_te ON te "(fk)" ORDER BY ts; P=0;$CLI INSERT INTO te VALUES "(1,1,123456789,'one time')";$CLI INSERT INTO te VALUES "(2,1,123456780,'TWO TIME')"; S=0;$CLI SELECT \* FROM te WHERE "fk = 1"
+  E=0; T=0;$CLI CREATE TABLE te "(pk BIGINT, fk INT, ts INT, col TEXT)"; I=0;$CLI CREATE INDEX i_te ON te "(fk)" ORDER BY ts; P=0;$CLI INSERT INTO te VALUES "(1,1,123456789,'one time')";$CLI INSERT INTO te VALUES "(2,1,123456780,'TWO TIME')"; S=0;$CLI SELECT \* FROM te WHERE "fk = 1"
 
-  F=0; T=0;$CLI CREATE TABLE tf "(pk LONG, fk INT, ts LONG, col TEXT)"; I=0;$CLI CREATE INDEX i_tf ON tf "(fk)" ORDER BY ts; P=0;$CLI INSERT INTO tf VALUES "(1,1,123456789,'one time')";$CLI INSERT INTO tf VALUES "(2,1,123456780,'TWO TIME')"; S=0;$CLI SELECT \* FROM tf WHERE "fk = 1"
+  F=0; T=0;$CLI CREATE TABLE tf "(pk BIGINT, fk INT, ts BIGINT, col TEXT)"; I=0;$CLI CREATE INDEX i_tf ON tf "(fk)" ORDER BY ts; P=0;$CLI INSERT INTO tf VALUES "(1,1,123456789,'one time')";$CLI INSERT INTO tf VALUES "(2,1,123456780,'TWO TIME')"; S=0;$CLI SELECT \* FROM tf WHERE "fk = 1"
   
-  G=0; T=0;$CLI CREATE TABLE tg "(pk LONG, fk LONG, ts INT, col TEXT)"; I=0;$CLI CREATE INDEX i_tg ON tg "(fk)" ORDER BY ts; P=0;$CLI INSERT INTO tg VALUES "(1,1,123456789,'one time')";$CLI INSERT INTO tg VALUES "(2,1,123456780,'TWO TIME')"; S=0;$CLI SELECT \* FROM tg WHERE "fk = 1"
+  G=0; T=0;$CLI CREATE TABLE tg "(pk BIGINT, fk BIGINT, ts INT, col TEXT)"; I=0;$CLI CREATE INDEX i_tg ON tg "(fk)" ORDER BY ts; P=0;$CLI INSERT INTO tg VALUES "(1,1,123456789,'one time')";$CLI INSERT INTO tg VALUES "(2,1,123456780,'TWO TIME')"; S=0;$CLI SELECT \* FROM tg WHERE "fk = 1"
   
-  H=0; T=0;$CLI CREATE TABLE th "(pk LONG, fk LONG, ts LONG, col TEXT)"; I=0;$CLI CREATE INDEX i_th ON th "(fk)" ORDER BY ts; $CLI INSERT INTO th VALUES "(18446744073709551614,18446744073709551614,18446744073709551615,'one time')"; $CLI INSERT INTO th VALUES "(18446744073709551615,18446744073709551614,18446744073709551614,'TWO TIME')"; $CLI SELECT \* FROM th WHERE "fk = 18446744073709551614"
+  H=0; T=0;$CLI CREATE TABLE th "(pk BIGINT, fk BIGINT, ts BIGINT, col TEXT)"; I=0;$CLI CREATE INDEX i_th ON th "(fk)" ORDER BY ts; $CLI INSERT INTO th VALUES "(18446744073709551614,18446744073709551614,18446744073709551615,'one time')"; $CLI INSERT INTO th VALUES "(18446744073709551615,18446744073709551614,18446744073709551614,'TWO TIME')"; $CLI SELECT \* FROM th WHERE "fk = 18446744073709551614"
 }
 
 function test_orderby_index_20_entries() {
@@ -2425,4 +2455,62 @@ function populate_table_t_w_10M_3FK_entries() {
   $CLI CREATE TABLE t "(pk INT, fk INT, val TEXT)"
   $CLI CREATE INDEX i_t ON t "(fk)"
   taskset -c 1 ./alchemy-gen-benchmark -n 10000000 -c 200 -s 1 -m 3,10000000 -A OK -Q INSERT INTO t VALUES "(00000000000001,00000000000001,'pagename_00000000000001')"
+}
+
+function create_1000_tables() {
+  I=0;
+  while [ $I -lt 1000 ]; do
+    $CLI CREATE TABLE foo_$I "(pk LONg, fk INT, val TEXT)";
+    I=$[${I}+1];
+  done
+  $CLI SHOW TABLES
+}
+
+function create_100_columns() {
+  J=0;
+  while [ $J -lt 100 ]; do
+    $CLI ALTER TABLE foo_999 ADD COLUMN col_$J INT
+    J=$[${J}+1];
+  done
+  $CLI DESC foo_999
+}
+
+function test_fully_loaded_table() {
+  $CLI DROP TABLE fullload
+  $CLI CREATE TABLE fullload "(pk LONG, fk1 INT, fk2 INT, fk3 LONG, fkt TEXT, val TEXT)"
+  $CLI CREATE UNIQUE INDEX i_flu ON fullload "(fk1,fk2)"
+  $CLI CREATE INDEX i_flt ON fullload "(fkt)"
+  $CLI CREATE LRUINDEX ON fullload
+  $CLI CREATE INDEX i_fl_ob_lru ON fullload "(fk2)" ORDER BY fk3
+  $CLI CREATE LUATRIGGER lt_fl ON fullload "ltrig_cnt(table, *)"
+  $CLI CREATE LUATRIGGER lt_fl2 ON fullload "hiya()"
+  $CLI INSERT INTO fullload VALUES "(,1,1,9,'1','ONE')"
+  $CLI INSERT INTO fullload VALUES "(,2,1,8,'2','TWO')"
+  echo sleep 10
+  sleep 10
+  $CLI INSERT INTO fullload VALUES "(,3,1,11,'1','ELEVEN')"
+  $CLI INSERT INTO fullload VALUES "(,4,1,10,'2','TWELVE')"
+
+  echo "ORDER BY INDEX test"
+  $CLI SELECT \* FROM fullload WHERE "fk2 = 1 ORDER BY fk3 DESC"
+
+  echo "test LRU"
+  $CLI SCAN LRU FROM fullload
+  echo sleep 10
+  sleep 10
+  $CLI SELECT \* FROM fullload WHERE "fkt = '1'"
+  $CLI SCAN LRU FROM fullload
+}
+
+function test_drop_add_table_list() {
+  $CLI FLUSHALL
+  create_1000_tables>/dev/null
+  for I in 0 1 2 3 4; do $CLI DROP TABLE foo_99${I}; done
+  for I in 1 2 3 4 5 6 7 8; do $CLI CREATE TABLE bar_00${I} "(pk INT, fk INT, val LONG)"; done
+}
+function test_drop_add_index_list() {
+  $CLI FLUSHALL
+  create_1000_tables>/dev/null
+  for I in 0 1 2 3 4; do $CLI DROP TABLE foo_99${I}; done
+  for I in 1 2 3 4 5 6 7 8; do $CLI CREATE INDEX i_foo98${I} ON foo_98${I} "(fk)"; done
 }

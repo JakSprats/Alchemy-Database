@@ -31,6 +31,7 @@ ALL RIGHTS RESERVED
 
 #include "redis.h"
 
+#include "debug.h"
 #include "qo.h"
 #include "row.h"
 #include "index.h"
@@ -38,14 +39,15 @@ ALL RIGHTS RESERVED
 #include "orderby.h"
 #include "filter.h"
 #include "range.h"
+#include "find.h"
 #include "alsosql.h"
 #include "aobj.h"
 #include "common.h"
 #include "join.h"
 
 // GLOBALS
-extern r_tbl_t  Tbl[MAX_NUM_TABLES];
-extern r_ind_t  Index[MAX_NUM_INDICES];
+extern r_tbl_t *Tbl;
+extern r_ind_t *Index;
 
 extern cli     *CurrClient;
 extern uchar    OutputMode; // NOTE: used by OREDIS
@@ -71,8 +73,7 @@ static char *memclone(char *s, int len) {
 void init_ijp(ijp_t *ij) {
     bzero(ij, sizeof(ijp_t));
     initFilter(&ij->lhs); initFilter(&ij->rhs);
-    ij->nrows   = UINT_MAX;
-    ij->kimatch = -1;
+    ij->nrows   = UINT_MAX; ij->kimatch = -1;
 }
 void switchIJ(ijp_t *ij) {
     f_t temp;
@@ -119,7 +120,7 @@ bool validateJoinOrderBy(cli *c, jb_t *jb) {
     printf("imatch: %d tmatch: %d\n", nimatch, ri->table);
 #define JOP_DEBUG_5                                                       \
     {   printf("rrow: %p\n", rrow);                                       \
-        uchar ctype = Tbl[w->obt[i]].col_type[w->obc[i]];           \
+        uchar ctype = Tbl[w->obt[i]].col[w->obc[i]].type;                 \
         printf("ASSIGN: "); dumpObKey(printf, i, jb->ob->keys[i], ctype); }
 #define JOP_DEBUG_6                                      \
     printf("    join_op ROW:\n");                        \
@@ -130,12 +131,10 @@ bool validateJoinOrderBy(cli *c, jb_t *jb) {
 #define DEBUG_JOIN_GEN \
     printf("joinGeneric W\n"); dumpW(printf, w); dumpWB(printf, &jb->wb); \
     printf("joinGeneric JB\n"); dumpJB(CurrClient, printf, jb);
-#define DUMP_JOIN_QED \
-  (*prn)("\t\tJoinQed: %d JoinLim: %ld JoinOfst: %ld\n", \
-         JoinQed, JoinLim, JoinOfst);
 #define DEBUG_JOIN_QED \
   printer *prn = printf; \
-  DUMP_JOIN_QED
+  (*prn)("\t\tJoinQed: %d JoinLim: %ld JoinOfst: %ld\n", \
+         JoinQed, JoinLim, JoinOfst);
 
 static bool checkOfst() {
     if (JoinQed) return 1; INCR(JoinLoops); return (JoinLoops >= JoinOfst);
@@ -186,7 +185,7 @@ static robj *outputJoinRow(range_t *g) {
     else             return join_reply_norm    (g);
 }
 static bool addReplyJoinRow(cli *c, robj *r) {
-    return addReplyRow(c, r, -1, NULL, NULL);
+    return addReplyRow(c, r, -1, NULL, NULL, 0);
 }
 static bool join_reply(range_t *g, long *card) {
     bool  ret = 1;
@@ -238,8 +237,6 @@ static bool join_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
     int     tmatch = w->wf.tmatch; /* code compaction */
     list   *flist  = jb->ij[g->co.lvl].flist;                      //JOP_DEBUG_0
     if (!passFilters(g->co.btr, apk, rrow, flist, tmatch)) return 1;
-    /* NOTE: update LRU for ALL rows in JOINs*/
-    GET_LRUC updateLru(g->co.c, tmatch, apk, lruc); /* NOTE: updateLRU (JOIN) */
     char *freeme[g->se.qcols];                                     //JOP_DEBUG_1
     int   nfree = 0;
     for (int i = 0; i < g->se.qcols; i++) { // Extract queried columns
@@ -247,7 +244,7 @@ static bool join_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
             Resp = getSCol(g->co.btr, rrow, jb->js[i].c, apk, jb->js[i].t);//037
             Jcols[i].len    = Resp.len;
             Jcols[i].freeme = 0; /* freed via freeme[] */
-            Jcols[i].type   = Tbl[jb->js[i].t].col_type[jb->js[i].c];
+            Jcols[i].type   = Tbl[jb->js[i].t].col[jb->js[i].c].type;
             if (Resp.freeme) Jcols[i].s = Resp.s;
             else             Jcols[i].s = memclone(Resp.s, Resp.len);
             freeme[nfree++] = Jcols[i].s;                          //JOP_DEBUG_2
@@ -259,7 +256,7 @@ static bool join_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
         if (!jb->ob) jb->ob = create_obsl(NULL, jb->wb.nob); /*DESTROY ME 057*/
         for (uint32 i = 0; i < jb->wb.nob; i++) {
             if (jb->wb.obt[i] == tmatch) {
-                uchar ctype = Tbl[jb->wb.obt[i]].col_type[jb->wb.obc[i]];
+                uchar ctype = Tbl[jb->wb.obt[i]].col[jb->wb.obc[i]].type;
                 assignObKey(&jb->wb, g->co.btr, rrow, apk, i, jb->ob);
                 if (C_IS_S(ctype)) obfreei[obnfree++] = i;
             }
@@ -272,6 +269,10 @@ static bool join_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
             else if (checkOfst()) {
                 if (checkLimit()) lret = join_reply(g, card);
             }
+        }
+        if (lret) { //NOTE only update rows that MATCH join -> updateLRU (JOIN)
+            GET_LRUC updateLru(g->co.c, tmatch, apk, lruc, lrud);
+            //NOTE rrow is no longer valid, updateLru() can change it
         }
         for (int i = 0; i < obnfree; i++) {
             free(jb->ob->keys[obfreei[i]]); jb->ob->keys[obfreei[i]] = NULL;
@@ -319,7 +320,11 @@ static bool join_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
             if (w2.wf.imatch == -1) { JoinErr = 1; }
             else {
                 long rcard = keyOp(&g2, join_op); /* RECURSE */
-                if (rcard == -1) { JoinErr = 1; ret = 0; }
+                if      (rcard == -1) { JoinErr = 1; ret = 0; }
+                else if (rcard > 0) { //NOTE: updateLRU (JOIN)
+                    GET_LRUC updateLru(g->co.c, tmatch, apk, lruc, lrud);
+                    //NOTE rrow is no longer valid, updateLru() can change it
+                }
                 INCRBY(*card, rcard);
             }
         }
@@ -336,7 +341,7 @@ static bool join_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
     }
     return ret;
 }
-static void setupFirstJoinStep(cswc_t *w, jb_t *jb, qr_t *q) {
+void setupFirstJoinStep(cswc_t *w, jb_t *jb, qr_t *q) {
     init_check_sql_where_clause(w, -1, NULL);
     ijp_t *ij = &jb->ij[0];
     promoteKLorFLtoW(w, &ij->lhs.klist, &ij->flist, 0);        //DEBUG_JOIN_GEN
@@ -382,117 +387,4 @@ join_gen_err:
     releaseOBsort(ll);
     releaseAobj(&w.wf.akey); releaseAobj(&w.wf.alow); releaseAobj(&w.wf.ahigh);
     return;
-}
-
-/* DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG */
-//TODO move to explain.c
-void dumpIJ(cli *c, printer *prn, int i, ijp_t *ij, ijp_t *nij) {
-    int lt = ij->lhs.tmatch; int lc = ij->lhs.cmatch;
-    int lj = ij->lhs.jan;    int li = ij->lhs.imatch;
-    if (ij->rhs.tmatch != -1) {
-       int ki = ij->kimatch;
-       int rt = ij->rhs.tmatch; int rc = ij->rhs.cmatch;
-       int rj = ij->rhs.jan;    int ri = ij->rhs.imatch;
-       (*prn)("\t\t\t\t%d: ki: %d LHS[t: %d(%s) c: %d(%s) i: %d(%s) j: %d(%s)" \
-              " RHS[t: %d(%s) c: %d(%s) i: %d(%s) j: %d(%s)] nrows: %u\n", i,
-          ki, lt, (lt == -1) ? "" : (char *)Tbl[lt].name->ptr,
-              lc, (lc == -1) ? "" : (char *)Tbl[lt].col_name[lc]->ptr,
-              li, (li == -1) ? "" : (char *)Index[li].obj->ptr,
-              lj, (lj == -1) ? "" : getJoinAlias(lj),
-                  rt, (rt == -1) ? "" : (char *)Tbl[rt].name->ptr,
-                  rc, (rc == -1) ? "" : (char *)Tbl[rt].col_name[rc]->ptr,
-                  ri, (ri == -1) ? "" : (char *)Index[ri].obj->ptr,
-                  rj, (rj == -1) ? "" : getJoinAlias(rj),
-                  ij->nrows);
-        if (c->Explain) {
-            if (nij) {
-                dumpFL(prn, "\t\t\t\t", "KLIST", nij->lhs.klist);
-                dumpFL(prn, "\t\t\t\t", "FLIST", nij->flist);
-            }
-        }
-        else {
-            dumpFL(prn, "\t\t\t\t", "FLIST", ij->flist);
-            dumpFL(prn, "\t\t\t\t", "KLIST", ij->lhs.klist);
-        }
-    } else {
-        (*prn)("\t\t\t\t%d: FLT[t: %d(%s) c: %d(%s) i: %d(%s) j: %d(%s) op: %d",
-               i, lt, (lt == -1) ? "" : (char *)Tbl[lt].name->ptr,
-                  lc, (lc == -1) ? "" : (char *)Tbl[lt].col_name[lc]->ptr,
-                  li, (li == -1) ? "" : (char *)Index[li].obj->ptr,
-                  lj, (lj == -1) ? "" : getJoinAlias(lj), ij->op);
-        if (ij->lhs.key) {
-            dumpSds(prn, ij->lhs.key,  " key: %s]\n");
-        } else if (ij->lhs.low) {
-            dumpSds(prn, ij->lhs.low,  " low: %s");
-            dumpSds(prn, ij->lhs.high, " high: %s]\n");
-        } else if (ij->lhs.inl) {
-            (*prn)(" INL: len: %d:\n", listLength(ij->lhs.inl));
-            listNode *ln;
-            listIter *li = listGetIterator(ij->lhs.inl, AL_START_HEAD);
-            while((ln = listNext(li)) != NULL) {
-                aobj *apk = ln->value;
-                (*prn)("\t\t       \t\t"); dumpAobj(prn, apk);
-            }
-            listReleaseIterator(li);
-            (*prn)("\t\t       \t]\n");
-        }
-    }
-}
-void explainJoin(cli *c, jb_t *jb) {
-    initQueueOutput();
-    (*queueOutput)("QUERY: ");
-    for (int i = 0; i < c->argc; i++) {
-        (*queueOutput)("%s ", (char *)c->argv[i]->ptr);
-    } (*queueOutput)("\n");
-    dumpJB(c, queueOutput, jb);
-    dumpQueueOutput(c);
-}
-void dumpJB(cli *c, printer *prn, jb_t *jb) {
-    (*prn)("\tSTART dumpJB\n");
-    (*prn)("\t\tqcols:         %d\n", jb->qcols);
-    for (int i = 0; i < jb->qcols; i++) {
-        int lt = jb->js[i].t; int lc = jb->js[i].c; int jan = jb->js[i].jan;
-        (*prn)("\t\t\t%d: jan: %d t: %d c: %d (%s: %s.%s)\n",
-                 i, jan, lt, lc,
-                 getJoinAlias(jan),
-                 (lt == -1) ? "" : (char *)Tbl[lt].name->ptr,
-                 (lc == -1) ? "" : (char *)Tbl[lt].col_name[lc]->ptr);
-    }
-    if (c->Explain) {
-        qr_t q; bzero(&q, sizeof(qr_t));
-        cswc_t w; setupFirstJoinStep(&w, jb, &q);
-        dumpFilter(prn, &w.wf, "\t");
-        dumpFL(prn, "\t\t\t\t", "FLIST", jb->ij[0].flist);
-    }
-    (*prn)("\t\tn_jind:        %d\n", jb->n_jind);
-    if (jb->hw != -1) {
-        (*prn)("\t\thw:     %d\n", jb->hw);
-        for (int k = 0; k < jb->hw; k++) {
-            ijp_t *nij = (k == jb->hw -1) ? NULL : &jb->ij[k + 1];
-            dumpIJ(c, prn, k, &jb->ij[k], nij);
-        }
-    } else {
-        for (uint32 i = 0; i < jb->n_jind; i++) {
-            dumpIJ(c, prn, i, &jb->ij[i], NULL);
-        }
-    }
-    if (jb->fklist) {
-        (*prn)("\t\tfklist: fki: %d fnrows: %u\n", jb->fkimatch, jb->fnrows);
-        dumpFL(prn, "\t\t\t", "JB-FKLIST", jb->fklist);
-    }
-    if (jb->fflist) {
-        (*prn)("\t\tfflist: fnrows: %u\n", jb->fnrows);
-        dumpFL(prn, "\t\t\t", "JB-FFLIST", jb->fflist);
-    }
-    if (!c->Explain) {
-        if (jb->hw != -1) {
-            (*prn)("\t\tn_filters:     %d\n", (jb->n_jind - jb->hw));
-            for (int j = jb->hw; j < (int)jb->n_jind; j++) {
-                dumpIJ(c, prn, j, &jb->ij[j], NULL);
-            }
-        }
-    }
-    dumpWB(prn, &jb->wb);
-    DUMP_JOIN_QED
-    (*prn)("\tEND dumpJB\n");
 }

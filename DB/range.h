@@ -57,7 +57,7 @@ typedef struct queue_range_results {
 typedef struct range_select {
     bool cstar;
     int  qcols;
-    int  *cmatchs; /*cmatchs[MAX_COLUMN_PER_TABLE] */
+    int  *cmatchs;
 } rsel_t;
 
 typedef struct range_update {
@@ -100,12 +100,8 @@ bool passFilters(bt *btr, aobj *akey, void *rrow, list *flist, int tmatch);
 
 bool opSelectSort(cli  *c,    list *ll,   wob_t *wb,
                   bool ofree, long *sent, int    tmatch);
-void iselectAction(redisClient *c,
-                   cswc_t      *w,
-                   wob_t       *wb,
-                   int          cmatchs[MAX_COLUMN_PER_TABLE],
-                   int          qcols,
-                   bool         cstar);
+void iselectAction(cli *c,         cswc_t *w,     wob_t *wb,
+                   int  cmatchs[], int     qcols, bool   cstar);
 
 void ideleteAction(redisClient *c,
                    cswc_t      *w,

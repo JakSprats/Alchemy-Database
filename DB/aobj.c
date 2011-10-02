@@ -42,7 +42,7 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "aobj.h"
 
-extern r_tbl_t  Tbl[MAX_NUM_TABLES];
+extern r_tbl_t *Tbl;
 
 void initAobj(aobj *a) {
     bzero(a, sizeof(aobj));
@@ -181,14 +181,13 @@ void convertINLtoAobj(list **inl, uchar ctype) { /* walk INL & cloneSDSToAobj */
         sds   ink = ln->value;
         aobj *a   = cloneSDSToAobj(ink, ctype);
         listAddNodeTail(nl, a);
-    }
-    listReleaseIterator(li);
+    } listReleaseIterator(li);
     ol->free     = vsdsfree;
     listRelease(ol);
     *inl         = nl;
 }
 void convertFilterSDStoAobj(f_t *flt) {
-    uchar ctype = Tbl[flt->tmatch].col_type[flt->cmatch];
+    uchar ctype = Tbl[flt->tmatch].col[flt->cmatch].type;
     if      (flt->key) convertSdsToAobj(flt->key, &flt->akey, ctype);
     else if (flt->low) {
         convertSdsToAobj(flt->low,  &flt->alow,  ctype);
@@ -203,8 +202,7 @@ list *cloneAobjList(list *ll) {
     while((ln = listNext(li)) != NULL) {
         aobj *a = ln->value;
         listAddNodeTail(l2, cloneAobj(a));
-    }
-    listReleaseIterator(li);
+    } listReleaseIterator(li);
     return l2;
 }
 

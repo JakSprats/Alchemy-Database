@@ -34,6 +34,7 @@ char *strcasestr(const char *haystack, const char *needle); /*compiler warning*/
 #include "zmalloc.h"
 #include "redis.h"
 
+#include "debug.h"
 #include "embed.h"
 #include "internal_commands.h"
 #include "join.h"
@@ -44,13 +45,14 @@ char *strcasestr(const char *haystack, const char *needle); /*compiler warning*/
 #include "colparse.h"
 #include "rpipe.h"
 #include "parser.h"
+#include "find.h"
 #include "alsosql.h"
 #include "common.h"
 #include "wc.h"
 
 extern int      Num_tbls;
-extern r_tbl_t  Tbl[MAX_NUM_TABLES];
-extern r_ind_t  Index[MAX_NUM_INDICES];
+extern r_tbl_t *Tbl;
+extern r_ind_t *Index;
 
 extern ja_t     JTAlias[MAX_JOIN_COLS];
 
@@ -400,7 +402,7 @@ static uchar parseWCTokRelation(cli *c,   cswc_t *w,   char  *token, char **fin,
         char *end     = spot - OP_len[flt->op];;
         REV_SKIP_SPACES(end)
         if (!(*pif)(c, token, end - token + 1, flt)) return PARSE_NEST_ERR;
-        ctype         = Tbl[flt->tmatch].col_type[flt->cmatch];
+        ctype         = Tbl[flt->tmatch].col[flt->cmatch].type;
         char *start   = spot + 1;
         SKIP_SPACES(start)
         if (!*start)                                 return PARSE_GEN_ERR;
@@ -416,7 +418,7 @@ static uchar parseWCTokRelation(cli *c,   cswc_t *w,   char  *token, char **fin,
         char *nextp   = strchr(token, ' ');
         if (!nextp)                                  return PARSE_GEN_ERR;
         if (!(*pif)(c, token, nextp - token, flt))   return PARSE_NEST_ERR;
-        ctype         = Tbl[flt->tmatch].col_type[flt->cmatch];
+        ctype         = Tbl[flt->tmatch].col[flt->cmatch].type;
         SKIP_SPACES(nextp)
         if (!strncasecmp(nextp, "IN ", 3)) {
             nextp     = next_token(nextp);
@@ -435,24 +437,24 @@ static uchar parseWCTokRelation(cli *c,   cswc_t *w,   char  *token, char **fin,
     return PARSE_OK;
 }
 
-static bool addIndexes2Join(redisClient *c, f_t *flt, jb_t *jb) {
-    init_ijp(&jb->ij[jb->n_jind]);
+static bool addIndexes2Join(redisClient *c, f_t *flt, jb_t *jb, list *ijl) {
+    ijp_t *ij = malloc(sizeof(ijp_t)); init_ijp(ij);
     if (flt->key && !flt->iss && ISALPHA(*flt->key)) {   /* JOIN INDEX */
         if (flt->op != EQ) { addReply(c, shared.join_noteq);      return 0; }
         f_t f2; initFilter(&f2); /* NOTE f2 does not need to be released */
         if (!parseInumTblCol(c, flt->key, sdslen(flt->key), &f2)) return 0;
-        if (Tbl[flt->tmatch].col_type[flt->cmatch] !=
-            Tbl[f2.tmatch  ].col_type[f2.cmatch  ]    ) {
+        if (Tbl[flt->tmatch].col[flt->cmatch].type !=
+            Tbl[f2.tmatch  ].col[f2.cmatch  ].type    ) {
             addReply(c, shared.join_coltypediff);                 return 0;
         }
-        memcpy(&jb->ij[jb->n_jind].rhs, &f2, sizeof(f_t));/*NOW: must return 1*/
+        memcpy(&ij->rhs, &f2, sizeof(f_t)); // NOTE: NOW: must return 1
     }
-    memcpy(&jb->ij[jb->n_jind].lhs, flt, sizeof(f_t));    /*NOW: must return 1*/
-    free(flt); /* FREED cuz just memcpy'ed, so its values will get destroyed */
-    jb->n_jind++;
+    memcpy(&ij->lhs, flt, sizeof(f_t));     // NOTE: NOW: must return 1
+    free(flt); /* FREED cuz just memcpy'ed, so flt's refs will get destroyed */
+    listAddNodeTail(ijl, ij); jb->n_jind++;
     return 1;
 }
-uchar parseWC(cli *c, cswc_t *w, wob_t *wb, jb_t *jb) {
+uchar parseWC(cli *c, cswc_t *w, wob_t *wb, jb_t *jb, list *ijl) {
     uchar   prs;
     f_t    *flt   = NULL;
     bool    isj   = jb ? 1 : 0;
@@ -485,11 +487,13 @@ uchar parseWC(cli *c, cswc_t *w, wob_t *wb, jb_t *jb) {
         prs   = parseWCTokRelation(c, w, token, &tfin, flt, isj, ttype);
         if (prs != PARSE_OK)                          goto p_wd_err;
         if (jb) {             /* JOINs */
-            if (!addIndexes2Join(c, flt, jb))         goto p_wd_err;
-        } else {             /* SELECT/UPDATE/DELETE */
+            if (!addIndexes2Join(c, flt, jb, ijl))    goto p_wd_err;
+            flt = NULL; // means do not destroy below
+        } else {             /* RANGE SELECT/UPDATE/DELETE */
             if (!w->flist) w->flist = listCreate();
             listAddNodeTail(w->flist, flt);
-        } /* NOTE do NOT use "GOTO p_wd_err;" BELOW this */
+            flt = NULL; // means do not destroy below
+        }
         if (and) {
             line = and + 5; /* go past " AND " */
             SKIP_SPACES(line)
@@ -503,10 +507,9 @@ uchar parseWC(cli *c, cswc_t *w, wob_t *wb, jb_t *jb) {
             break;
         }
     } //dumpW(printf, w);
-    if (0) { /* reached only via goto on ERROR */
-p_wd_err: /* use ONLY BEFORE flt added to a list */
-        destroyFilter(flt);
-    }
+
+p_wd_err:
+    if (flt) destroyFilter(flt);
 
     if (w->lvr) { /* blank space in lvr is not actually lvr */
         SKIP_SPACES(w->lvr)
@@ -519,18 +522,48 @@ p_wd_err: /* use ONLY BEFORE flt added to a list */
 
 /* RANGE_QUERY RANGE_QUERY RANGE_QUERY RANGE_QUERY RANGE_QUERY RANGE_QUERY */
 void parseWCReply(cli *c, cswc_t *w, wob_t *wb, uchar sop) {
-    uchar prs = parseWC(c, w, wb, NULL);
+    uchar prs = parseWC(c, w, wb, NULL, NULL);
     if (prs == PARSE_GEN_ERR)          genericParseError(c, sop);
     if (prs != PARSE_OK)               return;
     if (!optimiseRangeQueryPlan(c, w)) return;
 }
 
 /* JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN */
+void init_join_block(jb_t *jb) {
+    bzero(jb, sizeof(jb_t));
+    init_wob(&jb->wb);                                   /* DESTROY ME 066 */
+    jb->hw = jb->fkimatch = -1;
+}
+static void releaseIJ(void *v) {
+    ijp_t *ij = (ijp_t *)v;
+    releaseFilterR_KL(&ij->lhs); releaseFilterR_KL(&ij->rhs);
+    releaseFlist( &ij->flist); /* flist is referential, dont destroy */
+}
+void destroy_join_block(cli *c, jb_t *jb) {
+    if (jb->lvr) sdsfree(jb->lvr);                       /* DESTROYED 050 */
+    destroyFlist(&jb->mciflist);                         /* DESTROYED 069 */
+    destroy_wob (&jb->wb);                               /* DESTROYED 066 */
+    for (uint32 i = 0; i < jb->n_jind; i++) releaseIJ(&jb->ij[i]);
+    if (jb->js) free(jb->js); if (jb->ij) free(jb->ij);
+    releaseFlist(&jb->fflist); /* flist is referential, dont destroy */
+    releaseFlist(&jb->fklist); /* klist is referential, dont destroy */
+    if (jb->ob) destroy_obsl(jb->ob, OBY_FREE_ROBJ);     /* DESTROYED 057 */
+    for (int i = 0; i < c->NumJTAlias; i++) sdsfree(JTAlias[i].alias);//DEST 049
+}
+
 static bool joinParseWCReply(redisClient *c, jb_t *jb, char *wc) {
     bool   ret = 0; /* presume failure */
     cswc_t w;
     init_check_sql_where_clause(&w, -1, wc);
-    uchar  prs = parseWC(c, &w, &jb->wb, jb);
+    list  *ijl = listCreate();
+    uchar  prs = parseWC(c, &w, &jb->wb, jb, ijl);
+    jb->ij     = malloc(sizeof(ijp_t) * ijl->len);
+    listNode *lnij; int iij = 0;
+    listIter *liij = listGetIterator(ijl, AL_START_HEAD);
+    while((lnij = listNext(liij))) {
+        memcpy(&jb->ij[iij], lnij->value, sizeof(ijp_t)); iij++;
+    } listReleaseIterator(liij);
+    listRelease(ijl);
     if (prs == PARSE_GEN_ERR) genericParseError(c, SQL_SELECT);
     if (prs != PARSE_OK) goto j_p_wc_end;
     if (w.lvr) {
@@ -547,44 +580,35 @@ j_p_wc_end:
     return ret;
 }
 
-void init_join_block(jb_t *jb) {
-    bzero(jb, sizeof(jb_t));
-    init_wob(&jb->wb);                                   /* DESTROY ME 066 */
-    jb->hw       = -1;
-    jb->fkimatch = -1;
-}
-static void releaseIJ(ijp_t *ij) {
-    releaseFilterR_KL(&ij->lhs); releaseFilterR_KL(&ij->rhs);
-    releaseFlist( &ij->flist); /* flist is referential, dont destroy */
-}
-void destroy_join_block(cli *c, jb_t *jb) {
-    if (jb->lvr) sdsfree(jb->lvr);                       /* DESTROYED 050 */
-    destroyFlist(&jb->mciflist);                         /* DESTROYED 069 */
-    destroy_wob(&jb->wb);                                /* DESTROYED 066 */
-    for (uint32 i = 0; i < jb->n_jind; i++) releaseIJ(&jb->ij[i]);
-    releaseFlist(&jb->fflist); /* flist is referential, dont destroy */
-    releaseFlist(&jb->fklist); /* klist is referential, dont destroy */
-    if (jb->ob) destroy_obsl(jb->ob, OBY_FREE_ROBJ);     /* DESTROYED 057 */
-    for (int i = 0; i < c->NumJTAlias; i++) sdsfree(JTAlias[i].alias);//DEST 049
-}
-
 bool parseJoinReply(cli *c, jb_t *jb, char *clist, char *tlist, char *wc) {
-    int  ts  [MAX_JOIN_INDXS];
-    int  jans[MAX_JOIN_INDXS];
-    int  numt = 0;
+    bool  ret  = 0;
+    list *tl   = listCreate(); //TODO combine: [tl & janl]
+    list *janl = listCreate();
+    list *jl   = listCreate();
+    int   numt = 0;            // TODO numt is just tl->len
     /* Check tbls in "FROM tbls,,,," */
-    if (!parseCommaSpaceList(c, tlist, 0, 1, 0, -1, NULL,
-                             &numt, ts, jans, NULL, NULL, &Bdum)) return 0;
+    if (!parseCommaSpaceList(c, tlist, 0, 1, 0, -1, NULL, &numt, tl, janl,
+                             NULL, NULL, &Bdum))          goto prs_join_end;
     /* Check all tbl.cols in "SELECT tbl1.col1, tbl2.col2,,,,," */
-    if (!parseCommaSpaceList(c, clist, 0, 0, 1, -1, NULL, &numt, ts, jans,
-                             jb->js, &jb->qcols, &jb->cstar))     return 0;
-    bool ret = joinParseWCReply(c, jb, wc);
-    if (!leftoverParsingReply(c, jb->lvr))                        return 0;
+    if (!parseCommaSpaceList(c,  clist, 0, 0, 1, -1, NULL, &numt, tl, janl,
+                             jl, &jb->qcols, &jb->cstar)) goto prs_join_end;
+    jb->js = malloc(sizeof(jc_t) * jl->len);
+    listNode *lnjs; int ijs  = 0;
+    listIter *lijs = listGetIterator(jl, AL_START_HEAD);
+    while((lnjs = listNext(lijs))) {
+        memcpy(&jb->js[ijs], lnjs->value, sizeof(jc_t)); ijs++;
+    } listReleaseIterator(lijs);
+    ret = joinParseWCReply(c, jb, wc);
+    if (!leftoverParsingReply(c, jb->lvr))                goto prs_join_end;
     if (EREDIS) embeddedSaveJoinedColumnNames(jb);
+
+prs_join_end:
+    listRelease(tl); listRelease(janl); listRelease(jl);
+    //printf("parseJoinReply: ret: %d\n", ret); dumpJB(c, printf, jb);
     return ret;
 }
 static void addQcol(jb_t *jb, int tmatch) {
-   bool hit    = 0;
+   bool hit = 0;
    for (int j = 0; j < jb->qcols; j++) {
        if (jb->js[j].t == tmatch) { hit = 1; break; }
    }

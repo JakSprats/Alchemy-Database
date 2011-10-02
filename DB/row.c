@@ -50,8 +50,8 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "row.h"
 
-extern r_tbl_t  Tbl[MAX_NUM_TABLES];
-extern r_ind_t  Index[MAX_NUM_INDICES];
+extern r_tbl_t *Tbl;
+extern r_ind_t *Index;
 
 extern uchar    OutputMode; // NOTE: used by OREDIS
 
@@ -81,57 +81,60 @@ typedef struct create_row_ctrl {
     int     tmatch;
     int     ncols;
     uint32  rlen;
-    int     mcofsts[MAX_COLUMN_PER_TABLE]; //TODO stack alloc -> [ncols + lru]
-    char   *strs   [MAX_COLUMN_PER_TABLE]; // break the []s out
-    uint32  slens  [MAX_COLUMN_PER_TABLE];
-    uchar   iflags [MAX_COLUMN_PER_TABLE];
-    ulong   icols  [MAX_COLUMN_PER_TABLE]; /* for INT & LONG */
-    float   fcols  [MAX_COLUMN_PER_TABLE];
 } cr_t;
-static void init_cr(cr_t *cr, int tmatch, int ncols) {
-    cr->tmatch   = tmatch;
-    cr->ncols    = ncols;
-    cr->rlen     = 0;
-    cr->strs [0] = NULL;
-    cr->slens[0] = 0;
+typedef struct create_row_data {
+    int     mcofsts;
+    char   *strs;
+    uint32  slens;
+    uchar   iflags;
+    ulong   icols; /* for INT & LONG */
+    float   fcols;
+} crd_t;
+static void init_cr(cr_t *cr, crd_t *crd, int tmatch, int ncols, int tcols) {
+    cr->tmatch = tmatch;
+    cr->ncols  = ncols;
+    cr->rlen   = 0;
+    bzero(crd, sizeof(crd_t) * tcols);
 }
-#define INIT_CR cr_t cr; init_cr(&cr, tmatch, ncols);
+#define INIT_CR                                   \
+  cr_t cr;                                        \
+  int tcols = ncols + (Tbl[tmatch].lrud ? 1 : 0); \
+  crd_t crd[tcols];                               \
+  init_cr(&cr, crd, tmatch, ncols, tcols);
 
 static bool contains_text_col(int tmatch, int ncols) {
     for (int i = 1; i < ncols; i++) {       /* sixzip needs a string */
-        if (C_IS_S(Tbl[tmatch].col_type[i])) return 1;
+        if (C_IS_S(Tbl[tmatch].col[i].type)) return 1;
     }
     return 0;
 }
 #define CZIP_NONE     0
 #define CZIP_SIX      1
 #define CZIP_LZF      2
+typedef struct col_zip_data {
+    uchar  *sixs;
+    uint32  sixl;
+    void   *lzf_s; /* compressed column */
+    uint32  lzf_l; /* compressed column length */
+    ulong   socl;  /* stream original col-len */
+    uint32  lsocl; /* LEN stream original col-len */
+} czd_t;
 typedef struct col_zip_ctrl {
     bool    zip;
     uchar   type;
     uint32  sixn;
-    uchar  *sixs [MAX_COLUMN_PER_TABLE];
-    uint32  sixl [MAX_COLUMN_PER_TABLE];
     uint32  lzf_n;
-    void   *lzf_s[MAX_COLUMN_PER_TABLE]; /* compressed column */
-    uint32  lzf_l[MAX_COLUMN_PER_TABLE]; /* compressed column length */
-    ulong   socl [MAX_COLUMN_PER_TABLE]; /* stream original col-len */
-    uint32  lsocl[MAX_COLUMN_PER_TABLE]; /* LEN stream original col-len */
 } cz_t;
 static void init_cz(cz_t *cz, cr_t *cr) {
     cz->zip  = contains_text_col(cr->tmatch, cr->ncols);
     cz->type = CZIP_NONE;
     cz->sixn = cz->lzf_n = 0;
 }
-
-//TODO: make cz_t "static global" to avoid stack allocation? it is BIG
-#define INIT_CZIP cz_t cz; init_cz(&cz, cr);
-static void destroy_cz(cz_t *cz) {
-    for (uint32 j = 0; j < cz->sixn;  j++) free(cz->sixs[j]);  /*FREED 022 */
-    for (uint32 j = 0; j < cz->lzf_n; j++) free(cz->lzf_s[j]); /*FREED 034 */
+static void destroy_cz(cz_t *cz, czd_t *czd) {
+    for (uint32 j = 0; j < cz->sixn;  j++) free(czd[j].sixs);  /*FREED 022 */
+    for (uint32 j = 0; j < cz->lzf_n; j++) free(czd[j].lzf_s); /*FREED 034 */
     cz->sixn = cz->lzf_n = 0;
 }
-#define DESTROY_CZIP destroy_cz(&cz);
 
 static char *streamLZFTextToString(uchar *s, uint32 *len) {
     uint32  clen;
@@ -141,28 +144,29 @@ static char *streamLZFTextToString(uchar *s, uint32 *len) {
     *len          = lzf_decompress(s + clen, llen, buf, oclen);
     return buf;
 }
-static bool lzfZipCol(int i, cr_t *cr, cz_t *cz, uint32 *tlen, uint32 *mtlen) {
-    INCRBY(*tlen, cr->slens[i]);
-    uint32 mlen  = MAX(4, cr->slens[i] + 4);
+static bool lzfZipCol(int i, crd_t *crd, cz_t *cz, czd_t *czd,
+                      uint32 *tlen, uint32 *mtlen) {
+    INCRBY(*tlen, crd[i].slens);
+    uint32 mlen  = MAX(4, crd[i].slens + 4);
     uint32 n     = cz->lzf_n;
-    cz->lzf_s[n] = malloc(mlen);       /* FREE ME 034 */
-    cz->lzf_l[n] = lzf_compress(cr->strs[i], cr->slens[i], cz->lzf_s[n], mlen);
-    if (!cz->lzf_l[n]) return 0;
-    cz->lsocl[n] = cr8Icol(cr->slens[i], NULL, &cz->socl[n]);
-    INCRBY(*mtlen, (cz->lsocl[cz->lzf_n] + cz->lzf_l[cz->lzf_n]));
+    czd[n].lzf_s = malloc(mlen);       /* FREE ME 034 */
+    czd[n].lzf_l = lzf_compress(crd[i].strs, crd[i].slens, czd[n].lzf_s, mlen);
+    if (!czd[n].lzf_l) return 0;
+    czd[n].lsocl = cr8Icol(crd[i].slens, NULL, &czd[n].socl);
+    INCRBY(*mtlen, (czd[cz->lzf_n].lsocl + czd[cz->lzf_n].lzf_l));
     INCR(cz->lzf_n)
     return 1;
 }
-static uchar *writeLzfCol(uchar *row, cz_t *cz, int k) {
-    memcpy(row, &cz->socl[k], cz->lsocl[k]); /* orig col_len*/
-    row += cz->lsocl[k];
-    memcpy(row, cz->lzf_s[k], cz->lzf_l[k]); /* compressed column */
-    return row + cz->lzf_l[k];
+static uchar *writeLzfCol(uchar *row, czd_t *czd, int k) {
+    memcpy(row, &czd[k].socl, czd[k].lsocl); /* orig col_len*/
+    row += czd[k].lsocl;
+    memcpy(row, czd[k].lzf_s, czd[k].lzf_l); /* compressed column */
+    return row + czd[k].lzf_l;
 }
 
 #define DEBUG_MCOFSTS \
   for (int i = 1; i < cr->ncols; i++) \
-    printf("mcofsts[%d]: %d\n", i, cr->mcofsts[i]);
+    printf("mcofsts[%d]: %d\n", i, crd[i].mcofsts);
 
 static bool compression_justified(uint32 tlen, uint32 mtlen) {
     //printf("compression_justified: tlen: %u mtlen: %u\n", tlen, mtlen);
@@ -170,18 +174,18 @@ static bool compression_justified(uint32 tlen, uint32 mtlen) {
 }
 #define COL_LOOP_IF_TEXT \
     for (int i = 1; i < cr->ncols; i++) { \
-        if (C_IS_S(Tbl[cr->tmatch].col_type[i])) {
+        if (C_IS_S(Tbl[cr->tmatch].col[i].type)) {
 
-static void zipCol(cr_t *cr, cz_t *cz) {/* NOTE: return here -> no compression*/
+static void zipCol(cr_t *cr, crd_t *crd, cz_t *cz, czd_t *czd) {
     cz->type = CZIP_SIX;
     COL_LOOP_IF_TEXT  /* if ANY TEXT col len > 20 -> LZF */
-        if (cr->slens[i] > 20) { cz->type = CZIP_LZF; break; }
+        if (crd[i].slens > 20) { cz->type = CZIP_LZF; break; }
     }}
     if (cz->type == CZIP_LZF) {            /* ZIP LZF */
         uint32 tlen  = 0; /* sum length TEXT_cols */
         uint32 mtlen = 0; /* sum length compressed(TEXT_cols) */
         COL_LOOP_IF_TEXT
-            if (!lzfZipCol(i, cr, cz, &tlen, &mtlen)) {
+            if (!lzfZipCol(i, crd, cz, czd, &tlen, &mtlen)) {
                 cz->type = CZIP_LZF; break;
             }
         }}
@@ -191,28 +195,28 @@ static void zipCol(cr_t *cr, cz_t *cz) {/* NOTE: return here -> no compression*/
     }
     if (cz->type == CZIP_SIX) {            /* ZIP SIXBIT */
         COL_LOOP_IF_TEXT
-            uint32  len  = cr->slens[i];
-            uchar  *dest = _createSixBit(cr->strs[i], len, &len); //FREE 022
+            uint32  len  = crd[i].slens;
+            uchar  *dest = _createSixBit(crd[i].strs, len, &len); //FREE 022
             if (!dest) { cz->type = CZIP_NONE; return; }
-            cz->sixs[cz->sixn] = dest;
-            cz->sixl[cz->sixn] = len;
+            czd[cz->sixn].sixs = dest;
+            czd[cz->sixn].sixl = len;
             INCR(cz->sixn)
         }}
     }
     uint32 k = 0; uint32 shrunk = 0;
     for (int i = 1; i < cr->ncols; i++) { /* MOD cofsts (zipping) */
         int diff = 0;
-        if (C_IS_S(Tbl[cr->tmatch].col_type[i])) {
+        if (C_IS_S(Tbl[cr->tmatch].col[i].type)) {
             if (       cz->type == CZIP_SIX) {
-                diff = (cr->slens[i] - cz->sixl[k]);
+                diff = (crd[i].slens - czd[k].sixl);
             } else if (cz->type == CZIP_LZF) {
-                diff = (cr->slens[i] - (cz->lsocl[k] + cz->lzf_l[k]));
+                diff = (crd[i].slens - (czd[k].lsocl + czd[k].lzf_l));
             }
             k++;
         }
         shrunk         += diff;
         cr->rlen       -= diff;
-        cr->mcofsts[i] -= shrunk;
+        crd[i].mcofsts -= shrunk;
     }
 }
 /*  ROW BINARY FORMAT: [ 1B | 1B  |NC*(1-4B)|data ....no PK, no commas] */
@@ -238,50 +242,51 @@ static void *createRowBlob(int ncols, uchar rflag, uint32 rlen) {
     row++;
     return orow;
 }
-static int set_col_offst(uchar *row, int i, uchar rflag, int cofst[]) {
+static int set_col_offst(uchar *row, uchar rflag, int cofst) {
     if        (rflag & RFLAG_1BYTE_INT) {
-        *row = (uchar)cofst[i];            return 1;
+        *row = (uchar)cofst;            return 1;
     } else if (rflag & RFLAG_2BYTE_INT) {
-        ushort16 m = (ushort16)cofst[i];
-        memcpy(row, &m, USHORT_SIZE);      return USHORT_SIZE;
+        ushort16 m = (ushort16)cofst;
+        memcpy(row, &m, USHORT_SIZE);   return USHORT_SIZE;
     } else {        /* RFLAG_4BYTE_INT */
-        memcpy(row, &cofst[i], UINT_SIZE); return UINT_SIZE;
+        memcpy(row, &cofst, UINT_SIZE); return UINT_SIZE;
     }
 }
-static uchar *writeRow(cr_t *cr) {
-    INIT_CZIP
-    if (cz.zip) zipCol(cr, &cz);
+static uchar *writeRow(cr_t *cr, crd_t *crd) {
+    cz_t cz; czd_t czd[cr->ncols]; init_cz(&cz, cr);
+    if (cz.zip) zipCol(cr, crd, &cz, czd);
     uchar  rflag = assign_rflag(cr->rlen, cz.type);
     uchar *orow  = createRowBlob(cr->ncols, rflag, cr->rlen);
     uchar *row   = orow + ROW_META_SIZE;
     for (int i = 1; i < cr->ncols; i++) { /* WRITE cofsts[] to row */
-        row += set_col_offst(row, i, rflag, cr->mcofsts); /* size+=ncols*flag */
+        row += set_col_offst(row, rflag, crd[i].mcofsts); // size+=ncols*flag
     }
     uint32 k = 0;
     for (int i = 1; i < cr->ncols; i++) { /* write ROW */
-        uchar ctype = Tbl[cr->tmatch].col_type[i];
+        uchar ctype = Tbl[cr->tmatch].col[i].type;
         if        C_IS_I(ctype) {
-            writeUIntCol(&row,  cr->iflags[i], cr->icols[i]);
+            writeUIntCol(&row,  crd[i].iflags, crd[i].icols);
         } else if C_IS_L(ctype) {
-            writeULongCol(&row, cr->iflags[i], cr->icols[i]);
+            writeULongCol(&row, crd[i].iflags, crd[i].icols);
         } else if C_IS_F(ctype) {
-            writeFloatCol(&row, cr->fcols[i]);
+            writeFloatCol(&row, crd[i].fcols);
         } else {/* COL_TYPE_STRING */
             if (       cz.type == CZIP_SIX) {
-                memcpy(row, cz.sixs[k], cz.sixl[k]); row += cz.sixl[k]; k++;
+                memcpy(row, czd[k].sixs, czd[k].sixl); row += czd[k].sixl; k++;
             } else if (cz.type == CZIP_LZF) {
-                row = writeLzfCol(row, &cz, k);                         k++;
+                row = writeLzfCol(row, czd, k);                           k++;
             } else {
-                memcpy(row, cr->strs[i], cr->slens[i]); row += cr->slens[i];
+                memcpy(row, crd[i].strs, crd[i].slens); row += crd[i].slens;
            }
         }
     }
-    DESTROY_CZIP
+    destroy_cz(&cz, czd);
     return orow;
 }
 #define DEBUG_CREATE_ROW \
-  printf("nclen: %d rlen: %d c[%d]: %d", nclen, cr.rlen, i, cr.mcofsts[i]);    \
-  if C_IS_NUM(ctype) printf(" iflags: %d col: %u", cr.iflags[i], cr.icols[i]); \
+  printf("nclen: %d rlen: %d c[%d]: %d", nclen, cr.rlen, i, crd[i].mcofsts); \
+  if C_IS_NUM(ctype) printf(" iflags: %d col: %u",                           \
+                            crd[i].iflags, crd[i].icols);                    \
   printf("\n");
 
 static char *EmptyStringCol = "''";
@@ -296,50 +301,54 @@ void *createRow(cli    *c,    bt     *btr,      int tmatch, int  ncols,
     }
     INIT_CR
     for (int i = 1; i < cr.ncols; i++) { /* MOD cofsts (no PK,no commas,PACK) */
-        uchar ctype  = Tbl[tmatch].col_type[i];
+        uchar ctype  = Tbl[tmatch].col[i].type;
         if (cofsts[i].i == -1) { //TODO next block's logic should be done here
-            if (C_IS_S(ctype)) { cr.strs[i] = EmptyStringCol; cr.slens[i] = 2; }
-            else               { cr.strs[i] = EmptyCol;       cr.slens[i] = 0; }
+            if (C_IS_S(ctype)) {
+                crd[i].strs = EmptyStringCol; crd[i].slens = 2;
+            } else  {
+                crd[i].strs = EmptyCol;       crd[i].slens = 0;
+            }
         } else {
             char *startc = vals + cofsts[i].i;
             char *endc   = vals + cofsts[i].j;
-            cr.strs[i]   = startc;
+            crd[i].strs  = startc;
             int   clen   = endc - startc;
-            SKIP_SPACES(cr.strs[i])
+            SKIP_SPACES(crd[i].strs)
             char *mendc  = endc;
             if (ISBLANK(*(mendc))) REV_SKIP_SPACES(mendc)
-            cr.slens[i]  = clen - (cr.strs[i] - startc) - (endc - mendc);
+            crd[i].slens  = clen - (crd[i].strs - startc) - (endc - mendc);
         }
         int nclen    = 0;
         if        (C_IS_S(ctype)) { /* dont store \' delimiters */
-            cr.strs[i]++; cr.slens[i] -= 2; nclen = cr.slens[i];
+            crd[i].strs++; crd[i].slens -= 2; nclen = crd[i].slens;
         } else if (C_IS_I(ctype)) {
-            nclen = cr8IcolFromStr(c, cr.strs[i],    cr.slens[i],
-                                      &cr.iflags[i], &cr.icols[i]);
+            nclen = cr8IcolFromStr(c, crd[i].strs,    crd[i].slens,
+                                      &crd[i].iflags, &crd[i].icols);
             if (nclen == -1) return NULL;
         } else if (C_IS_L(ctype)) {
-            nclen = cr8LcolFromStr(c, cr.strs[i],    cr.slens[i],
-                                      &cr.iflags[i], &cr.icols[i]);
+            nclen = cr8LcolFromStr(c, crd[i].strs,    crd[i].slens,
+                                      &crd[i].iflags, &crd[i].icols);
         } else if (C_IS_F(ctype)) {
-            nclen = cr8FColFromStr(c, cr.strs[i], cr.slens[i], &cr.fcols[i]);
+            nclen = cr8FColFromStr(c, crd[i].strs, crd[i].slens, &crd[i].fcols);
             if (nclen == -1) return NULL;
         }
-        cr.rlen       += nclen;
-        cr.mcofsts[i]  = (int)cr.rlen;                       //DEBUG_CREATE_ROW
+        cr.rlen        += nclen;
+        crd[i].mcofsts  = (int)cr.rlen;                      //DEBUG_CREATE_ROW
     }
     if (Tbl[tmatch].lrud) { /* NOTE: updateLRU (INSERT) */
-        int    i       = cr.ncols;
-        int    nclen   = cLRUcol(getLru(tmatch), &cr.iflags[i], &(cr.icols[i]));
-        cr.rlen       += nclen;
-        cr.mcofsts[i]  = (int)cr.rlen;
+        int    i        = cr.ncols;
+        int    nclen    = cLRUcol(getLru(tmatch), &crd[i].iflags,
+                                  &(crd[i].icols));
+        cr.rlen        += nclen;
+        crd[i].mcofsts  = (int)cr.rlen;
         cr.ncols++;
     }
-    return writeRow(&cr);
+    return writeRow(&cr, crd);
 }
 
 /* UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE */
 #define INIT_COL_AVALS \
-  aobj avs[MAX_COLUMN_PER_TABLE]; \
+  aobj avs[ncols];     \
   for (int i = 0; i < ncols; i++) initAobj(&avs[i]);
 #define DESTROY_COL_AVALS \
   for (int i = 0; i < ncols; i++) releaseAobj(&avs[i]);
@@ -378,28 +387,27 @@ static bool aobj_sflag(aobj *a, uchar *sflag) {
     DEBUG_CREATE_ROW printf("\t\t\t\t"); dumpAobj(printf, &avs[i]); }
 
 #define OVRWR(i, ovrwr, ctype) /*NOTE: !indexed -> upIndex uses orow & nrow */ \
-  (i && ovrwr && C_IS_NUM(ctype) && !Tbl[tmatch].col_indxd[i])
+  (i && ovrwr && C_IS_NUM(ctype) && !rt->col[i].indxd)
 
 #define UP_ERR goto up_end;
 
 //TODO too many arguments for a per-row-OP, merge into a struct
-//TODO set col1 = col2
 int updateRow(cli  *c,      bt      *btr,    aobj  *apk,     void *orow,
               int   tmatch, int     ncols,   int    matches, int   inds[],
               char *vals[], uint32  vlens[], uchar  cmiss[], ue_t  ue[])   {
     INIT_COL_AVALS      /* merges values in update_string and vals from ROW */
     INIT_CR             /* holds values written to new ROW */
-    uchar osflags[MAX_COLUMN_PER_TABLE]; bzero(osflags, MAX_COLUMN_PER_TABLE);
+    uchar osflags[tcols]; bzero(osflags, tcols);
     uchar   *nrow  = NULL; /* B4 GOTO */
     r_tbl_t *rt    = &Tbl[tmatch];
     bool     ovrwr = NORM_BT(btr);
     int      ret   = -1;    /* presume failure */
     for (int i = 0; i < cr.ncols; i++) { /* 1st loop UPDATE columns -> cr */
-        uchar ctype = rt->col_type[i];
+        uchar ctype = rt->col[i].type;
         if (cmiss[i]) {
             avs[i] = getCol(btr, orow, i, apk, tmatch);
             if (rt->lrud && rt->lruc == i) {
-                if (avs[i].empty) ovrwr      = 0;
+                if (avs[i].empty) ovrwr      = 0; // makes updateLRU not recurse
                 else              osflags[i] = getLruSflag();/* Overwrite LRU */
             }
         } else if (ue[i].yes) {
@@ -433,40 +441,43 @@ int updateRow(cli  *c,      bt      *btr,    aobj  *apk,     void *orow,
         }
         int nclen = 0;
         if (i) { /* NOT PK, populate cr values (PK not stored in row)*/
-            if (rt->lrud && rt->lruc == i) { /* NOTE: updateLRU (UPDATE)1 */
-                nclen = cLRUcol(getLru(tmatch), &cr.iflags[i], &(cr.icols[i]));
+            if (rt->lrud && rt->lruc == i) { // NOTE: updateLRU (UPDATE_1)
+                nclen = cLRUcol(getLru(tmatch), &crd[i].iflags,
+                                &(crd[i].icols));
             } else if C_IS_I(ctype) { //TODO push empty logic into cr8*()
-                if (avs[i].empty) { cr.iflags[i] = 0; nclen = 0; }
-                else nclen = cr8Icol(avs[i].i, &cr.iflags[i], &(cr.icols[i]));
+                if (avs[i].empty) { crd[i].iflags = 0; nclen = 0; }
+                else nclen = cr8Icol(avs[i].i, &crd[i].iflags, &(crd[i].icols));
             } else if C_IS_L(ctype) {
-                if (avs[i].empty) { cr.iflags[i] = 0; nclen = 0; }
-                else nclen = cr8Lcol(avs[i].l, &cr.iflags[i], &(cr.icols[i]));
+                if (avs[i].empty) { crd[i].iflags = 0; nclen = 0; }
+                else nclen = cr8Lcol(avs[i].l, &crd[i].iflags, &(crd[i].icols));
             } else if C_IS_F(ctype) {
                 if (avs[i].empty) nclen = 0;
-                else              { cr.fcols[i] = avs[i].f; nclen = 4; }
+                else              { crd[i].fcols = avs[i].f; nclen = 4; }
             } else {/* COL_TYPE_STRING*/
-                cr.strs[i]  = avs[i].s; nclen = avs[i].len; cr.slens[i] = nclen;
+                crd[i].strs  = avs[i].s; nclen = avs[i].len;
+                crd[i].slens = nclen;
             } 
         }
-        cr.mcofsts[i]  = cr.rlen + nclen;
-        cr.rlen       += nclen;                              //DEBUG_UPDATE_ROW
+        crd[i].mcofsts  = cr.rlen + nclen;
+        cr.rlen        += nclen;                             //DEBUG_UPDATE_ROW
     }
     if (ovrwr) { /* only OVERWRITE if all OLD and NEW sflags match */
         for (int i = 1; i < cr.ncols; i++) {
-            if (osflags[i] && osflags[i] != cr.iflags[i]) { ovrwr = 0; break; }
+            if (osflags[i] && osflags[i] != crd[i].iflags) { ovrwr = 0; break; }
     }}
     if (ovrwr) { /* just OVERWRITE INTS & LONGS */
         for (int i = 1; i < cr.ncols; i++) {
             if (osflags[i]) {
                 uint32 clen; uchar rflag;
-                uchar *row   = getColData(orow, i, &clen, &rflag);
-                uchar  ctype = rt->col_type[i];
-                if       (rt->lrud && rt->lruc == i) {
-                    updateLru(c, tmatch, apk, row);/*NOTE: updateLRU (UPDATE)2*/
+                uchar *data  = getColData(orow, i, &clen, &rflag);
+                uchar  ctype = rt->col[i].type;
+                if       (rt->lrud && rt->lruc == i) {// updateLRU (UPDATE_2)
+                    // NOTE LRU is always 4 bytes, so orow will NOT change
+                    updateLru(c, tmatch, apk, data, rt->lrud); // orow 
                 } else if C_IS_I(ctype) {
-                    writeUIntCol(&row,  cr.iflags[i], cr.icols[i]);
+                    writeUIntCol(&data,  crd[i].iflags, crd[i].icols);
                 } else if C_IS_L(ctype) {
-                    writeULongCol(&row, cr.iflags[i], cr.icols[i]);
+                    writeULongCol(&data, crd[i].iflags, crd[i].icols);
                 }
             }
         }
@@ -480,7 +491,8 @@ int updateRow(cli  *c,      bt      *btr,    aobj  *apk,     void *orow,
         ret = getIorLKeyLen(apk) + getRowMallocSize(orow);
     } else {
         nrow = (UU(btr) || LU(btr)) ? (uchar *)(long)avs[1].i :
-               (UL(btr) || LL(btr)) ? (uchar *)      avs[1].l : writeRow(&cr);
+               (UL(btr) || LL(btr)) ? (uchar *)      avs[1].l :
+                                       writeRow(&cr, crd);
         if (!cmiss[0]) { /* PK update */
             for (int i = 0; i < matches; i++) { /* Redo ALL inds */
                 if (!updateIndex(c, btr, apk, orow, &avs[0], nrow, inds[i])) {
@@ -488,7 +500,7 @@ int updateRow(cli  *c,      bt      *btr,    aobj  *apk,     void *orow,
             }}
             btDelete(btr, apk);              /* DELETE row w/ OLD PK */
             ret = btAdd(btr, &avs[0], nrow); /* ADD row w/ NEW PK */
-            UPDATE_AUTO_INC(rt->col_type[0], avs[0])
+            UPDATE_AUTO_INC(rt->col[0].type, avs[0])
         } else {
             if (!upEffctdInds(c, btr, apk, orow, avs, nrow,
                               matches, inds, cmiss))                  UP_ERR
@@ -505,8 +517,8 @@ up_end:
 
 /* GET_COL GET_COL GET_COL GET_COL GET_COL GET_COL GET_COL GET_COL GET_COL */
 #define DEBUG_GET_RAW_COL \
-printf("getRawCol: tmatch: %d cmatch: %d force_s: %d apk: ", \
-        tmatch, cmatch, force_s); dumpAobj(printf, apk);
+printf("getRawCol: orow: %p tmatch: %d cmatch: %d force_s: %d apk: ", \
+        orow, tmatch, cmatch, force_s); dumpAobj(printf, apk);
 
 static uchar *getRowPayload(uchar  *row,   uchar  *rflag,
                             uint32 *ncols, uint32 *rlen) {
@@ -533,14 +545,17 @@ uint32 getRowMallocSize(uchar *stream) {
     getRowPayload(stream, &rflag, &ncols, &rlen); return rlen;
 }
 
-static char RawCols[MAX_COLUMN_PER_TABLE][32]; /* NOTE: avoid malloc's */
+#define RAW_COL_BUF_SIZE 256
+static char RawCols[RAW_COL_BUF_SIZE][32]; /* NOTE: avoid malloc's */
 static void initAobjCol2S(aobj *a, ulong l, float f, int cmatch, int ktype) {
     char *fmt = C_IS_F(ktype) ? FLOAT_FMT : "%lu";
-    C_IS_F(ktype) ? snprintf(RawCols[cmatch], 32, fmt, f) :
-                    snprintf(RawCols[cmatch], 32, fmt, l);
-    a->len = strlen(RawCols[cmatch]);
-    a->s   = RawCols[cmatch];
-    a->enc = COL_TYPE_STRING; //dumpAobj(printf, a);
+    char *dest;
+    if (cmatch < RAW_COL_BUF_SIZE) dest = RawCols[cmatch];
+    else { dest = malloc(32); a->freeme = 1; }
+    C_IS_F(ktype) ? snprintf(dest, 32, fmt, f) : snprintf(dest, 32, fmt, l);
+    a->len = strlen(dest);
+    a->s   = dest;
+    a->enc = COL_TYPE_STRING;//printf("initAobjCol2S: a: ");dumpAobj(printf, a);
 }
 static void initLongAobjFromVal(aobj *a, ulong l, bool force_s, int cmatch) {
     initAobj(a); a->type = COL_TYPE_LONG;
@@ -621,7 +636,7 @@ aobj getRawCol(bt  *btr,    void *orow, int cmatch, aobj *apk,
     }
     aobj a; initAobj(&a); //DEBUG_GET_RAW_COL
     r_tbl_t *rt    = &Tbl[tmatch];
-    uchar    ctype = rt->col_type[cmatch];
+    uchar    ctype = rt->col[cmatch].type;
     if (!cmatch) { /* PK stored ONLY in KEY not in ROW, echo it */
         if (ctype != COL_TYPE_STRING && !force_s) return *apk;
         else { initStringAobjFromAobj(&a, apk);   return a; }
@@ -686,8 +701,9 @@ void decrRefCountErow(robj *r) { // NOTE Used in cloneRobj()
     r->ptr      = NULL;       /* already destroyed */
     decrRefCount(r);
 }
-bool addReplyRow(cli *c, robj *r, int tmatch, aobj *apk, uchar *lruc) {
-    if (lruc) updateLru(c, tmatch, apk, lruc); /* NOTE: updateLRU (SELECT) */
+bool addReplyRow(cli   *c,    robj *r, int tmatch, aobj *apk,
+                 uchar *lruc, bool  lrud) {
+    updateLru(c, tmatch, apk, lruc, lrud); /* NOTE: updateLRU (RQ_SELECT) */
     if      (EREDIS) {
         erow_t *er  = (erow_t *)r->ptr;
         bool    ret = c->scb ? (*c->scb)(er) : 1;
@@ -751,7 +767,7 @@ robj *write_output_row(int   qcols,   uint32  prelen, char *pbuf,
 static robj *orow_redis(bt   *btr,       void *rrow, int   qcols,
                         int   cmatchs[], aobj *apk,  int   tmatch) {
     char pbuf[128];
-    sl_t outs[MAX_COLUMN_PER_TABLE];
+    sl_t outs[qcols];
     uint32 prelen = output_start(pbuf, 128, qcols);
     uint32 totlen = prelen;
     for (int i = 0; i < qcols; i++) {
@@ -764,14 +780,14 @@ static robj *orow_redis(bt   *btr,       void *rrow, int   qcols,
 }
 static robj *orow_normal(bt   *btr,       void *rrow, int   qcols,
                          int   cmatchs[], aobj *apk,  int   tmatch) {
-    sl_t   outs[MAX_COLUMN_PER_TABLE];
+    sl_t   outs[qcols];
     uint32 totlen = 0;
     for (int i = 0; i < qcols; i++) {
         aobj  col       = getSCol(btr, rrow, cmatchs[i], apk, tmatch);
         outs[i].s       = col.s;
         outs[i].len     = col.len;
         outs[i].freeme  = col.freeme;
-        outs[i].type    = Tbl[tmatch].col_type[cmatchs[i]];
+        outs[i].type    = Tbl[tmatch].col[cmatchs[i]].type;
         totlen         += col.len;
         if (C_IS_S(outs[i].type) && outs[i].len) totlen += 2;/* 2 \'s per col */
     }

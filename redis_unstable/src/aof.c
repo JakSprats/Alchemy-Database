@@ -1,5 +1,6 @@
 #ifdef ALCHEMY_DATABASE
   #include "xdb_hooks.h"
+  extern unsigned char SQL_AOF;
 #endif
 #include "redis.h"
 
@@ -141,6 +142,19 @@ sds catAppendOnlyExpireAtCommand(sds buf, robj *key, robj *seconds) {
 }
 
 void feedAppendOnlyFile(struct redisCommand *cmd, int dictid, robj **argv, int argc) {
+#ifdef ALCHEMY_DATABASE
+    if (SQL_AOF) {
+        sds buf = DXDB_SQL_feedAppendOnlyFile(cmd, argv, argc);
+        // following lines copied from below
+        server.aofbuf = sdscatlen(server.aofbuf, buf, sdslen(buf));
+        if (server.bgrewritechildpid != -1) {
+            server.bgrewritebuf = sdscatlen(server.bgrewritebuf, buf,
+                                            sdslen(buf));
+        }
+        sdsfree(buf);
+        return;
+    }
+#endif
     sds buf = sdsempty();
     robj *tmpargv[3];
 

@@ -36,3 +36,12 @@ function dump(o)
     end
 end
 
+function ltrig_cnt(tbl, ...)
+  redis("incr", 'ltrig_cnt');
+  print('ltrig_cnt: tbl: ' .. tbl);
+  print('ltrig_cnt: ' .. redis("get", 'ltrig_cnt'));
+  local args = {...};
+  print('ltrig_cnt: #args: ' .. #args);
+end
+
+function hiya() print ('hiya'); end

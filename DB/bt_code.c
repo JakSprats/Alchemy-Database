@@ -46,8 +46,6 @@ ALL RIGHTS RESERVED
 #include "redis.h"
 #include "common.h"
 
-extern r_ind_t Index[MAX_NUM_INDICES];
-
 /* PROTOYPES */
 static bt_data_t findminnode(bt *btr, bt_n *x);
 static bt_data_t findmaxnode(bt *btr, bt_n *x);
@@ -177,9 +175,9 @@ static inline void **AKEYS(bt *btr, bt_n *x, int i) {
 }
 #define OKEYS(btr, x) ((void **)((char *)x + btr->keyofst))
 void *KEYS(bt *btr, bt_n *x, int i) {                              //DEBUG_KEYS
-    if      ISVOID(btr) return                        OKEYS(btr, x)[i];
-    else if ISUINT(btr) return (void *)(long)(*(int *)AKEYS(btr, x, i));
-    else /* OTHER_BT */ return (void *)               AKEYS(btr, x, i);
+    if      ISVOID(btr) return                  OKEYS(btr, x)[i];
+    else if ISUINT(btr) return VOIDINT (*(int *)AKEYS(btr, x, i));
+    else /* OTHER_BT */ return (void *)         AKEYS(btr, x, i);
 }
 
 /* NOTE used-memory bookkeeping maintained at the Btree level */

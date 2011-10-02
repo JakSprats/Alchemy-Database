@@ -32,71 +32,47 @@ ALL RIGHTS RESERVED
 #include "query.h"
 #include "common.h"
 
-typedef struct join_alias {
-    sds alias;
-    int tmatch;
-} ja_t;
-
-int find_table(char *tname);
-int find_table_n(char *tname, int len);
-sds getJoinAlias(int jan);
-
-int find_column(int tmatch, char *column);
-int find_column_n(int tmatch, char *column, int len);
-
-//TODO turn into function
-/* TABLE_CHECK_OR_REPLY(char *TBL, RET) -
-     creates (int tmatch) */
-#define TABLE_CHECK_OR_REPLY(TBL, RET)        \
-    int tmatch = find_table(TBL);             \
-    if (tmatch == -1) {                       \
-        addReply(c, shared.nonexistenttable); \
-        return RET;                           \
-    }
-
-//TODO turn into function
-/* COLUMN_CHECK_OR_REPLY(char *cargv2ptr) -
-     creates (char *cname, int cmatch)    */
-#define COLUMN_CHECK_OR_REPLY(cargv2ptr, retval)   \
-    char *cname  = cargv2ptr;                      \
-    int   cmatch = find_column(tmatch, cname);     \
-    if (cmatch == -1) {                            \
-        addReply(c,shared.nonexistentcolumn);      \
-        return retval;                             \
-    }
-
-int get_all_cols(int tmatch, int cmatchs[], bool lru2);
 void incrOffsetVar(redisClient *c, wob_t *wb, long incr);
 
 char *parseRowVals(sds vals,  char   **pk,        int    *pklen,
                    int ncols, twoint   cofsts[],  int     tmatch,
                    int pcols, int      cmatchs[]);
 
-bool parseCommaSpaceList(cli  *c,         char *tkn,
-                         bool  col_check, bool  tbl_check, bool join_check,
-        /* COL or TBL */ int   tmatch,    int   cs[],
-        /* JOIN */       int  *numt,      int   ts[], int jans[], jc_t js[],
-                         int  *qcols,     bool *cstar);
+bool parseCommaSpaceList(cli  *c,         char  *tkn,
+                         bool  col_check, bool   tbl_check, bool join_check,
+        /* COL or TBL */ int   tmatch,    list  *cs,
+        /* JOIN */       int  *numt,      list  *ts, list *jans, list *js,
+                         int  *qcols,     bool  *cstar);
 
-bool parseSelectReply(redisClient *c,
-                      bool         is_scan,
-                      bool        *no_wc,
-                      int         *tmatch,
-                      int          cmatchs[MAX_COLUMN_PER_TABLE],
-                      int         *qcols,
-                      bool        *join,
-                      bool        *cstar,
-                      char        *clist,
-                      char        *from,
-                      char        *tlist,
-                      char        *where);
+#define CMATCHS_FROM_CMATCHL                                                   \
+    int  cmatchs[cmatchl->len];                                                \
+    listNode *lnc;                                                             \
+    int       ic  = 0;                                                         \
+    listIter *lic = listGetIterator(cmatchl, AL_START_HEAD);                   \
+    while((lnc = listNext(lic))) { cmatchs[ic] = (int)(long)lnc->value; ic++; }\
+    listReleaseIterator(lic);
 
-int parseUpdateColListReply(redisClient  *c,
-                            int           tmatch,
-                            char         *vallist,
-                            int           cmatchs[],
-                            char         *vals   [],
-                            uint32        vlens  []);
+#define UPDATES_FROM_UPDATEL                                       \
+    CMATCHS_FROM_CMATCHL                                           \
+    char   *mvals  [mvalsl->len];                                  \
+    ic = 0; lic = listGetIterator(mvalsl, AL_START_HEAD);          \
+    while((lnc = listNext(lic))) { mvals[ic] = lnc->value; ic++; } \
+    listReleaseIterator(lic);                                      \
+    uint32  mvlens [mvlensl->len];                                 \
+    ic = 0; lic = listGetIterator(mvlensl, AL_START_HEAD);         \
+    while((lnc = listNext(lic))) {                                 \
+        mvlens[ic] = (uint32)(long)lnc->value; ic++;               \
+    }                                                              \
+    listReleaseIterator(lic);                                      \
+    listRelease(cmatchl); listRelease(mvalsl); listRelease(mvlensl);
+
+
+bool parseSelect(cli  *c,     bool  is_scan, bool *no_wc, int  *tmatch,
+                 list *cs,    int  *qcols,   bool *join,  bool *cstar,
+                 char *clist, char *from,    char *tlist, char *where);
+
+int parseUpdateColListReply(cli  *c,  int   tmatch, char *vallist,
+                            list *cs, list *vals,   list *vlens);
 
 char isExpression(char *val, uint32 vlen);
 
@@ -106,7 +82,7 @@ bool parseExpr(cli   *c,     char  e,   int    tmatch, int   cmatch,
                uchar  ctype, char *val, uint32 vlen,   ue_t *ue);
 
 bool parseColType(cli *c, sds type, uchar *col_type);
-bool parseCreateTable(cli  *c,       char  cnames[][MAX_COLUMN_NAME_SIZE],
-                      int  *ccount,  sds   as_line);
+bool parseCreateTable(cli  *c,      list *ctypes, list  *cnames,
+                      int  *ccount, sds   as_line);
 
 #endif /*__ALSOSQL_COLPARSE__H */ 

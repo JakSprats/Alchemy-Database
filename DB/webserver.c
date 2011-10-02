@@ -87,7 +87,7 @@ static void send_http_response_header_extended(cli *c, sds s) {
     if (c->http.resp_hdr) {
         listNode *ln;
         listIter *li = listGetIterator(c->http.resp_hdr, AL_START_HEAD);
-        while((ln = listNext(li)) != NULL) {// POPULATE Lua Global HTTP_HEADER[]
+        while((ln = listNext(li))) {// POPULATE Lua Global HTTP_HEADER[]
             two_sds *ss = ln->value;
             s = sdscatprintf(s, "%s: %s\r\n", ss->a, ss->b);
          } listReleaseIterator(li);
@@ -218,7 +218,7 @@ void end_http_session(cli *c) {
                 listNode *ln;
                 bool      dfl = 0;
                 listIter *li  = listGetIterator(c->http.req_hdr, AL_START_HEAD);
-                while((ln = listNext(li)) != NULL) { // check for "deflate"
+                while((ln = listNext(li))) { // check for "deflate"
                     two_sds *ss = ln->value;
                     if (!strncasecmp(ss->a, "Accept-Encoding", 15)) {
                         if (strcasestr(ss->b, "deflate")) { dfl = 1; break; }
@@ -387,7 +387,7 @@ bool luafunc_call(redisClient *c, int argc, robj **argv) {
         lua_newtable(server.lua);
         int       top  = lua_gettop(server.lua);
         listIter *li   = listGetIterator(c->http.req_hdr, AL_START_HEAD);
-        while((ln = listNext(li)) != NULL) {// POPULATE Lua Global HTTP_HEADER[]
+        while((ln = listNext(li))) {// POPULATE Lua Global HTTP_HEADER[]
             two_sds *ss = ln->value;
             char *cln = strchr(ss->a, ':');
             if (cln) { // no colon -> IGNORE, dont include colon
@@ -403,7 +403,7 @@ bool luafunc_call(redisClient *c, int argc, robj **argv) {
         if (hascook) { // POPULATE Lua Global COOKIE[]
             top   = lua_gettop(server.lua);
             li    = listGetIterator(c->http.req_hdr, AL_START_HEAD);
-            while((ln = listNext(li)) != NULL) {
+            while((ln = listNext(li))) {
                 two_sds *ss = ln->value;
                 if (!strcasecmp(ss->a, "cookie")) {
                     char *eq, *cookie = ss->b;

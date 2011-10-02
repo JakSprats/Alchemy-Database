@@ -35,20 +35,20 @@ ALL RIGHTS RESERVED
 #include "bt.h"
 #include "row.h"
 #include "stream.h"
-#include "index.h"
-#include "ddl.h"
-#include "alsosql.h"
 #include "colparse.h"
 #include "parser.h"
+#include "index.h"
+#include "ddl.h"
+#include "find.h"
+#include "alsosql.h"
 #include "aobj.h"
 #include "query.h"
 #include "common.h"
 #include "lru.h"
 
 // GLOBALS
-extern r_tbl_t  Tbl[MAX_NUM_TABLES];
-extern int      Num_indx;
-extern r_ind_t  Index[MAX_NUM_INDICES];
+extern r_tbl_t *Tbl;
+extern int      Num_indx; extern r_ind_t *Index;
 
 #define DEBUG_GET_LRU \
   printf("t: %u tmod: %u A: %d B: %d\n", \
@@ -60,7 +60,7 @@ uint32 IntervalSecs = 5;
 /* NOTE: on more requests per interval than "ThresAccess"
          a new interval will be made,
          starting at now and spanning until the end of the old interval */
-uint32 ThresAccess  = 55; /* 55 ->memory optimal for the BTREE */
+uint32 ThresAccess  = 55; /* 55 -> memory optimal for the BTREE */
 uint32 LastT        = 0;
 
 uint32 getLru(int tmatch) {
@@ -89,22 +89,29 @@ void createLruIndex(cli *c) {
     if (OTHER_BT(getBtr(tmatch))) { addReply(c, shared.lru_other); return; }
     r_tbl_t *rt  = &Tbl[tmatch];
     if (rt->lrud) { addReply(c, shared.lru_repeat); return; }
-    int  imatch  = Num_indx;
-    sds  iname   = P_SDS_EMT "%s_%s", LRUINDEX_DELIM, tname); /* DEST 072 */
-    bool ok      = newIndex(c, iname, tmatch, rt->col_count, NULL,
-                             CONSTRAINT_NONE, 0, 1, NULL, -1, 0);
-    sdsfree(iname);                                            /*DESTROYED 072*/
-    if (!ok) return;
-    rt->lrui     = imatch;
-    rt->lruc     = rt->col_count;
-    addColumn(tmatch, "LRU", COL_TYPE_INT);
+
     rt->lrud     = (uint32)getLru(tmatch);
+    rt->lrui     = Num_indx;      // -> new Index
+    rt->lruc     = rt->col_count; // -> new Column
+    addColumn(tmatch, "LRU", COL_TYPE_INT);
+
+    sds  iname   = P_SDS_EMT "%s_%s", LRUINDEX_DELIM, tname); /* DEST 072 */
+    newIndex(c, iname, tmatch, rt->lruc, NULL, CONSTRAINT_NONE,
+             0, 1, NULL, -1, 0); // Can not fail
+    sdsfree(iname);                                            /*DESTROYED 072*/
     addReply(c, shared.ok);
 }
-void updateLru(cli *c, int tmatch, aobj *apk, uchar *lruc) {
-    if (tmatch == -1)      return; /* from JOIN opSelectSort */
-    if (!Tbl[tmatch].lrud) return;
-    if (c->LruColInSelect) return; /* NOTE: otherwise TOO cyclical */
+
+#define DEBUG_UPDATE_LRU \
+  printf("updateLru: tmatch: %d lruc: %p lrud: %d LruColInSelect: %d apk: ", \
+         tmatch, lruc, lrud, c->LruColInSelect);                             \
+  if (apk) dumpAobj(printf, apk); else printf("\n");
+
+void updateLru(cli *c, int tmatch, aobj *apk, uchar *lruc, bool lrud) {
+    //DEBUG_UPDATE_LRU
+    if (!lrud)                return;
+    if (tmatch == -1)         return; /* from JOIN opSelectSort */
+    if (c->LruColInSelect)    return; /* NOTE: otherwise TOO cyclical */
     r_tbl_t *rt = &Tbl[tmatch];
     if (lruc) {
         uint32  oltime = streamLRUToUInt(lruc);
@@ -112,7 +119,7 @@ void updateLru(cli *c, int tmatch, aobj *apk, uchar *lruc) {
         if (oltime == nltime) return;
         overwriteLRUcol(lruc, nltime);
         bt     *ibtr   = getIBtr(rt->lrui);
-        int     pktyp  = Tbl[tmatch].col_type[0];
+        int     pktyp  = rt->col[0].type;
         aobj ocol; initAobjInt(&ocol, oltime);
         aobj ncol; initAobjInt(&ncol, nltime); 
         upIndex(c, ibtr, apk, &ocol, apk, &ncol, pktyp, NULL, NULL);
@@ -131,8 +138,9 @@ void updateLru(cli *c, int tmatch, aobj *apk, uchar *lruc) {
             } else cmiss[i] = 1;
         }
         bt      *btr   = getBtr(tmatch);
-        void    *row   = btFind(btr, apk);
-        updateRow(c, btr, apk, row, tmatch, ncols, matches, inds,
+        void    *rrow  = btFind(btr, apk);
+        updateRow(c, btr, apk, rrow, tmatch, ncols, matches, inds,
                   vals, vlens, cmiss, ue); /* NOTE: ALWAYS succeeds */
+        //NOTE: rrow is no longer valid, updateRow() can change it
     }
 }

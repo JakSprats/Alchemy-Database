@@ -1,5 +1,6 @@
 #ifdef ALCHEMY_DATABASE
   #include "xdb_hooks.h"
+  extern bool SQL_AOF;
 #endif
 /*
  * Copyright (c) 2009-2010, Salvatore Sanfilippo <antirez at gmail dot com>
@@ -1927,7 +1928,11 @@ int main(int argc, char **argv) {
     start = ustime();
     if (server.ds_enabled) {
         redisLog(REDIS_NOTICE,"DB not loaded (running with disk back end)");
+#ifdef ALCHEMY_DATABASE
+    } else if (server.appendonly && !SQL_AOF) {
+#else
     } else if (server.appendonly) {
+#endif
         if (loadAppendOnlyFile(server.appendfilename) == REDIS_OK)
             redisLog(REDIS_NOTICE,"DB loaded from append only file: %.3f seconds",(float)(ustime()-start)/1000000);
     } else {
@@ -1978,6 +1983,7 @@ static void *getMcontextEip(ucontext_t *uc) {
 }
 
 static void sigsegvHandler(int sig, siginfo_t *info, void *secret) {
+return; // TODO SEGV HACK
     void *trace[100];
     char **messages = NULL;
     int i, trace_size = 0;

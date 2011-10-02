@@ -38,8 +38,8 @@ ALL RIGHTS RESERVED
 #include "hiredis.h"
 #include "redis.h"
 
-extern r_tbl_t Tbl[MAX_NUM_TABLES];
-extern uchar   OutputMode;
+extern r_tbl_t *Tbl;
+extern uchar    OutputMode;
 
 // PROTOTYPES
 redisClient *createClient(int fd);              // from networking.c
@@ -191,7 +191,7 @@ void embeddedSaveSelectedColumnNames(int tmatch, int cmatchs[], int qcols) {
     NumSelectedCols = qcols;
     SelectedCols    = malloc(sizeof(sds) * NumSelectedCols);
     for (int i = 0; i < NumSelectedCols; i++) {
-        SelectedCols[i] = sdsdup(Tbl[tmatch].col_name[cmatchs[i]]->ptr);
+        SelectedCols[i] = sdsdup(Tbl[tmatch].col[cmatchs[i]].name);
     }
     addSelectedColumnNames();
 }
@@ -202,8 +202,8 @@ void embeddedSaveJoinedColumnNames(jb_t *jb) {
     SelectedCols    = malloc(sizeof(sds) * NumSelectedCols);
     for (int i = 0; i < NumSelectedCols; i++) {
         SelectedCols[i] = sdscatprintf(sdsempty(), "%s.%s",
-                           (char *)Tbl[jb->js[i].t].name->ptr,
-                           (char *)Tbl[jb->js[i].t].col_name[jb->js[i].c]->ptr);
+                          Tbl[jb->js[i].t].name,
+                          Tbl[jb->js[i].t].col[jb->js[i].c].name);
     }
     addSelectedColumnNames();
 }

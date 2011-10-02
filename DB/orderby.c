@@ -33,6 +33,7 @@ ALL RIGHTS RESERVED
 #include "redis.h"
 #include "adlist.h"
 
+#include "lru.h"
 #include "row.h"
 #include "rpipe.h"
 #include "parser.h"
@@ -41,7 +42,7 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "orderby.h"
 
-extern r_tbl_t  Tbl[MAX_NUM_TABLES];
+extern r_tbl_t *Tbl;
 
 //GLOBALS
 uint32 OB_nob   = 0;                 // TODO push into cswc_t
@@ -92,10 +93,11 @@ static int stringOrderByRevSort(const void *s1, const void *s2) {
 
 typedef int ob_cmp(const void *, const void *);
 /* slot = OB_ctype[j] * 2 + OB_asc[j] */
-ob_cmp (*OB_cmp[8]) = { intOrderByRevSort,    intOrderBySort,     /* CTYPE: 0 */
-                        ulongOrderByRevSort,  ulongOrderBySort,   /* CTYPE: 1 */
-                        stringOrderByRevSort, stringOrderBySort,  /* CTYPE: 2 */
-                        floatOrderByRevSort,  floatOrderBySort }; /* CTYPE: 3 */
+ob_cmp (*OB_cmp[10]) = { NULL,                 NULL,               // CTYPE: 0
+                         intOrderByRevSort,    intOrderBySort,     // CTYPE: 1
+                         ulongOrderByRevSort,  ulongOrderBySort,   // CTYPE: 2
+                         stringOrderByRevSort, stringOrderBySort,  // CTYPE: 3
+                         floatOrderByRevSort,  floatOrderBySort }; // CTYPE: 4
 
 int genOBsort(const void *s1, const void *s2) {
     int     ret = 0;
@@ -114,7 +116,7 @@ list *initOBsort(bool qed, wob_t *wb, bool rcrud) {
     if (OB_nob) {
         for (uint32 i = 0; i < OB_nob; i++) {
             OB_asc[i]   = wb->asc[i];
-            OB_ctype[i] = Tbl[wb->obt[i]].col_type[wb->obc[i]];
+            OB_ctype[i] = Tbl[wb->obt[i]].col[wb->obc[i]].type;
         }
     }                                                         // \/ DESTROY 009
     if (qed) {                                           return listCreate();
@@ -129,11 +131,9 @@ void releaseOBsort(list *ll) {
 
 obsl_t *create_obsl(void *row, uint32 nob) {
     obsl_t *ob = (obsl_t *)malloc(sizeof(obsl_t));       /* FREE ME 001 */
+    bzero(ob, sizeof(obsl_t));
     ob->row    = row;
     ob->keys   = malloc(sizeof(void *) * nob);           /* FREE ME 006 */
-    bzero(ob->keys, sizeof(void *) * nob);
-    ob->apk    = NULL;
-    ob->lruc   = NULL;
     return ob;
 }
 static void free_obsl_key(obsl_t *ob, int i) {
@@ -159,7 +159,7 @@ obsl_t * cloneOb(obsl_t *ob, uint32 nob) { /* JOIN's API */
         else                     ob2->keys[i] = ob->keys[i];
     }
     if (ob->apk) ob2->apk = cloneAobj(ob->apk);          /* DESTROY ME 071 */
-    ob2->lruc = ob->lruc;
+    ob2->lruc = ob->lruc; ob2->lrud = ob->lrud;
     return ob2;
 }
 
@@ -170,21 +170,16 @@ void assignObEmptyKey(obsl_t *ob, uchar ctype, int i) {
 }
 void assignObKey(wob_t *wb, bt *btr, void *rrow, aobj *apk, int i, obsl_t *ob) {
     void  *key;
-    uchar  ctype = Tbl[wb->obt[i]].col_type[wb->obc[i]];
+    uchar  ctype = Tbl[wb->obt[i]].col[wb->obc[i]].type;
     aobj   ao    = getCol(btr, rrow, wb->obc[i], apk, wb->obt[i]);
-    if        (C_IS_I(ctype)) {
-        key = (void *)(long)ao.i;
-    } else if (C_IS_L(ctype)) {
-        key = (void *)ao.l;
-    } else if (C_IS_F(ctype)) {
-        memcpy(&(key), &ao.f, FSIZE);
-    } else {/* C_IS_S() */
+    if      (C_IS_I(ctype)) key = VOIDINT ao.i;
+    else if (C_IS_L(ctype)) key = (void *)ao.l;
+    else if (C_IS_F(ctype)) memcpy(&(key), &ao.f, FSIZE);
+    else {// C_IS_S()
         char *s   = malloc(ao.len + 1);                  /* FREE ME 003 */
         memcpy(s, ao.s, ao.len); /* memcpy needed ao.s maybe decoded(freeme) */
-        s[ao.len] = '\0';
-        key       = s;
-    }
-    releaseAobj(&ao);
+        s[ao.len] = '\0';   key       = s;
+    } releaseAobj(&ao);
     ob->keys[i] = key;
 }
 /* Range Query API */
@@ -197,7 +192,7 @@ void addRow2OBList(list   *ll,    wob_t  *wb,   bt     *btr, void   *r,
     obsl_t *ob  = create_obsl(row, wb->nob);             /* FREE ME 001 */
     for (uint32 i = 0; i < wb->nob; i++) assignObKey(wb, btr, rrow, apk, i, ob);
     ob->apk = cloneAobj(apk);                           /* DESTROY ME 071 */
-    GET_LRUC ob->lruc = lruc; /* NOTE: updateLRU (SELECT ORDER BY) */
+    GET_LRUC ob->lruc = lruc; ob->lrud = lrud; // updateLRU (SELECT ORDER BY)
     listAddNodeTail(ll, ob);
 }
 obsl_t **sortOB2Vector(list *ll) {
@@ -206,7 +201,7 @@ obsl_t **sortOB2Vector(list *ll) {
     obsl_t   **vector = malloc(sizeof(obsl_t *) * vlen); /* FREE ME 004 */
     int        j      = 0;
     listIter *li      = listGetIterator(ll, AL_START_HEAD);
-    while((ln = listNext(li)) != NULL) {
+    while((ln = listNext(li))) {
         vector[j] = (obsl_t *)ln->value;
         j++;
     } listReleaseIterator(li);

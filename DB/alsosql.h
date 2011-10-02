@@ -52,18 +52,11 @@ ALL RIGHTS RESERVED
 
 bool leftoverParsingReply(redisClient *c, char *x);
 
-int parseUpdateOrReply(redisClient  *c,
-                       int           tmatch,
-                       char         *cname,
-                       int           cmatchs[],
-                       char         *vals   [],
-                       unsigned int  vlens  []);
-
 bool initLRUCS(int tmatch, int cmatchs[], int qcols);
 bool initLRUCS_J(jb_t *jb);
 
-void insertParse(cli *c, robj **argv, bool repl, int tmatch,
-                 bool parse, sds *key);
+void insertParse(cli *c,     robj **argv, bool repl, int tmatch,
+                 bool parse, sds   *key);
 void insertCommand   (redisClient *c);
 void replaceCommand  (redisClient *c);
 void sqlSelectCommand(redisClient *c);
@@ -72,8 +65,5 @@ void deleteCommand   (redisClient *c);
 
 /* FILLERS FILLERS FILLERS FILLERS FILLERS FILLERS FILLERS */
 void tscanCommand(redisClient *c);  /* scan.h does not exist */
-
-void setDeferredMultiBulkLong(redisClient *c, void *node, long card);
-void setDeferredMultiBulkError(redisClient *c, void *node, sds error);
 
 #endif /*__ALSOSQL__H */ 

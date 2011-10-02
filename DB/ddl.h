@@ -27,14 +27,16 @@ ALL RIGHTS RESERVED
 #ifndef __A_DDL__H
 #define __A_DDL__H
 
-#include "redis.h"
 #include "dict.h"
+#include "redis.h"
 
 #include "common.h"
 
 void createCommand   (redisClient *c);
 void dropCommand     (redisClient *c);
 void alterCommand    (redisClient *c);
+
+void initTable(r_tbl_t *rt);
 
 void addColumn(int tmatch, char *cname, int ctype);
 ulong emptyTable(int tmatch);

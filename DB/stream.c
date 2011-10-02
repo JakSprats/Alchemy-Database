@@ -71,7 +71,7 @@ int cr8FColFromStr(cli *c, char *start, uint32 len, float *col) {
 }
 /* LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU */
 inline uchar getLruSflag() { return COL_4BYTE_INT; }
-int cLRUcol(ulong l, uchar *sflag, ulong *col) {
+int cLRUcol(ulong l, uchar *sflag, ulong *col) { // updateLRU (UPDATE_1)
     *sflag = getLruSflag(); *col = (l * 8) + 4; return 4; /* COL_4BYTE_INT */
 }
 uint32 streamLRUToUInt(uchar *data) {
@@ -347,12 +347,12 @@ printf("parseStream: INODE: %d UU: %d UP: %d LU: %d LP: %d OTHER: %d\n", \
                  INODE(btr), UU(btr), UP(btr), LU(btr), LP(btr), OTHER_BT(btr));
 
 uchar *parseStream(uchar *stream, bt *btr) { //DEBUG_PARSE_STREAM
-    if      (!stream || INODE(btr)) return NULL;
-    else if UU      (btr)           return (uchar *)((long)stream % UINT_MAX);
-    else if UP      (btr)           return (uchar *)(*(ulk *)(stream)).val; 
-    else if LUP     (btr)           return (uchar *)(*(luk *)(stream)).val; 
-    else if LP      (btr)           return (uchar *)(*(llk *)(stream)).val; 
-    else if OTHER_BT(btr)           return stream;
+    if     (!stream || INODE(btr)) return NULL;
+    else if UU      (btr)          return (uchar *)((long)stream % UINT_MAX);
+    else if UP      (btr)          return (uchar *)(*(ulk *)(stream)).val; 
+    else if LUP     (btr)          return (uchar *)(long)(*(luk *)(stream)).val;
+    else if LP      (btr)          return (uchar *)(*(llk *)(stream)).val; 
+    else if OTHER_BT(btr)          return stream;
     skipToVal(&stream, btr->s.ktype);
     if      (btr->s.btype == BTREE_TABLE)   return stream;
     else if (btr->s.btype == BTREE_INODE)   return NULL;

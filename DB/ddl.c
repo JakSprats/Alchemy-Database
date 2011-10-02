@@ -29,9 +29,10 @@ ALL RIGHTS RESERVED
 #include <strings.h>
 #include <unistd.h>
 #include <ctype.h>
+#include <assert.h>
 
-#include "redis.h"
 #include "dict.h"
+#include "redis.h"
 
 #include "bt.h"
 #include "luatrigger.h"
@@ -42,95 +43,138 @@ ALL RIGHTS RESERVED
 #include "cr8tblas.h"
 #include "parser.h"
 #include "colparse.h"
+#include "find.h"
 #include "alsosql.h"
 #include "common.h"
 #include "ddl.h"
 
-extern int     Num_tbls;
-extern r_tbl_t Tbl[MAX_NUM_TABLES];
-extern int     Num_indx;
-extern r_ind_t Index[MAX_NUM_INDICES];
+extern uint32   Tbl_HW; extern dict *TblD; extern list *DropT;
+extern r_ind_t *Index;
 
 extern char *RangeType[5];
 
-// CONSTANT GLOBALS
-char *Col_type_defs[] = {"INT", "LONG", "TEXT", "FLOAT", "NONE"};
+// GLOBALS
+int      Num_tbls;
+r_tbl_t *Tbl = NULL; /* ALCHEMY_DATABASE table info stored here */
 
-static bool checkRepeatCnames(cli *c, int tmatch, sds cname) {
-    if (!strcasecmp(cname, "LRU")) { addReply(c, shared.col_lru); return 0; }
-    r_tbl_t *rt = &Tbl[tmatch];
-    for (int i = 0; i < rt->col_count; i++) {
-        if (!strcasecmp(cname, rt->col_name[i]->ptr)) {
-            addReply(c, shared.nonuniquecolumns); return 0;
-    }}
-    return 1;
-}
+// CONSTANT GLOBALS
+char *Col_type_defs[]       =
+  {"NONE", "INT UNSIGNED", "BIGINT UNSIGNED", "TEXT", "FLOAT"};
+
+// PROTOTYPES
+// from redis.c
+unsigned int dictSdsCaseHash(const void *key);
+int          dictSdsKeyCaseCompare(void *privdata, const void *key1, 
+                                   const void *key2);
+void         dictSdsDestructor(void *privdata, void *val);
+
+dictType sdsDictType = {
+    dictSdsCaseHash,           /* hash function */
+    NULL,                      /* key dup */
+    NULL,                      /* val dup */
+    dictSdsKeyCaseCompare,     /* key compare */
+    dictSdsDestructor,         /* key destructor */
+    NULL                       /* val destructor */
+};
 
 /* CREATE_TABLE CREATE_TABLE CREATE_TABLE CREATE_TABLE CREATE_TABLE */
-static void createTableCommitReply(redisClient *c,
-                                   char         cnames[][MAX_COLUMN_NAME_SIZE],
-                                   int          ccount,
-                                   char        *tname,
-                                   int          tlen) {
-    if (Num_tbls == MAX_NUM_TABLES) {
-        addReply(c, shared.toomanytables); return;
-    }
-    if (ccount < 2) { addReply(c, shared.toofewcolumns); return; }
-    for (int i = 0; i < ccount; i++) { /* check for repeat column names */
-        if (!strcasecmp(cnames[i], "LRU")) {
-            addReply(c, shared.col_lru); return;
-        }
-        for (int j = 0; j < ccount; j++) {
-            if (i == j) continue;
-            if (!strcasecmp(cnames[i], cnames[j])) {
-                addReply(c, shared.nonuniquecolumns); return;
-            }
-        }
-    }
-
-    /* BTREE implies an index on "tbl_pk_index" -> autogenerate */
-    int  vimatch = Num_indx;
-    sds  iname   = P_SDS_EMT "%s_%s_%s", tname, cnames[0], INDEX_DELIM); //D073
-    bool ok      = newIndex(c, iname, Num_tbls, 0, NULL, 0, 1, 0, NULL, -1, 0);
-    sdsfree(iname);                                      /* DESTROYED 073 */
-    if (!ok) return;
-    addReply(c, shared.ok); /* commited */
-    int      tmatch = Num_tbls;
-    robj    *tbl    = createStringObject(tname, tlen);
-    r_tbl_t *rt     = &Tbl[tmatch];
-
-    //bzero(rt); NOTE: not possible col_types assigned in parseCreateTable
-    // TODO FIX & make function initTable(), user in rdbLoadBT() & emptyTable()
-    bzero(rt->col_indxd, MAX_COLUMN_PER_TABLE);
-    rt->nmci        = rt->lrud       = rt->ainc       = rt->n_intr    = \
-                      rt->lastts     = rt->nextts     =  0;
-    rt->lruc        = rt->lrui       = rt->sk         = rt->fk_cmatch = \
-                      rt->fk_otmatch = rt->fk_ocmatch = -1;
-    rt->name        = tbl;
-    rt->vimatch     = vimatch;
-    rt->col_count   = ccount;
-    for (int i = 0; i < rt->col_count; i++) {
-        rt->col_name[i] = _createStringObject(cnames[i]);
-    }
-    rt->btr         = createDBT(rt->col_type[0], tmatch);
-    Num_tbls++;
+void initTable(r_tbl_t *rt) { // NOTE: also used in rdbLoadBT
+    bzero(rt, sizeof(r_tbl_t));
+    rt->vimatch = rt->lruc       = rt->lrui       = rt->sk  = rt->fk_cmatch = \
+                  rt->fk_otmatch = rt->fk_ocmatch = -1;
 }
+static void addTable() { //printf("addTable: Tbl_HW: %d\n", Tbl_HW);
+    Tbl_HW++;
+    r_tbl_t *tbls = malloc(sizeof(r_tbl_t) * Tbl_HW);
+    bzero(tbls, sizeof(r_tbl_t) * Tbl_HW);
+    for (int i = 0; i < Num_tbls; i++) {
+        memcpy(&tbls[i], &Tbl[i], sizeof(r_tbl_t)); // copy table metadata
+    }
+    free(Tbl); Tbl = tbls;
+}
+
+static bool validateCreateTableCnames(cli *c, list *cnames) {
+    listNode *ln, *lnj;
+    int       i  = 0;
+    listIter *li = listGetIterator(cnames, AL_START_HEAD);
+    while((ln = listNext(li))) {
+        sds cnamei = ln->value;
+        if (!strcasecmp(cnamei, "LRU")) {
+            addReply(c, shared.col_lru);              return 0;
+        }
+        int       j   = 0;
+        listIter *lij = listGetIterator(cnames, AL_START_HEAD);
+        while((lnj = listNext(lij))) {
+            sds cnamej = lnj->value;
+            if (i == j) continue;
+            if (!strcasecmp(cnamei, cnamej)) {
+                addReply(c, shared.nonuniquecolumns); return 0;
+            } j++;
+        } listReleaseIterator(lij); i++; 
+    } listReleaseIterator(li);
+    return 1;
+}
+static void newTable(cli *c, list *ctypes, list *cnames, int ccount, sds tname){
+    if (ccount < 2) { addReply(c, shared.toofewcolumns); return; }
+    if (!validateCreateTableCnames(c, cnames))           return;
+
+    if (!DropT && Num_tbls >= (int)Tbl_HW) addTable();
+    addReply(c, shared.ok); /* commited */
+
+    int      tmatch;
+    if (DropT) {
+        listNode *ln = (DropT)->head;
+        tmatch       = (int)(long)ln->value;
+        DEL_NODE_ON_EMPTY_RELEASE_LIST(DropT, ln);
+    } else {
+        tmatch       = Num_tbls; Num_tbls++;
+    } //printf("newTable: tmatch: %d\n", tmatch);
+    r_tbl_t *rt      = &Tbl[tmatch]; initTable(rt);
+    rt->name         = sdsdup(tname);
+    rt->vimatch      = tmatch;
+    rt->col_count    = ccount;
+    rt->col          = malloc(sizeof(r_col_t) * rt->col_count); // FREE 081
+    bzero(rt->col, sizeof(r_col_t) * rt->col_count);
+    rt->cdict        = dictCreate(&sdsDictType, NULL);          // FREE 090
+    for (int i = 0; i < rt->col_count; i++) {
+        listNode *lnn     = listIndex(cnames, i);
+        sds       cname   = (sds)lnn->value;
+        rt->col[i].name   = sdsdup(cname);                  // DEST 082
+        ASSERT_OK(dictAdd(rt->cdict, sdsdup(cname), VOIDINT (i + 1)));
+        listNode *lnt     = listIndex(ctypes, i);
+        rt->col[i].type   = (uchar)(long)lnt->value;
+        rt->col[i].imatch = -1;
+    }
+    rt->btr          = createDBT(rt->col[0].type, tmatch);
+    ASSERT_OK(dictAdd(TblD, sdsdup(rt->name), VOIDINT(tmatch + 1)));
+    /* BTREE implies an index on "tbl_pk_index" -> autogenerate */
+    sds  pkname  = rt->col[0].name;
+    sds  iname   = P_SDS_EMT "%s_%s_%s", rt->name, pkname, INDEX_DELIM); //D073
+    newIndex(c, iname, tmatch, 0, NULL, 0, 1, 0, NULL, -1, 0); // Can not fail
+    sdsfree(iname);                                      /* DESTROYED 073 */
+}
+
+static inline void v_sdsfree(void *v) { sdsfree((sds)v); }
+
 static void createTable(redisClient *c) { //printf("createTable\n");
-    char *tname = c->argv[2]->ptr;
+    char *tn    = c->argv[2]->ptr;
     int   tlen  = sdslen(c->argv[2]->ptr);
-    tname       = rem_backticks(tname, &tlen); /* Mysql compliant */
-    if (find_table_n(tname, tlen) != -1) {
+    tn          = rem_backticks(tn, &tlen); /* Mysql compliant */
+    sds   tname = sdsnewlen(tn, tlen);                                //DEST 089
+    if (find_table(tname) != -1) { sdsfree(tname);                    //DESTD089
         addReply(c, shared.nonuniquetablenames); return;
     }
     if (!strncasecmp(c->argv[3]->ptr, "SELECT ", 7) ||
-        !strncasecmp(c->argv[3]->ptr, "SCAN ",   5)) {
+        !strncasecmp(c->argv[3]->ptr, "SCAN ",   5)) { sdsfree(tname);//DESTD089
         createTableSelect(c); return;
     }
-    char cnames[MAX_COLUMN_PER_TABLE][MAX_COLUMN_NAME_SIZE];
+    list *cnames = listCreate(); cnames->free = v_sdsfree;
+    list *ctypes = listCreate();
     int  ccount = 0;
-    if (parseCreateTable(c, cnames, &ccount, c->argv[3]->ptr)) {
-        createTableCommitReply(c, cnames, ccount, tname, tlen);
+    if (parseCreateTable(c, ctypes, cnames, &ccount, c->argv[3]->ptr)) {
+        newTable(c, ctypes, cnames, ccount, tname);
     }
+    sdsfree(tname); listRelease(cnames); listRelease(ctypes);
 }
 
 void createCommand(redisClient *c) { //printf("createCommand\n");
@@ -152,26 +196,27 @@ void createCommand(redisClient *c) { //printf("createCommand\n");
 }
 
 /* DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP */
-unsigned long emptyTable(int tmatch) {
+unsigned long emptyTable(int tmatch) { //printf("emptyTable: %d\n", tmatch);
     r_tbl_t *rt      = &Tbl[tmatch];
     if (!rt->name) return 0;                 /* already deleted */
-    decrRefCount(rt->name);
-    rt->name         = NULL;
+    dictDelete(TblD, rt->name); sdsfree(rt->name);
     MATCH_INDICES(tmatch)
     ulong    deleted = 0;
     if (matches) {                          /* delete indices first */
-        for (int i = 0; i < matches; i++) { /* build list of robj's to delete */
-            emptyIndex(inds[i]); deleted++;
-    }} //TODO shuffle indices to make space for deleted indices
-    for (int j = 0; j < Tbl[tmatch].col_count; j++) {
-        decrRefCount(rt->col_name[j]); rt->col_name[j] = NULL;
-        rt->col_type[j] = -1;
-    }
+        for (int i = 0; i < matches; i++) { emptyIndex(inds[i]); deleted++;
+    }}
+    for (int j = 0; j < rt->col_count; j++) sdsfree(rt->col[j].name);//DESTD 082
+    free(rt->col);                                                   //FREED 081
     bt_destroy(rt->btr);
-    bzero(rt, sizeof(r_tbl_t));
-    rt->vimatch = rt->lruc = rt->lrui    = -1; //TODO use initTable()
-    deleted++;
-    return deleted;
+    listRelease(rt->ilist);                                          //DESTD 088
+    dictRelease(rt->cdict);                                          //DESTD 090
+    initTable(rt);
+    if (tmatch == (Num_tbls - 1)) Num_tbls--; // if last -> reuse
+    else {                                    // else put on DropT for reuse
+        if (!DropT) DropT = listCreate();
+        listAddNodeTail(DropT, VOIDINT tmatch);
+    }
+    return deleted++;
 }
 static void dropTable(redisClient *c) {
     TABLE_CHECK_OR_REPLY(c->argv[2]->ptr,)
@@ -192,12 +237,27 @@ void dropCommand(redisClient *c) {
     server.dirty++; /* for appendonlyfile */
 }
 
-void addColumn(int tmatch, char *cname, int ctype) {
-    r_tbl_t *rt = &Tbl[tmatch];
-    rt->col_name [rt->col_count] = _createStringObject(cname);
-    rt->col_type [rt->col_count] = ctype;
-    rt->col_indxd[rt->col_count] = 0;
+// ALTER ALTER ALTER ALTER ALTER ALTER ALTER ALTER ALTER ALTER ALTER ALTER
+static bool checkRepeatCnames(cli *c, int tmatch, sds cname) {
+    if (!strcasecmp(cname, "LRU")) { addReply(c, shared.col_lru); return 0; }
+    if (find_column(tmatch, cname) == -1)        return 1;
+    else { addReply(c, shared.nonuniquecolumns); return 0; }
+}
+void addColumn(int tmatch, char *cname, int ctype) {// Used by ALTER TABLE & LRU
+    r_tbl_t *rt        = &Tbl[tmatch];
+    int      col_count = rt->col_count;
     rt->col_count++;
+    r_col_t *tcol      = malloc(sizeof(r_col_t) * rt->col_count); // FREE 081
+    bzero(tcol, sizeof(r_col_t) * rt->col_count);
+    for (int i = 0; i < col_count; i++) {
+        memcpy(&tcol[i], &rt->col[i], sizeof(r_col_t)); // copy column metadata
+    }
+    free(rt->col);                                                // FREED 081
+    rt->col                   = tcol;
+    rt->col[col_count].name   = sdsnew(cname);
+    rt->col[col_count].type   = ctype;
+    rt->col[col_count].imatch = -1;
+    ASSERT_OK(dictAdd(rt->cdict, sdsnew(cname), VOIDINT (col_count + 1)));
 }
 void alterCommand(cli *c) {
     bool altc = 0, altsk = 0, altfk = 0;
@@ -274,113 +334,4 @@ void alterCommand(cli *c) {
         rt->fk_ocmatch = ocmatch;
     }
     addReply(c, shared.ok);
-}
-
-// TODO move to debug.c
-/* DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG */
-sds DumpOutput;
-void initQueueOutput() {
-    DumpOutput = sdsempty();                             /* DESTROY ME 060 */
-}
-int queueOutput(const char *fmt, ...) { /* straight copy of sdscatprintf() */
-    va_list ap; char *buf; size_t buflen = 16;
-    while(1) {
-        buf             = malloc(buflen);
-        buf[buflen - 2] = '\0';
-        va_start(ap, fmt);
-        vsnprintf(buf, buflen, fmt, ap);
-        va_end(ap);
-        if (buf[buflen-2] != '\0') { free(buf); buflen *= 2; continue; }
-        break;
-    }
-    DumpOutput = sdscat(DumpOutput, buf);
-    free(buf);
-    return sdslen(DumpOutput);
-}
-void dumpQueueOutput(cli *c) {
-    robj *r  = createObject(REDIS_STRING, DumpOutput);   /* DESTROY ME 059 */
-    addReplyBulk(c, r);
-    decrRefCount(r);                                     /* DESTROYED 059,060 */
-}
-void explainRQ(cli *c, cswc_t *w, wob_t *wb) {
-    initQueueOutput();
-    (*queueOutput)("QUERY: ");
-    for (int i = 0; i < c->argc; i++) {
-        (*queueOutput)("%s ", (char *)c->argv[i]->ptr);
-    } (*queueOutput)("\n");
-    dumpW(queueOutput, w);
-    dumpWB(queueOutput, wb);
-    qr_t    q;
-    setQueued(w, wb, &q);
-    dumpQueued(queueOutput, w, wb, &q, 0);
-    dumpQueueOutput(c);
-
-}
-void dumpRobj(printer *prn, robj *r, char *smsg, char *dmsg) {
-    if (!r) return;
-    if (r->encoding == REDIS_ENCODING_RAW) {
-        (*prn)(smsg, r->ptr);
-    } else {
-        (*prn)(dmsg, r->ptr);
-    }
-}
-void dumpSds(printer *prn, sds s, char *smsg) {
-    if (!s) return;
-    (*prn)(smsg, s);
-}
-void dumpFL(printer *prn, char *prfx, char *title, list *flist) {
-    if (flist) {
-        (*prn)("%s%s: len: %d (%p)\n",
-                prfx, title, listLength(flist), (void *)flist);
-        listNode *ln;
-        listIter *li = listGetIterator(flist, AL_START_HEAD);
-        while((ln = listNext(li)) != NULL) {
-            f_t *flt = ln->value;
-            dumpFilter(prn, flt, prfx);
-        }
-        listReleaseIterator(li);
-    }
-}
-void dumpWB(printer *prn, wob_t *wb) {
-    if (wb->nob) {
-        (*prn)("\t\tnob:    %d\n", wb->nob);
-        for (uint32 i = 0; i < wb->nob; i++) {
-            (*prn)("\t\t\tobt[%d](%s): %d\n", i, 
-              (wb->obt[i] == -1) ? "" : (char *)Tbl[wb->obt[i]].name->ptr,
-                wb->obt[i]);
-            (*prn)("\t\t\tobc[%d](%s): %d\n", i,
-                        (wb->obc[i] == -1) ? "" :
-                        (char *)Tbl[wb->obt[i]].col_name[wb->obc[i]]->ptr,
-                         wb->obc[i]);
-            (*prn)("\t\t\tasc[%d]: %d\n", i, wb->asc[i]);
-        }
-        (*prn)("\t\tlim:    %ld\n", wb->lim);
-        (*prn)("\t\tofst:   %ld\n", wb->ofst);
-    }
-    dumpSds(prn, wb->ovar,  "\t\tovar:    %s\n");
-}
-void dumpW(printer *prn, cswc_t *w) {
-    (*prn)("\tSTART dumpW: type: %d (%s)\n", w->wtype, RangeType[w->wtype]);
-    dumpFilter(prn, &w->wf, "\t");
-    dumpFL(prn, "\t\t", "FLIST", w->flist);
-    (*prn)("\tEND dumpW\n");
-}
-
-void setDeferredMultiBulkError(redisClient *c, void *node, sds error) {
-    if (!node) return; /* Abort when addDeferredMultiBulkLength not called. */
-    listNode *ln  = (listNode*)node;
-    robj     *len = listNodeValue(ln);
-    len->ptr      = error;
-    if (ln->next) {
-        robj *next = listNodeValue(ln->next);
-        /* Only glue when the next node is non-NULL (an sds in this case) */
-        if (next->ptr) {
-            len->ptr = sdscatlen(len->ptr, next->ptr, sdslen(next->ptr));
-            listDelNode(c->reply,ln->next);
-        }
-    }
-}
-void setDeferredMultiBulkLong(redisClient *c, void *node, long card) {
-    sds rep_int = sdscatprintf(sdsempty(), ":%ld\r\n", card);
-    setDeferredMultiBulkError(c, node, rep_int);
 }

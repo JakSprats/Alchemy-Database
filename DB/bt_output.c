@@ -19,9 +19,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "debug.h"
 #include "btreepriv.h"
 #include "stream.h"
-#include "colparse.h"
+#include "find.h"
 #include "query.h"
 #include "bt.h"
 
@@ -84,12 +85,12 @@ static void dumpnode(printer *prn, bt *btr, bt_n *x,
                      int depth, bool is_index, int slot) {
     int i;
 
-    if (!x->leaf) 
 #ifdef BTREE_DEBUG
-                  (*prn)("%d: NODE[%d]: n: %d scion: %d -> (%p) slot: %d\n",
+    if (!x->leaf) (*prn)("%d: NODE[%d]: n: %d scion: %d -> (%p) slot: %d\n",
                           depth, x->num, x->n, x->scion, (void *)x, slot);
 #else
-                  (*prn)("%d: NODE: n: %d scion: %d -> (%p)\n",
+    slot = 0; // compiler warning
+    if (!x->leaf) (*prn)("%d: NODE: n: %d scion: %d -> (%p)\n",
                           depth, x->n, x->scion, (void *)x);
 #endif
     else          (*prn)("%d: LEAF: n: %d -> (%p)\n", depth, x->n, (void *)x);
@@ -190,8 +191,8 @@ int treeheight(bt *btr) {
 #include "index.h"
 extern struct redisServer server;
 extern struct sharedObjectsStruct shared;
-extern r_tbl_t Tbl[MAX_NUM_TABLES];
-extern r_ind_t Index[MAX_NUM_INDICES];
+extern r_tbl_t *Tbl;
+extern r_ind_t *Index;
 void btreeCommand(redisClient *c) {
     initQueueOutput();
     printer *prn = queueOutput;

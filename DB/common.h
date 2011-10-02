@@ -40,11 +40,11 @@ typedef int printer(const char *format, ...);
 #define lolo     long long
 #define ull      unsigned long long
 
-#define COL_TYPE_INT          0
-#define COL_TYPE_LONG         1
-#define COL_TYPE_STRING       2
-#define COL_TYPE_FLOAT        3
-#define COL_TYPE_NONE         4 //TODO should be 0 - dependency?
+#define COL_TYPE_NONE         0
+#define COL_TYPE_INT          1
+#define COL_TYPE_LONG         2
+#define COL_TYPE_STRING       3
+#define COL_TYPE_FLOAT        4
 
 #define PTR_SIZE    sizeof(char *)
 #define USHORT_SIZE sizeof(unsigned short)
@@ -53,12 +53,12 @@ typedef int printer(const char *format, ...);
 
 #define NUM_ACCESS_TYPES        2 /* CREATE TABLE AS [SELECT,SCAN] */
 
-#define MAX_NUM_TABLES        256
-#define MAX_COLUMN_PER_TABLE   64
-#define MAX_NUM_INDICES       512
+#define INIT_MAX_NUM_TABLES         64
+#define INIT_MAX_NUM_INDICES        64
+
+//TODO make the next 3 MAX_* dynamic
 #define MAX_JOIN_INDXS         30 /* CAREFUL: tied to logic in qo.c */
 #define MAX_JOIN_COLS         128
-#define MAX_COLUMN_NAME_SIZE  128
 #define MAX_ORDER_BY_COLS      16
 
 #define INDEX_DELIM     "index"
@@ -93,8 +93,8 @@ enum OP {NONE, EQ, NE, GT, GE, LT, LE, RQ, IN};
 #define CONSTRAINT_UNIQUE 1
 #define UNIQ(cnstr) (cnstr == CONSTRAINT_UNIQUE)
 
-#define OREDIS OutputMode == OUTPUT_PURE_REDIS
-#define EREDIS OutputMode == OUTPUT_EMBEDDED
+#define OREDIS (OutputMode == OUTPUT_PURE_REDIS)
+#define EREDIS (OutputMode == OUTPUT_EMBEDDED)
 
 #define FK_RQ(wtype) !(wtype == SQL_SINGLE_FK_LKP)
 
@@ -105,8 +105,7 @@ enum OP {NONE, EQ, NE, GT, GE, LT, LE, RQ, IN};
        INODE(btr), UU(btr), UL(btr), LU(btr), LL(btr), NORM_BT(btr));
 
 typedef struct twoint {
-    int i;
-    int j;
+    int i; int j;
 } twoint;
 
 #define STACK_STRDUP(dest, src, len) \
@@ -114,20 +113,18 @@ typedef struct twoint {
   memcpy(dest, src, len);            \
   dest[len] = '\0';
 
-#define SERVER_BEGINNING_OF_TIME 1301419850 /* oldest LRU time possible */
-
-#define GET_LRUC                                                      \
-  uchar *lruc = NULL;                                                 \
-  if (Tbl[tmatch].lrud) {                                       \
-      uint32 clen; uchar rflag;                                       \
-      lruc = getColData(rrow, Tbl[tmatch].lruc, &clen, &rflag); \
-      if (!clen) lruc = NULL;                                         \
-  }
-
 #define P_SDS_EMT sdscatprintf(sdsempty(),
 
 #define UPDATE_AUTO_INC(pktyp, apk)                             \
   if      (C_IS_I(pktyp) && apk.i > rt->ainc) rt->ainc = apk.i; \
   else if (C_IS_L(pktyp) && apk.l > rt->ainc) rt->ainc = apk.l;
+
+#define DEL_NODE_ON_EMPTY_RELEASE_LIST(l, ln) \
+    listDelNode(l, ln);                       \
+    if (!l->len) { listRelease(l); l = NULL; }
+
+#define ASSERT_OK(x) assert(x == DICT_OK)
+
+#define VOIDINT (void *)(long)
 
 #endif /* __ALSOSQL_COMMON__H */

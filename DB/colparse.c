@@ -38,86 +38,21 @@ char *strcasestr(const char *haystack, const char *needle); /*compiler warning*/
 #include "query.h"
 #include "parser.h"
 #include "bt_iterator.h"
+#include "find.h"
 #include "alsosql.h"
 #include "common.h"
 #include "colparse.h"
 
 extern cli     *CurrClient;
+extern r_tbl_t *Tbl;
 
 // GLOBALS
-ja_t JTAlias[MAX_JOIN_COLS]; // TODO MOVE to JoinBlock
-
-int     Num_tbls;
-r_tbl_t Tbl[MAX_NUM_TABLES];/* ALCHEMY_DATABASE table info stored here */
+ja_t JTAlias[MAX_JOIN_COLS]; // TODO MOVE to JoinBlock + convert 2 (dict *)
 
 // CONSTANT GLOBALS
-char   *Ignore_keywords[]   = {"PRIMARY", "CONSTRAINT", "UNIQUE", "KEY",
-                               "FOREIGN" };
-int     Ignore_keywords_lens[] = {7, 10, 6, 3, 7};
-uint32  Num_ignore_keywords = 5;
-
-/* HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS HELPER_COMMANDS */
-int find_table(char *tname) { /* NOTE does not use JTAlias[] */
-    for (int i = 0; i < Num_tbls; i++) {
-        if (Tbl[i].name) {
-            if (!strcmp(tname, (char *)Tbl[i].name->ptr)) return i;
-        }
-    }
-    return -1;
-}
-int find_table_n(char *tname, int len) {
-    CurrClient->LastJTAmatch = -1;
-    for (int i = 0; i < CurrClient->NumJTAlias; i++) {// 1st check Join Aliases
-        sds x = JTAlias[i].alias;
-        if (((int)sdslen(x) == len) && !strncmp(tname, x, len)) {
-            CurrClient->LastJTAmatch = i; return JTAlias[i].tmatch;
-        }
-    }
-    for (int i = 0; i < Num_tbls; i++) { /* then check TableNames */
-        if (Tbl[i].name) {
-            sds x = Tbl[i].name->ptr;
-            if (((int)sdslen(x) == len) && !strncmp(tname, x, len)) {
-                /* DONT collide w/ NumJTAlias */
-                CurrClient->LastJTAmatch = i + USHRT_MAX;
-                return i;
-            }
-        }
-    }
-    return -1;
-}
-sds getJoinAlias(int jan) {
-    if (jan == -1) return NULL;
-    return (jan < CurrClient->NumJTAlias) ? JTAlias[jan].alias :
-                                            Tbl[(jan - USHRT_MAX)].name->ptr;
-}
-int find_column(int tmatch, char *column) {
-    if (!Tbl[tmatch].name) return -1;
-    for (int j = 0; j < Tbl[tmatch].col_count; j++) {
-        if (Tbl[tmatch].col_name[j]) {
-            char *cname = (char *)Tbl[tmatch].col_name[j]->ptr;
-            if (!strcmp(column, cname)) return j;
-        }
-    }
-    return -1;
-}
-int find_column_n(int tmatch, char *column, int len) {
-    if (!Tbl[tmatch].name) return -1;
-    for (int j = 0; j < Tbl[tmatch].col_count; j++) {
-        if (Tbl[tmatch].col_name[j]) {
-            char *x = Tbl[tmatch].col_name[j]->ptr;
-            if (((int)sdslen(x) == len) && !strncmp(column, x, len)) return j;
-        }
-    }
-    return -1;
-}
-int get_all_cols(int tmatch, int cs[], bool lru2) {
-    r_tbl_t *rt = &Tbl[tmatch];
-    for (int i = 0; i < rt->col_count; i++) {
-        if (!lru2 && rt->lrud && rt->lruc == i) continue; /* DONT PRINT LRU */
-        cs[i] = i;
-    }
-    return lru2 ? rt->col_count : rt->lrud ? rt->col_count - 1 : rt->col_count;
-}
+char    *Ignore_KW[]    = {"PRIMARY", "CONSTRAINT", "UNIQUE", "KEY", "FOREIGN"};
+int      Ignore_KW_lens[] = {  7,         10,          6,       3,       7};
+uint32   Num_Ignore_KW    = 5;
 
 /* set "OFFSET var" for next cursor iteration */
 void incrOffsetVar(redisClient *c, wob_t *wb, long incr) {
@@ -154,7 +89,7 @@ static void assign_auto_inc_pk(char **pk, int *pklen, int tmatch) {
 }
 static bool assign_pk(int tmatch, int *pklen, char **pk, char *cstart) {
     if (!*pklen) {
-        uchar pktyp = Tbl[tmatch].col_type[0];
+        uchar pktyp = Tbl[tmatch].col[0].type;
         if (C_IS_NUM(pktyp)) assign_auto_inc_pk(pk, pklen, tmatch);
         else                 return 0;
     } else {
@@ -177,7 +112,7 @@ char *parseRowVals(sds vals,  char   **pk,        int    *pklen,
     bool    err   = 0;
     while (1) {
         int   cmatch = pcols ? cmatchs[numc] : numc;
-        uchar ctype  = Tbl[tmatch].col_type[cmatch];
+        uchar ctype  = Tbl[tmatch].col[cmatch].type;
         nextc        = parse_insert_val_list_nextc(nextc, ctype, &err);
         if (err)    return NULL;
         if (!nextc) break;
@@ -214,8 +149,8 @@ char *parseRowVals(sds vals,  char   **pk,        int    *pklen,
     else if         (numc != ncols) return NULL;
     return mvals;
 }
-bool parseSelectCol(int   tmatch, char *cname, int   clen,
-                    int   cs[],   int  *qcols, bool *cstar) {
+static bool parseSelectCol(int   tmatch, char *cname, int   clen,
+                           list *cs,     int  *qcols, bool *cstar) {
     if (*cname == '*') {
         *qcols = get_all_cols(tmatch, cs, 0); return 1;
     }
@@ -224,60 +159,69 @@ bool parseSelectCol(int   tmatch, char *cname, int   clen,
     }
     int cmatch = find_column_n(tmatch, cname, clen);
     if (cmatch == -1) return 0;
-    cs[*qcols] = cmatch;
+    listAddNodeTail(cs, VOIDINT cmatch);
     INCR(*qcols);
     return 1;
 }
-static bool parseJCols(cli   *c,   char *y,     int  len,  int *numt,
-                       int   ts[], int  jans[], jc_t js[], int *qcols,
+static bool parseJCols(cli   *c,  char *y,    int   len, int *numt,
+                       list *ts,  list *jans, list *js,  int *qcols,
                        bool *cstar) {
    if (!strcasecmp(y, "COUNT(*)")) {
         *cstar = 1;
         for (int i = 0; i < *numt; i++) {
-            js[*qcols].t   = ts[i];
-            js[*qcols].c   = 0;
-            js[*qcols].jan = jans[i];
+            jc_t     *jc  = malloc(sizeof(jc_t));
+            listNode *lnt = listIndex(ts, i);
+            jc->t         = (int)(long)lnt->value;
+            jc->c         = 0;                     // PK of each table in join
+            listNode *lnj = listIndex(jans, i);
+            jc->jan       = (int)(long)lnj->value;
+            listAddNodeTail(js, jc);
             INCR(*qcols);
         }
         return 1;
     }
     if (*y == '*') {
         for (int i = 0; i < *numt; i++) {
-            int tmatch = ts[i];
-            for (int j = 0; j < Tbl[tmatch].col_count; j++) {
-                r_tbl_t *rt = &Tbl[tmatch];
+            listNode *lnt    = listIndex(ts, i);
+            int       tmatch = (int)(long)lnt->value;
+            r_tbl_t  *rt     = &Tbl[tmatch];
+            for (int j = 0; j < rt->col_count; j++) {
                 if (rt->lrud && rt->lruc == j) continue; /* DONT PRINT LRU */
-                js[*qcols].t   = tmatch;
-                js[*qcols].c   = j;
-                js[*qcols].jan = jans[i];
+                jc_t     *jc  = malloc(sizeof(jc_t));
+                jc->t         = tmatch;
+                jc->c         = j;
+                listNode *lnj = listIndex(jans, i);
+                jc->jan       = (int)(long)lnj->value;
+                listAddNodeTail(js, jc);
                 INCR(*qcols);
             }
         }
         return 1;
     }
-    char *nextp = _strnchr(y, '.', len);
+    char    *nextp = _strnchr(y, '.', len);
     if (!nextp) { addReply(c, shared.indextargetinvalid); return 0; }
-    char *tname  = y;
-    int   tlen   = nextp - y;
-    int   tmatch = find_table_n(tname, tlen);
+    char    *tname  = y;
+    int      tlen   = nextp - y;
+    int      tmatch = find_table_n(tname, tlen);
     if (tmatch == -1) { addReply(c,shared.nonexistenttable); return 0; }
-    int   jan    = CurrClient->LastJTAmatch;
-    char *cname  = nextp + 1;
-    int   clen   = len - tlen - 1;
+    r_tbl_t *rt     = &Tbl[tmatch];
+    int      jan    = CurrClient->LastJTAmatch;
+    char    *cname  = nextp + 1;
+    int      clen   = len - tlen - 1;
     if (clen == 1 && *cname == '*') {
-        for (int j = 0; j < Tbl[tmatch].col_count; j++) {
-            js[*qcols].t   = tmatch;
-            js[*qcols].c   = j;
-            js[*qcols].jan = jan;
+        for (int j = 0; j < rt->col_count; j++) {
+            jc_t *jc = malloc(sizeof(jc_t));
+            jc->t    = tmatch; jc->c    = j; jc->jan  = jan;
+            listAddNodeTail(js, jc);
             INCR(*qcols);
         }
         return 1;
     }
     int   cmatch = find_column_n(tmatch, cname, clen);
     if (cmatch == -1) { addReply(c,shared.nonexistentcolumn); return 0; }
-    js[*qcols].t   = tmatch;
-    js[*qcols].c   = cmatch;
-    js[*qcols].jan = jan;
+    jc_t *jc = malloc(sizeof(jc_t));
+    jc->t    = tmatch; jc->c    = cmatch; jc->jan  = jan;
+    listAddNodeTail(js, jc);
     INCR(*qcols);
     return 1;
 }
@@ -294,11 +238,11 @@ static bool addJoinAlias(redisClient *c, char *tkn, char *space, int len) {
     CurrClient->NumJTAlias++;
     return 1;
 }
-bool parseCommaSpaceList(cli  *c,         char *tkn,
-                         bool  col_check, bool  tbl_check, bool join_check,
-        /* COL or TBL */ int   tmatch,    int   cs[],
-        /* JOIN */       int  *numt,      int   ts[], int jans[], jc_t js[],
-                         int  *qcols,     bool *cstar) {
+bool parseCommaSpaceList(cli  *c,         char  *tkn,
+                         bool  col_check, bool   tbl_check, bool join_check,
+        /* COL or TBL */ int   tmatch,    list  *cs,
+        /* JOIN */       int  *numt,      list  *ts, list *jans, list *js,
+                         int  *qcols,     bool  *cstar) {
     while (1) {
         int   len;
         SKIP_SPACES(tkn)
@@ -307,9 +251,7 @@ bool parseCommaSpaceList(cli  *c,         char *tkn,
             char *endc = nextc - 1;
             REV_SKIP_SPACES(endc);
             len = endc - tkn + 1;
-        } else {
-            len = strlen(tkn);
-        }
+        } else len = strlen(tkn);
         if (col_check) {
             if (!parseSelectCol(tmatch, tkn, len, cs, qcols, cstar)) {
                 addReply(c, shared.nonexistentcolumn); return 0;
@@ -319,14 +261,14 @@ bool parseCommaSpaceList(cli  *c,         char *tkn,
             char *alias = _strnchr(tkn, ' ', len);
             if (alias) {
                 if (!addJoinAlias(c, tkn, alias, len)) return 0;
-                len = alias - tkn;
-                jan = CurrClient->LastJTAmatch;      /* from addJoinAlias() */
+                len     = alias - tkn;
+                jan     = CurrClient->LastJTAmatch;   /* from addJoinAlias() */
             }
-            int tm = find_table_n(tkn, len);
+            int   tm    = find_table_n(tkn, len);
             if (tm == -1) { addReply(c, shared.nonexistenttable); return 0; }
             if (!alias) jan = CurrClient->LastJTAmatch;/* from find_table_n() */
-            ts  [*numt] = tm;
-            jans[*numt] = jan;
+            listAddNodeTail(ts,   VOIDINT tm);
+            listAddNodeTail(jans, VOIDINT jan);
             INCR(*numt);
         } else if (join_check) {
             if (!parseJCols(c, tkn, len, numt, ts, jans, js, qcols, cstar))
@@ -338,9 +280,9 @@ bool parseCommaSpaceList(cli  *c,         char *tkn,
     return 1;
 }
 
-bool parseSelectReply(cli  *c,     bool  is_scan, bool *no_wc, int  *tmatch,
-                      int   cs[],  int  *qcols,   bool *join,  bool *cstar,
-                      char *clist, char *from,    char *tlist, char *where) {
+bool parseSelect(cli  *c,     bool  is_scan, bool *no_wc, int  *tmatch,
+                 list *cs,    int  *qcols,   bool *join,  bool *cstar,
+                 char *clist, char *from,    char *tlist, char *where) {
     if (strcasecmp(from, "FROM")) {
         addReply(c, shared.selectsyntax_nofrom); return 0;
     }
@@ -376,8 +318,8 @@ char *parse_update_val_list_nextc(char *start, uchar ctype, bool *err) {
         return str_next_unescaped_chr(start, start, ',');
     }
 }
-int parseUpdateColListReply(cli *c,    int   tmatch, char   *vallist,
-                            int  cs[], char *vals[], uint32 vlens[]) {
+int parseUpdateColListReply(cli  *c,  int   tmatch, char *vallist,
+                            list *cs, list *vals,   list *vlens) {
     int qcols = 0;
     while (1) {
         SKIP_SPACES(vallist)
@@ -389,15 +331,15 @@ int parseUpdateColListReply(cli *c,    int   tmatch, char   *vallist,
         SKIP_SPACES(val)        /* search forwards */
         int cmatch = find_column_n(tmatch, vallist, (endval - vallist + 1));
         if (cmatch == -1) { addReply(c, shared.nonexistentcolumn); return 0; }
-        uchar ctype = Tbl[tmatch].col_type[cmatch];
+        uchar ctype = Tbl[tmatch].col[cmatch].type;
         bool  err   = 0;
         char *nextc = parse_update_val_list_nextc(val, ctype, &err);
         if (err) { addReply(c, shared.invalidupdatestring);        return 0; }
         char *end    = nextc ? nextc - 1 : val + strlen(val);
         REV_SKIP_SPACES(end)
-        cs   [qcols] = cmatch;
-        vals [qcols] = val;
-        vlens[qcols] = end - val + 1;
+        listAddNodeTail(cs,    VOIDINT cmatch);
+        listAddNodeTail(vals,          val);
+        listAddNodeTail(vlens, VOIDINT (end - val + 1));            
         qcols++;
         if (!nextc) break;
         nextc++;
@@ -500,42 +442,29 @@ bool parseExpr(cli   *c,     char  e,   int    tmatch, int   cmatch,
 
 /* CREATE_TABLE_HELPERS CREATE_TABLE_HELPERS CREATE_TABLE_HELPERS */
 bool ignore_cname(char *tkn, int tlen) {
-    for (uint32 i = 0; i < Num_ignore_keywords; i++) {
-        int len = MAX(tlen, Ignore_keywords_lens[i]);
-        if (!strncasecmp(tkn, Ignore_keywords[i], len)) {
-            return 1;
-        }
+    for (uint32 i = 0; i < Num_Ignore_KW; i++) {
+        int len = MAX(tlen, Ignore_KW_lens[i]);
+        if (!strncasecmp(tkn, Ignore_KW[i], len)) return 1;
     }
     return 0;
 }
-bool cCpyOrReply(redisClient *c, char *src, char *dest, uint32 len) {
-    if (len >= MAX_COLUMN_NAME_SIZE) {
-        addReply(c, shared.columnnametoobig);
-        return 0;
-    }
-    memcpy(dest, src, len);
-    dest[len] = '\0';
+bool parseColType(cli *c, sds type, uchar *ctype) {
+    if      (strcasestr(type, "BIGINT") ||
+             strcasestr(type, "LONG"))    *ctype = COL_TYPE_LONG;
+    else if (strcasestr(type, "INT"))     *ctype = COL_TYPE_INT;
+    else if (strcasestr(type, "FLOAT") ||
+             strcasestr(type, "REAL")  ||
+             strcasestr(type, "DOUBLE"))  *ctype = COL_TYPE_FLOAT;
+    else if (strcasestr(type, "CHAR") ||
+             strcasestr(type, "TEXT")  ||
+             strcasestr(type, "BLOB")  ||
+             strcasestr(type, "BYTE")  ||
+             strcasestr(type, "BINARY"))  *ctype = COL_TYPE_STRING;
+    else { addReply(c, shared.undefinedcolumntype); return 0; }
     return 1;
 }
-bool parseColType(cli *c, sds type, uchar *col_type) {
-    if        (strcasestr(type, "INT")) {    *col_type = COL_TYPE_INT;
-    } else if (strcasestr(type, "BIGINT") ||
-               strcasestr(type, "LONG")) {   *col_type = COL_TYPE_LONG;
-    } else if (strcasestr(type, "FLOAT") ||
-               strcasestr(type, "REAL")  ||
-               strcasestr(type, "DOUBLE")) { *col_type = COL_TYPE_FLOAT;
-    } else if (strcasestr(type, "CHAR") ||
-               strcasestr(type, "TEXT")  ||
-               strcasestr(type, "BLOB")  ||
-               strcasestr(type, "BYTE")  ||
-               strcasestr(type, "BINARY")) { *col_type = COL_TYPE_STRING;
-    } else { addReply(c, shared.undefinedcolumntype); return 0; }
-    return 1;
-}
-bool parseCreateTable(cli *c, //TODO ADD ctypes[] using rt->col_types[] is BAD
-                      char          cnames[][MAX_COLUMN_NAME_SIZE],
-                      int          *ccount,
-                      sds           col_decl) { //printf("parseCreateTable\n");
+bool parseCreateTable(cli    *c,      list *ctypes,  list *cnames,
+                      int    *ccount, sds   col_decl) {
     char *token = col_decl;
     if (*token == '(') token++;
     if (!*token) { /* empty or only '(' */
@@ -543,9 +472,6 @@ bool parseCreateTable(cli *c, //TODO ADD ctypes[] using rt->col_types[] is BAD
     }
     SKIP_SPACES(token)
     while (token) {
-        if (*ccount == MAX_COLUMN_PER_TABLE) {
-            addReply(c, shared.toomanycolumns); return 0;
-        }
         int clen;
         while (token) { /* first parse column name */
             clen      = get_token_len(token);
@@ -555,17 +481,20 @@ bool parseCreateTable(cli *c, //TODO ADD ctypes[] using rt->col_types[] is BAD
         }
         SKIP_SPACES(token)
         if (!token) break;
-        if (!cCpyOrReply(c, token, cnames[*ccount], clen)) return 0;
+   
+        sds cname = sdsnewlen(token, clen);
+        listAddNodeTail(cnames, cname);
 
         token       = next_token_delim3(token, ',', ')'); /* parse ctype*/
         if (!token) break;
         sds   type  = sdsnewlen(token, get_tlen_delim3(token, ',', ')')); //D070
         token       = get_next_token_nonparaned_comma(token);
 
-        int ntbls = Num_tbls;
-        bool ok = parseColType(c, type, &Tbl[ntbls].col_type[*ccount]);
+        uchar  ctype;
+        bool   ok  = parseColType(c, type, &ctype);
         sdsfree(type);                                   /* DESTROYED 070 */
         if (!ok) return 0;
+        listAddNodeTail(ctypes, VOIDINT ctype);
         INCR(*ccount);
     }
     return 1;

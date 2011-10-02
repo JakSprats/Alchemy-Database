@@ -36,30 +36,29 @@ int inet_aton(const char *cp, struct in_addr *inp);
 
 #include "xdb_hooks.h"
 
-#include "redis.h"
 #include "dict.h"
 #include "adlist.h"
-#include "rdb.h"
+#include "redis.h"
 
 #include "hiredis.h"
 
-#include "internal_commands.h"
-#include "ctable.h"
 #include "webserver.h"
 #include "messaging.h"
-#include "aof_alsosql.h"
+#include "internal_commands.h"
+#include "ctable.h"
 #include "sixbit.h"
-#include "range.h"
-#include "index.h"
-#include "rdb_alsosql.h"
 #include "luatrigger.h"
+#include "aof_alsosql.h"
+#include "rdb_alsosql.h"
+#include "desc.h"
+#include "range.h"
 #include "ddl.h"
+#include "index.h"
+#include "find.h"
 #include "alsosql.h"
 
-extern int      Num_tbls;
-extern r_tbl_t  Tbl[MAX_NUM_TABLES];
-extern int      Num_indx;
-extern r_ind_t  Index[MAX_NUM_INDICES];
+extern int       Num_tbls; extern r_tbl_t *Tbl;
+extern int       Num_indx; extern r_ind_t *Index;
 
 extern ulong    CurrCard; // TODO remove - after no update on MCI cols FIX
 
@@ -67,10 +66,16 @@ extern char    *LuaCronFunc;
 extern ulong    Operations;
 
 extern uchar    OutputMode;
+extern dictType sdsDictType;
 
+// GLOBALS
 cli            *CurrClient         = NULL;
-char           *Basedir            = "./";
-char           *LuaIncludeFile     = NULL;
+
+char           *Basedir            = "./"; //TODO redundant w/ "dir"
+char           *LuaIncludeFile     = NULL; //TODO is LuaIncludeFile needed?
+
+// internal.lua should be in the CWD
+#define LUA_INTERNAL_FILE "internal.lua"
 
 /* WEBSERVERMODE variables */
 int             WebServerMode      = -1;
@@ -82,14 +87,27 @@ struct in_addr  WS_WL_Mask;
 unsigned int    WS_WL_Broadcast = 0;
 unsigned int    WS_WL_Subnet    = 0;
 
-#define LUA_INTERNAL_FILE "internal.lua"
+// SQL_AOF SQL_AOF SQL_AOF SQL_AOF SQL_AOF SQL_AOF SQL_AOF SQL_AOF
+bool SQL_AOF       = 0;
+bool SQL_AOF_MYSQL = 0;
+
+// RDB Load Table & Index Highwaters
+uint32  Tbl_HW = 0; list   *DropT = NULL; dict   *TblD;
+uint32  Ind_HW = 0; list   *DropI = NULL; dict   *IndD;
+
 
 /* PROTOTYPES */
 int  yesnotoi(char *s);
 int *getKeysUsingCommandTable(rcommand *cmd, robj **argv, int argc, int *nkeys);
 // from scripting.c
 void luaReplyToRedisReply(redisClient *c, lua_State *lua);
+// from rdb.c
+int       rdbSaveType(FILE *fp, unsigned char type);
+int       rdbSaveLen(FILE *fp, uint32_t len);
+int       rdbLoadType(FILE *fp);
+uint32_t  rdbLoadLen(FILE *fp, int *isencoded);
 
+// from /DB/*.c
 void showCommand      (redisClient *c);
 
 void createCommand    (redisClient *c);
@@ -190,18 +208,32 @@ void DXDB_initServerConfig() { //printf("DXDB_initServerConfig\n");
     bzero(&WS_WL_Mask, sizeof(struct in_addr));
 }
 
-static void init_Tbl_and_Index() {
+static void init_Tbl_and_Index(uint32 ntbl, uint32 nindx) {
+    if (Tbl) free(Tbl);
     Num_tbls = 0;
+    Tbl      = malloc(sizeof(r_tbl_t) * ntbl);
+    bzero(Tbl,        sizeof(r_tbl_t) * ntbl);
+    Tbl_HW   = ntbl;
+    if (TblD) dictRelease(TblD);
+    TblD     = dictCreate(&sdsDictType, NULL);
+    if (DropT) { listRelease(DropT); DropT = NULL; }
+
+    if (Index) free(Index);
     Num_indx = 0;
-    bzero(&Tbl,      sizeof(r_tbl_t) * MAX_NUM_TABLES);
-    bzero(&Index,    sizeof(r_ind_t) * MAX_NUM_INDICES);
+    Index    = malloc(sizeof(r_ind_t) * nindx);
+    bzero(Index,      sizeof(r_ind_t) * nindx);
+    Ind_HW   = nindx;
+    if (IndD) dictRelease(IndD);
+    IndD     = dictCreate(&sdsDictType, NULL);
+    if (DropI) { listRelease(DropI); DropI = NULL; }
 }
+
 void DXDB_initServer() { //printf("DXDB_initServer\n");
     aeCreateTimeEvent(server.el, 1, luaCronTimeProc, NULL, NULL);
     initX_DB_Range();
     initAccessCommands();
     init_six_bit_strings();
-    init_Tbl_and_Index();
+    init_Tbl_and_Index(INIT_MAX_NUM_TABLES, INIT_MAX_NUM_INDICES);
     CurrClient     = NULL;
     CurrCard       = 0;
     Operations     = 0;
@@ -267,7 +299,7 @@ void DXDB_main() { //NOTE: must come after rdbLoad()
 
 void DXDB_emptyDb() { //printf("DXDB_emptyDb\n");
     for (int k = 0; k < Num_tbls; k++) emptyTable(k); /* deletes indices also */
-    init_Tbl_and_Index();
+    init_Tbl_and_Index(INIT_MAX_NUM_TABLES, INIT_MAX_NUM_INDICES);
 }
 
 bool isWhiteListedIp(cli *c) {
@@ -359,6 +391,20 @@ int DXDB_loadServerConfig(int argc, sds *argv) {
         }
         computeWS_WL_MinMax();
         return 0;
+    } else if (!strcasecmp(argv[0],"sqlappendonly") && argc == 2) {
+        if        (!strcasecmp(argv[1], "no")) {
+            server.appendonly = 0;
+        } else if (!strcasecmp(argv[1], "yes")) {
+            server.appendonly = 1;
+        } else if (!strcasecmp(argv[1], "mysql")) {
+            server.appendonly = 1;
+            SQL_AOF_MYSQL = 1;
+        } else {
+            fprintf(stderr, "argument must be 'yes', 'no' or 'mysql;\n");
+            return -1;
+        }
+        SQL_AOF = 1;
+        return 0;
     }
     return 1;
 }
@@ -418,7 +464,7 @@ void  DXDB_processInputBuffer_ZeroArgs(redisClient *c) {//HTTP Request End-Delim
     return;
 }
 
-//TODO webserver_mode, webserver_whitelist_address, webserver_whitelist_netmask, webserver_index_function
+//TODO webserver_mode, webserver_whitelist_address, webserver_whitelist_netmask, webserver_index_function, sqlslaveof
 int DXDB_configSetCommand(cli *c, robj *o) {
     if (!strcasecmp(c->argv[2]->ptr, "include_lua")) {
         if (LuaIncludeFile) zfree(LuaIncludeFile);
@@ -495,10 +541,13 @@ void DXDB_configGetCommand(redisClient *c, char *pattern, int *matches) {
 }
 
 int DXDB_rdbSave(FILE *fp) { //printf("DXDB_rdbSave\n");
+    if (rdbSaveLen(fp, Num_tbls)                               == -1) return -1;
+    if (rdbSaveLen(fp, Num_indx)                               == -1) return -1;
     for (int tmatch = 0; tmatch < Num_tbls; tmatch++) {
         r_tbl_t *rt = &Tbl[tmatch];
-        if (rdbSaveType        (fp, REDIS_BTREE) == -1)               return -1;
-        if (rdbSaveBT          (fp, rt->btr)     == -1)               return -1;
+        if (!rt->name) continue; // respect deletion
+        if (rdbSaveType        (fp, REDIS_BTREE)               == -1) return -1;
+        if (rdbSaveBT          (fp, rt->btr)                   == -1) return -1;
         MATCH_PARTIAL_INDICES(tmatch)
         if (matches) {
             for (int i = 0; i < matches; i++) {
@@ -507,8 +556,8 @@ int DXDB_rdbSave(FILE *fp) { //printf("DXDB_rdbSave\n");
                     if (rdbSaveType    (fp, REDIS_LUA_TRIGGER) == -1) return -1;
                     if (rdbSaveLuaTrigger(fp, ri)              == -1) return -1;
                 } else {
-                    if (rdbSaveType        (fp, REDIS_BTREE) == -1)   return -1;
-                    if (rdbSaveBT          (fp, ri->btr)     == -1)   return -1;
+                    if (rdbSaveType        (fp, REDIS_BTREE)   == -1) return -1;
+                    if (rdbSaveBT          (fp, ri->btr)       == -1) return -1;
                 }
             }
         }
@@ -518,17 +567,21 @@ int DXDB_rdbSave(FILE *fp) { //printf("DXDB_rdbSave\n");
 }
 
 int DXDB_rdbLoad(FILE *fp) { //printf("DXDB_rdbLoad\n");
+   uint32 ntbl, nindx;
+   if ((ntbl  = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR) return -1;
+   if ((nindx = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR) return -1;
+    init_Tbl_and_Index(ntbl, nindx);
     while (1) {
         int type;
-        if ((type = rdbLoadType(fp)) == -1) return -1;
+        if ((type = rdbLoadType(fp))  == -1)               return -1;
         if (type == REDIS_EOF)              break;    /* SQL delim REDIS_EOF */
         if        (type == REDIS_BTREE) {
-            if (!rdbLoadBT(fp))             return -1;
+            if (!rdbLoadBT(fp))                            return -1;
         } else if (type == REDIS_LUA_TRIGGER) {
-            if (!rdbLoadLuaTrigger(fp))     return -1;
+            if (!rdbLoadLuaTrigger(fp))                    return -1;
         }
     }
-    rdbLoadFinished();
+    rdbLoadFinished(); // -> build Indexes
     return 0;
 }
 
@@ -626,4 +679,45 @@ void dirtyCommand(redisClient *c) {
         server.stat_num_dirty_commands = strtoul(c->argv[1]->ptr, NULL, 10);
     }
     addReplyLongLong(c, server.stat_num_dirty_commands);
+}
+
+// SQL_AOF SQL_AOF SQL_AOF SQL_AOF SQL_AOF SQL_AOF SQL_AOF SQL_AOF SQL_AOF
+sds DXDB_SQL_feedAppendOnlyFile(rcommand *cmd, robj **argv, int argc) {
+    if (cmd->proc == insertCommand || cmd->proc == updateCommand  ||
+        cmd->proc == deleteCommand || cmd->proc == replaceCommand ||
+        cmd->proc == createCommand || cmd->proc == dropCommand    ||
+        cmd->proc == alterCommand) {
+        if (cmd->proc == createCommand) {
+            if ((!strcasecmp(argv[1]->ptr, "LRUINDEX"))   ||
+                (!strcasecmp(argv[1]->ptr, "LUATRIGGER"))) return sdsempty();
+            int arg = 1, targ = 4, coln = 5;
+            if (!strcasecmp(argv[1]->ptr,   "UNIQUE")) {
+                arg = 2; targ = 5; coln = 6;
+            }
+            if (!strcasecmp(argv[arg]->ptr, "INDEX")) { // index on TEXT
+                int      tmatch = find_table(argv[targ]->ptr);
+                r_tbl_t *rt     = &Tbl[tmatch];
+                char    *token  = argv[coln]->ptr;
+                char    *end    = strchr(token, ')');
+                STACK_STRDUP(cname, (token + 1), (end - token - 1))
+                int      cmatch = find_column(tmatch, cname);
+                uchar    ctype  = rt->col[cmatch].type;
+                if (C_IS_S(ctype)) {
+                    int      imatch = find_index(tmatch, cmatch);
+                    r_ind_t *ri     = &Index[imatch];
+                    return createAlterTableFulltext(rt, ri, ri->column, 1);
+                }
+            }
+        }
+        sds buf = sdsempty();
+        for (int j = 0; j < argc; j++) {
+            robj *o = getDecodedObject(argv[j]);
+            buf = sdscatlen(buf, o->ptr, sdslen(o->ptr));
+            if (j != (argc - 1)) buf = sdscatlen(buf," ", 1);
+            decrRefCount(o);
+        }
+        buf = sdscatlen(buf, ";\n", 2);
+        return buf;
+    }
+    return sdsempty();
 }

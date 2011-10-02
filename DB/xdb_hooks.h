@@ -31,7 +31,6 @@ ALL RIGHTS RESERVED
 
 #include "xdb_common.h"
 
-
 void  DXDB_populateCommandTable(dict *server_commands);
 
 void  DXDB_createSharedObjects();
@@ -78,10 +77,6 @@ void DXDB_syncCommand(redisClient *c);
 
 unsigned char isWhiteListedIp(redisClient *c); //TODO move to another file?
 
-// PROTOTYPES
-// from redis.c
-unsigned int dictSdsCaseHash(const void *key);
-int dictSdsKeyCaseCompare(void *privdata, const void *key1, const void *key2);
-void dictSdsDestructor(void *privdata, void *val);
+sds DXDB_SQL_feedAppendOnlyFile(rcommand *cmd, robj **argv, int argc);
 
 #endif /* DXDB_HOOKS_H */

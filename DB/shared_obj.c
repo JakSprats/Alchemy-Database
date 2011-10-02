@@ -32,24 +32,14 @@ ALL RIGHTS RESERVED
 
 void DXDB_createSharedObjects() {
     shared.singlerow = createObject(REDIS_STRING,sdsnew("*1\r\n"));
-    shared.toomanytables = createObject(REDIS_STRING,sdsnew(
-        "-ERR MAX tables reached (256)\r\n"));
-    shared.missingcolumntype = createObject(REDIS_STRING,sdsnew(
-        "-ERR LegacyTable: Column Type Missing\r\n"));
     shared.undefinedcolumntype = createObject(REDIS_STRING,sdsnew(
         "-ERR Column Type Unknown ALCHEMY_DATABASE uses[INT,LONG,FLOAT,TEXT] and recognizes INT=[*INT],LONG=[BIGINT],FLOAT=[FLOAT,REAL,DOUBLE],TEXT=[*CHAR,TEXT,BLOB,BINARY,BYTE]\r\n"));
-    shared.columnnametoobig = createObject(REDIS_STRING,sdsnew(
-        "-ERR ColumnName too long MAX(64)\r\n"));
-    shared.toomanycolumns = createObject(REDIS_STRING,sdsnew(
-        "-ERR MAX columns reached(64)\r\n"));
     shared.toofewcolumns = createObject(REDIS_STRING,sdsnew(
         "-ERR Too few columns (min 2)\r\n"));
     shared.nonuniquecolumns = createObject(REDIS_STRING,sdsnew(
         "-ERR Column name defined more than once\r\n"));
     shared.nonuniquetablenames = createObject(REDIS_STRING,sdsnew(
         "-ERR Table name already exists\r\n"));
-    shared.toomanyindices = createObject(REDIS_STRING,sdsnew(
-        "-ERR MAX indices reached(512)\r\n"));
     shared.nonuniqueindexnames = createObject(REDIS_STRING,sdsnew(
         "-ERR Index name already exists\r\n"));
     shared.indextargetinvalid = createObject(REDIS_STRING,sdsnew(
@@ -81,8 +71,6 @@ void DXDB_createSharedObjects() {
     shared.col_float_string_too_long = createObject(REDIS_STRING,sdsnew(
         "-ERR INSERT: FLOAT Column longer than 32 bytes\r\n"));
 
-    shared.columntoolarge = createObject(REDIS_STRING,sdsnew(
-        "-ERR INSERT - MAX column size is 1GB\r\n"));
     shared.nonexistentcolumn = createObject(REDIS_STRING,sdsnew(
         "-ERR Column does not exist\r\n"));
     shared.nonexistentindex = createObject(REDIS_STRING,sdsnew(
@@ -97,8 +85,6 @@ void DXDB_createSharedObjects() {
         "-ERR TARGET: DROP LUATRIGGER on wrong object\r\n"));
     shared.badindexedcolumnsyntax = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: JOIN WHERE tablename.columname ...\r\n"));
-    shared.index_nonrel_decl_fmt = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: CREATE TRIGGER name ON table ADD_CMD [DEL_CMD] - syntax for CMD: [INSERT,SET,GET,etc...] $col_name text = '$' is used for variable substitution of columns\r\n"));
     shared.luat_decl_fmt = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: CREATE LUATRIGGER name ON table ADD_FUNC [DEL_FUNC]\r\n"));
     shared.luat_c_decl = createObject(REDIS_STRING,sdsnew(
@@ -178,7 +164,7 @@ void DXDB_createSharedObjects() {
         "-ERR SYNTAX: SELECT COUNT(*) ... WHERE ... ORDER BY col - \"ORDER BY\" and \"COUNT(*)\" dont mix, drop the \"ORDER BY\"\r\n"));
 
     shared.selectsyntax = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: SELECT [col,,,,] FROM tablename WHERE [[indexed_column = val]|| [indexed_column BETWEEN x AND y] || [indexed_column IN (X,Y,Z,...)] || [indexed_column IN ($redis_statment)]] [ORDER BY [col [DESC/ASC]*,,] LIMIT n OFFSET m]\r\n"));
+        "-ERR SYNTAX: SELECT [col,,,,] FROM tablename WHERE [[indexed_column = val]|| [indexed_column BETWEEN x AND y] || [indexed_column IN (X,Y,Z,...)] || [indexed_column IN (nested sql statment)]] [ORDER BY [col [DESC/ASC]*,,] LIMIT n OFFSET m]\r\n"));
     shared.selectsyntax_nofrom = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: SELECT col,,,, FROM tablename WHERE indexed_column = val - \"FROM\" keyword MISSING\r\n"));
     shared.selectsyntax_nowhere = createObject(REDIS_STRING,sdsnew(
@@ -265,10 +251,8 @@ void DXDB_createSharedObjects() {
     shared.join_qo_err = createObject(REDIS_STRING,sdsnew(
         "-ERR SELECT: JOIN: query optimiser could not find a join plan\r\n"));
 
-
     shared.create_table_err = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: CREATE TABLE tablename (col INT,,,,,,) [SELECT ....]\r\n"));
-
     shared.create_table_as_count = createObject(REDIS_STRING,sdsnew(
         "-ERR TYPE: CREATE TABLE tbl AS SELECT COUNT(*) - is disallowed\r\n"));
 

@@ -26,40 +26,45 @@ ALL RIGHTS RESERVED
 #ifndef __ALC_QUERY__H
 #define __ALC_QUERY__H
 
-#include "adlist.h"
 #include "sds.h"
+#include "adlist.h"
+#include "dict.h"
 #include "redis.h"
 
 #include "btreepriv.h"
 #include "xdb_common.h"
 #include "common.h"
 
-typedef struct r_tbl {
-    robj   *name;                            // TODO -> sds
-    bt     *btr;
-    int     col_count;
-    int     vimatch;
-    ulong   ainc;
-    robj   *col_name [MAX_COLUMN_PER_TABLE]; //TODO -> sds
-    uchar   col_type [MAX_COLUMN_PER_TABLE];
-    bool    col_indxd[MAX_COLUMN_PER_TABLE]; /* used in updateRow OVRWR */
-    uint32  n_intr;     /* num ACCESSES in current LRU interval */
-    uint32  lastts;     /* HIGH-LOAD: last timestamp of lru interval */
-    uint32  nextts;     /* HIGH-LOAD: next timestamp of lru interval */
-    uint32  lrud;       /* timestamp & bool */
-    char    lruc;       /* column containing LRU */
-    char    lrui;       /* index containing LRU */
-    uchar   nmci;       /* number of MultipleColumnIndexes */
-    uchar   nltrgr;     /* number of LuaTriggers */
-    int     sk;         /* index of shard-key column */
-    int     fk_cmatch;  /* Foreign-key local column */
-    int     fk_otmatch; /* Foreign-key other table's table */
-    int     fk_ocmatch; /* Foreign-key other table's column */
+typedef struct r_col {
+    sds   name; uchar type; bool  indxd; int imatch;
+} r_col_t;
+
+typedef struct r_tbl { // 92 bytes
+    sds      name;
+    bt      *btr;
+    int      vimatch;
+    ulong    ainc;
+    int      col_count;
+    r_col_t *col;
+    list    *ilist;
+    dict    *cdict;
+    uint32   n_intr;     /* LRU: num ACCESSES in current LRU interval */
+    uint32   lastts;     /* LRU: HIGH-LOAD: last timestamp of lru interval */
+    uint32   nextts;     /* LRU: HIGH-LOAD: next timestamp of lru interval */
+    uint32   lrud;       /* LRU: timestamp & bool */
+    int      lruc;       /* LRU: column containing LRU */
+    int      lrui;       /* LRU: index containing LRU */
+    uchar    nmci;       /* MCI: number of MultipleColumnIndexes */
+    uchar    nltrgr;     /* LAUT: number of LuaTriggers */
+    int      sk;         /* SK: index of shard-key column */
+    int      fk_cmatch;  /* SK: Foreign-key local column */
+    int      fk_otmatch; /* SK: Foreign-key other table's table */
+    int      fk_ocmatch; /* SK: Foreign-key other table's column */
 } r_tbl_t;
 
-typedef struct r_ind {
+typedef struct r_ind { // 57 bytes
     bt    *btr;     /* Btree of index                                     */
-    robj  *obj;     /* Name of index              TODO -> sds             */
+    sds    name;    /* Name of index                                      */
     int    table;   /* table index is ON                                  */
     int    column;  /* single column OR 1st MCI column                    */
     list  *clist;   /* MultipleColumnIndex(mci) list                      */
@@ -104,9 +109,10 @@ typedef struct filter {
 } f_t;
 
 typedef struct lua_trigger_command {
-    sds fname;
-    int ncols;
-    int cmatchs[MAX_COLUMN_PER_TABLE];
+    sds   fname;
+    int   ncols;
+    int  *cmatchs;
+    bool  tblarg;
 } ltc_t;
 typedef struct lua_trigger {
     ltc_t     add;
@@ -137,12 +143,11 @@ typedef struct order_by_sort_element {
     void  **keys;
     aobj   *apk;
     uchar  *lruc;
+    bool    lrud;
 } obsl_t;
 
 typedef struct join_column {
-    int t;
-    int c;
-    int jan;
+    int t; int c; int jan;
 } jc_t;
 typedef struct index_join_pair {
     enum OP  op;
@@ -155,22 +160,17 @@ typedef struct index_join_pair {
 typedef struct jb_t {
     bool    cstar;
     int     qcols;
-    jc_t    js[MAX_JOIN_INDXS];
-
     sds     lvr;                /* Leftover AFTER parse                       */
-
+    jc_t   *js;                 /* Queried tables & columns & join-aliases    */
     uint32  n_jind;             /* num 2ndary Join-Indexes                    */
     int     hw;                 /* "highwater" line JIndexes become Filters   */
-    ijp_t   ij[MAX_JOIN_INDXS]; /* list of Join-Indexes                       */
+    ijp_t  *ij;                 /* list of Join-Indexes                       */
     list   *mciflist;           /* missing MCI indexes as FILTERS             */
-
     wob_t   wb;                 /* ORDER BY [c1,c2 DESC] LIMIT x OFFSET y     */
-
     list   *fflist;             /* Deepest Join-Level FILTER list on RHS      */
     list   *fklist;             /* Deepest Join-Level Keylist on RHS          */
     int     fkimatch;           /* Deepest Join-Level MCI imatch              */
     uint32  fnrows;             /* Deepest Join-Level FILTER's number of rows */
-
     obsl_t *ob;                 /* ORDER BY values                            */
 } jb_t;
 
@@ -192,19 +192,5 @@ typedef struct string_and_length {
     uchar type;
 } sl_t;
 void release_sl(sl_t sl);
-
-/* DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG */
-void explainRQ(cli *c, cswc_t *w, wob_t *wb);
-
-void initQueueOutput();
-int  queueOutput(const char *format, ...);
-void dumpQueueOutput(cli *c);
-
-void dumpWB(printer *prn,   wob_t *wb);
-void dumpW(printer *prn,    cswc_t *w);
-void dumpSds(printer *prn,  sds s, char *smsg);
-void dumpRobj(printer *prn, robj *r, char *smsg, char *dmsg);
-void dumpFL(printer *prn,   char *prfx, char *title, list *flist);
-void dumpSL(sl_t sl);
 
 #endif /*__ALC_QUERY__H */ 

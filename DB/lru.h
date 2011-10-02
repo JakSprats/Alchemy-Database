@@ -29,11 +29,23 @@ ALL RIGHTS RESERVED
 
 #include "redis.h"
 
+#include "row.h"
 #include "aobj.h"
+
+#define SERVER_BEGINNING_OF_TIME 1317473183 /* oldest LRU time possible */
 
 uint32 getLru(int tmatch);
 
 void createLruIndex(cli *c);
-void updateLru     (cli *c, int tmatch, aobj *apk, uchar *lruc);
+void updateLru     (cli *c, int tmatch, aobj *apk, uchar *lruc, bool lrud);
+
+#define GET_LRUC                                                \
+  bool   lrud = Tbl[tmatch].lrud;                               \
+  uchar *lruc = NULL;                                           \
+  if (Tbl[tmatch].lrud) {                                       \
+      uint32 clen; uchar rflag;                                 \
+      lruc = getColData(rrow, Tbl[tmatch].lruc, &clen, &rflag); \
+      if (!clen) lruc = NULL;                                   \
+  }
 
 #endif /* __ALCHEMY_LRU__H */ 

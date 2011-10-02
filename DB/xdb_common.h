@@ -6,9 +6,10 @@
 #define REDIS_BTREE           5
 #define REDIS_LUA_TRIGGER     6
 
-#define OUTPUT_NORMAL     0
-#define OUTPUT_PURE_REDIS 1
-#define OUTPUT_EMBEDDED   2
+#define OUTPUT_NONE       0 # this is an error state
+#define OUTPUT_NORMAL     1
+#define OUTPUT_PURE_REDIS 2
+#define OUTPUT_EMBEDDED   3
 
 #include <endian.h>
 #ifndef BYTE_ORDER
@@ -79,14 +80,13 @@ typedef bool select_callback(erow_t* erow);
 #define SHARED_OBJ_DECLARATION \
     robj \
     *singlerow,           *inserted,               *upd8ed, \
-    *toomanytables,       *undefinedcolumntype,    *missingcolumntype, \
-    *toomanycolumns,      *columnnametoobig,       *insert_ovrwrt, \
-    *toofewcolumns,       *toomanyindices,         *nonuniquecolumns, \
+    *undefinedcolumntype, *insert_ovrwrt, \
+    *toofewcolumns,       *nonuniquecolumns, \
     *nonuniquetablenames, *nonuniqueindexnames,    *indextargetinvalid, \
     *nonuniquekeyname,    *indexedalready,         *index_wrong_nargs, \
     *trigger_wrong_nargs, *luatrigger_wrong_nargs, \
     *nonexistenttable,    *insertcolumn, \
-    *columntoolarge,      *nonexistentcolumn,      *nonexistentindex, \
+    *nonexistentcolumn,      *nonexistentindex, \
     *invalidrange,        *toofewindicesinjoin,    *toomanyindicesinjoin, \
     *invalidupdatestring, *badindexedcolumnsyntax, \
     *u2big, *col_uint_string_too_long, *col_float_string_too_long, *uint_pkbig,\
@@ -100,8 +100,7 @@ typedef bool select_callback(erow_t* erow);
     *mci_on_pk,          *UI_SC,         *two_uniq_mci, *uniq_mci_notint, \
     *uniq_mci_pk_notint, \
     *insertsyntax,           *insertsyntax_no_into, *part_insert_other, \
-    *insertsyntax_no_values, *index_nonrel_decl_fmt, \
-    *luat_decl_fmt,          *luat_c_decl, \
+    *insertsyntax_no_values, *luat_decl_fmt,        *luat_c_decl, \
     *key_query_mustbe_eq, \
     *whereclause_in_err,         *where_in_select, \
     *wc_orderby_no_by, \

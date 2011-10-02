@@ -35,10 +35,10 @@ ALL RIGHTS RESERVED
 #include "redis.h"
 #include "zmalloc.h"
 
+#include "debug.h"
 #include "embed.h"
 #include "bt.h"
 #include "filter.h"
-#include "query.h"
 #include "index.h"
 #include "lru.h"
 #include "range.h"
@@ -48,14 +48,16 @@ ALL RIGHTS RESERVED
 #include "wc.h"
 #include "parser.h"
 #include "colparse.h"
+#include "find.h"
+#include "query.h"
 #include "aobj.h"
 #include "common.h"
 #include "alsosql.h"
 
-extern int     Num_tbls;
-extern r_tbl_t Tbl[MAX_NUM_TABLES];
-extern int     Num_indx;
-extern r_ind_t Index[MAX_NUM_INDICES];
+extern int      Num_tbls;
+extern r_tbl_t *Tbl;
+extern int      Num_indx;
+extern r_ind_t *Index;
 
 extern char *Col_type_defs[];
 
@@ -96,16 +98,17 @@ static void addRowSizeReply(cli *c, int tmatch, bt *btr, int len) {
 
 #define DEBUG_REPLY_LIST \
   { listNode  *ln; listIter  *li = listGetIterator(c->reply, AL_START_HEAD); \
-   while((ln = listNext(li)) != NULL) { robj *r = ln->value; printf("REPLY: %s\n", r->ptr); } }
+   while((ln = listNext(li))) { robj *r = ln->value; printf("REPLY: %s\n", r->ptr); } listReleaseIterator(li); }
 
 #define INS_ERR 0
 #define INS_INS 1
 #define INS_UP  2
 static uchar insertCommit(cli  *c,      robj **argv,   sds     vals,
                           int   ncols,  int    tmatch, int     matches,
-                          int   inds[], int    pcols,  int     cmatchs[],
+                          int   inds[], int    pcols,  list   *cmatchl,
                           bool  repl,   bool   upd,    uint32 *tsize,
                           bool  parse,  sds   *key) {
+    CMATCHS_FROM_CMATCHL
     twoint cofsts[ncols];
     if (pcols) for (int i = 0; i < ncols; i++) cofsts[i].i = cofsts[i].j = -1;
     aobj     apk; initAobj(&apk);
@@ -121,11 +124,11 @@ static uchar insertCommit(cli  *c,      robj **argv,   sds     vals,
     if (parse) { // used in cluster-mode to get sk's value
         int skl = cofsts[rt->sk].j - cofsts[rt->sk].i;
         sds sk  = rt->sk ? sdsnewlen(mvals + cofsts[rt->sk].i, skl) : pk;
-        *key    = sdscatprintf(sdsempty(), "%s=%s.%s", sk,
-                      (char *)rt->name->ptr, (char *)rt->col_name[rt->sk]->ptr);
+        *key    = sdscatprintf(sdsempty(), "%s=%s.%s", 
+                               sk, rt->name, rt->col[rt->sk].name);
         return ret;
     }
-    int      pktyp  = rt->col_type[0];
+    int      pktyp  = rt->col[0].type;
     apk.type        = apk.enc = pktyp;
     if        (C_IS_I(pktyp)) {
         long l      = atol(pk);                              /* OK: DELIM: \0 */
@@ -142,7 +145,6 @@ static uchar insertCommit(cli  *c,      robj **argv,   sds     vals,
     if (rrow && !upd && !repl) {
          addReply(c, shared.insert_ovrwrt);                    goto insc_end;
     } else if (rrow && upd) {                              //DEBUG_INSERT_DEBUG
-        //TODO if (rt->rn) ????
         len = updateAction(c, argv[upd]->ptr, &apk, tmatch);
         if (len == -1)                                         goto insc_end;
         ret = INS_UP;             /* negate presumed failure */
@@ -181,48 +183,58 @@ insc_end:
 void insertParse(cli *c, robj **argv, bool repl, int tmatch,
                  bool parse, sds *key) {
     MATCH_INDICES(tmatch)
-    r_tbl_t *rt    = &Tbl[tmatch];
-    int      ncols = rt->col_count; /* NOTE: need space for LRU */
-    int      cmatchs[MAX_COLUMN_PER_TABLE]; /* for partial inserts */
-    int      pcols = 0;
-    int      valc  = 3;
+    r_tbl_t *rt      = &Tbl[tmatch];
+    int      ncols   = rt->col_count; /* NOTE: need space for LRU */
+    list    *cmatchl = listCreate();
+    int      pcols   = 0;
+    int      valc    = 3;
     if (strcasecmp(argv[valc]->ptr, "VALUES")) {//TODO break block into func
         bool ok   = 0;
         sds  cols = argv[valc]->ptr;
         if (cols[0] == '(' && cols[sdslen(cols) - 1] == ')' ) { /* COL DECL */
             STACK_STRDUP(clist, (cols + 1), (sdslen(cols) - 2));
-            parseCommaSpaceList(c, clist, 1, 0, 0, tmatch, cmatchs,
+            parseCommaSpaceList(c, clist, 1, 0, 0, tmatch, cmatchl,
                                 0, NULL, NULL, NULL, &pcols, NULL);
+            CMATCHS_FROM_CMATCHL //TODO unneeded work, need: initLRUCS(cmatchl)
             if (pcols) {
                 if (initLRUCS(tmatch, cmatchs, pcols)) { /* LRU in ColDecl */
-                    addReply(c, shared.insert_lru); return;
+                    addReply(c, shared.insert_lru);            goto insprserr;
                 }
                 if (OTHER_BT(getBtr(tmatch)) && pcols != 2 && !cmatchs[0]) {
-                    addReply(c, shared.part_insert_other); return;
+                    addReply(c, shared.part_insert_other);     goto insprserr;
                 }
                 valc++; if (!strcasecmp(argv[valc]->ptr, "VALUES")) ok = 1;
             }
         }
-        if (!ok) { addReply(c, shared.insertsyntax_no_values); return; }
+        if (!ok) { addReply(c, shared.insertsyntax_no_values); goto insprserr; }
     }
     bool print = 0; uint32 upd = 0; int largc = c->argc;
     if (largc > 5) {
-        if (AEQ((largc - 1), "RETURN SIZE")) { print = 1; largc--; }
+        if (AEQ((largc - 1), "RETURN SIZE")) {
+            largc--; print = 1; // DO NOT REPLICATE "RETURN SIZE"
+            sdsfree(c->argv[largc]->ptr); c->argv[largc]->ptr = sdsempty();
+        }
         if (largc > 6) {
             if (AEQ((largc - 2), "ON DUPLICATE KEY UPDATE")) {
                 upd = (uint32)largc - 1; largc -= 2;
         }}
     }
-    if (upd && repl) { addReply(c, shared.insert_replace_update); return; }
+    if (upd && repl) {
+        addReply(c, shared.insert_replace_update);             goto insprserr;
+    }
     uchar ret = INS_ERR; uint32 tsize = 0;
     for (int i = valc + 1; i < largc; i++) {
         ret = insertCommit(c, argv, argv[i]->ptr, ncols, tmatch, matches, inds,
-                           pcols, cmatchs, repl, upd, print ? &tsize : NULL,
+                           pcols, cmatchl, repl, upd, print ? &tsize : NULL,
                            parse, key);
-        if (ret == INS_ERR) return;
+        if (ret == INS_ERR)                                    goto insprserr;
     }
     if (print) addRowSizeReply(c, tmatch, getBtr(tmatch), tsize);
     else       addReply(c, shared.ok);
+    return;
+
+insprserr:
+    listRelease(cmatchl);
 }
 static void insertAction(cli *c, bool repl) {           //DEBUG_INSERT_ACTION_1
    if (strcasecmp(c->argv[1]->ptr, "INTO")) {
@@ -244,10 +256,7 @@ void replaceCommand(cli *c) { insertAction(c, 1); }
 //TODO move to wc.c
 void init_wob(wob_t *wb) {
     bzero(wb, sizeof(wob_t));
-    wb->nob    =  0;
-    wb->lim    = -1;
-    wb->ofst   = -1;
-    wb->ovar   = NULL;
+    wb->lim = wb->ofst = -1;
 }
 void destroy_wob(wob_t *wb) {
     if (wb->ovar) sdsfree(wb->ovar);
@@ -285,21 +294,6 @@ bool leftoverParsingReply(redisClient *c, char *x) {
     return 1;
 }
 
-void explainCommand(redisClient *c) {
-    c->Explain  = 1;
-    int   oargc = c->argc;
-    void *argv0 = c->argv[0];
-    c->argc--;
-    for (int i = 0; i < c->argc; i++) { /* shift argv[]s down once */
-        c->argv[i] = c->argv[i + 1];
-    }
-    c->argv[oargc - 1] = argv0;         /* push first argv onto end */
-    if      (!strcasecmp(c->argv[0]->ptr, "SCAN"))   tscanCommand(c);
-    else if (!strcasecmp(c->argv[0]->ptr, "SELECT")) sqlSelectCommand(c);
-    c->argc    = oargc;                    /* so all argv[] get freed */
-    c->Explain = 0;
-}
-
 /* LruColInSelect LruColInSelect LruColInSelect LruColInSelect */
 inline bool initLRUCS(int tmatch, int cmatchs[], int qcols) {
     r_tbl_t *rt    = &Tbl[tmatch];
@@ -321,16 +315,17 @@ void sqlSelectCommand(redisClient *c) {
         selectCommand(c); return;
     }
     if (c->argc != 6) { addReply(c, shared.selectsyntax); return; }
-    int  cmatchs[MAX_COLUMN_PER_TABLE];
-    bool cstar  =  0;
-    int  qcols  =  0;
-    int  tmatch = -1;
-    bool join   =  0;
-    sds  tlist  = c->argv[3]->ptr;
-    if (!parseSelectReply(c, 0, NULL, &tmatch, cmatchs, &qcols, &join,
-                          &cstar, c->argv[1]->ptr, c->argv[2]->ptr,
-                          tlist, c->argv[4]->ptr)) return;
-    if (join) { joinReply(c);                      return; }
+    list *cmatchl = listCreate();
+    bool  cstar   =  0;
+    int   qcols   =  0;
+    int   tmatch  = -1;
+    bool  join    =  0;
+    sds   tlist   = c->argv[3]->ptr;
+    if (!parseSelect(c, 0, NULL, &tmatch, cmatchl, &qcols, &join,
+                     &cstar, c->argv[1]->ptr, c->argv[2]->ptr,
+                     tlist, c->argv[4]->ptr)) { listRelease(cmatchl); return; }
+    if (join) { joinReply(c);                   listRelease(cmatchl); return; }
+    CMATCHS_FROM_CMATCHL listRelease(cmatchl); 
 
     c->LruColInSelect = initLRUCS(tmatch, cmatchs, qcols);
     cswc_t w; wob_t wb;
@@ -361,14 +356,13 @@ void sqlSelectCommand(redisClient *c) {
         robj *r = outputRow(btr, rrow, qcols, cmatchs, apk, tmatch);
         addReply(c, shared.singlerow);
         GET_LRUC 
-        if (!addReplyRow(c, r, tmatch, apk, lruc))          goto sel_cmd_end;
+        if (!addReplyRow(c, r, tmatch, apk, lruc, lrud))    goto sel_cmd_end;
         decrRefCount(r);
         if (wb.ovar) incrOffsetVar(c, &wb, 1);
     }
 
 sel_cmd_end:
-    destroy_wob(&wb);
-    destroy_check_sql_where_clause(&w);
+    destroy_wob(&wb); destroy_check_sql_where_clause(&w);
 }
 
 /* DELETE DELETE DELETE DELETE DELETE DELETE DELETE DELETE DELETE DELETE */
@@ -427,7 +421,7 @@ static bool assignMisses(cli   *c,      int    tmatch,    int   ncols,
                 miss   = 0; vals[i] = mvals[j]; vlens[i] = mvlens[j];
                 char e = isExpression(vals[i], vlens[i]);
                 if (e) {
-                    if (!parseExpr(c, e, tmatch, cmatchs[j], rt->col_type[i],
+                    if (!parseExpr(c, e, tmatch, cmatchs[j], rt->col[i].type,
                                    vals[i], vlens[i], &ue[i])) return 0;
                     ue[i].yes = 1;
                 }
@@ -456,13 +450,14 @@ static int updateAction(cli *c, char *u_vallist, aobj *u_apk, int u_tmatch) {
         }
         u_tmatch = tmatch;
     }
-    int     tmatch = u_tmatch;
-    int     cmatchs[MAX_COLUMN_PER_TABLE];
-    char   *mvals  [MAX_COLUMN_PER_TABLE];
-    uint32  mvlens [MAX_COLUMN_PER_TABLE];
+    int     tmatch  = u_tmatch;
+    list   *cmatchl = listCreate();
+    list   *mvalsl  = listCreate();
+    list   *mvlensl = listCreate();
     char   *vallist = u_vallist ? u_vallist : c->argv[3]->ptr;
-    int     qcols   = parseUpdateColListReply(c, tmatch, vallist, cmatchs,
-                                               mvals, mvlens);
+    int     qcols   = parseUpdateColListReply(c,      tmatch, vallist, cmatchl,
+                                              mvalsl, mvlensl);
+    UPDATES_FROM_UPDATEL
     if (!qcols)                                       return -1;
     if (initLRUCS(tmatch, cmatchs, qcols)) {
         addReply(c, shared.update_lru);               return -1;
@@ -501,16 +496,17 @@ static int updateAction(cli *c, char *u_vallist, aobj *u_apk, int u_tmatch) {
         }
         iupdateAction(c, &w, &wb, ncols, matches, inds, vals, vlens, cmiss, ue);
     } else {                         /* SQL_SINGLE_UPDATE */
-        uchar  pktyp = rt->col_type[0];
+        uchar  pktyp = rt->col[0].type;
         bt    *btr   = getBtr(w.wf.tmatch);
         if (pkupc != -1) { /* disallow pk updts that overwrite other rows */
             if (ovwrPKUp(c, pkupc, mvals, mvlens, pktyp, btr)) goto upc_end;
         }
         aobj  *apk   = &w.wf.akey;
-        void  *row   = btFind(btr, apk);
-        if (!row) { addReply(c, shared.czero);                 goto upc_end; }
-        nsize        = updateRow(c, btr, apk, row, w.wf.tmatch, ncols, matches,
+        void  *rrow  = btFind(btr, apk);
+        if (!rrow) { addReply(c, shared.czero);                goto upc_end; }
+        nsize        = updateRow(c, btr, apk, rrow, w.wf.tmatch, ncols, matches,
                                  inds, vals, vlens, cmiss, ue);
+        //NOTE: rrow is no longer valid, updateRow() can change it
         if (nsize == -1)                                       goto upc_end;
         if (!u_vallist) addReply(c, shared.cone);
         if (wb.ovar)    incrOffsetVar(c, &wb, 1);

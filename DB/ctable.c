@@ -33,7 +33,7 @@ ALL RIGHTS RESERVED
 #include "alsosql.h"
 #include "ctable.h"
 
-extern r_tbl_t  Tbl[MAX_NUM_TABLES];
+extern r_tbl_t *Tbl;
 extern cli     *CurrClient;
 
 static bool Bdum;
@@ -86,6 +86,7 @@ sds override_getKeysFromComm(rcommand *cmd, robj **argv, int argc, bool *err) {
     sds tname = argv[argt]->ptr;
     if (proc == sqlSelectCommand || proc == tscanCommand) {
         if (strchr(tname, ',')) { printf("JOIN\n"); //TODO
+            //TODO this is TOTALLY outdated (instant SEGV) use list's
             int  ts  [MAX_JOIN_INDXS];
             int  jans[MAX_JOIN_INDXS];
             int  numt = 0;
@@ -153,7 +154,7 @@ sds override_getKeysFromComm(rcommand *cmd, robj **argv, int argc, bool *err) {
             aobj *afk = &w.wf.akey;
             sds   sk  = createSDSFromAobj(afk);
             sds   key  = sdscatprintf(sdsempty(), "%s=%s.%s",
-                                 sk, tname, (char *)Tbl->col_name[rt->sk]->ptr);
+                                 sk, tname, (char *)rt->col[rt->sk].name);
             //printf("sqlSelectCommand: key: %s\n", key);
             return key;
         }

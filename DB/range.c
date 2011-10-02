@@ -29,9 +29,11 @@ ALL RIGHTS RESERVED
 #include <strings.h>
 #include <unistd.h>
 
-#include "redis.h"
 #include "adlist.h"
+#include "redis.h"
 
+#include "debug.h"
+#include "lru.h"
 #include "bt.h"
 #include "bt_iterator.h"
 #include "filter.h"
@@ -40,6 +42,7 @@ ALL RIGHTS RESERVED
 #include "wc.h"
 #include "qo.h"
 #include "colparse.h"
+#include "find.h"
 #include "alsosql.h"
 #include "aobj.h"
 #include "common.h"
@@ -48,8 +51,8 @@ ALL RIGHTS RESERVED
 // CONSTANT GLOBALS
 extern char     *Col_type_defs[];
 extern aobj_cmp *OP_CMP[7];
-extern r_tbl_t   Tbl[MAX_NUM_TABLES];
-extern r_ind_t   Index[MAX_NUM_INDICES];
+extern r_tbl_t  *Tbl;
+extern r_ind_t  *Index;
 extern uchar     OutputMode;
 
 ulong  CurrCard = 0; // TODO remove - after no update on MCI cols FIX
@@ -224,8 +227,7 @@ static long rangeOpPK(range_t *g, row_op *p) {                 //DEBUG_RANGE_PK
     while ((be = btRangeNext(bi, asc)) != NULL) {
         if (!pk_op_l(be->key, be->val, g, p, wb, q, &card, &loops, &brkr)) CBRK
         if (brkr) break;
-    }
-    btReleaseRangeIterator(bi);
+    } btReleaseRangeIterator(bi);
     return card;
 }
 
@@ -274,7 +276,7 @@ static bool nodeBT_Op(ibtd_t *d) {                              //DEBUG_NODE_BT
         void *key; aobj akey; initAobj(&akey);
         if (d->obc == -1) key = nbe->key;
         else {  /* ORDER BY INDEX query */                  //DEBUG_NODE_BT_OBC
-            uchar ctype = Tbl[d->g->co.btr->s.num].col_type[0]; // PK_CTYPE
+            uchar ctype = Tbl[d->g->co.btr->s.num].col[0].type; // PK_CTYPE
             if      C_IS_I(ctype) initAobjInt (&akey, (uint32)(ulong)nbe->val);
             else /* C_IS_L */     initAobjLong(&akey, (ulong)        nbe->val);
             key = &akey;
@@ -293,7 +295,7 @@ bt *btMCIFindVal(cswc_t *w, bt *nbtr, uint32 *nmatch, r_ind_t *ri) {
         int       trgr = UNIQ(ri->cnstr) ? ri->nclist - 2 : -1;
         int       i    = 0;                                     //DEBUG_MCI_FIND
         listIter *li   = listGetIterator(w->wf.klist, AL_START_HEAD);
-        while ((ln = listNext(li)) != NULL) {
+        while ((ln = listNext(li))) {
             f_t *flt  = ln->value;                          //DEBUG_MCI_FIND_MID
             if (flt->op == NONE) break; /* MCI Joins can have empty flt's */
             if (i == trgr) {
@@ -363,8 +365,7 @@ static bool runOnNode(bt      *ibtr, uint32  still,
             if (!(*nop)(d)) { ret = 0; break; }
         }
         if (*d->brkr) break;
-    }
-    btReleaseRangeIterator(nbi);
+    } btReleaseRangeIterator(nbi);
     return ret;
 }
 static long rangeOpFK(range_t *g, row_op *p) {                 //DEBUG_RANGE_FK
@@ -393,8 +394,7 @@ static long rangeOpFK(range_t *g, row_op *p) {                 //DEBUG_RANGE_FK
             else if (!(*nop)(&d))                                       CBRK
         }
         if (brkr) break;
-    }
-    btReleaseRangeIterator(bi);
+    } btReleaseRangeIterator(bi);
     return card;
 }
 static long singleOpFK(range_t *g, row_op *p) {               //DEBUG_SINGLE_FK
@@ -442,7 +442,7 @@ static long inOpPK(range_t *g, row_op *p) {                //printf("inOpPK\n");
     long      loops   = -1;
     long      card    =  0;
     listIter *li      = listGetIterator(w->wf.inl, AL_START_HEAD);
-    while((ln = listNext(li)) != NULL) {
+    while((ln = listNext(li))) {
         aobj *apk  = ln->value;
         void *rrow = btFind(g->co.btr, apk);
         if (rrow && !pk_op_l(apk, rrow, g, p, wb, q, &card, &loops, &brkr)) CBRK
@@ -466,7 +466,7 @@ static long inOpFK(range_t *g, row_op *p) {                //printf("inOpFK\n");
     long      card    =  0;
     init_ibtd(&d, p, g, q, NULL, &ofst, &card, &loops, &brkr, ri->obc);
     listIter *li      = listGetIterator(w->wf.inl, AL_START_HEAD);
-    while((ln = listNext(li)) != NULL) {
+    while((ln = listNext(li))) {
         uint32  nmatch = 0;
         aobj   *afk    = ln->value;
         d.nbtr         = btMCIFindVal(w, btIndFind(ibtr, afk), &nmatch, ri);
@@ -492,7 +492,7 @@ bool passFilters(bt *btr, aobj *akey, void *rrow, list *flist, int tmatch) {
     listNode *ln, *ln2;
     bool      ret = 1;
     listIter *li  = listGetIterator(flist, AL_START_HEAD);
-    while ((ln = listNext(li)) != NULL) {
+    while ((ln = listNext(li))) {
         f_t *flt  = ln->value;
         if (tmatch != flt->tmatch) continue;
         aobj a    = getCol(btr, rrow, flt->cmatch, akey, tmatch);
@@ -533,7 +533,7 @@ static bool select_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
                           rrow, apk);
         } else {
             GET_LRUC
-            if (!addReplyRow(g->co.c, r, tmatch, apk, lruc)) ret = 0;
+            if (!addReplyRow(g->co.c, r, tmatch, apk, lruc, lrud)) ret = 0;
         }
         if (!(EREDIS)) decrRefCount(r);
     }
@@ -550,7 +550,7 @@ bool opSelectSort(cli  *c,    list *ll,   wob_t *wb,
         else {
             *sent      = *sent + 1;
             obsl_t *ob = v[i];
-            if (!addReplyRow(c, ob->row, tmatch, ob->apk, ob->lruc)) {
+            if (!addReplyRow(c, ob->row, tmatch, ob->apk, ob->lruc, ob->lrud)) {
                 ret = 0; break;
             }
         }
@@ -632,7 +632,7 @@ void ideleteAction(redisClient *c, cswc_t *w, wob_t *wb) {
         else {
             listNode  *ln;
             listIter  *li = listGetIterator(ll, AL_START_HEAD);
-            while((ln = listNext(li)) != NULL) {
+            while((ln = listNext(li))) {
                 aobj *apk = ln->value;
                 deleteRow(w->wf.tmatch, apk, matches, inds);
                 sent++;
@@ -678,7 +678,7 @@ static bool opUpdateSort(cli   *c,  list *ll,    cswc_t  *w,
                           g->up.matches, g->up.indices, g->up.vals,
                           g->up.vlens, g->up.cmiss, g->up.ue) == -1) {
                 ret = 0; break; /* negate presumed success */
-            }
+            } //NOTE: rrow is no longer valid, updateRow() can change it
         }
     }
     sortOBCleanup(v, listLength(ll), ofree);
@@ -713,14 +713,14 @@ void iupdateAction(cli  *c,      cswc_t *w,       wob_t *wb,
         } else {
             listNode  *ln;
             listIter  *li = listGetIterator(ll, AL_START_HEAD);
-            while((ln = listNext(li)) != NULL) {
+            while((ln = listNext(li))) {
                 aobj *apk  = ln->value;
                 void *rrow = btFind(g.up.btr, apk);
                 if (updateRow(g.co.c, g.up.btr, apk, rrow, g.co.w->wf.tmatch,
                               g.up.ncols, g.up.matches, g.up.indices, g.up.vals,
                               g.up.vlens, g.up.cmiss, g.up.ue) == -1) {
                     err = 1; break;
-                }
+                } //NOTE: rrow is no longer valid, updateRow() can change it
                 sent++;
             } listReleaseIterator(li);
         }

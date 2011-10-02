@@ -33,17 +33,13 @@ ALL RIGHTS RESERVED
 #include "range.h"
 #include "common.h"
 
-void joinGeneric(cli *c, jb_t *jb);
+void joinGeneric        (cli *c, jb_t *jb);
+bool validateJoinOrderBy(cli *c, jb_t *jb);
+
+void setupFirstJoinStep(cswc_t *w, jb_t *jb, qr_t *q);
 
 void init_ijp(ijp_t *ij);
 void switchIJ(ijp_t *ij);
 
-bool validateJoinOrderBy(cli *c, jb_t *jb);
-
-void explainJoin(cli *c, jb_t *jb);
-
-/* DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG */
-void dumpIJ(cli *c, printer *prn, int i, ijp_t *ij, ijp_t *nij);
-void dumpJB(cli *c, printer *prn, jb_t *jb);
 
 #endif /* __ALCHEMYDB_JOIN__H */ 

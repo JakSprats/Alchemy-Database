@@ -184,11 +184,12 @@ static void init_iter(btIterator  *iter, bt          *btr,
     iter->depth       = 0;
 }
 
+#define MAX_NUM_ITERS 64
 static int     WhichIter = 0;
-static btSIter BT_Iterators[MAX_NUM_INDICES]; /* avoid malloc()s */
+static btSIter BT_Iterators[MAX_NUM_ITERS]; /* avoid malloc()s */
 
 static btSIter *createIterator(bt *btr, iter_single *itl, iter_single *itn) {
-    assert(WhichIter >= 0 && WhichIter < MAX_NUM_INDICES);
+    assert(WhichIter >= 0 && WhichIter < MAX_NUM_ITERS);
     btSIter *siter = &BT_Iterators[WhichIter];
     siter->ktype   = btr->s.ktype;
     siter->which   = WhichIter; WhichIter++;

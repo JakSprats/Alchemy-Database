@@ -38,8 +38,8 @@ ALL RIGHTS RESERVED
 #include "stream.h"
 #include "common.h"
 
-extern r_tbl_t Tbl[MAX_NUM_TABLES];
-extern r_ind_t Index[MAX_NUM_INDICES];
+extern r_tbl_t *Tbl;
+extern r_ind_t *Index;
 
 bt *createUUBT(int num, uchar btype) {                //printf("createUUBT\n");
     bts_t bts;
@@ -95,7 +95,7 @@ static bt *createOBT(uchar ktype, uchar vtype, int tmatch, uchar btype) {
 bt *createDBT(uchar ktype, int tmatch) {
     r_tbl_t *rt = &Tbl[tmatch];
     if (rt->col_count == 2) {
-        bt *obtr = createOBT(ktype, rt->col_type[1], tmatch, BTREE_TABLE);
+        bt *obtr = createOBT(ktype, rt->col[1].type, tmatch, BTREE_TABLE);
         if (obtr) return obtr;
     }
     bts_t bts;
@@ -133,7 +133,7 @@ bt *createMCI_MIDBT(uchar ktype, int imatch) {
 bt *createMCIndexBT(list *clist, int imatch) {
     listNode *ln    = listFirst(clist);
     r_tbl_t  *rt    = &Tbl[Index[imatch].table];
-    uchar     ktype = rt->col_type[(int)(long)ln->value];
+    uchar     ktype = rt->col[(int)(long)ln->value].type;
     return createIBT(ktype, imatch, BTREE_MCI);
 }
 bt *createIndexNode(uchar ktype, uchar obctype) {                /* INODE_BT */
@@ -275,8 +275,8 @@ bool  btIndNodeOBCAdd(cli *c, bt *nbtr, aobj *apk, aobj *ocol) {//DEBUG_IADD_OBC
     if (abt_find(nbtr, ocol)) {
         if (c) addReply(c, shared.obindexviol); return 0;
     }
-    if      C_IS_I(apk->type) abt_insert(nbtr, ocol, (void *)(long)apk->i);
-    else /* C_IS_L */         abt_insert(nbtr, ocol, (void *)      apk->l);
+    if      C_IS_I(apk->type) abt_insert(nbtr, ocol, VOIDINT apk->i);
+    else /* C_IS_L */         abt_insert(nbtr, ocol, (void *)apk->l);
     return 1;
 }
 int   btIndNodeOBCDelete(bt *nbtr, aobj *ocol) {

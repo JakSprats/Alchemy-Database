@@ -47,7 +47,7 @@ ALL RIGHTS RESERVED
 
 bool  parseWCEnd(cli *c, char *token, cswc_t *w, wob_t *wb);
   
-uchar parseWC(cli *c, cswc_t *w, wob_t *wb, jb_t *jb);
+uchar parseWC(cli *c, cswc_t *w, wob_t *wb, jb_t *jb, list *ijl);
 void  parseWCReply(cli *c, cswc_t *w, wob_t *wb, uchar sop);
 
 bool  parseJoinReply(cli *c, jb_t *jb, char *clist, char *tlist, char *wc);

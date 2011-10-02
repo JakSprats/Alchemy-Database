@@ -29,21 +29,21 @@ ALL RIGHTS RESERVED
 #include <assert.h>
 
 #include "redis.h"
-#include "rdb.h"
 
 #include "luatrigger.h"
 #include "bt.h"
 #include "index.h"
 #include "lru.h"
 #include "stream.h"
+#include "ddl.h"
 #include "alsosql.h"
 #include "common.h"
 #include "rdb_alsosql.h"
 
-extern int      Num_tbls;
-extern r_tbl_t  Tbl[MAX_NUM_TABLES];
-extern int      Num_indx;
-extern r_ind_t  Index[MAX_NUM_INDICES];
+extern int Num_tbls; extern r_tbl_t *Tbl;   extern dict *TblD;
+extern int Num_indx; extern r_ind_t *Index; extern dict *IndD;
+
+extern dictType sdsDictType;
 
 // CONSTANT GLOBALS
 static uchar VIRTUAL_INDEX_TYPE = 255;
@@ -51,10 +51,18 @@ static uchar LUAT_JUST_ADD      = 0;
 static uchar LUAT_WITH_DEL      = 1;
 
 /* PROTOTYPES */
-int rdbSaveRawString(FILE *fp, sds s, size_t len);
+int       rdbSaveLen(FILE *fp, uint32_t len);
+int       rdbSaveRawString(FILE *fp, sds s, size_t len);
+int       rdbSaveStringObject(FILE *fp, robj *obj);
+int       rdbSaveType(FILE *fp, unsigned char type);
+uint32_t  rdbLoadLen(FILE *fp, int *isencoded);
+int       rdbLoadType(FILE *fp);
+robj     *rdbLoadStringObject(FILE *fp);
+
 
 static int saveLtc(FILE *fp, ltc_t *ltc) {
     if (rdbSaveRawString(fp, ltc->fname, sdslen(ltc->fname)) == -1) return -1;
+    if (rdbSaveLen(fp, ltc->tblarg)         == -1)                  return -1;
     if (rdbSaveLen(fp, ltc->ncols)          == -1)                  return -1;
     for (int j = 0; j < ltc->ncols; j++) {
         if (rdbSaveLen(fp, ltc->cmatchs[j]) == -1)                  return -1;
@@ -64,7 +72,9 @@ static int saveLtc(FILE *fp, ltc_t *ltc) {
 int rdbSaveLuaTrigger(FILE *fp, r_ind_t *ri) {
     int     tmatch = ri->table;
     luat_t *luat   = (luat_t *)ri->btr;
-    if (rdbSaveStringObject(fp, ri->obj) == -1)                     return -1;
+    robj *r = createStringObject(ri->name, sdslen(ri->name));
+    if (rdbSaveStringObject(fp, r) == -1)                           return -1;
+    decrRefCount(r);
     if (rdbSaveLen(fp, tmatch)    == -1)                            return -1;
     if (luat->del.ncols) {
         if (fwrite(&LUAT_WITH_DEL, 1, 1, fp) == 0)                  return -1;
@@ -81,6 +91,8 @@ static bool loadLtc(FILE *fp, ltc_t *ltc) {
     ltc->fname = sdsdup(o->ptr);
     decrRefCount(o);
     uint32 u;
+    if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)             return 0;
+    ltc->tblarg = (bool)u;
     if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)             return 0;
     ltc->ncols = u;
     for (int j = 0; j < ltc->ncols; j++) {
@@ -122,7 +134,12 @@ static int rdbSaveAllRows(FILE *fp, bt *btr, bt_n *x) {
     }
     return 0;
 }
-int rdbSaveBT(FILE *fp, bt *btr) {
+#define DEBUG_SAVE_DATA_BT \
+  printf("SaveTable: tmatch: %d imatch: %d\n", tmatch, rt->vimatch);
+#define DEBUG_SAVE_INDEX_BT \
+  printf("SaveIndex: imatch: %d\n", imatch);
+
+int rdbSaveBT(FILE *fp, bt *btr) { //printf("rdbSaveBT\n");
     if (!btr) {
         if (fwrite(&VIRTUAL_INDEX_TYPE, 1, 1, fp) == 0)         return -1;
         return 0;
@@ -131,13 +148,17 @@ int rdbSaveBT(FILE *fp, bt *btr) {
     int tmatch = btr->s.num;
     if (rdbSaveLen(fp, tmatch) == -1)                           return -1;
     if (btr->s.btype == BTREE_TABLE) { /* DATA */
-        r_tbl_t *rt = &Tbl[tmatch];
+        r_tbl_t *rt = &Tbl[tmatch]; //DEBUG_SAVE_DATA_BT
         if (rdbSaveLen(fp, rt->vimatch) == -1)                  return -1;
-        if (rdbSaveStringObject(fp, rt->name) == -1)            return -1;
+        robj *r = createStringObject(rt->name, sdslen(rt->name));
+        if (rdbSaveStringObject(fp, r) == -1)                   return -1;
+        decrRefCount(r);
         if (rdbSaveLen(fp, rt->col_count) == -1)                return -1;
         for (int i = 0; i < rt->col_count; i++) {
-            if (rdbSaveStringObject(fp, rt->col_name[i]) == -1) return -1;
-            if (rdbSaveLen(fp, (int)rt->col_type[i]) == -1)     return -1;
+            robj *r = _createStringObject(rt->col[i].name);
+            if (rdbSaveStringObject(fp, r) == -1)               return -1;
+            decrRefCount(r);
+            if (rdbSaveLen(fp, (int)rt->col[i].type) == -1)     return -1;
         }
         if (fwrite(&(btr->s.ktype),    1, 1, fp) == 0)          return -1;
         if (rdbSaveLen(fp, btr->numkeys)       == -1)           return -1;
@@ -145,9 +166,11 @@ int rdbSaveBT(FILE *fp, bt *btr) {
             if (rdbSaveAllRows(fp, btr, btr->root) == -1)       return -1;
         }
     } else {                           /* INDEX */
-        int imatch = tmatch;
-        r_ind_t *ri = &Index[imatch];
-        if (rdbSaveStringObject(fp, ri->obj) == -1)             return -1;
+        int      imatch = tmatch;
+        r_ind_t *ri     = &Index[imatch]; //DEBUG_SAVE_INDEX_BT
+        robj    *r      = createStringObject(ri->name, sdslen(ri->name));
+        if (rdbSaveStringObject(fp, r) == -1)                   return -1;
+        decrRefCount(r);
         if (rdbSaveLen(fp, ri->table) == -1)                    return -1;
         if (ri->clist) {
             if (rdbSaveLen(fp, ri->nclist) == -1)               return -1;
@@ -195,81 +218,107 @@ static int rdbLoadRow(FILE *fp, bt *btr, int tmatch) {
     aobj apk;
     convertStream2Key(stream, &apk, btr);
     r_tbl_t *rt = &Tbl[tmatch];
-    UPDATE_AUTO_INC(rt->col_type[0], apk);
+    UPDATE_AUTO_INC(rt->col[0].type, apk);
     releaseAobj(&apk);
     return 0;
 }
 
-bool rdbLoadBT(FILE *fp) {
+#define DEBUG_LOAD_DATA_BT \
+  printf("LoadTable: tmatch: %d imatch: %d\n", tmatch, imatch);
+#define DEBUG_LOAD_INDEX_BT \
+  printf("LoadIndex: imatch: %d\n", imatch);
+
+//TODO refactor into newTable() & newIndex() calls
+bool rdbLoadBT(FILE *fp) { //printf("rdbLoadBT\n");
     uint32  u; uchar   btype;
     if (fread(&btype, 1, 1, fp) == 0)                               return 0;
     if (btype == VIRTUAL_INDEX_TYPE)                                return 1;
     if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)             return 0;
     int tmatch = (int)u;
     if (btype == BTREE_TABLE) { /* BTree w/ DATA */
+        r_tbl_t *rt   = &Tbl[tmatch]; initTable(rt);
         if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)         return 0;
         int imatch    = u;
-        r_tbl_t *rt   = &Tbl[tmatch]; bzero(rt, sizeof(r_tbl_t));
-        bzero(rt, sizeof(r_tbl_t)); //TODO use initTable();
-        rt->lruc      = rt->lrui       = rt->sk         = rt->fk_cmatch = \
-                        rt->fk_otmatch = rt->fk_ocmatch = -1;
         //TODO [lruc, lrui, sk, fk_cmatch, fk_otmatch, fk_ocmatch] -> PERSISTENT
-        rt->vimatch   = imatch;
-        r_ind_t *ri   = &Index[imatch]; bzero(ri, sizeof(r_ind_t));
-        ri->virt      =  1;
-        ri->table     =  tmatch;
-        ri->column    =  0; /* PK */
-        ri->obc       = -1;
-        ri->done      =  1; ri->ofst = -1;
-        if (!(rt->name = rdbLoadStringObject(fp)))                  return 0;
+        rt->vimatch   = imatch; //DEBUG_LOAD_DATA_BT
+        robj *r;
+        if (!(r = rdbLoadStringObject(fp)))                         return 0;
+        rt->name = sdsdup(r->ptr);
+        decrRefCount(r);
         if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)         return 0;
         rt->col_count = u;
-        for (int i = 0; i < Tbl[tmatch].col_count; i++) {
-            if (!(rt->col_name[i] = rdbLoadStringObject(fp)))       return 0;
+        rt->col       = malloc(sizeof(r_col_t) * rt->col_count); // FREE 081
+        bzero(rt->col, sizeof(r_col_t) * rt->col_count);
+        rt->cdict     = dictCreate(&sdsDictType, NULL);          // FREE 090
+        for (int i = 0; i < rt->col_count; i++) {
+            robj *r;
+            if (!(r = rdbLoadStringObject(fp)))                     return 0;
+            sds       cname   = (sds)r->ptr;
+            rt->col[i].name   = sdsdup(cname);                  // DEST 082
+            ASSERT_OK(dictAdd(rt->cdict, sdsdup(cname), VOIDINT (i + 1)));
+            decrRefCount(r);
             if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)     return 0;
-            rt->col_type[i] = (uchar)u;
+            rt->col[i].type   = (uchar)u;
+            rt->col[i].imatch = -1;
         }
-
-        /* BTREE implies an index on "tbl_pk_index" -> autogenerate */
-        sds s = P_SDS_EMT "%s_%s_%s", (char *)rt->name->ptr,
-                                      (char *)rt->col_name[0]->ptr,
-                                      INDEX_DELIM);
-        ri->obj = createStringObject(s, sdslen(s));
-        ri->btr = NULL;
-        if (Num_indx < (imatch + 1)) Num_indx = imatch + 1;
         uchar ktype;
         if (fread(&ktype,    1, 1, fp) == 0)                        return 0;
-        rt->btr = createDBT(ktype, tmatch);
+        rt->btr  = createDBT(ktype, tmatch);
         uint32 bt_nkeys; 
         if ((bt_nkeys = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)  return 0;
         for (uint32 i = 0; i < bt_nkeys; i++) {
             if (rdbLoadRow(fp, rt->btr, tmatch) == -1)              return 0;
         }
+        ASSERT_OK(dictAdd(TblD, sdsdup(rt->name), VOIDINT(tmatch + 1)));
         if (Num_tbls < (tmatch + 1)) Num_tbls = tmatch + 1;
+
+        //TODO copy of newIndex() -> refactor
+        /* BTREE implies an index on "tbl_pk_index" -> autogenerate */
+        r_ind_t *ri       = &Index[imatch]; bzero(ri, sizeof(r_ind_t));
+        ri->name          = P_SDS_EMT "%s_%s_%s", rt->name, rt->col[0].name,
+                                                  INDEX_DELIM);
+        ri->table         =  tmatch; ri->column =  0; /* PK */
+        ri->virt          =  1;      ri->cnstr  = CONSTRAINT_NONE;
+        ri->obc           = -1;
+        ri->done          =  1; ri->ofst = -1;
+
+        rt->col[0].imatch = imatch;
+        if (!rt->ilist) rt->ilist  = listCreate();       // DEST 088
+        listAddNodeTail(rt->ilist, VOIDINT imatch);
+        rt->col[0].indxd  = 1;
+        rt->vimatch       = imatch;
+
+        ASSERT_OK(dictAdd(IndD, sdsdup(ri->name), VOIDINT(imatch + 1)));
+        if (Num_indx < (imatch + 1)) Num_indx = imatch + 1;
     } else {                        /* INDEX */
-        int imatch  = tmatch;
+        int imatch  = tmatch; //DEBUG_LOAD_INDEX_BT
         r_ind_t *ri = &Index[imatch]; bzero(ri, sizeof(r_ind_t));
-        if (!(ri->obj = rdbLoadStringObject(fp)))                   return 0;
-        if (!(ri->obj))                                             return 0;
+        robj *r;
+        if (!(r = rdbLoadStringObject(fp)))                         return 0;
+        ri->name = sdsdup(r->ptr);
+        decrRefCount(r);
         if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)         return 0;
         ri->table   = (int)u;
+        r_tbl_t *rt = &Tbl[ri->table];
         if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)         return 0;
         if (u == 1) { /* Single Column */
             if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)     return 0;
             ri->column = (int)u;
             ri->nclist = 0; ri->bclist = NULL; ri->clist  = NULL;
         } else { /* MultipleColumnIndexes */
-            Tbl[ri->table].nmci++;
+            rt->nmci++;
             ri->nclist  = u;
             ri->bclist  = malloc(ri->nclist * sizeof(int)); /* FREE ME 053 */
             ri->clist   = listCreate();                  /* DESTROY ME 054 */
             for (int i = 0; i < ri->nclist; i++) {
                 if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR) return 0;
                 if (!addC2MCI(NULL, u, ri->clist))                  return 0;
-                if (!i) ri->column = u;
-                ri->bclist[i] = u;
+                if (!i) ri->column           = u;
+                ri->bclist[i]                = u;
+                rt->col[ri->bclist[i]].indxd = 1; /* used in updateRow OVRWR */
             }
         }
+        ri->virt    = 0;
         if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)         return 0;
         ri->cnstr   = (int)u;
         if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)         return 0;
@@ -285,20 +334,25 @@ bool rdbLoadBT(FILE *fp) {
         // NOTE: obc: -1 not handled well, so incr on SAVE, decr on LOAD
         ri->obc     = ((int)u) - 1; //DECR
         ri->done    =  1; ri->ofst = -1;
+        rt->col[ri->column].imatch = imatch;
+        if (!rt->ilist) rt->ilist  = listCreate();       // DEST 088
+        listAddNodeTail(rt->ilist, VOIDINT imatch);
         uchar ktype;
         if (fread(&ktype,    1, 1, fp) == 0)                        return 0;
         ri->btr = (ri->clist) ?  createMCIndexBT(ri->clist, imatch) :
                                  createIndexBT  (ktype,     imatch);
-        ri->virt    = 0;
+        ASSERT_OK(dictAdd(IndD, sdsdup(ri->name), VOIDINT(imatch + 1)));
+
         if (Num_indx < (imatch + 1)) Num_indx = imatch + 1;
     }
     return 1;
 }
 
-void rdbLoadFinished() { // Indexes are built AFTER data is loaded
+ // NOTE: Indexes are NEVER STORED, they are BUILT AFTER data is loaded
+void rdbLoadFinished() { //printf("rdbLoadFinished\n");
     for (int imatch = 0; imatch < Num_indx; imatch++) {
         r_ind_t *ri = &Index[imatch];
-        if (!ri->obj) continue; // previously deleted
+        if (!ri->name) continue; // previously deleted
         if (ri->virt) continue;
         bt   *btr  = getBtr(ri->table);
         buildIndex(NULL, btr, imatch, -1);

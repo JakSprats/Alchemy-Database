@@ -37,13 +37,13 @@ ALL RIGHTS RESERVED
 #include "row.h"
 #include "rpipe.h"
 #include "ddl.h"
-#include "alsosql.h"
 #include "parser.h"
+#include "find.h"
+#include "alsosql.h"
 #include "colparse.h"
 #include "cr8tblas.h"
 
-extern int      Num_tbls       [MAX_NUM_TABLES];
-extern r_tbl_t  Tbl[MAX_NUM_TABLES];
+extern r_tbl_t *Tbl;
 extern char    *Col_type_defs[];
 
 // CONSTANT GLOBALS
@@ -65,15 +65,14 @@ static void cpyColDef(sds  *cdefs,
                       int   i,
                       bool  conflix,
                       bool  x[]) {
+    r_tbl_t *rt = &Tbl[tmatch];
     if (conflix && x[i]) { /* prepend tbl_name */
-        robj *tname = Tbl[tmatch].name;
-        *cdefs      = sdscatprintf(*cdefs, "%s_", (char *)tname->ptr);
+        *cdefs      = sdscatprintf(*cdefs, "%s_", rt->name);
     }
-    robj *cname = Tbl[tmatch].col_name[cmatch];
-    char *ctype = Col_type_defs[Tbl[tmatch].col_type[cmatch]];
+    sds   cname = rt->col[cmatch].name;
+    char *ctype = Col_type_defs[rt->col[cmatch].type];
     char *finc  = (i == (qcols - 1)) ? ")" : ",";
-    *cdefs      = sdscatprintf(*cdefs, "%s %s%s",
-                                        (char *)cname->ptr, ctype, finc);
+    *cdefs      = sdscatprintf(*cdefs, "%s %s%s", cname, ctype, finc);
 }
 static bool internalCr8Tbl(redisClient *c,
                            redisClient *rfc,
@@ -112,8 +111,8 @@ bool createTableFromJoin(redisClient *c,
         x[i] = 0;
         for (int j = 0; j < qcols; j++) {
             if (i == j) continue;
-            sds cname1 = Tbl[js[i].t].col_name[js[i].c]->ptr;
-            sds cname2 = Tbl[js[j].t].col_name[js[j].c]->ptr;
+            sds cname1 = Tbl[js[i].t].col[js[i].c].name;
+            sds cname2 = Tbl[js[j].t].col[js[j].c].name;
             if (sdslen(cname1) == sdslen(cname2) && !strcmp(cname1, cname2)) {
                 x[i] = 1;
                 break;
@@ -122,6 +121,7 @@ bool createTableFromJoin(redisClient *c,
     }
     return internalCr8Tbl(c, rfc, qcols, AIdum, -1, js, x);
 }
+
 void createTableSelect(redisClient *c) {
     char *cmd = c->argv[3]->ptr;
     int axs = getAccessCommNum(cmd);
@@ -129,25 +129,28 @@ void createTableSelect(redisClient *c) {
         addReply(c, shared.create_table_err);
         return;
     }
-    int    cmatchs[MAX_COLUMN_PER_TABLE];
-    bool   cstar  =  0;
-    int    qcols  =  0;
-    int    tmatch = -1;
-    bool   join   =  0;
+    list  *cmatchl = listCreate();
+    bool   cstar   =  0;
+    int    qcols   =  0;
+    int    tmatch  = -1;
+    bool   join    =  0;
     int    rargc;
-    robj **rargv = (*AccessCommands[axs].parse)(cmd, &rargc);
-    if (!rargv) goto cr8_tblassel_end;
-    if (!strcmp(rargv[0]->ptr, "SCAN")) {//TODO CREATE TABLE AS SCAN
+    robj **rargv   = (*AccessCommands[axs].parse)(cmd, &rargc);
+    if (!rargv) { listRelease(cmatchl); return; }
+    if (!strcasecmp(rargv[0]->ptr, "SCAN")) {//TODO CREATE TABLE AS SCAN
         addReply(c, shared.cr8tbl_scan);
-        goto cr8_tblassel_end;
+        listRelease(cmatchl); zfree(rargv); return;
     }
-    if (!parseSelectReply(c, 0, NULL, &tmatch, cmatchs, &qcols, &join,
-                          &cstar,  rargv[1]->ptr, rargv[2]->ptr,
-                          rargv[3]->ptr, rargv[4]->ptr)) goto cr8_tblassel_end;
+    if (!parseSelect(c, 0, NULL, &tmatch, cmatchl, &qcols, &join,
+                     &cstar,  rargv[1]->ptr, rargv[2]->ptr,
+                     rargv[3]->ptr, rargv[4]->ptr)) {
+        listRelease(cmatchl); zfree(rargv); return;
+    }
     if (cstar) {
         addReply(c, shared.create_table_as_count);
-        goto cr8_tblassel_end;
+        listRelease(cmatchl); zfree(rargv); return;
     }
+    CMATCHS_FROM_CMATCHL
     sds          tname = c->argv[2]->ptr;
     sds          clist = rargv[1]->ptr;
     sds          tlist = rargv[3]->ptr;
@@ -193,8 +196,7 @@ void createTableSelect(redisClient *c) {
         } else addReply(c, shared.ok);
     }
 
-cr8_tblassel_end:
-    zfree(rargv);
+    listRelease(cmatchl); zfree(rargv);
 }
 int getAccessCommNum(char *cmd) {
     int   axs    = -1;

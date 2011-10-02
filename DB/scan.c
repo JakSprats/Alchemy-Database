@@ -31,6 +31,7 @@ ALL RIGHTS RESERVED
 
 #include "redis.h"
 
+#include "debug.h"
 #include "embed.h"
 #include "bt_iterator.h"
 #include "wc.h"
@@ -40,10 +41,11 @@ ALL RIGHTS RESERVED
 #include "index.h"
 #include "colparse.h"
 #include "range.h"
-#include "alsosql.h"
+#include "find.h"
 #include "aobj.h"
+#include "alsosql.h"
 
-extern r_tbl_t  Tbl[MAX_NUM_TABLES];
+extern r_tbl_t *Tbl; // used in getBtr()
 extern uchar    OutputMode;
 
 static void scanJoin(cli *c) {
@@ -91,29 +93,33 @@ static void scanJoin(cli *c) {
 sj_end:
     destroy_join_block(c, &jb);
 }
+
 /* SYNTAX
    1.) SCAN * FROM tbl
    2.) SCAN * FROM tbl ORDER_BY_CLAUSE
    3.) SCAN * FROM tbl WHERE clause [ORDER_BY_CLAUSE]
 */
 void tscanCommand(redisClient *c) { //printf("tscanCommand\n");
-    int  cmatchs[MAX_COLUMN_PER_TABLE];
     aobj aL, aH;
-    bool nowc   =  0; /* NO WHERE CLAUSE */
-    bool cstar  =  0;
-    int  qcols  =  0;
-    int  tmatch = -1;
-    bool join   =  0;
-    sds  where  = (c->argc > 4) ? c->argv[4]->ptr : NULL;
-    sds  wc     = (c->argc > 5) ? c->argv[5]->ptr : NULL;
+    list *cmatchl = listCreate();
+    bool  nowc    =  0; /* NO WHERE CLAUSE */
+    bool  cstar   =  0;
+    int   qcols   =  0;
+    int   tmatch  = -1;
+    bool  join    =  0;
+    sds   where   = (c->argc > 4) ? c->argv[4]->ptr : NULL;
+    sds   wc      = (c->argc > 5) ? c->argv[5]->ptr : NULL;
     if ((where && !*where) || (wc && !*wc)) {
-        addReply(c, shared.scansyntax);                      return;
+        addReply(c, shared.scansyntax);  listRelease(cmatchl); return;
     }
-    if (!parseSelectReply(c, 1, &nowc, &tmatch, cmatchs, &qcols, &join,
-                          &cstar, c->argv[1]->ptr, c->argv[2]->ptr,
-                          c->argv[3]->ptr, where))            return;
-    if (!nowc && !wc) { addReply(c, shared.scansyntax);       return; }
-    if (join) { scanJoin(c);                                  return ; }
+    if (!parseSelect(c, 1, &nowc, &tmatch, cmatchl, &qcols, &join,
+                     &cstar, c->argv[1]->ptr, c->argv[2]->ptr,
+                     c->argv[3]->ptr, where)) { listRelease(cmatchl); return; }
+    if (!nowc && !wc) {
+        addReply(c, shared.scansyntax); listRelease(cmatchl); return;
+    }
+    if (join) { scanJoin(c); listRelease(cmatchl); return; }
+    CMATCHS_FROM_CMATCHL
 
     c->LruColInSelect = initLRUCS(tmatch, cmatchs, qcols);
     cswc_t w; wob_t wb;
@@ -133,7 +139,7 @@ void tscanCommand(redisClient *c) { //printf("tscanCommand\n");
         w.lvr = sdsdup(where); leftoverParsingReply(c, w.lvr); goto tscan_end;
     }
     if (!nowc && !wb.nob) { /* WhereClause exists and no ORDER BY */
-        uchar prs = parseWC(c, &w, &wb, NULL);
+        uchar prs = parseWC(c, &w, &wb, NULL, NULL);
         if (prs == PARSE_GEN_ERR) {
             addReply(c, shared.scansyntax);                    goto tscan_end;
         }
@@ -164,6 +170,5 @@ void tscanCommand(redisClient *c) { //printf("tscanCommand\n");
     }
 
 tscan_end:
-    destroy_wob(&wb);
-    destroy_check_sql_where_clause(&w);
+    listRelease(cmatchl); destroy_wob(&wb); destroy_check_sql_where_clause(&w);
 }

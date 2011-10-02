@@ -30,27 +30,26 @@ ALL RIGHTS RESERVED
 #include <unistd.h>
 #include <ctype.h>
 
-#include "redis.h"
 #include "adlist.h"
+#include "redis.h"
 
+#include "debug.h"
 #include "colparse.h"
 #include "index.h"
 #include "range.h"
+#include "find.h"
 #include "aobj.h"
 #include "common.h"
 #include "filter.h"
 
-extern r_tbl_t Tbl[MAX_NUM_TABLES];
-extern r_ind_t Index[MAX_NUM_INDICES];
+extern r_tbl_t *Tbl;
+extern r_ind_t *Index;
 
 extern char *OP_Desc[];
 
 void initFilter(f_t *flt) {
     bzero(flt, sizeof(f_t));
-    flt->jan    = -1;
-    flt->imatch = -1;
-    flt->tmatch = -1;
-    flt->cmatch = -1;
+    flt->jan    = flt->imatch = flt->tmatch = flt->cmatch = -1;
     flt->op     = NONE;
     initAobj(&flt->akey);
     initAobj(&flt->alow);
@@ -111,10 +110,10 @@ void convertFilterListToAobj(list *flist) {
     if (!flist) return;
     listNode *ln;
     listIter *li = listGetIterator(flist, AL_START_HEAD);
-    while((ln = listNext(li)) != NULL) {
+    while((ln = listNext(li))) {
         f_t *flt = ln->value;
         if (flt->inl) continue;
-        int ctype = Tbl[flt->tmatch].col_type[flt->cmatch];
+        int ctype = Tbl[flt->tmatch].col[flt->cmatch].type;
         if (flt->key) {
             initAobjFromStr(&flt->akey,  flt->key,  sdslen(flt->key),  ctype);
         }
@@ -122,20 +121,17 @@ void convertFilterListToAobj(list *flist) {
             initAobjFromStr(&flt->alow,  flt->low,  sdslen(flt->low),  ctype);
             initAobjFromStr(&flt->ahigh, flt->high, sdslen(flt->high), ctype);
         }
-    }
-    listReleaseIterator(li);
+    } listReleaseIterator(li);
 }
 void dumpFilter(printer *prn, f_t *flt, char *prfx) {
     if (!flt) return;
     int t = flt->tmatch; int c = flt->cmatch; int i = flt->imatch;
     (*prn)("\t%sSTART dumpFilter: (%p) iss: %d\n", prfx, (void *)flt, flt->iss);
     (*prn)("\t%s\tjan:    %d (%s)\n", prfx, flt->jan, getJoinAlias(flt->jan));
-    (*prn)("\t%s\ttmatch: %d (%s)\n", prfx, t, (t == -1) ? "" :
-                                         (char *)Tbl[t].name->ptr);
+    (*prn)("\t%s\ttmatch: %d (%s)\n", prfx, t, (t == -1) ? "" : Tbl[t].name);
     (*prn)("\t%s\tcmatch: %d (%s)\n", prfx, c, (c == -1) ? "" :
-                                         (char *)Tbl[t].col_name[c]->ptr);
-    (*prn)("\t%s\timatch: %d (%s)\n", prfx, i, (i == -1) ? "" :
-                                         (char *)Index[i].obj->ptr);
+                                         Tbl[t].col[c].name);
+    (*prn)("\t%s\timatch: %d (%s)\n", prfx, i, (i == -1) ? "" : Index[i].name);
     (*prn)("\t%s\top:     %d (%s)\n", prfx, flt->op, OP_Desc[flt->op]);
     if (flt->key) {
         (*prn)("\t%s\tkey:    %s\n",      prfx, flt->key);
@@ -159,11 +155,10 @@ void dumpFilter(printer *prn, f_t *flt, char *prfx) {
         (*prn)("\t%s\tinl len: %d\n", prfx, flt->inl->len);
         listNode *ln;
         listIter *li = listGetIterator(flt->inl, AL_START_HEAD);
-        while((ln = listNext(li)) != NULL) {
+        while((ln = listNext(li))) {
             aobj *a = ln->value;
             (*prn)("\t%s\t\t", prfx); dumpAobj(prn, a);
-        }
-        listReleaseIterator(li);
+        } listReleaseIterator(li);
     }
     dumpFL(prn, "\t\t\t", "KLIST", flt->klist);
 }
