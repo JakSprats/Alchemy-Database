@@ -391,7 +391,7 @@ function populate() {
 
 function simple_test_btree_table_transition() {
   echo "simple_test_btree_table_transition"
-  $CLI DROP TABLE bt_trans
+  $CLI DROP TABLE bt_trans > /dev/null
   $CLI CREATE TABLE bt_trans "(id INT, t TEXT)"
   LIM=64
   I=1
@@ -412,7 +412,7 @@ function simple_test_btree_table_transition() {
 }
 
 function init_UU() {
-  $CLI DROP TABLE UU
+  $CLI DROP TABLE UU > /dev/null
   $CLI CREATE TABLE UU "(pk INT, fk1 INT)"
 }
 function insert_UU() {
@@ -535,7 +535,7 @@ function scanner() {
 }
 
 function init_x3() {
-  $CLI DROP TABLE X3
+  $CLI DROP TABLE X3 > /dev/null
   $CLI CREATE TABLE X3  "(id int, f float, t text, i int)";
 }
 function insert_x3() {
@@ -588,7 +588,7 @@ function test_x3() {
 }
 
 function init_x4() {
-  $CLI DROP   TABLE X4
+  $CLI DROP   TABLE X4 > /dev/null
   $CLI CREATE TABLE X4 "(id int, f float, t text)";
   $CLI CREATE INDEX X4_f_index ON X4 "(f)"
 }
@@ -630,7 +630,7 @@ function test_x4() {
 }
 
 function init_x5() {
-  $CLI DROP   TABLE X5
+  $CLI DROP   TABLE X5 > /dev/null
   $CLI CREATE TABLE X5  "(id float, t text, i int)";
 }
 function insert_x5() {
@@ -653,9 +653,6 @@ function test_x5() {
 }
 
 function sql_float_tests() {
-  $CLI DROP TABLE X3
-  $CLI DROP TABLE X4
-  $CLI DROP TABLE X5
   test_x3
   test_x4
   test_x5
@@ -666,7 +663,7 @@ function float_tests() {
 
 
 function create_table_as_select_customer() {
-  $CLI DROP TABLE copy
+  $CLI DROP TABLE copy > /dev/null
   echo CREATE TABLE copy SELECT id,hobby,name,employee FROM customer WHERE hobby BETWEEN a AND z
   $CLI CREATE TABLE copy "SELECT id,hobby,name,employee FROM customer WHERE hobby BETWEEN 'a' AND 'z'"
   $CLI DESC copy
@@ -779,8 +776,9 @@ function all_tests() {
   test_iup
   $CLI DEBUG RELOAD
 
-  create_1000_tables
-  create_100_columns
+  create_1000_tables  > /dev/null
+  create_1000_columns > /dev/null
+  $CLI DESC foo_999
   $CLI DEBUG RELOAD
 }
 function all_tests_plus_benchmarks() {
@@ -901,12 +899,15 @@ alias RECONF="$CLI CONFIG ADD LUA test/alchemy.lua"
 
 # STRING_PK STRING_PK STRING_PK STRING_PK STRING_PK STRING_PK STRING_PK
 function init_string_pk_one() {
+  $CLI DROP TABLE s_one > /dev/null
   $CLI CREATE TABLE s_one "(id TEXT, val TEXT)"
 }
 function init_string_pk_two() {
+  $CLI DROP TABLE s_two > /dev/null
   $CLI CREATE TABLE s_two "(id TEXT, val TEXT)"
 }
 function init_string_pk_three() {
+  $CLI DROP TABLE s_three > /dev/null
   $CLI CREATE TABLE s_three "(id TEXT, val TEXT)"
 }
 
@@ -936,9 +937,6 @@ function insert_string_pk_three() {
 }
 
 function pk_string_join_tests() {
-  $CLI DROP TABLE s_one
-  $CLI DROP TABLE s_two
-  $CLI DROP TABLE s_three
   init_string_pk_one
   init_string_pk_two
   init_string_pk_three
@@ -961,12 +959,15 @@ function pk_string_join_tests() {
 
 # FLOAT_PK FLOAT_PK FLOAT_PK FLOAT_PK FLOAT_PK FLOAT_PK FLOAT_PK FLOAT_PK
 function init_float_pk_one() {
+  $CLI DROP TABLE f_one > /dev/null
   $CLI CREATE TABLE f_one "(id FLOAT, val TEXT)"
 }
 function init_float_pk_two() {
+  $CLI DROP TABLE f_two > /dev/null
   $CLI CREATE TABLE f_two "(id FLOAT, val TEXT)"
 }
 function init_float_pk_three() {
+  $CLI DROP TABLE f_three > /dev/null
   $CLI CREATE TABLE f_three "(id FLOAT, val TEXT)"
 }
 function insert_float_pk_one() {
@@ -995,9 +996,6 @@ function insert_float_pk_three() {
 }
 
 function pk_float_join_tests() {
-  $CLI DROP TABLE f_one
-  $CLI DROP TABLE f_two
-  $CLI DROP TABLE f_three
   init_float_pk_one
   init_float_pk_two
   init_float_pk_three
@@ -1181,7 +1179,7 @@ function amem_post(){
   echo "mem_change: $[${MEMA_POST}-${MEMA_PRE}]  PRE: $MEMA_PRE POST: $MEMA_POST"
 }
 function init_longcol() {
-  $CLI DROP TABLE longcol
+  $CLI DROP TABLE longcol > /dev/null
   $CLI CREATE TABLE longcol "(id INT, t TEXT, t2 TEXT)"
 }
 function insert_longcol() {
@@ -1203,7 +1201,7 @@ function insert_longcol() {
 
 
 function init_j1() {
-  $CLI DROP TABLE j1
+  $CLI DROP TABLE j1 > /dev/null
   $CLI CREATE TABLE j1 "(pk INT, fk INT, t TEXT)"
   $CLI CREATE INDEX i_j1_fk ON j1 "(fk)"
 }
@@ -1222,7 +1220,7 @@ function insert_j1() {
   $CLI INSERT INTO j1 VALUES "(12,5,'SAME')"
 }
 function init_j2() {
-  $CLI DROP TABLE j2
+  $CLI DROP TABLE j2 > /dev/null
   $CLI CREATE TABLE j2 "(pk INT, t TEXT)"
 }
 function insert_j2() {
@@ -1261,7 +1259,7 @@ function many_selfjoin() {
 }
 
 function init_mci() {
-  $CLI DROP TABLE MCI
+  $CLI DROP TABLE MCI > /dev/null
   $CLI CREATE TABLE MCI "(id INT, fk1 INT, fk2 TEXT, fk3 INT, fk4 INT, val TEXT)"
 }
 function insert_mci() {
@@ -1342,7 +1340,7 @@ function mci_full_delete() {
   $CLI DUMP MCI
 }
 function init_second_mci() {
-  $CLI DROP TABLE SECOND_MCI
+  $CLI DROP TABLE SECOND_MCI > /dev/null
   $CLI CREATE TABLE SECOND_MCI "(id INT, fk1 INT, fk2 TEXT, name TEXT)"
 }
 function add_indexes_to_second_mci() {
@@ -1428,7 +1426,7 @@ function EXPLAIN() {
 }
 
 function init_dmci() {
-  $CLI DROP TABLE DMCI
+  $CLI DROP TABLE DMCI > /dev/null
   $CLI CREATE TABLE DMCI "(id INT, fk1 INT, fk2 INT, fk3 INT, val TEXT)"
 }
 function insert_dmci() {
@@ -1918,7 +1916,7 @@ function bulk_inserter() {
 }
 
 function test_partial() {
-  $CLI DROP TABLE partial;
+  $CLI DROP TABLE partial > /dev/null
   $CLI CREATE TABLE partial "(pk INT, fk1 INT, fk2 INT, fk3 INT, fk4 INT, fk5 INT, fk6 INT, t1 TEXT, t2 TEXT)";
   $CLI CREATE INDEX i_p_2 ON partial "(fk2)"
   $CLI INSERT INTO partial "(fk3, pk, fk5)" VALUES "(333,1,55555)" ;
@@ -2330,7 +2328,7 @@ function test_orderby_index_uu_ul_lu_ll() {
 }
 
 function test_orderby_index_20_entries() {
-  $CLI DROP TABLE ob
+  $CLI DROP TABLE ob > /dev/null
   $CLI CREATE TABLE ob "(pk INT, fk INT, ts INT, col TEXT)";
   $CLI CREATE INDEX i_ob ON ob "(fk)" ORDER BY ts
   $CLI INSERT INTO ob VALUES "(,1,10,'ten')"
@@ -2361,7 +2359,7 @@ function test_orderby_index_20_entries() {
 }
 
 function insert_10K_t() {
-  $CLI DROP TABLE t
+  $CLI DROP TABLE t > /dev/null
   $CLI CREATE TABLE t "(pk INT, fk INT, val TEXT)"
   $CLI CREATE INDEX i_t ON t "(fk)"
   I=1;
@@ -2376,7 +2374,7 @@ function insert_10K_t() {
 }
 
 function test_mci_obyindex() {
-  $CLI DROP TABLE mci_ob
+  $CLI DROP TABLE mci_ob > /dev/null
   $CLI CREATE TABLE mci_ob "(pk INT, fk1 INT, fk2 INT, ts INT, col TEXT)";
   $CLI CREATE INDEX i_mciob ON mci_ob "(fk1, fk2)" ORDER BY ts;
   $CLI INSERT INTO mci_ob VALUES "(,1,1,200,'111')"
@@ -2401,7 +2399,7 @@ function test_mci_obyindex() {
 }
 
 function test_joins_w_order_by_permutations() {
-  $CLI DROP TABLE join_1
+  $CLI DROP TABLE join_1 > /dev/null
   $CLI CREATE TABLE join_1 "(pk INT, fk1 INT, ts INT, col TEXT)"
   $CLI CREATE INDEX i_j1 ON join_1 "(fk1)"
   $CLI INSERT INTO join_1 VALUES "(,1,999,'11')"
@@ -2413,7 +2411,7 @@ function test_joins_w_order_by_permutations() {
   $CLI INSERT INTO join_1 VALUES "(,2,993,'23')"
   $CLI INSERT INTO join_1 VALUES "(,2,992,'24')"
   $CLI INSERT INTO join_1 VALUES "(,2,991,'25')"
-  $CLI DROP TABLE join_ob
+  $CLI DROP TABLE join_ob > /dev/null
   $CLI CREATE TABLE join_ob "(pk INT, fk1 INT, ts INT, col TEXT)"
   $CLI CREATE INDEX i_job ON join_ob "(fk1)" ORDER BY ts
   $CLI INSERT INTO join_ob VALUES "(,1,999,'11')"
@@ -2436,7 +2434,7 @@ function test_joins_w_order_by_permutations() {
 }
 
 function populate_table_t_w_3M_entries() {
-  $CLI DROP TABLE t
+  $CLI DROP TABLE t > /dev/null
   $CLI CREATE TABLE t "(pk INT, fk INT, val TEXT)"
   $CLI CREATE INDEX i_t ON t "(fk)"
   taskset -c 1 ./alchemy-gen-benchmark -n 3000000 -c 200 -s 1 -m 100,10000000 -A OK -Q INSERT INTO t VALUES "(00000000000001,00000000000001,'pagename_00000000000001')"
@@ -2451,7 +2449,7 @@ function decimate_table_t_w_3M_entries() {
 
 # 10million entries ONLY 3FK, good for testing LARGE indexes
 function populate_table_t_w_10M_3FK_entries() {
-  $CLI DROP TABLE t
+  $CLI DROP TABLE t > /dev/null
   $CLI CREATE TABLE t "(pk INT, fk INT, val TEXT)"
   $CLI CREATE INDEX i_t ON t "(fk)"
   taskset -c 1 ./alchemy-gen-benchmark -n 10000000 -c 200 -s 1 -m 3,10000000 -A OK -Q INSERT INTO t VALUES "(00000000000001,00000000000001,'pagename_00000000000001')"
@@ -2466,9 +2464,9 @@ function create_1000_tables() {
   $CLI SHOW TABLES
 }
 
-function create_100_columns() {
+function create_1000_columns() {
   J=0;
-  while [ $J -lt 100 ]; do
+  while [ $J -lt 1000 ]; do
     $CLI ALTER TABLE foo_999 ADD COLUMN col_$J INT
     J=$[${J}+1];
   done
@@ -2476,7 +2474,7 @@ function create_100_columns() {
 }
 
 function test_fully_loaded_table() {
-  $CLI DROP TABLE fullload
+  $CLI DROP TABLE fullload > /dev/null
   $CLI CREATE TABLE fullload "(pk LONG, fk1 INT, fk2 INT, fk3 LONG, fkt TEXT, val TEXT)"
   $CLI CREATE UNIQUE INDEX i_flu ON fullload "(fk1,fk2)"
   $CLI CREATE INDEX i_flt ON fullload "(fkt)"

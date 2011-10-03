@@ -74,6 +74,16 @@ typedef robj *row_outputter(bt   *btr,       void *rrow, int   qcols,
                             int   cmatchs[], aobj *apk,  int   tmatch);
 
 /* PROTOYPES */
+static void initAobjCol2S(aobj *a, ulong l, float f, int cmatch, int ktype);
+static void initLongAobjFromVal(aobj *a, ulong l, bool force_s, int cmatch);
+static void initIntAobjFromVal(aobj *a, uint32 i, bool force_s, int cmatch);
+static void initFloatAobjFromVal(aobj *a, float f, bool force_s, int cmatch);
+static aobj colFromUU(ulong key, bool force_s, int cmatch);
+static aobj colFromUL(ulong key, bool force_s, int cmatch);
+static aobj colFromLU(ulong key, bool force_s, int cmatch);
+static aobj colFromLL(ulong key, bool force_s, int cmatch);
+static aobj getOtherBTRawCol(bt   *btr, void *orow, int cmatch,
+                             aobj *apk, bool  force_s);
 static bool evalExpr(redisClient *c, ue_t *ue, aobj *aval, uchar ctype);
 
 /* CREATE_ROW CREATE_ROW CREATE_ROW CREATE_ROW CREATE_ROW CREATE_ROW */
@@ -230,16 +240,18 @@ static uchar assign_rflag(uint32 rlen, uchar ztype) {
     else if (ztype == CZIP_LZF) rflag += RFLAG_LZF_ZIP;
     return rflag;
 }
-#define ROW_META_SIZE 2
 static void *createRowBlob(int ncols, uchar rflag, uint32 rlen) {
-    uint32  meta_len    = ROW_META_SIZE + (ncols * rflag); /*flag,ncols,cofsts*/
-    uint32  new_row_len = meta_len + rlen;
-    uchar  *orow        = malloc(new_row_len);           /* FREE ME 023 */
+    int     tcols       = ncols - 1;
+    //NOTE: META_LEN: [flag + ncols              +  cofsts]
+    uint32  mlen    = 1 + getCSize(tcols, 1) + (ncols * rflag);
+    uint32  nrlen = mlen + rlen;
+    uchar  *orow        = malloc(nrlen);           /* FREE ME 023 */
     uchar  *row         = orow;
-    *row                = rflag;               /* SET flag      (size++) */
+    *row                = rflag;    /* SET flag      (size++) */
     row++;
-    *row                = ncols - 1;           /* SET ncols     (size++) */ 
-    row++;
+    ulong icol; uchar sflag;        /* Write NCOLS as StreamUint */
+    cr8Icol((ulong)(ncols - 1), &sflag, &icol);
+    writeUIntCol(&row, sflag, icol);
     return orow;
 }
 static int set_col_offst(uchar *row, uchar rflag, int cofst) {
@@ -257,7 +269,7 @@ static uchar *writeRow(cr_t *cr, crd_t *crd) {
     if (cz.zip) zipCol(cr, crd, &cz, czd);
     uchar  rflag = assign_rflag(cr->rlen, cz.type);
     uchar *orow  = createRowBlob(cr->ncols, rflag, cr->rlen);
-    uchar *row   = orow + ROW_META_SIZE;
+    uchar *row   = orow + 1 + getCSize(cr->ncols - 1, 1); // flag + ncols
     for (int i = 1; i < cr->ncols; i++) { /* WRITE cofsts[] to row */
         row += set_col_offst(row, rflag, crd[i].mcofsts); // size+=ncols*flag
     }
@@ -344,6 +356,312 @@ void *createRow(cli    *c,    bt     *btr,      int tmatch, int  ncols,
         cr.ncols++;
     }
     return writeRow(&cr, crd);
+}
+
+/* GET_COL GET_COL GET_COL GET_COL GET_COL GET_COL GET_COL GET_COL GET_COL */
+#define DEBUG_GET_RAW_COL \
+printf("getRawCol: orow: %p tmatch: %d cmatch: %d force_s: %d apk: ", \
+        orow, tmatch, cmatch, force_s); dumpAobj(printf, apk);
+
+static uchar *getRowPayload(uchar  *row,   uchar  *rflag,
+                            uint32 *ncols, uint32 *rlen) {
+    uint32_t clen;
+    uchar *o_row = row;
+    *rflag       = *row;                        row++;       /* GET flag */
+    char   sflag = *rflag & RFLAG_SIZE_FLAG;
+    *ncols       = streamIntToUInt(row, &clen); row += clen; /* GET ncols */
+                        /* SKIP cofsts */       row += (*ncols * sflag);
+    uint32 mlen  = row - o_row;
+    if        (*rflag & RFLAG_1BYTE_INT) {            /* rlen is final cofst */
+        uchar *x = (uchar*)row - 1; *rlen = (uint32)*x;
+    } else if (*rflag & RFLAG_2BYTE_INT) {
+        uchar *x = row - 2;         *rlen = (uint32)(*((unsigned short *)x));
+    } else {         /* RFLAG_4BYTE_INT */
+        uchar *x = row - 4;         *rlen = *((uint32 *)x);
+    }
+    *rlen = *rlen + mlen;
+    return row;
+}
+uint32 getRowMallocSize(uchar *stream) { // used in stream.c also
+    uchar rflag; uint32 rlen; uint32 ncols;
+    getRowPayload(stream, &rflag, &ncols, &rlen); return rlen;
+}
+uchar *getColData(void *orow, int cmatch, uint32 *clen, uchar *rflag) {
+    uint32 rlen; uint32 ncols;
+    uchar   *meta     = (uchar *)orow;
+    uchar   *row      = getRowPayload(meta, rflag, &ncols, &rlen);
+    if ((uint32)cmatch > ncols) { *clen = 0; return row; }
+    uchar    sflag    = *rflag & RFLAG_SIZE_FLAG;
+    uchar   *cofst    = meta + 1 + getCSize(ncols - 1, 1);
+    int      mcmatch = cmatch - 1; /* key was not stored -> one less column */
+    uint32   start    = 0;
+    uint32   next;
+    if        (*rflag & RFLAG_1BYTE_INT) {
+        if (mcmatch) start = *(uchar *)((cofst + mcmatch - 1));
+        next = *(uchar *)((cofst + mcmatch));
+    } else if (*rflag & RFLAG_2BYTE_INT) {
+        if (mcmatch) {
+            start = *(ushort16 *)(uchar *)(cofst + ((mcmatch - 1) * sflag));
+        }
+        next = *(ushort16 *)(char *)(cofst + (mcmatch * sflag));
+    } else {         /* RFLAG_4BYTE_INT */
+        if (mcmatch) {
+            start = *(uint32 *)(uchar *)(cofst + ((mcmatch - 1) * sflag));
+        }
+        next = *(uint32 *)(uchar *)(cofst + (mcmatch * sflag));
+    }
+    *clen  = next - start;
+    return row + start;
+}
+aobj getRawCol(bt  *btr,    void *orow, int cmatch, aobj *apk,
+               int  tmatch, bool force_s) {
+    if (OTHER_BT(btr)) return getOtherBTRawCol(btr, orow, cmatch, apk, force_s);
+    aobj a; initAobj(&a); //DEBUG_GET_RAW_COL
+    r_tbl_t *rt    = &Tbl[tmatch];
+    uchar    ctype = rt->col[cmatch].type;
+    if (!cmatch) { /* PK stored ONLY in KEY not in ROW, echo it */
+        if (ctype != COL_TYPE_STRING && !force_s) return *apk;
+        else { initStringAobjFromAobj(&a, apk);   return a; }
+    }
+    uint32 clen; uchar rflag;
+    uchar *data  = getColData(orow, cmatch, &clen, &rflag);
+    if (!clen) a.empty = 1;
+    else {
+        if        (C_IS_I(ctype)) {
+            uint32  i    = streamIntToUInt(data, &clen);
+            initIntAobjFromVal(&a, i, force_s, cmatch);
+        } else if (C_IS_L(ctype)) {
+            ulong   l    = streamLongToULong(data, &clen);
+            initLongAobjFromVal(&a, l, force_s, cmatch);
+        } else if (C_IS_F(ctype)) {
+            float   f    = streamFloatToFloat(data, &clen);
+            initFloatAobjFromVal(&a, f, force_s, cmatch);
+        } else {/* COL_TYPE_STRING */
+            a.type       = a.enc = COL_TYPE_STRING;
+            if       (rflag & RFLAG_6BIT_ZIP) {
+                a.s      = (char *)unpackSixBit(data, &clen);
+                a.freeme = 1;
+            } else if (rflag & RFLAG_LZF_ZIP) {
+                a.s      = streamLZFTextToString(data, &clen);
+                a.freeme = 1;                                /* FREED 035 */
+            } else a.s   = (char *)data; /* NO ZIP -> uncompressed text */
+            a.len  = clen;
+        }
+    }
+    return a;
+}
+inline aobj getCol(bt *btr, void *rrow, int cmatch, aobj *apk, int tmatch) {
+    return getRawCol(btr, rrow, cmatch, apk, tmatch, 0);
+}
+inline aobj getSCol(bt *btr, void *rrow, int cmatch, aobj *apk, int tmatch) {
+    return getRawCol(btr, rrow, cmatch, apk, tmatch, 1);
+}
+
+static aobj getOtherBTRawCol(bt   *btr, void *orow, int cmatch,
+                             aobj *apk, bool  force_s) {
+    if          UU(btr) { /* OTHER_BT values are either in PK or BT -> no ROW */
+        ulong key = cmatch ? (ulong)orow        : apk->i;
+        return colFromUU(key, force_s, cmatch);
+    } else if   UL(btr) {
+        ulong key = cmatch ? ((ulk *)orow)->val : apk->i;
+        return colFromUL(key, force_s, cmatch);
+    } else if   LU(btr) {
+        ulong key = cmatch ? ((luk *)orow)->val : apk->l;
+        return colFromLU(key, force_s, cmatch);
+    } else { // LL(btr)
+        ulong key = cmatch ? ((llk *)orow)->val : apk->l;
+        return colFromLL(key, force_s, cmatch);
+    }
+}
+
+//TODO RawCols[] is not worth the complexity, use malloc()
+#define RAW_COL_BUF_SIZE 256
+static char RawCols[RAW_COL_BUF_SIZE][32]; /* NOTE: avoid malloc's */
+static void initAobjCol2S(aobj *a, ulong l, float f, int cmatch, int ktype) {
+    char *fmt = C_IS_F(ktype) ? FLOAT_FMT : "%lu";
+    char *dest;
+    if (cmatch < RAW_COL_BUF_SIZE) dest = RawCols[cmatch];
+    else { dest = malloc(32); a->freeme = 1; }
+    C_IS_F(ktype) ? snprintf(dest, 32, fmt, f) : snprintf(dest, 32, fmt, l);
+    a->len = strlen(dest);
+    a->s   = dest;
+    a->enc = COL_TYPE_STRING;//printf("initAobjCol2S: a: ");dumpAobj(printf, a);
+}
+static void initLongAobjFromVal(aobj *a, ulong l, bool force_s, int cmatch) {
+    initAobj(a); a->type = COL_TYPE_LONG;
+    if (force_s) initAobjCol2S(a, l, 0.0, cmatch, COL_TYPE_LONG);
+    else         { a->l = l; a->enc = COL_TYPE_LONG; }
+}
+static void initIntAobjFromVal(aobj *a, uint32 i, bool force_s, int cmatch) {
+    initAobj(a); a->type = COL_TYPE_INT;
+    ulong l = (ulong)i;
+    if (force_s) initAobjCol2S(a, l, 0.0, cmatch, COL_TYPE_INT);
+    else         { a->i = i; a->enc = COL_TYPE_INT; }
+}
+static void initFloatAobjFromVal(aobj *a, float f, bool force_s, int cmatch) {
+    initAobj(a); a->type = COL_TYPE_FLOAT;
+    if (force_s) initAobjCol2S(a, 0, f,   cmatch, COL_TYPE_FLOAT);
+    else         { a->f = f; a->enc = COL_TYPE_FLOAT; }
+}
+static aobj colFromUU(ulong key, bool force_s, int cmatch) {
+    int cval = (int)((long)key % UINT_MAX);
+    aobj a; initIntAobjFromVal(&a, cval, force_s, cmatch); return a;
+}
+static aobj colFromUL(ulong key, bool force_s, int cmatch) {
+    aobj a; 
+    if (cmatch) initLongAobjFromVal(&a, key, force_s, cmatch);
+    else        initIntAobjFromVal( &a, key, force_s, cmatch);
+    return a;
+}
+static aobj colFromLU(ulong key, bool force_s, int cmatch) {
+    aobj a;
+    if (cmatch) initIntAobjFromVal(&a, key, force_s, cmatch);
+    else        initLongAobjFromVal(&a, key, force_s, cmatch);
+    return a;
+}
+static aobj colFromLL(ulong key, bool force_s, int cmatch) {
+    aobj a; initLongAobjFromVal(&a, key, force_s, cmatch); return a;
+}
+
+
+/* OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT */
+static void destroy_erow(erow_t *er) { //printf("destroy_embedded_row\n");
+    for (int i = 0; i < er->ncols; i++) destroyAobj(er->cols[i]);
+    free(er->cols);
+    free(er);
+}
+robj *cloneRobjErow(robj *r) { // NOTE Used in cloneRobj()
+    if (!r) return NULL;
+    erow_t *er  = (erow_t *)r->ptr;
+    robj   *n   = createObject(REDIS_STRING, NULL);
+    erow_t *ner = malloc(sizeof(erow_t));
+    n->ptr      = ner;
+    ner->ncols  = er->ncols;
+    ner->cols   = malloc(sizeof(aobj *) * ner->ncols);
+    for (int i = 0; i < ner->ncols; i++) {
+        ner->cols[i] = cloneAobj(er->cols[i]);
+    }
+    return n;
+}
+void decrRefCountErow(robj *r) { // NOTE Used in cloneRobj()
+    if (!r) return;
+    erow_t *er  = (erow_t *)r->ptr;
+    if (er) destroy_erow(er); /* destroy here (avoids deep redis integration) */
+    r->ptr      = NULL;       /* already destroyed */
+    decrRefCount(r);
+}
+bool addReplyRow(cli   *c,    robj *r, int tmatch, aobj *apk,
+                 uchar *lruc, bool  lrud) {
+    updateLru(c, tmatch, apk, lruc, lrud); /* NOTE: updateLRU (RQ_SELECT) */
+    if      (EREDIS) {
+        erow_t *er  = (erow_t *)r->ptr;
+        bool    ret = c->scb ? (*c->scb)(er) : 1;
+        destroy_erow(er);   /* destroy here (avoids deep redis integration) */
+        r->ptr      = NULL; /* already destroyed */
+        return ret;
+    } else if (OREDIS) addReply(c,     r);
+      else             addReplyBulk(c, r);
+    return 1;
+}
+
+robj *EmbeddedRobj = NULL;
+static robj *orow_embedded(bt   *btr,       void *rrow, int   qcols,
+                           int   cmatchs[], aobj *apk,  int   tmatch) {
+    if (!EmbeddedRobj) EmbeddedRobj = createObject(REDIS_STRING, NULL);
+    erow_t *er = malloc(sizeof(erow_t));
+    er->ncols  = qcols;
+    er->cols   = malloc(sizeof(aobj *) * er->ncols);
+    for (int i = 0; i < er->ncols; i++) {
+        aobj  acol  = getCol(btr, rrow, cmatchs[i], apk, tmatch);
+        er->cols[i] = cloneAobj(&acol);
+        releaseAobj(&acol);
+    }
+    EmbeddedRobj->ptr = er;
+    return EmbeddedRobj;
+}
+#define OBUFF_SIZE 4096
+static char OutBuff[OBUFF_SIZE]; /*avoid malloc()s */
+
+#define QUOTE_COL \
+  if (!OREDIS && C_IS_S(outs[i].type) && outs[i].len) \
+      { obuf[slot] = '\''; slot++; }
+#define FINAL_COMMA \
+  if (!OREDIS && i != (qcols - 1)) { obuf[slot] = OUTPUT_DELIM; slot++; }
+
+int output_start(char *buf, uint32 blen, int qcols) {
+    buf[0]          = '*';
+    size_t intlen   = ll2string(buf + 1, blen - 1, (lolo)qcols);
+    buf[intlen + 1] = '\r';
+    buf[intlen + 2] = '\n';
+    return intlen + 3;
+}
+/* NOTE: big obufs could be alloca'd, but stack overflow scares me */
+robj *write_output_row(int   qcols,   uint32  prelen, char *pbuf,
+                       uint32 totlen, sl_t   *outs) {
+    char   *obuf = (totlen >= OBUFF_SIZE) ? malloc(totlen) : OutBuff; //FREE 072
+    if (prelen) memcpy(obuf, pbuf, prelen);
+    uint32  slot = prelen;
+    for (int i = 0; i < qcols; i++) {
+        QUOTE_COL
+        memcpy(obuf + slot, outs[i].s, outs[i].len);
+        slot += outs[i].len;
+        release_sl(outs[i]);
+        QUOTE_COL
+        FINAL_COMMA
+    }
+    robj *r = createStringObject(obuf, totlen);
+    if (obuf != OutBuff) free(obuf);                     /* FREED 072 */
+    return r;
+}
+static robj *orow_redis(bt   *btr,       void *rrow, int   qcols,
+                        int   cmatchs[], aobj *apk,  int   tmatch) {
+    char pbuf[128];
+    sl_t outs[qcols];
+    uint32 prelen = output_start(pbuf, 128, qcols);
+    uint32 totlen = prelen;
+    for (int i = 0; i < qcols; i++) {
+        aobj  acol  = getCol(btr, rrow, cmatchs[i], apk, tmatch);
+        outs[i]     = outputReformat(&acol);
+        releaseAobj(&acol);
+        totlen     += outs[i].len;
+    }
+    return write_output_row(qcols, prelen, pbuf, totlen, outs);
+}
+static robj *orow_normal(bt   *btr,       void *rrow, int   qcols,
+                         int   cmatchs[], aobj *apk,  int   tmatch) {
+    sl_t   outs[qcols];
+    uint32 totlen = 0;
+    for (int i = 0; i < qcols; i++) {
+        aobj  col       = getSCol(btr, rrow, cmatchs[i], apk, tmatch);
+        outs[i].s       = col.s;
+        outs[i].len     = col.len;
+        outs[i].freeme  = col.freeme;
+        outs[i].type    = Tbl[tmatch].col[cmatchs[i]].type;
+        totlen         += col.len;
+        if (C_IS_S(outs[i].type) && outs[i].len) totlen += 2;/* 2 \'s per col */
+    }
+    totlen  += (uint32)qcols - 1; /* one comma per COL, except final */
+    return write_output_row(qcols, 0, NULL, totlen, outs);
+}
+robj *outputRow(bt   *btr,       void *rrow, int qcols,
+                int   cmatchs[], aobj *apk,  int tmatch) {
+    row_outputter *rop =  (EREDIS) ? orow_embedded :
+                         ((OREDIS) ? orow_redis    :
+                                     orow_normal);
+    return (*rop)(btr, rrow, qcols, cmatchs, apk, tmatch);
+}
+
+/* DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW */
+bool deleteRow(int tmatch, aobj *apk, int matches, int inds[]) {
+    bt   *btr  = getBtr(tmatch);
+    void *rrow = btFind(btr, apk);
+    if (!rrow) return 0;
+    if (matches) { /* delete indexes */
+        for (int i = 0; i < matches; i++) delFromIndex(btr, apk, rrow, inds[i]);
+    }
+    btDelete(btr, apk);
+    server.dirty++;
+    return 1;
 }
 
 /* UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE */
@@ -513,306 +831,6 @@ up_end:
     if (nrow && NORM_BT(btr)) free(nrow);                /* FREED 023 */
     DESTROY_COL_AVALS
     return ret;
-}
-
-/* GET_COL GET_COL GET_COL GET_COL GET_COL GET_COL GET_COL GET_COL GET_COL */
-#define DEBUG_GET_RAW_COL \
-printf("getRawCol: orow: %p tmatch: %d cmatch: %d force_s: %d apk: ", \
-        orow, tmatch, cmatch, force_s); dumpAobj(printf, apk);
-
-static uchar *getRowPayload(uchar  *row,   uchar  *rflag,
-                            uint32 *ncols, uint32 *rlen) {
-    uchar *o_row     = row;
-    *rflag           = *row;                          /* GET flag */
-    row++;
-    char   sflag     = *rflag & RFLAG_SIZE_FLAG;
-    *ncols           = *row;                          /* GET ncols */
-    row++;
-    row             += (*ncols * sflag);              /* SKIP cofsts */
-    uint32 meta_len  = row - o_row;
-    if        (*rflag & RFLAG_1BYTE_INT) {            /* rlen is final cofst */
-        uchar *x = (uchar*)row - 1; *rlen    = (uint32)*x;
-    } else if (*rflag & RFLAG_2BYTE_INT) {
-        uchar *x = row - 2;         *rlen    = (uint32)(*((unsigned short *)x));
-    } else {         /* RFLAG_4BYTE_INT */
-        uchar *x = row - 4;         *rlen    = *((uint32 *)x);
-    }
-    *rlen = *rlen + meta_len;
-    return row;
-}
-uint32 getRowMallocSize(uchar *stream) {
-    uchar rflag; uint32 rlen; uint32 ncols;
-    getRowPayload(stream, &rflag, &ncols, &rlen); return rlen;
-}
-
-#define RAW_COL_BUF_SIZE 256
-static char RawCols[RAW_COL_BUF_SIZE][32]; /* NOTE: avoid malloc's */
-static void initAobjCol2S(aobj *a, ulong l, float f, int cmatch, int ktype) {
-    char *fmt = C_IS_F(ktype) ? FLOAT_FMT : "%lu";
-    char *dest;
-    if (cmatch < RAW_COL_BUF_SIZE) dest = RawCols[cmatch];
-    else { dest = malloc(32); a->freeme = 1; }
-    C_IS_F(ktype) ? snprintf(dest, 32, fmt, f) : snprintf(dest, 32, fmt, l);
-    a->len = strlen(dest);
-    a->s   = dest;
-    a->enc = COL_TYPE_STRING;//printf("initAobjCol2S: a: ");dumpAobj(printf, a);
-}
-static void initLongAobjFromVal(aobj *a, ulong l, bool force_s, int cmatch) {
-    initAobj(a); a->type = COL_TYPE_LONG;
-    if (force_s) initAobjCol2S(a, l, 0.0, cmatch, COL_TYPE_LONG);
-    else         { a->l = l; a->enc = COL_TYPE_LONG; }
-}
-static void initIntAobjFromVal(aobj *a, uint32 i, bool force_s, int cmatch) {
-    initAobj(a); a->type = COL_TYPE_INT;
-    ulong l = (ulong)i;
-    if (force_s) initAobjCol2S(a, l, 0.0, cmatch, COL_TYPE_INT);
-    else         { a->i = i; a->enc = COL_TYPE_INT; }
-}
-static void initFloatAobjFromVal(aobj *a, float f, bool force_s, int cmatch) {
-    initAobj(a); a->type = COL_TYPE_FLOAT;
-    if (force_s) initAobjCol2S(a, 0, f,   cmatch, COL_TYPE_FLOAT);
-    else         { a->f = f; a->enc = COL_TYPE_FLOAT; }
-}
-static aobj colFromUU(ulong key, bool force_s, int cmatch) {
-    int cval = (int)((long)key % UINT_MAX);
-    aobj a; initIntAobjFromVal(&a, cval, force_s, cmatch); return a;
-}
-static aobj colFromUL(ulong key, bool force_s, int cmatch) {
-    aobj a; 
-    if (cmatch) initLongAobjFromVal(&a, key, force_s, cmatch);
-    else        initIntAobjFromVal( &a, key, force_s, cmatch);
-    return a;
-}
-static aobj colFromLU(ulong key, bool force_s, int cmatch) {
-    aobj a;
-    if (cmatch) initIntAobjFromVal(&a, key, force_s, cmatch);
-    else        initLongAobjFromVal(&a, key, force_s, cmatch);
-    return a;
-}
-static aobj colFromLL(ulong key, bool force_s, int cmatch) {
-    aobj a; initLongAobjFromVal(&a, key, force_s, cmatch); return a;
-}
-uchar *getColData(void *orow, int cmatch, uint32 *clen, uchar *rflag) {
-    uint32 rlen; uint32 ncols;
-    uchar   *meta     = (uchar *)orow;
-    uchar   *row      = getRowPayload(meta, rflag, &ncols, &rlen);
-    if ((uint32)cmatch > ncols) { *clen = 0; return row; }
-    uchar    sflag    = *rflag & RFLAG_SIZE_FLAG;
-    uchar   *cofst    = meta + ROW_META_SIZE;
-    int      mcmatch = cmatch - 1; /* key was not stored -> one less column */
-    uint32   start    = 0;
-    uint32   next;
-    if        (*rflag & RFLAG_1BYTE_INT) {
-        if (mcmatch) start = *(uchar *)((cofst + mcmatch - 1));
-        next = *(uchar *)((cofst + mcmatch));
-    } else if (*rflag & RFLAG_2BYTE_INT) {
-        if (mcmatch) {
-            start = *(ushort16 *)(uchar *)(cofst + ((mcmatch - 1) * sflag));
-        }
-        next = *(ushort16 *)(char *)(cofst + (mcmatch * sflag));
-    } else {         /* RFLAG_4BYTE_INT */
-        if (mcmatch) {
-            start = *(uint32 *)(uchar *)(cofst + ((mcmatch - 1) * sflag));
-        }
-        next = *(uint32 *)(uchar *)(cofst + (mcmatch * sflag));
-    }
-    *clen  = next - start;
-    return row + start;
-}
-aobj getRawCol(bt  *btr,    void *orow, int cmatch, aobj *apk,
-               int  tmatch, bool force_s) {
-    if        UU(btr) { /* OTHER_BT values are either in PK or BT -> no ROW */
-        ulong key = cmatch ? (ulong)orow        : apk->i;
-        return colFromUU(key, force_s, cmatch);
-    } else if UL(btr) {
-        ulong key = cmatch ? ((ulk *)orow)->val : apk->i;
-        return colFromUL(key, force_s, cmatch);
-    } else if LU(btr) {
-        ulong key = cmatch ? ((luk *)orow)->val : apk->l;
-        return colFromLU(key, force_s, cmatch);
-    } else if LL(btr) {
-        ulong key = cmatch ? ((llk *)orow)->val : apk->l;
-        return colFromLL(key, force_s, cmatch);
-    }
-    aobj a; initAobj(&a); //DEBUG_GET_RAW_COL
-    r_tbl_t *rt    = &Tbl[tmatch];
-    uchar    ctype = rt->col[cmatch].type;
-    if (!cmatch) { /* PK stored ONLY in KEY not in ROW, echo it */
-        if (ctype != COL_TYPE_STRING && !force_s) return *apk;
-        else { initStringAobjFromAobj(&a, apk);   return a; }
-    }
-    uint32 clen; uchar rflag;
-    uchar *data  = getColData(orow, cmatch, &clen, &rflag);
-    if (!clen) a.empty = 1;
-    else {
-        if        (C_IS_I(ctype)) {
-            uint32  i    = streamIntToUInt(data, &clen);
-            initIntAobjFromVal(&a, i, force_s, cmatch);
-        } else if (C_IS_L(ctype)) {
-            ulong   l    = streamLongToULong(data, &clen);
-            initLongAobjFromVal(&a, l, force_s, cmatch);
-        } else if (C_IS_F(ctype)) {
-            float   f    = streamFloatToFloat(data, &clen);
-            initFloatAobjFromVal(&a, f, force_s, cmatch);
-        } else {/* COL_TYPE_STRING */
-            a.type       = a.enc = COL_TYPE_STRING;
-            if       (rflag & RFLAG_6BIT_ZIP) {
-                a.s      = (char *)unpackSixBit(data, &clen);
-                a.freeme = 1;
-            } else if (rflag & RFLAG_LZF_ZIP) {
-                a.s      = streamLZFTextToString(data, &clen);
-                a.freeme = 1;                                /* FREED 035 */
-            } else a.s   = (char *)data; /* NO ZIP -> uncompressed text */
-            a.len  = clen;
-        }
-    }
-    return a;
-}
-inline aobj getCol(bt *btr, void *rrow, int cmatch, aobj *apk, int tmatch) {
-    return getRawCol(btr, rrow, cmatch, apk, tmatch, 0);
-}
-inline aobj getSCol(bt *btr, void *rrow, int cmatch, aobj *apk, int tmatch) {
-    return getRawCol(btr, rrow, cmatch, apk, tmatch, 1);
-}
-
-/* OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT */
-static void destroy_erow(erow_t *er) { //printf("destroy_embedded_row\n");
-    for (int i = 0; i < er->ncols; i++) destroyAobj(er->cols[i]);
-    free(er->cols);
-    free(er);
-}
-robj *cloneRobjErow(robj *r) { // NOTE Used in cloneRobj()
-    if (!r) return NULL;
-    erow_t *er  = (erow_t *)r->ptr;
-    robj   *n   = createObject(REDIS_STRING, NULL);
-    erow_t *ner = malloc(sizeof(erow_t));
-    n->ptr      = ner;
-    ner->ncols  = er->ncols;
-    ner->cols   = malloc(sizeof(aobj *) * ner->ncols);
-    for (int i = 0; i < ner->ncols; i++) {
-        ner->cols[i] = cloneAobj(er->cols[i]);
-    }
-    return n;
-}
-void decrRefCountErow(robj *r) { // NOTE Used in cloneRobj()
-    if (!r) return;
-    erow_t *er  = (erow_t *)r->ptr;
-    if (er) destroy_erow(er); /* destroy here (avoids deep redis integration) */
-    r->ptr      = NULL;       /* already destroyed */
-    decrRefCount(r);
-}
-bool addReplyRow(cli   *c,    robj *r, int tmatch, aobj *apk,
-                 uchar *lruc, bool  lrud) {
-    updateLru(c, tmatch, apk, lruc, lrud); /* NOTE: updateLRU (RQ_SELECT) */
-    if      (EREDIS) {
-        erow_t *er  = (erow_t *)r->ptr;
-        bool    ret = c->scb ? (*c->scb)(er) : 1;
-        destroy_erow(er);   /* destroy here (avoids deep redis integration) */
-        r->ptr      = NULL; /* already destroyed */
-        return ret;
-    } else if (OREDIS) addReply(c,     r);
-      else             addReplyBulk(c, r);
-    return 1;
-}
-
-robj *EmbeddedRobj = NULL;
-static robj *orow_embedded(bt   *btr,       void *rrow, int   qcols,
-                           int   cmatchs[], aobj *apk,  int   tmatch) {
-    if (!EmbeddedRobj) EmbeddedRobj = createObject(REDIS_STRING, NULL);
-    erow_t *er = malloc(sizeof(erow_t));
-    er->ncols  = qcols;
-    er->cols   = malloc(sizeof(aobj *) * er->ncols);
-    for (int i = 0; i < er->ncols; i++) {
-        aobj  acol  = getCol(btr, rrow, cmatchs[i], apk, tmatch);
-        er->cols[i] = cloneAobj(&acol);
-        releaseAobj(&acol);
-    }
-    EmbeddedRobj->ptr = er;
-    return EmbeddedRobj;
-}
-#define OBUFF_SIZE 4096
-static char OutBuff[OBUFF_SIZE]; /*avoid malloc()s */
-
-#define QUOTE_COL \
-  if (!OREDIS && C_IS_S(outs[i].type) && outs[i].len) \
-      { obuf[slot] = '\''; slot++; }
-#define FINAL_COMMA \
-  if (!OREDIS && i != (qcols - 1)) { obuf[slot] = OUTPUT_DELIM; slot++; }
-
-int output_start(char *buf, uint32 blen, int qcols) {
-    buf[0]          = '*';
-    size_t intlen   = ll2string(buf + 1, blen - 1, (lolo)qcols);
-    buf[intlen + 1] = '\r';
-    buf[intlen + 2] = '\n';
-    return intlen + 3;
-}
-/* NOTE: big obufs could be alloca'd, but stack overflow scares me */
-robj *write_output_row(int   qcols,   uint32  prelen, char *pbuf,
-                       uint32 totlen, sl_t   *outs) {
-    char   *obuf = (totlen >= OBUFF_SIZE) ? malloc(totlen) : OutBuff; //FREE 072
-    if (prelen) memcpy(obuf, pbuf, prelen);
-    uint32  slot = prelen;
-    for (int i = 0; i < qcols; i++) {
-        QUOTE_COL
-        memcpy(obuf + slot, outs[i].s, outs[i].len);
-        slot += outs[i].len;
-        release_sl(outs[i]);
-        QUOTE_COL
-        FINAL_COMMA
-    }
-    robj *r = createStringObject(obuf, totlen);
-    if (obuf != OutBuff) free(obuf);                     /* FREED 072 */
-    return r;
-}
-static robj *orow_redis(bt   *btr,       void *rrow, int   qcols,
-                        int   cmatchs[], aobj *apk,  int   tmatch) {
-    char pbuf[128];
-    sl_t outs[qcols];
-    uint32 prelen = output_start(pbuf, 128, qcols);
-    uint32 totlen = prelen;
-    for (int i = 0; i < qcols; i++) {
-        aobj  acol  = getCol(btr, rrow, cmatchs[i], apk, tmatch);
-        outs[i]     = outputReformat(&acol);
-        releaseAobj(&acol);
-        totlen     += outs[i].len;
-    }
-    return write_output_row(qcols, prelen, pbuf, totlen, outs);
-}
-static robj *orow_normal(bt   *btr,       void *rrow, int   qcols,
-                         int   cmatchs[], aobj *apk,  int   tmatch) {
-    sl_t   outs[qcols];
-    uint32 totlen = 0;
-    for (int i = 0; i < qcols; i++) {
-        aobj  col       = getSCol(btr, rrow, cmatchs[i], apk, tmatch);
-        outs[i].s       = col.s;
-        outs[i].len     = col.len;
-        outs[i].freeme  = col.freeme;
-        outs[i].type    = Tbl[tmatch].col[cmatchs[i]].type;
-        totlen         += col.len;
-        if (C_IS_S(outs[i].type) && outs[i].len) totlen += 2;/* 2 \'s per col */
-    }
-    totlen  += (uint32)qcols - 1; /* one comma per COL, except final */
-    return write_output_row(qcols, 0, NULL, totlen, outs);
-}
-robj *outputRow(bt   *btr,       void *rrow, int qcols,
-                int   cmatchs[], aobj *apk,  int tmatch) {
-    row_outputter *rop =  (EREDIS) ? orow_embedded :
-                         ((OREDIS) ? orow_redis    :
-                                     orow_normal);
-    return (*rop)(btr, rrow, qcols, cmatchs, apk, tmatch);
-}
-
-/* DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW */
-bool deleteRow(int tmatch, aobj *apk, int matches, int inds[]) {
-    bt   *btr  = getBtr(tmatch);
-    void *rrow = btFind(btr, apk);
-    if (!rrow) return 0;
-    if (matches) { /* delete indexes */
-        for (int i = 0; i < matches; i++) delFromIndex(btr, apk, rrow, inds[i]);
-    }
-    btDelete(btr, apk);
-    server.dirty++;
-    return 1;
 }
 
 /* UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR */

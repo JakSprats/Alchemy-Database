@@ -37,9 +37,10 @@ int    cLRUcol(ulong l, uchar *sflag, ulong *col);
 uint32 streamLRUToUInt(uchar *data);
 void   overwriteLRUcol(uchar *row,    ulong icol);
 
-int    cIcol  (ulong l, uchar *sflag, ulong *col, bool isi); /* NOTE: protected */
-int    cr8Icol(ulong l, uchar *sflag, ulong *col);
-int    cr8Lcol(ulong l, uchar *sflag, ulong *col);
+int    getCSize(ulong l, bool isi);
+int    cIcol   (ulong l, uchar *sflag, ulong *col, bool isi);// NOTE: protected 
+int    cr8Icol (ulong l, uchar *sflag, ulong *col);
+int    cr8Lcol (ulong l, uchar *sflag, ulong *col);
 int    cr8IcolFromStr(cli *c, char *strt, uint32 len, uchar *sflag, ulong *col);
 int    cr8LcolFromStr(cli *c, char *strt, uint32 len, uchar *sflag, ulong *col);
 int    cr8FColFromStr(cli *c, char *strt, uint32 len, float *col);

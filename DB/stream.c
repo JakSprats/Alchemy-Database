@@ -52,6 +52,7 @@ void *row_malloc(bt *btr, int size) {
     return bt_malloc(btr, ((size + 7) / 8) * 8); /* round to 8-byte boundary */
 }
 
+// FLOAT FLOAT FLOAT FLOAT FLOAT FLOAT FLOAT FLOAT FLOAT FLOAT FLOAT FLOAT
 int strToFloat(redisClient *c, char *start, uint32 len, float *f) {
     if (len >= 31) { addReply(c, shared.col_float_string_too_long); return -1; }
     char buf[32]; memcpy(buf, start, len); buf[len] = '\0';
@@ -82,6 +83,17 @@ void overwriteLRUcol(uchar *row, ulong icol) {
     icol = (icol * 8) + 4; memcpy(row, &icol, 4);         /* COL_4BYTE_INT */
 }
 /* INT+LONG INT+LONG INT+LONG INT+LONG INT+LONG INT+LONG INT+LONG INT+LONG */
+int getCSize(ulong l, bool isi) {
+    if          (l < TWO_POW_7)  return 1;
+    else if     (l < TWO_POW_14) return 2;
+    else if     (l < TWO_POW_29) return 4;
+    else {
+        if      (isi)            return 5;
+        else if (l < TWO_POW_44) return 6;
+        else if (l < TWO_POW_59) return 8;
+        else                     return 9;
+    }
+}
 int cIcol(ulong l, uchar *sflag, ulong *col, bool isi) {
     if        (l < TWO_POW_7) {
         if (sflag) *sflag = COL_1BYTE_INT; *col = (l * 2) + 1;       return 1;
