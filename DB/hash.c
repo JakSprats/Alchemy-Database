@@ -10,178 +10,152 @@
 #define ERR_OOM             -1
 #define ERR_INVALID_HASHKEY -1
 
-__inline__ static void init32(alc_hash32_t *ht) {
-    uint32 nentries = ht->nentries;
-    alc_hash32_entry_t *entries = ht->entries;
-    memset(entries, 0, nentries*sizeof(alc_hash32_entry_t));
+__inline__ static void init32(ahash *ht) {
+    ht->nvalid_entries = 0;
     /* only reset if NOT set */
     if (ht->max_collisions == 0) ht->max_collisions = MAX_COLLISIONS;
-    ht->nvalid_entries = 0;
 }
 
-alc_hash32_t *alc_hash32_make(uint32 nentries) {
-    size_t        size;
-    alc_hash32_t *ht = (alc_hash32_t *)malloc(sizeof(alc_hash32_t));
+ahash *alc_hash32_make(uint32 nentries) {
+    ahash  *ht   = (ahash *)malloc(sizeof(ahash));
     if (!ht) return NULL;
-    memset(ht, 0, sizeof(alc_hash32_t));
+    bzero(ht, sizeof(ahash));
     if (!nentries) nentries = 2; /* need at least some */
-    size         = nentries * sizeof(alc_hash32_entry_t);
+    size_t  size = nentries * sizeof(ahash_entry);
     ht->nentries = nentries;
-    ht->entries  = (alc_hash32_entry_t *)malloc(size);
+    ht->entries  = (ahash_entry *)malloc(size);
     if (!ht->entries) { free(ht); ht = NULL; return NULL; }
+    bzero(ht->entries, size);
     init32(ht);
     return ht;
 }
 
-void alc_hash32_clear(alc_hash32_t *ht) {
-    init32(ht);
+void alc_hash32_destroy(ahash *ht) {
+    if (ht) { if (ht->entries) free(ht->entries); free(ht); }
 }
 
-void alc_hash32_destroy(alc_hash32_t *ht) {
-    if (ht != NULL) {
-        if (ht->entries != NULL) free(ht->entries);
-        free(ht);
-    }
-}
+//NOTE: when a dict is serialised into a stream, it can not contain pointers
+//      so the ht->entries pointer is "simulated" it always comes just below
+#define SIMULATE_HT_ENTRIES \
+  if (!ht->entries) { \
+    uchar *v = (uchar *)ht; v += sizeof(ahash); ht->entries = (ahash_entry *)v;\
+  }
 
-__inline__ static alc_hash32_entry_t *lookup_32entry(const uint32 key, 
-                              const alc_hash32_t *ht) {
-    uint32            nentries  = ht->nentries,
-                        index     = key % nentries;
-    alc_hash32_entry_t *entry     = ht->entries + index ;
-    uint32            entry_key = entry->key;
-    if ( (entry_key ^ key) == 0 ) goto done;
-    if ( entry->n_collisions > 0 ) { /* search collisions */
-        uint32 nwrap = 0, last_index = index + entry->n_collisions;
+__inline__ static ahash_entry *lookup_32entry(const uint32 key, ahash *ht) {
+    SIMULATE_HT_ENTRIES
+    uint32       nentries  = ht->nentries,
+                 index     = key % nentries;
+    ahash_entry *entry     = ht->entries + index;
+    uint32       entry_key = entry->key;
+    if (!(entry_key ^ key))                                     return entry;
+    if (entry->n_colijns > 0) { /* search collisions */
+        uint32 nwrap = 0, last_index = index + entry->n_colijns;
         if (last_index >= nentries) { /* clip */
-            nwrap = last_index - nentries + 1;
-            last_index = nentries - 1;
+            nwrap = last_index - nentries + 1; last_index = nentries - 1;
         }
-        for(index++,entry++; index<=last_index; index++,entry++) {
-            entry_key = entry->key;
-            if ( (entry_key ^ key) == 0 ) goto done;
+        for(index++,entry++; index <= last_index; index++, entry++) {
+            entry_key = entry->key; if (!(entry_key ^ key))     return entry;
         }
         if (nwrap) { /* wrap */
             entry = ht->entries;
             for( ; nwrap ; nwrap--,entry++) {
-                entry_key = entry->key;
-                if ( (entry_key ^ key) == 0 ) goto done;
+                entry_key = entry->key; if (!(entry_key ^ key)) return entry;
             }
         }
     }
-    entry = NULL;
-
-done:
-    return entry;
+    return NULL;
 }
 
-__inline__ static alc_hash32_entry_t 
-                            *lookup_insertion_32entry(const uint32      key,
-                                                      const alc_hash32_t *ht) {
-    uint32              nentries  = ht->nentries,
-                        index     = key % nentries;
-    alc_hash32_entry_t *entry     = ht->entries + index;
-    uint32              entry_key = entry->key;
-    if ((entry_key ^ key) == 0 || /* match */
-        (entry_key ^ HASH_NULL_KEY) == 0 ) return entry;
+__inline__ static ahash_entry *lookup_insert_entry(const uint32 key, ahash *ht){
+    SIMULATE_HT_ENTRIES
+    uint32       nentries  = ht->nentries,
+                 index     = key % nentries;
+    ahash_entry *entry     = ht->entries + index;
+    uint32       entry_key = entry->key;
+    if (!(entry_key ^ key) || !(entry_key ^ HASH_NULL)) return entry;
     { /* search collisions */
-        uint32 n_collisions           = 1,
-                 nwrap                = 0,
-                 last_index           = index + ht->max_collisions;
-        alc_hash32_entry_t *collision = entry;
+        uint32       n_colijns   = 1,
+                     nwrap       = 0,
+                     last_index  = index + ht->max_collisions;
+        ahash_entry *collision   = entry;
         if (last_index >= nentries) { /* clip */
           nwrap      = MIN(nentries, last_index - nentries + 1);
           last_index = nentries - 1;
         }
-        for(index++,entry++; index<=last_index; 
-                                               index++,entry++,n_collisions++) {
+        for(index++,entry++; index<=last_index; index++,entry++,n_colijns++) {
             entry_key = entry->key;
-            if ((entry_key ^ key) == 0 ||
-                (entry_key ^ HASH_NULL_KEY) == 0 ) goto done;
+            if (!(entry_key ^ key) || !(entry_key ^ HASH_NULL)) goto done;
         }
         if (nwrap) { /* wrap */
             entry = ht->entries;
-            for( ; nwrap; nwrap--, entry++, n_collisions++) {
+            for( ; nwrap; nwrap--, entry++, n_colijns++) {
                 entry_key = entry->key;
-
-                if ((entry_key ^ key) == 0 ||
-                    (entry_key ^ HASH_NULL_KEY) == 0 ) goto done;
+                if (!(entry_key ^ key) || !(entry_key ^ HASH_NULL)) goto done;
             }
         }
         return NULL;
 
     done: /* update collision count */
-        if (n_collisions > collision->n_collisions ) {
-            collision->n_collisions = n_collisions;
-        }
+        if (n_colijns > collision->n_colijns) collision->n_colijns = n_colijns;
         return entry;
     }
 }
 
-static int hash32_insert(uint32 key,          void         *user_pointer,
-                             uint32 rehash_level, alc_hash32_t *ht);
+static int hash32_insert(uint32 key, ulong val, uint32 rehash_lvl, ahash *ht);
 
-/* add %50 more entries */
-static int rehash32(alc_hash32_t *ht, uint32 rehash_level) {//printf("rehsh\n");
-    int                 status   = 0;
-    uint32            nentries = ht->nentries;
-    alc_hash32_entry_t *entries  = ht->entries,
-                       *dead     = entries;
-    ht->nentries += nentries/2;
-    ht->entries = 
-      (alc_hash32_entry_t *)malloc(ht->nentries*sizeof(alc_hash32_entry_t));
-    if (ht->entries == NULL) {
-        status = ERR_OOM; goto done;
-    }
+#define DEBUG_REHASH                                   \
+  printf("rehash: nvalid: %d from: %u to : %u\n",      \
+          ht->nvalid_entries, nentries, ht->nentries);
+
+static int rehash32(ahash *ht, uint32 rehash_lvl) { /* add %25 more entries */
+    SIMULATE_HT_ENTRIES
+    int          status   = 0;
+    uint32       nentries = ht->nentries;
+    ahash_entry *entries  = ht->entries,
+                *dead     = entries;
+    ht->nentries += MAX(2, nentries / 4); //DEBUG_REHASH
+    ht->entries   = (ahash_entry *)malloc(ht->nentries * sizeof(ahash_entry));
+    if (!ht->entries) return ERR_OOM;
+    bzero(ht->entries, ht->nentries * sizeof(ahash_entry));
     init32(ht);
     for(; nentries ; nentries--,entries++) {
         uint32 key = entries->key;
-        if (key != HASH_NULL_KEY) {
-            status = hash32_insert(key,          entries->user_pointer,
-                                   rehash_level, ht);
-            if (status != 0) goto done;
+        if (key) {
+            status = hash32_insert(key, entries->val, rehash_lvl, ht);
+            if (status) return status;
         }
     }
     free(dead);
-
-done:
-    return status ;
+    return status;
 }
 
-int alc_hash32_insert(uint32 key, void *user_pointer, alc_hash32_t *ht) {
-    return hash32_insert(key, user_pointer, 0, ht);
+int alc_hash32_insert(uint32 key, ulong val, ahash *ht) {
+    return hash32_insert(key, val, 0, ht);
 }
 
-static int hash32_insert(uint32 key,          void         *user_pointer,
-                             uint32 rehash_level, alc_hash32_t *ht)          {
+static int hash32_insert(uint32 key, ulong val, uint32 rehash_lvl, ahash *ht) {
     int status = 0;
-    if (key == HASH_NULL_KEY) {
+    if (!key) {
         status = ERR_INVALID_HASHKEY;
     } else { 
-        alc_hash32_entry_t *val;
+        ahash_entry *v;
 add:
-        val = lookup_insertion_32entry(key, ht);
-        if (val != NULL) {
-            if (val->key == key ) {        /* over write , don't incr count */
-                val->user_pointer = user_pointer;
-            } else  {                /* set */
-                val->key = key;
-                val->user_pointer = user_pointer;
-                ht->nvalid_entries++;
-            }
-        } else {
-            /* indication of a poor hash function */
-            if (rehash_level > 1) {
-                while (val == NULL) {
-                    if (ht->max_collisions == ht->nentries) break;  /* full? */
-                    ht->max_collisions +=  ht->max_collisions/2; /* expand */
+        v = lookup_insert_entry(key, ht);
+        if (v) {
+            if (v->key == key) v->val = val; // over-write
+            else  { v->key = key; v->val = val; ht->nvalid_entries++; } // set
+        } else { /* indication of a poor hash function */
+            if (rehash_lvl > 1) {
+                while (!v) {
+                    if (ht->max_collisions == ht->nentries) break;  // full?
+                    ht->max_collisions +=  ht->max_collisions / 2;  // expand
                     if (ht->max_collisions > ht->nentries) {
-                        ht->max_collisions =  ht->nentries; /* clip */
+                        ht->max_collisions =  ht->nentries;         // clip 
                     }
-                    val = lookup_insertion_32entry(key, ht); /* again */
+                    v = lookup_insert_entry(key, ht);               // again
                 }
             }
-            if ( rehash32(ht, rehash_level + 1) != 0) { /* gotta rehash */
+            if (rehash32(ht, rehash_lvl + 1) != 0) {                // rehash
                 status = ERR_OOM; goto done;
             }
             goto add; /* add */
@@ -192,87 +166,56 @@ done:
     return status ;
 }
 
-void alc_hash32_delete(uint32 key, alc_hash32_t *ht) {
-    if (key != HASH_NULL_KEY) {
-        alc_hash32_entry_t *val = lookup_32entry(key, ht);
-        if (val != NULL) {
-            val->key = HASH_NULL_KEY;
-            ht->nvalid_entries--;
-        }
+void alc_hash32_delete(uint32 key, ahash *ht) {
+    if (key) {
+        ahash_entry *v = lookup_32entry(key, ht);
+        if (v) { v->key = 0; ht->nvalid_entries--; }
     }
 }
 
-void  *alc_hash32_fetch(uint32 key, const alc_hash32_t *ht) {
-    void *user_pointer = NULL;
-    if (key != HASH_NULL_KEY) {
-      alc_hash32_entry_t *val = lookup_32entry(key, ht);
-      if (val != NULL ) user_pointer = val->user_pointer;
+ulong alc_hash32_fetch(uint32 key, ahash *ht) {
+    if (key) {
+        ahash_entry *v = lookup_32entry(key, ht);
+        if (v) return v->val;
     }
-    return user_pointer;
+    return 0;
 }
 
-uint32 alc_hash32_size(alc_hash32_t *ht) {
-    return (ht->nentries * sizeof(alc_hash32_entry_t)) +
-           sizeof(alc_hash32_t) - 8;
+uint32 alc_hash32_size(ahash *ht) {
+    return (ht->nentries * sizeof(ahash_entry)) + sizeof(ahash);
 }
 
-// interpret the user pointer as a 32bit unsigned int and increment by 'incr'
-int alc_hash32_uincr(uint32 key, uint32 incr, alc_hash32_t *ht) {
-    int status = 0;
-    if (key != HASH_NULL_KEY) {
-        alc_hash32_entry_t *val = lookup_32entry(key, ht);
-        if (val != NULL ) {
-            uint32 count    = (uint32)(long)(val->user_pointer) + incr;
-            val->user_pointer = (void *)(long)count;
-        } else {
-            status = alc_hash32_insert(key, (void *)(long)incr, ht);
-        }
-    }
-    return status;
-}
+#ifndef ALCHEMY_DATABASE
+#define DEBUG_HASH_TEST
+#endif
+#define SEQUENTIAL_TEST
 
-// free the memory for those nodes that eval( user_ptr, value_ptr )
-void alc_hash32_thin(alc_hash32_t *ht,                void *user_ptr,
-                     uint32 (*eval)(void *user_ptr, void *value_ptr) ) {
-    uint32            i, n    = ht->nentries;
-    alc_hash32_entry_t *entries = ht->entries;
-    for(i = 0; i < n; i++) { // loop thru table, evaling all non-null entries
-        alc_hash32_entry_t *e = entries + i;
-        if (e->key != HASH_NULL_KEY) {
-            uint32 val = (*eval)(user_ptr, e->user_pointer);
-            if ( val > 0 ) { /* delete */
-                e->key = HASH_NULL_KEY;
-                ht->nvalid_entries--;
-            }
-        }
-    }
-}
-
-// eval( user_ptr, key, value_ptr ) for all elements
-void alc_hash32_map(alc_hash32_t *ht,            void *user_ptr,
-                    void (*eval)(void *user_ptr, uint32 key, void *value_ptr)) {
-    uint32            i, n    = ht->nentries;
-    alc_hash32_entry_t *entries = ht->entries;
-    for(i = 0; i < n; i++) { // loop thru table, evaling all non-null entries
-        alc_hash32_entry_t *e = entries + i;
-        if (e->key != HASH_NULL_KEY) (*eval)(user_ptr, e->key, e->user_pointer);
-    }
-}
-
-//#define HASH_TEST
-#ifdef HASH_TEST
+#ifdef DEBUG_HASH_TEST
 int main(int argc, char **argv) {
-    if (argc != 2) { printf("Usage: %s num\n", argv[0]); return -1; }
-    int           num = atoi(argv[1]);
-    alc_hash32_t *ht  = alc_hash32_make(2);
+    if (argc != 3) { printf("Usage: %s num range\n", argv[0]); return -1; }
+    int    num   = atoi(argv[1]);
+    int    range = atoi(argv[2]);
+    ahash *ht    = alc_hash32_make(2);
     printf("SIZE: %u\n", alc_hash32_size(ht));
-    for (int i = 0; i < num; i++) alc_hash32_insert(i, (void*)(long)i, ht);
-    printf("SIZE: %u\n", alc_hash32_size(ht));
-
+    srand(1); // NOT a random seed
     for (int i = 0; i < num; i++) {
-        void *v = alc_hash32_fetch(i, ht);
-        if (i != (int)(long)v) {
-            printf("ERROR: fetch: %d -> %d\n", i, (int)(long)v); return -1;
+        int r = rand() % range;
+#ifdef SEQUENTIAL_TEST
+        r = i + 4;
+#endif
+        alc_hash32_insert(r, (long)r, ht);
+    }
+    printf("SIZE: %u nentries: %d\n", alc_hash32_size(ht), ht->nentries);
+
+    srand(1); // NOT a random seed
+    for (int i = 0; i < num; i++) {
+        int  r = rand() % range;
+#ifdef SEQUENTIAL_TEST
+        r = i + 4;
+#endif
+        long j = alc_hash32_fetch(r, ht);
+        if (r != j) {
+            printf("ERROR: fetch: %d -> %ld\n", r, j); return -1;
         }
     }
     return 0;

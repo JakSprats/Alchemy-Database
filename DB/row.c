@@ -40,6 +40,7 @@ ALL RIGHTS RESERVED
 #include "redis.h"
 #include "lzf.h"
 
+#include "hash.h"
 #include "sixbit.h"
 #include "bt.h"
 #include "index.h"
@@ -62,13 +63,17 @@ extern char MULT;  extern char DIVIDE;
 extern char POWER; extern char MODULO;
 extern char STRCAT;
 
-#define RFLAG_1BYTE_INT 1
-#define RFLAG_2BYTE_INT 2
-#define RFLAG_4BYTE_INT 4
+#define RFLAG_1BYTE_INT     1
+#define RFLAG_2BYTE_INT     2
+#define RFLAG_4BYTE_INT     4
 #define RFLAG_SIZE_FLAG (RFLAG_1BYTE_INT + RFLAG_2BYTE_INT + RFLAG_4BYTE_INT)
 
-#define RFLAG_6BIT_ZIP     8
-#define RFLAG_LZF_ZIP     16
+#define RFLAG_6BIT_ZIP      8
+#define RFLAG_LZF_ZIP      16
+
+#define RFLAG_HASH_ROW     32
+#define HASH_SIZE_COMP_ADJ        1.2
+#define MIN_NUM_COLS_FOR_HASH_ROW 100
 
 typedef robj *row_outputter(bt   *btr,       void *rrow, int   qcols,
                             int   cmatchs[], aobj *apk,  int   tmatch);
@@ -99,6 +104,7 @@ typedef struct create_row_data {
     uchar   iflags;
     ulong   icols; /* for INT & LONG */
     float   fcols;
+    bool    empty; // for HashRows
 } crd_t;
 static void init_cr(cr_t *cr, crd_t *crd, int tmatch, int ncols, int tcols) {
     cr->tmatch = tmatch;
@@ -229,8 +235,8 @@ static void zipCol(cr_t *cr, crd_t *crd, cz_t *cz, czd_t *czd) {
         crd[i].mcofsts -= shrunk;
     }
 }
-/*  ROW BINARY FORMAT: [ 1B | 1B  |NC*(1-4B)|data ....no PK, no commas] */
-/*                     [flag|ncols|cofsts|a,b,c,....................] */
+/*  ROW BINARY FORMAT: [ 1B |StreamUINT|NC*(1-4B)|data ... no PK, no commas] */
+/*                     [flag|  ncols   | cofsts  |a,b,c,...................] */
 static uchar assign_rflag(uint32 rlen, uchar ztype) {
     uchar rflag;
     if (     rlen < UCHAR_MAX) rflag = RFLAG_1BYTE_INT;
@@ -240,18 +246,18 @@ static uchar assign_rflag(uint32 rlen, uchar ztype) {
     else if (ztype == CZIP_LZF) rflag += RFLAG_LZF_ZIP;
     return rflag;
 }
+static void rawUintWriteToRow(uchar **row, uint32 val) {
+    ulong icol; uchar sflag;
+    cr8Icol((ulong)val, &sflag, &icol);
+    writeUIntCol(row, sflag, icol);
+}
 static void *createRowBlob(int ncols, uchar rflag, uint32 rlen) {
-    int     tcols       = ncols - 1;
+    int     rcols = ncols - 1;
     //NOTE: META_LEN: [flag + ncols              +  cofsts]
-    uint32  mlen    = 1 + getCSize(tcols, 1) + (ncols * rflag);
-    uint32  nrlen = mlen + rlen;
-    uchar  *orow        = malloc(nrlen);           /* FREE ME 023 */
-    uchar  *row         = orow;
-    *row                = rflag;    /* SET flag      (size++) */
-    row++;
-    ulong icol; uchar sflag;        /* Write NCOLS as StreamUint */
-    cr8Icol((ulong)(ncols - 1), &sflag, &icol);
-    writeUIntCol(&row, sflag, icol);
+    uint32  mlen  = 1 + getCSize(rcols, 1) + (ncols * rflag);
+    uchar  *orow  = malloc(mlen + rlen);                 // FREEME 023
+    uchar  *row   = orow; *row = rflag; row++; // WRITE rflag
+    rawUintWriteToRow(&row, (ncols - 1));      // WRITE NCOLS
     return orow;
 }
 static int set_col_offst(uchar *row, uchar rflag, int cofst) {
@@ -264,14 +270,52 @@ static int set_col_offst(uchar *row, uchar rflag, int cofst) {
         memcpy(row, &cofst, UINT_SIZE); return UINT_SIZE;
     }
 }
+
+static uchar *createDictRow(cr_t *cr, crd_t *crd, uchar *rflag, uint32 *mlen) {
+    if (cr->ncols < MIN_NUM_COLS_FOR_HASH_ROW) return NULL;
+    ahash *ht = alc_hash32_make(2); // start small
+    for (int i = 1; i < cr->ncols; i++) {
+        if (!crd[i].empty) {
+            long hval = crd[i].mcofsts;
+            if (i) hval += crd[i - 1].mcofsts * (long)UINT_MAX;
+            alc_hash32_insert(i, (ulong)hval, ht);
+        }
+    }
+    char    sflag = *rflag & RFLAG_SIZE_FLAG;
+    uint32  msize = cr->ncols * sflag;
+    uchar  *orow  = NULL;
+    //printf("msize: %d hsize: %d\n", msize, alc_hash32_size(ht));
+    if (msize > alc_hash32_size(ht) * HASH_SIZE_COMP_ADJ) {
+        *rflag             = *rflag | RFLAG_HASH_ROW;
+        *mlen              = alc_hash32_size(ht) + 1 + getCSize(cr->rlen, 1) +
+                               getCSize((cr->ncols - 1), 1);
+        // SERIALIZE DICT
+        orow               = malloc(*mlen + cr->rlen);   // FREEME 095
+        uchar  *row        = orow; *row = *rflag; row++; // WRITE rflag
+        rawUintWriteToRow(&row, cr->rlen);               // WRITE rlen
+        rawUintWriteToRow(&row, (cr->ncols - 1));        // WRITE NCOLS
+        ahash_entry *oents = ht->entries;
+        ht->entries        = NULL; // ht->entries will be simulated
+        memcpy(row, ht, sizeof(ahash)); row += sizeof(ahash);
+        ht->entries        = oents; // set back for alc_hash32_destroy()
+        memcpy(row, oents, ht->nentries * sizeof(ahash_entry));
+    }
+    alc_hash32_destroy(ht);
+    return orow;
+}
+
 static uchar *writeRow(cr_t *cr, crd_t *crd) {
-    cz_t cz; czd_t czd[cr->ncols]; init_cz(&cz, cr);
+    cz_t cz; czd_t czd[cr->ncols]; init_cz(&cz, cr); uchar *row; uint32 mlen;
     if (cz.zip) zipCol(cr, crd, &cz, czd);
     uchar  rflag = assign_rflag(cr->rlen, cz.type);
-    uchar *orow  = createRowBlob(cr->ncols, rflag, cr->rlen);
-    uchar *row   = orow + 1 + getCSize(cr->ncols - 1, 1); // flag + ncols
-    for (int i = 1; i < cr->ncols; i++) { /* WRITE cofsts[] to row */
-        row += set_col_offst(row, rflag, crd[i].mcofsts); // size+=ncols*flag
+    uchar *orow  = createDictRow(cr, crd, &rflag, &mlen);
+    if (orow) row = orow + mlen; // HASH ROW
+    else {                       // NORMAL ROW
+        orow = createRowBlob(cr->ncols, rflag, cr->rlen);
+        row  = orow + 1 + getCSize(cr->ncols - 1, 1); // flag + ncols
+        for (int i = 1; i < cr->ncols; i++) { /* WRITE cofsts[] to row */
+            row += set_col_offst(row, rflag, crd[i].mcofsts);// size+=ncols*flag
+        }
     }
     uint32 k = 0;
     for (int i = 1; i < cr->ncols; i++) { /* write ROW */
@@ -282,24 +326,26 @@ static uchar *writeRow(cr_t *cr, crd_t *crd) {
             writeULongCol(&row, crd[i].iflags, crd[i].icols);
         } else if C_IS_F(ctype) {
             writeFloatCol(&row, crd[i].fcols);
-        } else {/* COL_TYPE_STRING */
-            if (       cz.type == CZIP_SIX) {
+        } else {//C_IS_S()
+            if        (cz.type == CZIP_SIX) {
                 memcpy(row, czd[k].sixs, czd[k].sixl); row += czd[k].sixl; k++;
             } else if (cz.type == CZIP_LZF) {
-                row = writeLzfCol(row, czd, k);                           k++;
+                row = writeLzfCol(row, czd, k);                            k++;
             } else {
                 memcpy(row, crd[i].strs, crd[i].slens); row += crd[i].slens;
-           }
+            }
         }
     }
     destroy_cz(&cz, czd);
     return orow;
 }
-#define DEBUG_CREATE_ROW \
-  printf("nclen: %d rlen: %d c[%d]: %d", nclen, cr.rlen, i, crd[i].mcofsts); \
-  if C_IS_NUM(ctype) printf(" iflags: %d col: %u",                           \
-                            crd[i].iflags, crd[i].icols);                    \
-  printf("\n");
+#define DEBUG_CREATE_ROW                                                       \
+  if (!crd[i].empty) {                                                         \
+    printf("nclen: %d rlen: %d c[%d]: %d", nclen, cr.rlen, i, crd[i].mcofsts); \
+    if C_IS_NUM(ctype) printf(" iflags: %d col: %u",                           \
+                              crd[i].iflags, crd[i].icols);                    \
+    printf("\n");                                                              \
+  }
 
 static char *EmptyStringCol = "''";
 static char *EmptyCol       = "";
@@ -315,12 +361,14 @@ void *createRow(cli    *c,    bt     *btr,      int tmatch, int  ncols,
     for (int i = 1; i < cr.ncols; i++) { /* MOD cofsts (no PK,no commas,PACK) */
         uchar ctype  = Tbl[tmatch].col[i].type;
         if (cofsts[i].i == -1) { //TODO next block's logic should be done here
+            crd[i].empty = 1; // used in writeRow to compute hash-row's size
             if (C_IS_S(ctype)) {
                 crd[i].strs = EmptyStringCol; crd[i].slens = 2;
             } else  {
                 crd[i].strs = EmptyCol;       crd[i].slens = 0;
             }
         } else {
+            crd[i].empty = 0; // used in writeRow to compute hash-row's size
             char *startc = vals + cofsts[i].i;
             char *endc   = vals + cofsts[i].j;
             crd[i].strs  = startc;
@@ -363,58 +411,79 @@ void *createRow(cli    *c,    bt     *btr,      int tmatch, int  ncols,
 printf("getRawCol: orow: %p tmatch: %d cmatch: %d force_s: %d apk: ", \
         orow, tmatch, cmatch, force_s); dumpAobj(printf, apk);
 
+static ahash *getHashFromRow(uchar *row) {
+    uint32_t clen;
+                                 row++;       // SKIP rflag
+    streamIntToUInt(row, &clen); row += clen; // SKIP rlen
+    streamIntToUInt(row, &clen); row += clen; // SKIP ncols
+    return (ahash *)row;
+}
 static uchar *getRowPayload(uchar  *row,   uchar  *rflag,
                             uint32 *ncols, uint32 *rlen) {
     uint32_t clen;
     uchar *o_row = row;
-    *rflag       = *row;                        row++;       /* GET flag */
-    char   sflag = *rflag & RFLAG_SIZE_FLAG;
-    *ncols       = streamIntToUInt(row, &clen); row += clen; /* GET ncols */
-                        /* SKIP cofsts */       row += (*ncols * sflag);
-    uint32 mlen  = row - o_row;
-    if        (*rflag & RFLAG_1BYTE_INT) {            /* rlen is final cofst */
-        uchar *x = (uchar*)row - 1; *rlen = (uint32)*x;
-    } else if (*rflag & RFLAG_2BYTE_INT) {
-        uchar *x = row - 2;         *rlen = (uint32)(*((unsigned short *)x));
-    } else {         /* RFLAG_4BYTE_INT */
-        uchar *x = row - 4;         *rlen = *((uint32 *)x);
+    *rflag       = *row;                             row++;       // GET rflag
+    if (*rflag & RFLAG_HASH_ROW) {
+        *rlen     = streamIntToUInt(row, &clen);     row += clen; // GET rlen
+        *ncols    = streamIntToUInt(row, &clen);     row += clen; // GET ncols
+        ahash *ht = (ahash *)row;
+                          /* SKIP HASH_TABLE */      row += alc_hash32_size(ht);
+    } else {
+        char sflag = *rflag & RFLAG_SIZE_FLAG;
+        *ncols     = streamIntToUInt(row, &clen);    row += clen; // GET ncols
+                          /* SKIP cofsts */          row += (*ncols * sflag);
+        if        (*rflag & RFLAG_1BYTE_INT) { // rlen = final cofst[FINAL]
+            *rlen = (uint32)*((uchar*)row - 1);
+        } else if (*rflag & RFLAG_2BYTE_INT) {
+            *rlen = (uint32)(*((unsigned short *)((uchar *)(row - 2))));
+        } else {         /* RFLAG_4BYTE_INT */
+            *rlen = (uint32)(*((uint32 *)        ((uchar *)(row - 4))));
+        }
     }
-    *rlen = *rlen + mlen;
+    uint32  mlen = row - o_row;
+    *rlen        = *rlen + mlen;
     return row;
 }
 uint32 getRowMallocSize(uchar *stream) { // used in stream.c also
     uchar rflag; uint32 rlen; uint32 ncols;
     getRowPayload(stream, &rflag, &ncols, &rlen); return rlen;
 }
-uchar *getColData(void *orow, int cmatch, uint32 *clen, uchar *rflag) {
+uchar *getColData(uchar *orow, int cmatch, uint32 *clen, uchar *rflag) {
     uint32 rlen; uint32 ncols;
-    uchar   *meta     = (uchar *)orow;
-    uchar   *row      = getRowPayload(meta, rflag, &ncols, &rlen);
+    uchar   *row     = getRowPayload(orow, rflag, &ncols, &rlen);
     if ((uint32)cmatch > ncols) { *clen = 0; return row; }
-    uchar    sflag    = *rflag & RFLAG_SIZE_FLAG;
-    uchar   *cofst    = meta + 1 + getCSize(ncols - 1, 1);
-    int      mcmatch = cmatch - 1; /* key was not stored -> one less column */
-    uint32   start    = 0;
-    uint32   next;
-    if        (*rflag & RFLAG_1BYTE_INT) {
-        if (mcmatch) start = *(uchar *)((cofst + mcmatch - 1));
-        next = *(uchar *)((cofst + mcmatch));
-    } else if (*rflag & RFLAG_2BYTE_INT) {
-        if (mcmatch) {
-            start = *(ushort16 *)(uchar *)(cofst + ((mcmatch - 1) * sflag));
+    uchar    sflag   = *rflag & RFLAG_SIZE_FLAG;
+    if (*rflag & RFLAG_HASH_ROW) {
+        ahash  *ht    = getHashFromRow(orow);
+        long    val   = alc_hash32_fetch(cmatch, ht);
+        uint32  start = val / UINT_MAX;;
+        uint32  next  = val % UINT_MAX;;
+        *clen        = next - start;
+        return row + start;
+    } else {
+        uint32   start   = 0, next;
+        int      mcmatch = cmatch - 1; // key NOT stored -> one less column
+        uchar   *cofst   = orow + 1 + getCSize(ncols - 1, 1);
+        if        (*rflag & RFLAG_1BYTE_INT) {
+            if (mcmatch) start = *(uchar *)((cofst + mcmatch - 1));
+            next = *(uchar *)((cofst + mcmatch));
+        } else if (*rflag & RFLAG_2BYTE_INT) {
+            if (mcmatch) {
+                start = *(ushort16 *)(uchar *)(cofst + ((mcmatch - 1) * sflag));
+            }
+            next = *(ushort16 *)(char *)(cofst + (mcmatch * sflag));
+        } else {         /* RFLAG_4BYTE_INT */
+            if (mcmatch) {
+                start = *(uint32 *)(uchar *)(cofst + ((mcmatch - 1) * sflag));
+            }
+            next = *(uint32 *)(uchar *)(cofst + (mcmatch * sflag));
         }
-        next = *(ushort16 *)(char *)(cofst + (mcmatch * sflag));
-    } else {         /* RFLAG_4BYTE_INT */
-        if (mcmatch) {
-            start = *(uint32 *)(uchar *)(cofst + ((mcmatch - 1) * sflag));
-        }
-        next = *(uint32 *)(uchar *)(cofst + (mcmatch * sflag));
+        *clen  = next - start;
+        return row + start;
     }
-    *clen  = next - start;
-    return row + start;
 }
-aobj getRawCol(bt  *btr,    void *orow, int cmatch, aobj *apk,
-               int  tmatch, bool force_s) {
+aobj getRawCol(bt  *btr,    uchar *orow, int cmatch, aobj *apk,
+               int  tmatch, bool  force_s) {
     if (OTHER_BT(btr)) return getOtherBTRawCol(btr, orow, cmatch, apk, force_s);
     aobj a; initAobj(&a); //DEBUG_GET_RAW_COL
     r_tbl_t *rt    = &Tbl[tmatch];
@@ -450,10 +519,10 @@ aobj getRawCol(bt  *btr,    void *orow, int cmatch, aobj *apk,
     }
     return a;
 }
-inline aobj getCol(bt *btr, void *rrow, int cmatch, aobj *apk, int tmatch) {
+inline aobj getCol(bt *btr, uchar *rrow, int cmatch, aobj *apk, int tmatch) {
     return getRawCol(btr, rrow, cmatch, apk, tmatch, 0);
 }
-inline aobj getSCol(bt *btr, void *rrow, int cmatch, aobj *apk, int tmatch) {
+inline aobj getSCol(bt *btr, uchar *rrow, int cmatch, aobj *apk, int tmatch) {
     return getRawCol(btr, rrow, cmatch, apk, tmatch, 1);
 }
 

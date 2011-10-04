@@ -37,9 +37,9 @@ void *createRow(cli    *c,    bt     *btr,      int tmatch, int  ncols,
 
 uint32 getRowMallocSize(uchar *stream);
 
-uchar *getColData(    void *orow, int cmatch, uint32 *clen, uchar *rflag);
-aobj getCol (bt *btr, void *rrow, int cmatch, aobj *apk, int tmatch);
-aobj getSCol(bt *btr, void *rrow, int cmatch, aobj *apk, int tmatch);
+uchar *getColData(    uchar *orow, int cmatch, uint32 *clen, uchar *rflag);
+aobj getCol (bt *btr, uchar *rrow, int cmatch, aobj *apk, int tmatch);
+aobj getSCol(bt *btr, uchar *rrow, int cmatch, aobj *apk, int tmatch);
 
 robj *cloneRobjErow(robj *r);   // EMBEDDED
 void decrRefCountErow(robj *r); // EMBEDDED

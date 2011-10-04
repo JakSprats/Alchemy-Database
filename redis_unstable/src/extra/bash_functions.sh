@@ -2512,3 +2512,31 @@ function test_drop_add_index_list() {
   for I in 0 1 2 3 4; do $CLI DROP TABLE foo_99${I}; done
   for I in 1 2 3 4 5 6 7 8; do $CLI CREATE INDEX i_foo98${I} ON foo_98${I} "(fk)"; done
 }
+
+function create_sparse_table() {
+  $CLI CREATE TABLE sparse "(pk LONG, col_1 INT, col_2 INT)";
+  J=3;
+  while [ $J -lt 100000 ]; do
+    $CLI ALTER TABLE sparse ADD COLUMN col_$J INT
+    J=$[${J}+1];
+  done
+  $CLI DESC sparse
+}
+
+function test_sparse_table() {
+  if [ -z "$1" ]; then echo "Usage: $0 ncols"; return; fi
+  I=$1
+  CDECL="(";
+  CVALS="(";
+  while [ $I -ne 0 ]; do
+    CVALS="$CVALS $I";
+    CDECL="$CDECL col_$I";
+    if [ $I -ne 1 ]; then
+        CDECL="$CDECL ,"; CVALS="$CVALS ,";
+    fi;
+    I=$[${I}-1];
+  done;
+  CDECL="$CDECL)"; CVALS="$CVALS)"
+  echo $CLI INSERT INTO sparse "$CDECL" VALUES "$CVALS" "RETURN SIZE"
+  time $CLI INSERT INTO sparse "$CDECL" VALUES "$CVALS" "RETURN SIZE"
+}
