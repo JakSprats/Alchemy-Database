@@ -2516,7 +2516,7 @@ function test_drop_add_index_list() {
 function create_sparse_table() {
   $CLI CREATE TABLE sparse "(pk LONG, col_1 INT, col_2 INT)";
   J=3;
-  while [ $J -lt 100000 ]; do
+  while [ $J -lt 20000 ]; do
     $CLI ALTER TABLE sparse ADD COLUMN col_$J INT
     J=$[${J}+1];
   done
@@ -2540,3 +2540,4 @@ function test_sparse_table() {
   echo $CLI INSERT INTO sparse "$CDECL" VALUES "$CVALS" "RETURN SIZE"
   time $CLI INSERT INTO sparse "$CDECL" VALUES "$CVALS" "RETURN SIZE"
 }
+

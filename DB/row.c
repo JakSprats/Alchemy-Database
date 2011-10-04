@@ -63,17 +63,22 @@ extern char MULT;  extern char DIVIDE;
 extern char POWER; extern char MODULO;
 extern char STRCAT;
 
-#define RFLAG_1BYTE_INT     1
-#define RFLAG_2BYTE_INT     2
-#define RFLAG_4BYTE_INT     4
+#define RFLAG_1BYTE_INT   1
+#define RFLAG_2BYTE_INT   2
+#define RFLAG_4BYTE_INT   4
 #define RFLAG_SIZE_FLAG (RFLAG_1BYTE_INT + RFLAG_2BYTE_INT + RFLAG_4BYTE_INT)
 
-#define RFLAG_6BIT_ZIP      8
-#define RFLAG_LZF_ZIP      16
+#define RFLAG_6BIT_ZIP    8
+#define RFLAG_LZF_ZIP    16
 
-#define RFLAG_HASH_ROW     32
+#define RFLAG_HASH16_ROW 32
+#define RFLAG_HASH32_ROW 64
+#define RFLAG_HASH_ROW (RFLAG_HASH16_ROW + RFLAG_HASH32_ROW)
 #define HASH_SIZE_COMP_ADJ        1.2
 #define MIN_NUM_COLS_FOR_HASH_ROW 100
+
+//NOTE: this may be WAY too high for fast READ ops (it favors memusage totally)
+#define MIN_FILL_PERC_HASH_ROW    0.25
 
 typedef robj *row_outputter(bt   *btr,       void *rrow, int   qcols,
                             int   cmatchs[], aobj *apk,  int   tmatch);
@@ -96,6 +101,7 @@ typedef struct create_row_ctrl {
     int     tmatch;
     int     ncols;
     uint32  rlen;
+    int     cnt;
 } cr_t;
 typedef struct create_row_data {
     int     mcofsts;
@@ -110,6 +116,7 @@ static void init_cr(cr_t *cr, crd_t *crd, int tmatch, int ncols, int tcols) {
     cr->tmatch = tmatch;
     cr->ncols  = ncols;
     cr->rlen   = 0;
+    cr->cnt    = 0;
     bzero(crd, sizeof(crd_t) * tcols);
 }
 #define INIT_CR                                   \
@@ -271,44 +278,87 @@ static int set_col_offst(uchar *row, uchar rflag, int cofst) {
     }
 }
 
-static uchar *createDictRow(cr_t *cr, crd_t *crd, uchar *rflag, uint32 *mlen) {
-    if (cr->ncols < MIN_NUM_COLS_FOR_HASH_ROW) return NULL;
-    ahash *ht = alc_hash32_make(2); // start small
+static uchar *createHash16Row(cr_t *cr, crd_t *crd, uchar *rflag,
+                              uint32 *mlen, uint32 msize) {
+    uchar   *orow = NULL;
+    ahash16 *ht16 = alc_hash16_make(2); // start small
+    for (int i = 1; i < cr->ncols; i++) {
+        if (!crd[i].empty) {
+            uint32 hval = crd[i].mcofsts;
+            if (i) hval += crd[i - 1].mcofsts * (uint32)USHRT_MAX;
+            alc_hash16_insert(i, (uint32)hval, ht16);
+        }
+    }
+    uint32 hsize = alc_hash16_size(ht16);
+    //printf("RFLAG_HASH16_ROW: msize: %d hsize: %d\n", msize, hsize);
+    if (msize > hsize * HASH_SIZE_COMP_ADJ) {
+        *rflag               = *rflag | RFLAG_HASH16_ROW;
+        *mlen                = hsize + 1 + getCSize(cr->rlen, 1) +
+                                           getCSize((cr->ncols - 1), 1);
+        // SERIALIZE DICT
+        orow                 = malloc(*mlen + cr->rlen);   // FREEME 095
+        uchar  *row          = orow; *row = *rflag; row++;     // WRITE rflag
+        rawUintWriteToRow(&row, cr->rlen);                     // WRITE rlen
+        rawUintWriteToRow(&row, (cr->ncols - 1));              // WRITE NCOLS
+        ahash16_entry *oents = ht16->entries;
+        ht16->entries        = NULL; // ht16->entries will be simulated
+        memcpy(row, ht16, sizeof(ahash16)); row += sizeof(ahash16);
+        ht16->entries        = oents; // set back for alc_hash16_destroy()
+        memcpy(row, oents, ht16->nentries * sizeof(ahash16_entry));
+    }
+    alc_hash16_destroy(ht16);
+    return orow;
+}
+static uchar *createHash32Row(cr_t *cr, crd_t *crd, uchar *rflag,
+                              uint32 *mlen, uint32 msize) {
+    uchar   *orow = NULL;
+    ahash32 *ht32 = alc_hash32_make(2); // start small
     for (int i = 1; i < cr->ncols; i++) {
         if (!crd[i].empty) {
             long hval = crd[i].mcofsts;
             if (i) hval += crd[i - 1].mcofsts * (long)UINT_MAX;
-            alc_hash32_insert(i, (ulong)hval, ht);
+            alc_hash32_insert(i, (ulong)hval, ht32);
         }
     }
-    char    sflag = *rflag & RFLAG_SIZE_FLAG;
-    uint32  msize = cr->ncols * sflag;
-    uchar  *orow  = NULL;
-    //printf("msize: %d hsize: %d\n", msize, alc_hash32_size(ht));
-    if (msize > alc_hash32_size(ht) * HASH_SIZE_COMP_ADJ) {
-        *rflag             = *rflag | RFLAG_HASH_ROW;
-        *mlen              = alc_hash32_size(ht) + 1 + getCSize(cr->rlen, 1) +
-                               getCSize((cr->ncols - 1), 1);
+    uint32 hsize = alc_hash32_size(ht32);
+    //printf("RFLAG_HASH32_ROW: msize: %d hsize: %d\n", msize, hsize);
+    if (msize > hsize * HASH_SIZE_COMP_ADJ) {
+        *rflag               = *rflag | RFLAG_HASH32_ROW;
+        *mlen                = hsize + 1 + getCSize(cr->rlen, 1) +
+                                           getCSize((cr->ncols - 1), 1);
         // SERIALIZE DICT
-        orow               = malloc(*mlen + cr->rlen);   // FREEME 095
-        uchar  *row        = orow; *row = *rflag; row++; // WRITE rflag
-        rawUintWriteToRow(&row, cr->rlen);               // WRITE rlen
-        rawUintWriteToRow(&row, (cr->ncols - 1));        // WRITE NCOLS
-        ahash_entry *oents = ht->entries;
-        ht->entries        = NULL; // ht->entries will be simulated
-        memcpy(row, ht, sizeof(ahash)); row += sizeof(ahash);
-        ht->entries        = oents; // set back for alc_hash32_destroy()
-        memcpy(row, oents, ht->nentries * sizeof(ahash_entry));
+        orow                 = malloc(*mlen + cr->rlen);   // FREEME 095
+        uchar  *row          = orow; *row = *rflag; row++;     // WRITE rflag
+        rawUintWriteToRow(&row, cr->rlen);                     // WRITE rlen
+        rawUintWriteToRow(&row, (cr->ncols - 1));              // WRITE NCOLS
+        ahash32_entry *oents = ht32->entries;
+        ht32->entries        = NULL; // ht32->entries will be simulated
+        memcpy(row, ht32, sizeof(ahash32)); row += sizeof(ahash32);
+        ht32->entries        = oents; // set back for alc_hash32_destroy()
+        memcpy(row, oents, ht32->nentries * sizeof(ahash32_entry));
     }
-    alc_hash32_destroy(ht);
+    alc_hash32_destroy(ht32);
     return orow;
+}
+static uchar *createHashRow(cr_t *cr, crd_t *crd, uchar *rflag, uint32 *mlen) {
+    if (cr->ncols < MIN_NUM_COLS_FOR_HASH_ROW ||
+        ((double)(cr->ncols * MIN_FILL_PERC_HASH_ROW) < (double)cr->cnt)) {
+        return NULL;
+    }
+    char    sflag = *rflag & RFLAG_SIZE_FLAG;
+    bool    use16 = (!(*rflag & RFLAG_4BYTE_INT) && cr->ncols < USHRT_MAX);
+    uint32  msize = cr->ncols * sflag;
+
+    return use16 ? createHash16Row(cr, crd, rflag, mlen, msize) :
+                   createHash32Row(cr, crd, rflag, mlen, msize);
 }
 
 static uchar *writeRow(cr_t *cr, crd_t *crd) {
-    cz_t cz; czd_t czd[cr->ncols]; init_cz(&cz, cr); uchar *row; uint32 mlen;
+    cz_t cz; czd_t czd[cr->ncols]; init_cz(&cz, cr);
+    uchar *row; uint32 mlen = 0; // compiler warning
     if (cz.zip) zipCol(cr, crd, &cz, czd);
     uchar  rflag = assign_rflag(cr->rlen, cz.type);
-    uchar *orow  = createDictRow(cr, crd, &rflag, &mlen);
+    uchar *orow  = createHashRow(cr, crd, &rflag, &mlen);
     if (orow) row = orow + mlen; // HASH ROW
     else {                       // NORMAL ROW
         orow = createRowBlob(cr->ncols, rflag, cr->rlen);
@@ -368,7 +418,7 @@ void *createRow(cli    *c,    bt     *btr,      int tmatch, int  ncols,
                 crd[i].strs = EmptyCol;       crd[i].slens = 0;
             }
         } else {
-            crd[i].empty = 0; // used in writeRow to compute hash-row's size
+            cr.cnt++; crd[i].empty = 0;
             char *startc = vals + cofsts[i].i;
             char *endc   = vals + cofsts[i].j;
             crd[i].strs  = startc;
@@ -411,12 +461,12 @@ void *createRow(cli    *c,    bt     *btr,      int tmatch, int  ncols,
 printf("getRawCol: orow: %p tmatch: %d cmatch: %d force_s: %d apk: ", \
         orow, tmatch, cmatch, force_s); dumpAobj(printf, apk);
 
-static ahash *getHashFromRow(uchar *row) {
+static uchar *getHashFromRow(uchar *row) {
     uint32_t clen;
                                  row++;       // SKIP rflag
     streamIntToUInt(row, &clen); row += clen; // SKIP rlen
     streamIntToUInt(row, &clen); row += clen; // SKIP ncols
-    return (ahash *)row;
+    return row;
 }
 static uchar *getRowPayload(uchar  *row,   uchar  *rflag,
                             uint32 *ncols, uint32 *rlen) {
@@ -424,10 +474,15 @@ static uchar *getRowPayload(uchar  *row,   uchar  *rflag,
     uchar *o_row = row;
     *rflag       = *row;                             row++;       // GET rflag
     if (*rflag & RFLAG_HASH_ROW) {
-        *rlen     = streamIntToUInt(row, &clen);     row += clen; // GET rlen
-        *ncols    = streamIntToUInt(row, &clen);     row += clen; // GET ncols
-        ahash *ht = (ahash *)row;
+        *rlen       = streamIntToUInt(row, &clen);   row += clen; // GET rlen
+        *ncols      = streamIntToUInt(row, &clen);   row += clen; // GET ncols
+        if (*rflag & RFLAG_HASH32_ROW) {
+            ahash32 *ht = (ahash32 *)row;
                           /* SKIP HASH_TABLE */      row += alc_hash32_size(ht);
+        } else { // RFLAG_HASH16_ROW
+            ahash16 *ht = (ahash16 *)row;
+                          /* SKIP HASH_TABLE */      row += alc_hash16_size(ht);
+        }
     } else {
         char sflag = *rflag & RFLAG_SIZE_FLAG;
         *ncols     = streamIntToUInt(row, &clen);    row += clen; // GET ncols
@@ -453,12 +508,17 @@ uchar *getColData(uchar *orow, int cmatch, uint32 *clen, uchar *rflag) {
     uchar   *row     = getRowPayload(orow, rflag, &ncols, &rlen);
     if ((uint32)cmatch > ncols) { *clen = 0; return row; }
     uchar    sflag   = *rflag & RFLAG_SIZE_FLAG;
-    if (*rflag & RFLAG_HASH_ROW) {
-        ahash  *ht    = getHashFromRow(orow);
-        long    val   = alc_hash32_fetch(cmatch, ht);
-        uint32  start = val / UINT_MAX;;
-        uint32  next  = val % UINT_MAX;;
-        *clen        = next - start;
+    if        (*rflag & RFLAG_HASH32_ROW) {
+        ahash32 *ht    = (ahash32 *)getHashFromRow(orow);
+        long     val   = alc_hash32_fetch(cmatch, ht);
+        uint32   start = val / UINT_MAX,  next  = val % UINT_MAX;;
+        *clen          = next - start;
+        return row + start;
+    } else if (*rflag & RFLAG_HASH16_ROW) {
+        ahash16 *ht    = (ahash16 *)getHashFromRow(orow);
+        uint32   val   = alc_hash16_fetch(cmatch, ht);
+        ushort16 start = val / USHRT_MAX, next  = val % USHRT_MAX;;
+        *clen          = next - start;
         return row + start;
     } else {
         uint32   start   = 0, next;
