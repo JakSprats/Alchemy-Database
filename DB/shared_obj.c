@@ -91,7 +91,7 @@ void DXDB_createSharedObjects() {
         "-ERR SYNTAX: CREATE LUATRIGGER ... ADD_FUNC can ONLY contain column names and commas, e.g. \"luafunc(col1, col2, col3)\"\r\n"));
 
     shared.invalidupdatestring = createObject(REDIS_STRING,sdsnew(
-        "-ERR UPDATE: string error, syntax is col1=val1,col2=val2,....\r\n"));
+        "-ERR UPDATE: SET error, syntax is col1=val1,col2=val2,....\r\n"));
     shared.invalidrange = createObject(REDIS_STRING,sdsnew(
         "-ERR RANGE: Invalid range\r\n"));
 

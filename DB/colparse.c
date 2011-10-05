@@ -32,6 +32,10 @@ ALL RIGHTS RESERVED
 #include <limits.h>
 char *strcasestr(const char *haystack, const char *needle); /*compiler warning*/
 
+#include <lua.h>
+#include <lauxlib.h>
+#include <lualib.h>
+
 #include "redis.h"
 #include "zmalloc.h"
 
@@ -67,7 +71,7 @@ void incrOffsetVar(redisClient *c, wob_t *wb, long incr) {
     server.dirty++;
 }
 
-/* PARSE PARSE PARSE PARSE PARSE PARSE PARSE PARSE PARSE PARSE PARSE */
+// INSERT INSERT INSERT INSERT INSERT INSERT INSERT INSERT INSERT INSERT
 char *parse_insert_val_list_nextc(char *start, uchar ctype, bool *err) {
     if (C_IS_S(ctype)) { /* column must be \' delimited */
         *err  = 1;                           /* presume failure */
@@ -112,6 +116,7 @@ char *parseRowVals(sds vals,  char   **pk,        int    *pklen,
     bool    err   = 0;
     while (1) {
         int   cmatch = pcols ? cmatchs[numc] : numc;
+        if (cmatch >= ncols) return NULL;
         uchar ctype  = Tbl[tmatch].col[cmatch].type;
         nextc        = parse_insert_val_list_nextc(nextc, ctype, &err);
         if (err)    return NULL;
@@ -149,6 +154,8 @@ char *parseRowVals(sds vals,  char   **pk,        int    *pklen,
     else if         (numc != ncols) return NULL;
     return mvals;
 }
+
+// SELECT SELECT SELECT SELECT SELECT SELECT SELECT SELECT SELECT SELECT
 static bool parseSelectCol(int   tmatch, char *cname, int   clen,
                            list *cs,     int  *qcols, bool *cstar) {
     if (*cname == '*') {
@@ -298,26 +305,7 @@ bool parseSelect(cli  *c,     bool  is_scan, bool *no_wc, int  *tmatch,
                                0, NULL, NULL, NULL, qcols, cstar);
 }
 
-char *parse_update_val_list_nextc(char *start, uchar ctype, bool *err) {
-    if (C_IS_S(ctype)) { /* column must be \' delimited */
-        *err = 1;         /* presume failure */
-        while(1) {
-            char c = *start;
-            if (!c)            return NULL;
-            if      (c == ',') return start;
-            else if (c == '\'') {
-                *err = 0; /* negate presumed failure */
-                start++;
-                if (!*start) return NULL;
-                start = str_next_unescaped_chr(start, start, '\'');
-                if (!start) return NULL;
-            }
-            start++;
-        }
-    } else {
-        return str_next_unescaped_chr(start, start, ',');
-    }
-}
+// UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE
 int parseUpdateColListReply(cli  *c,  int   tmatch, char *vallist,
                             list *cs, list *vals,   list *vlens) {
     int qcols = 0;
@@ -331,113 +319,142 @@ int parseUpdateColListReply(cli  *c,  int   tmatch, char *vallist,
         SKIP_SPACES(val)        /* search forwards */
         int cmatch = find_column_n(tmatch, vallist, (endval - vallist + 1));
         if (cmatch == -1) { addReply(c, shared.nonexistentcolumn); return 0; }
-        uchar ctype = Tbl[tmatch].col[cmatch].type;
         bool  err   = 0;
-        char *nextc = parse_update_val_list_nextc(val, ctype, &err);
+        char *nextc = get_next_comma_ignore_quotes_n_parens(val);
         if (err) { addReply(c, shared.invalidupdatestring);        return 0; }
-        char *end    = nextc ? nextc - 1 : val + strlen(val);
+        char *end;
+        if (nextc) { char *s = nextc;  while(*s != ',') s--; end = s - 1; }
+        else       end = val + strlen(val);
         REV_SKIP_SPACES(end)
         listAddNodeTail(cs,    VOIDINT cmatch);
         listAddNodeTail(vals,          val);
         listAddNodeTail(vlens, VOIDINT (end - val + 1));            
         qcols++;
         if (!nextc) break;
-        nextc++;
-        SKIP_SPACES(nextc)
+        if (*nextc == ',') { nextc++; SKIP_SPACES(nextc) }
         vallist = nextc;
     }
     return qcols;
 }
 
 /* UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR */
-static char Up_col_buf[64];
 char PLUS   = '+'; char MINUS  = '-';
 char MULT   = '*'; char DIVIDE = '/';
-char MODULO = '%'; char POWER  = '^'; char STRCAT = '|';
-char isExpression(char *val, uint32 vlen) {
-    for (uint32 i = 0; i < vlen; i++) {
-        char x = val[i];
-        if (x == PLUS)   return PLUS;
-        if (x == MINUS)  return MINUS;
-        if (x == MULT)   return MULT;
-        if (x == DIVIDE) return DIVIDE;
-        if (x == POWER)  return POWER;
-        if (x == MODULO) return MODULO;
-        if (x == STRCAT && i != (vlen - 1) && val[i + 1] == STRCAT)
-                         return STRCAT;
-    }
-    return 0;
-}
-uchar determineExprType(char *pred, int plen) {
-    if (*pred == '\'') {
-        if (plen < 3)                           return UETYPE_ERR;
-        if (_strnchr(pred + 1, '\'', plen - 1)) return UETYPE_STRING;
-        else                                    return UETYPE_ERR;
-    }
-    if (*pred == '"') {
-        if (plen < 3)                           return UETYPE_ERR;
-        if (_strnchr(pred + 1, '"', plen - 1))  return UETYPE_STRING;
-        else                                    return UETYPE_ERR;
-    }
-    if (plen >= 64)                             return UETYPE_ERR;
-    memcpy(Up_col_buf, pred, plen);
-    Up_col_buf[plen] = '\0';
-    if (is_int(Up_col_buf))                     return UETYPE_INT;
-    if (is_float(Up_col_buf))                   return UETYPE_FLOAT;
+char MODULO = '%'; char POWER  = '^';
+uchar getExprType(char *pred, int plen) {
+    if (plen >= 64)           return UETYPE_ERR;
+    char up_col_buf[64];
+    memcpy(up_col_buf, pred, plen); up_col_buf[plen] = '\0';
+    if (is_int  (up_col_buf)) return UETYPE_INT;
+    if (is_float(up_col_buf)) return UETYPE_FLT;
     return UETYPE_ERR;
 }
-bool parseExpr(cli   *c,     char  e,   int    tmatch, int   cmatch,
-               uchar  ctype, char *val, uint32 vlen,   ue_t *ue) {
-    char  *cname = val;
-    SKIP_SPACES(cname)
-    char  *espot = _strnchr(val, e, vlen); /* cant fail - "e" already found */
-    if (((espot - val) == (vlen - 1)) ||
-        ((e == STRCAT) && ((espot - val) == (vlen - 2)))) {
-        addReply(c, shared.update_expr); return 0;
-    }
-    char  *cend      = espot - 1;
-    REV_SKIP_SPACES(cend)
-    int    uec1match = find_column_n(tmatch, cname, cend - cname + 1);
-    if (uec1match == -1) { addReply(c, shared.update_expr_col); return 0; }
-    if (uec1match != cmatch) {
-        addReply(c, shared.update_expr_col_other); return 0;
-    }
-    char *pred = espot + 1;
-    if (e == STRCAT) pred++;
+int parseExpr(cli *c, int tmatch, int cmatch, char *val, uint32 vlen, ue_t *ue){
+    uint32  i;
+    uchar   ctype = Tbl[tmatch].col[cmatch].type;
+    for (i = 0; i < vlen; i++) { char e = *(val + i); if (!ISALNUM(e)) break; }
+    if (!i || i == vlen)                         return 0;
+    char   *cend  = val + i;
+    int     ucm   = find_column_n(tmatch, val, (cend - val));
+    if (ucm == -1 || ucm != cmatch)              return 0;
+    char   *x     = cend; SKIP_SPACES(x)
+    i             = (x - val); if (i == vlen)    return 0;
+    char    e     = *x;      // TODO \/ use OpDelim[] array
+    if (!((e == PLUS) || (e == MINUS) || (e == MULT) || (e == DIVIDE) ||
+          (e == POWER) || (e == MODULO)))        return 0;
+    char   *pred  = val + i + 1;
     while (ISBLANK(*pred)) {        /* find predicate (after blanks) */
-        pred++;
-        if ((pred - val) == vlen) { addReply(c, shared.update_expr); return 0; }
+        pred++; if ((pred - val) == vlen)        return 0;
     }
-    char *pend   = val + vlen -1;     /* start from END */
-    SKIP_SPACES(pend)               /* find end of predicate */
-    int   plen   = pend - pred + 1;
-    uchar uetype = determineExprType(pred, plen);
-    if (uetype == UETYPE_ERR) { addReply(c, shared.update_expr_col); return 0; }
-
-    /* RULES FOR UPDATE EXPRESSIONS */
-    if (uetype == UETYPE_STRING && ctype != COL_TYPE_STRING) {
-        addReply(c, shared.update_expr_math_str); return 0;
-    }
+    char    *pend = val + vlen -1; REV_SKIP_SPACES(pend)
+    int      plen = pend - pred + 1;
+    uchar    uet  = getExprType(pred, plen);
+    if (uet == UETYPE_ERR)                       return 0;
     if (e == MODULO && (ctype != COL_TYPE_INT && ctype != COL_TYPE_LONG)) {
-        addReply(c, shared.update_expr_mod); return 0;
+        addReply(c, shared.update_expr_mod); return -1;
     }
-    if (e == STRCAT && (ctype != COL_TYPE_STRING || uetype != UETYPE_STRING)) {
-        addReply(c, shared.update_expr_cat); return 0;
-    }
-    if (C_IS_S(ctype) && e != STRCAT) {
-        addReply(c, shared.update_expr_str); return 0;
-    }
-    if (uetype == UETYPE_STRING) { /* ignore string delimiters */
-        pred++;
-        plen -= 2;
-        if (plen == 0) { addReply(c, shared.update_expr_empty_str); return 0; }
-    }
-    ue->c1match = uec1match;
-    ue->type    = uetype;
+    ue->c1match = ucm;
+    ue->type    = uet;
     ue->pred    = pred;
     ue->plen    = plen;
     ue->op      = e;
     return 1;
+}
+
+// LuaDelims[] defines characters that CAN border column-names
+static bool Inited_LuaDelims = 0;
+static bool LuaDelims[256];
+static void init_LuaDelims() {
+    bzero(LuaDelims, 256);
+    LuaDelims[0]    = 1;
+    LuaDelims['\n'] = 1; LuaDelims['\t'] = 1; LuaDelims[' '] = 1;
+    LuaDelims['+']  = 1; LuaDelims['-']  = 1; LuaDelims['*'] = 1;
+    LuaDelims['/']  = 1; LuaDelims['%']  = 1; LuaDelims['^'] = 1;
+    LuaDelims['#']  = 1; LuaDelims['=']  = 1; LuaDelims['~'] = 1;
+    LuaDelims['<']  = 1; LuaDelims['>']  = 1; LuaDelims['('] = 1;
+    LuaDelims[')']  = 1; LuaDelims['{']  = 1; LuaDelims['}'] = 1;
+    LuaDelims['[']  = 1; LuaDelims[']']  = 1; LuaDelims[';'] = 1;
+    LuaDelims[':']  = 1; LuaDelims[',']  = 1; LuaDelims['.'] = 1;
+}
+
+bool parseLuaExpr(int tmatch, int cmatch, char *val, uint32 vlen, lue_t *le) {
+    if (!Inited_LuaDelims) { init_LuaDelims(); Inited_LuaDelims = 1; }
+    r_tbl_t *rt    = &Tbl[tmatch];
+    sds      expr  = sdsnewlen(val, vlen);                    // FREE ME 097
+    char    *beg   = expr, *s = expr;
+    sds      mexpr = sdsempty();                              // FREE ME 098
+    while (*s) { // do NOT search STRINGS for cnames (->strip STRINGS)
+        if (*s == '\'') {
+            if (s != beg) mexpr = sdscatlen(mexpr, beg, (s - beg));
+            s++; s = str_next_unescaped_chr(s, s, '\'');
+            if (!s) goto prs_lua_expr_end;
+            s++;
+            beg = s;
+        } else s++;
+    }
+    if (*beg) mexpr = sdscat(mexpr, beg);
+    list    *cl    = listCreate();                            // FREE ME 101
+    for (int i = 0; i < rt->col_count; i++) {
+        char *hit = strstr(mexpr, rt->col[i].name);
+        if (hit) {
+            char *before = (hit == mexpr) ? NULL : hit - 1;
+            char *after  = hit + sdslen(rt->col[i].name);
+            if ((!before || LuaDelims[(int)*before]) &&
+                            LuaDelims[(int)*after]) {
+                listNode *ln = listSearchKey(cl, VOIDINT i);
+                if (!ln) listAddNodeTail(cl, VOIDINT i);
+            }
+        }
+    }
+    listNode *ln;
+    le->yes         = 1;
+    le->ncols       = cl->len;
+    if (le->ncols) le->cmatchs = (int *)malloc(le->ncols * sizeof(int));//FRE096
+    sds       lfunc = sdsnew("return (function (...) ");      // FREE ME 100
+    le->fname       = sdscatprintf(sdsempty(), "luf_%d", cmatch);
+    if (cl->len) {
+        uint32    i     = 0;
+        listIter *li    = listGetIterator(cl, AL_START_HEAD);
+        while((ln = listNext(li))) {
+           int cmatch = (int)(long)ln->value;
+           lfunc      = sdscatprintf(lfunc, "local %s = arg[%d]; ",
+                                            rt->col[cmatch].name, (i + 1));
+           le->cmatchs[i] = (int)(long)ln->value;
+           i++;
+        } listReleaseIterator(li);
+    }
+    lfunc = sdscatprintf(lfunc, " return (%s); end)(...)", expr);
+    //printf("lfunc: %s\n", lfunc);
+    int ret = luaL_loadstring(server.lua, lfunc);
+    sdsfree(lfunc);                                           // FREED 100
+    if (ret) le->yes = 0;
+    else lua_setglobal(server.lua, le->fname);
+    listRelease(cl);                                          // FREED 101
+
+prs_lua_expr_end:
+    sdsfree(expr);                                            // FREED 097
+    sdsfree(mexpr);                                           // FREED 098
+    return le->yes;
 }
 
 /* CREATE_TABLE_HELPERS CREATE_TABLE_HELPERS CREATE_TABLE_HELPERS */

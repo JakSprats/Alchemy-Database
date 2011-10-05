@@ -411,19 +411,29 @@ static bool ovwrPKUp(cli    *c,        int    pkupc, char *mvals[],
 static bool assignMisses(cli   *c,      int    tmatch,    int   ncols,
                          int   qcols,   int    cmatchs[], uchar cmiss[],
                          char *vals[],  uint32 vlens[],   ue_t  ue[],
-                         char *mvals[], uint32 mvlens[]) {
-    r_tbl_t *rt = &Tbl[tmatch];
+                         char *mvals[], uint32 mvlens[],  lue_t le[]) {
     for (int i = 0; i < ncols; i++) {
-        unsigned char miss = 1;
-        ue[i].yes = 0;
+        uchar miss  = 1;
+        uchar ctype = Tbl[tmatch].col[i].type;
+        ue[i].yes   = 0; le[i].yes = 0;
         for (int j = 0; j < qcols; j++) {
-            if (i == cmatchs[j]) {
-                miss   = 0; vals[i] = mvals[j]; vlens[i] = mvlens[j];
-                char e = isExpression(vals[i], vlens[i]);
-                if (e) {
-                    if (!parseExpr(c, e, tmatch, cmatchs[j], rt->col[i].type,
-                                   vals[i], vlens[i], &ue[i])) return 0;
-                    ue[i].yes = 1;
+            int cmatch = cmatchs[j];
+            if (i == cmatch) {
+                bool simp = 0;
+                miss      = 0; vals[i] = mvals[j]; vlens[i] = mvlens[j];
+                if        C_IS_NUM(ctype) {
+                    if (getExprType(vals[i], vlens[i]) == UETYPE_INT) simp = 1;
+                } else if C_IS_F(ctype) {
+                    if (getExprType(vals[i], vlens[i]) == UETYPE_FLT) simp = 1;
+                } else {// S_IS_S() 
+                    if (is_text(vals[i], vlens[i]))                   simp = 1;
+                }
+                if (simp) break;
+                int k = parseExpr(c, tmatch, cmatch, vals[i], vlens[i], &ue[i]);
+                if (k == -1) return 0;
+                if (k) { ue[i].yes = 1; break; }
+                if (!parseLuaExpr(tmatch, cmatch, vals[i], vlens[i], &le[i])) {
+                    addReply(c, shared.updatesyntax); return 0;
                 }
                 break;
             }
@@ -468,10 +478,10 @@ static int updateAction(cli *c, char *u_vallist, aobj *u_apk, int u_tmatch) {
     /* Figure out which columns get updated(HIT) and which dont(MISS) */
     r_tbl_t *rt    = &Tbl[tmatch];
     int      ncols = rt->col_count;
-    uchar    cmiss[ncols]; ue_t    ue   [ncols];
+    uchar    cmiss[ncols]; ue_t    ue   [ncols]; lue_t le[ncols];
     char    *vals [ncols]; uint32  vlens[ncols];
     if (!assignMisses(c, tmatch, ncols, qcols, cmatchs, cmiss, vals, vlens, ue,
-                      mvals, mvlens))                 return -1;
+                      mvals, mvlens, le))             return -1;
     int nsize = -1; /* B4 GOTO */
     cswc_t w; wob_t wb; init_wob(&wb);
     if (u_vallist) { /* comes from "INSERT ON DUPLICATE KEY UPDATE" */
@@ -494,7 +504,8 @@ static int updateAction(cli *c, char *u_vallist, aobj *u_apk, int u_tmatch) {
         if (w.wf.imatch == -1) {
             addReply(c, shared.rangequery_index_not_found);    goto upc_end;
         }
-        iupdateAction(c, &w, &wb, ncols, matches, inds, vals, vlens, cmiss, ue);
+        iupdateAction(c, &w, &wb, ncols, matches, inds, vals, vlens, cmiss,
+                     ue, le);
     } else {                         /* SQL_SINGLE_UPDATE */
         uchar  pktyp = rt->col[0].type;
         bt    *btr   = getBtr(w.wf.tmatch);
@@ -504,8 +515,10 @@ static int updateAction(cli *c, char *u_vallist, aobj *u_apk, int u_tmatch) {
         aobj  *apk   = &w.wf.akey;
         void  *rrow  = btFind(btr, apk);
         if (!rrow) { addReply(c, shared.czero);                goto upc_end; }
-        nsize        = updateRow(c, btr, apk, rrow, w.wf.tmatch, ncols, matches,
-                                 inds, vals, vlens, cmiss, ue);
+        uc_t uc;
+        init_uc(&uc, btr, w.wf.tmatch, ncols, matches, inds, vals, vlens,
+                cmiss, ue, le);
+        nsize        = updateRow(c, &uc, apk, rrow); release_uc(&uc);
         //NOTE: rrow is no longer valid, updateRow() can change it
         if (nsize == -1)                                       goto upc_end;
         if (!u_vallist) addReply(c, shared.cone);

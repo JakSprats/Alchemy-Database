@@ -88,6 +88,13 @@ typedef struct update_expression {
     int   plen;
 } ue_t;
 
+typedef struct lua_update_expression {
+    bool  yes;
+    sds   fname;
+    int   ncols;
+    int  *cmatchs;
+} lue_t;
+
 typedef struct filter {
     int      jan;    /* JoinAliasNumber filter runs on (for JOINS)        */
     int      imatch; /* index  filter runs on (for JOINS)                 */

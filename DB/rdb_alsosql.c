@@ -303,7 +303,8 @@ bool rdbLoadBT(FILE *fp) { //printf("rdbLoadBT\n");
         if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)         return 0;
         if (u == 1) { /* Single Column */
             if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)     return 0;
-            ri->column = (int)u;
+            ri->column                 = (int)u;
+            rt->col[ri->column].indxd  = 1; /* used in updateRow OVRWR */
             ri->nclist = 0; ri->bclist = NULL; ri->clist  = NULL;
         } else { /* MultipleColumnIndexes */
             rt->nmci++;

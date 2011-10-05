@@ -659,12 +659,15 @@ static bool update_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
     }
     INCR(*card) CurrCard = *card; return 1;
 }
-static bool opUpdateSort(cli   *c,  list *ll,    cswc_t  *w,
-                         wob_t *wb, bool  ofree, long    *sent,
-                         bt   *btr, int   ncols, range_t *g) {
+static bool opUpdateSort(cli   *c,   list *ll,    cswc_t  *w,
+                         wob_t *wb,  bool  ofree, long    *sent,
+                         bt    *btr, int   ncols, range_t *g) {
+    uc_t     uc;
     bool     ret  = 1; /* presume success */
     obsl_t **v    = sortOB2Vector(ll);
     long     ofst = wb->ofst;
+    init_uc(&uc, btr, w->wf.tmatch, ncols, g->up.matches, g->up.indices,
+            g->up.vals, g->up.vlens, g->up.cmiss, g->up.ue, g->up.le);
     for (int i = 0; i < (int)listLength(ll); i++) {
         if (wb->lim != -1 && *sent == wb->lim) break;
         if (ofst > 0) {
@@ -674,21 +677,18 @@ static bool opUpdateSort(cli   *c,  list *ll,    cswc_t  *w,
             obsl_t *ob   = v[i];
             aobj   *apk  = ob->row;
             void   *rrow = btFind(btr, apk);
-            if (updateRow(c, btr, apk, rrow, w->wf.tmatch, ncols,
-                          g->up.matches, g->up.indices, g->up.vals,
-                          g->up.vlens, g->up.cmiss, g->up.ue) == -1) {
+            if (updateRow(c, &uc, apk, rrow) == -1) {
                 ret = 0; break; /* negate presumed success */
             } //NOTE: rrow is no longer valid, updateRow() can change it
         }
     }
-    sortOBCleanup(v, listLength(ll), ofree);
-    free(v); /* FREED 004 */
+    release_uc(&uc); sortOBCleanup(v, listLength(ll), ofree); free(v);//FREED004
     return ret;
 }
 void iupdateAction(cli  *c,      cswc_t *w,       wob_t *wb,
                    int   ncols,  int     matches, int    inds[],
                    char *vals[], uint32  vlens[], uchar  cmiss[],
-                   ue_t  ue[]) {
+                   ue_t  ue[],   lue_t  *le) {
     range_t g; qr_t    q;
     setQueued(w, wb, &q);
     list *ll     = initOBsort(q.qed, wb, 1);
@@ -702,6 +702,7 @@ void iupdateAction(cli  *c,      cswc_t *w,       wob_t *wb,
     g.up.vlens   = vlens;
     g.up.cmiss   = cmiss;
     g.up.ue      = ue;
+    g.up.le      = le;
     long card    = Op(&g, update_op);
     if (card == -1) return; /* e.g. update MCI UNIQ Violation */
     long sent    = 0;
@@ -712,17 +713,20 @@ void iupdateAction(cli  *c,      cswc_t *w,       wob_t *wb,
                               &sent, btr, ncols, &g))   return; // MCI VIOL
         } else {
             listNode  *ln;
+            uc_t  uc;
+            init_uc(&uc, g.up.btr,   g.co.w->wf.tmatch,
+                         g.up.ncols, g.up.matches, g.up.indices, g.up.vals,
+                         g.up.vlens, g.up.cmiss,   g.up.ue,      g.up.le);
             listIter  *li = listGetIterator(ll, AL_START_HEAD);
             while((ln = listNext(li))) {
                 aobj *apk  = ln->value;
                 void *rrow = btFind(g.up.btr, apk);
-                if (updateRow(g.co.c, g.up.btr, apk, rrow, g.co.w->wf.tmatch,
-                              g.up.ncols, g.up.matches, g.up.indices, g.up.vals,
-                              g.up.vlens, g.up.cmiss, g.up.ue) == -1) {
+                if (updateRow(g.co.c, &uc, apk, rrow) == -1) {
                     err = 1; break;
                 } //NOTE: rrow is no longer valid, updateRow() can change it
                 sent++;
             } listReleaseIterator(li);
+            release_uc(&uc);
         }
     }
     if (!err) {

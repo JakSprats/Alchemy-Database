@@ -80,10 +80,9 @@ typedef int printer(const char *format, ...);
 #define NOP 9
 enum OP {NONE, EQ, NE, GT, GE, LT, LE, RQ, IN};
 
-#define UETYPE_ERR    0
-#define UETYPE_INT    1 /* also LONG */
-#define UETYPE_STRING 2
-#define UETYPE_FLOAT  3
+#define UETYPE_ERR  0
+#define UETYPE_INT  1 /* also LONG */
+#define UETYPE_FLT  2
 
 #define OBY_FREE_NONE 0
 #define OBY_FREE_ROBJ 1

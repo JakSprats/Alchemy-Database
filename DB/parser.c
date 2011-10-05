@@ -74,6 +74,18 @@ bool is_float(char *s) { // Used in UPDATE EXPRESSIONS
     else                   return 1;
 }
 
+bool is_text(char *beg, int len) { // Used in assignMisses for simple UPDATEs
+    char *s = beg; char dlm;
+    if      (*s == '\'') dlm = '\'';
+    else if (*s == '"')  dlm = '"';
+    else return 0;
+    s++;
+    s = strn_next_unescaped_chr(s, s, dlm, (len - 1));
+    if (!s) return 0;
+    if ((s - beg) == (len - 1)) return 1;
+    else                        return 0;
+}
+
 char *extract_string_col(char *start, int *len) {
     if (*start == '\'') {
         start++; /* ignore leading \' in string col */
@@ -146,17 +158,12 @@ robj **copyArgv(robj **argv, int argc) {
 char *rem_backticks(char *token, int *len) {
     char *otoken = token;
     int   olen   = *len;
-    if (*token == '`') {
-        token++;
-        *len = *len - 1;
-    }
-    if (otoken[olen - 1] == '`') {
-        *len = *len - 1;
-    }
+    if (*token == '`') { token++;  *len = *len - 1; }
+    if (otoken[olen - 1] == '`') { *len = *len - 1; }
     return token;
 }
 
-char *_strn_next_unescaped_chr(char *beg, char *s, int x, int len) {
+static char *_strn_next_unescaped_chr(char *beg, char *s, int x, int len) {
     bool  isn   = (len >= 0);
     char *nextc = s;
     while (1) {
@@ -186,16 +193,19 @@ char *str_next_unescaped_chr(char *beg, char *s, int x) {
 char *strn_next_unescaped_chr(char *beg, char *s, int x, int len) {
     return _strn_next_unescaped_chr(beg, s, x, len);
 }
-char *str_matching_end_paren(char *beg) {
-    int   n_open_paren = 0;
+static char *str_matching_end_delim(char *beg, char sdelim, char fdelim) {
+    int   n_open_delim = 0;
     char *x            = beg;
     while (*x) {
-        if (     *x == '(') n_open_paren++;
-        else if (*x == ')') n_open_paren--;
-        if (x != beg && !n_open_paren) return x;
+        if (     *x == sdelim) n_open_delim++;
+        else if (*x == fdelim) n_open_delim--;
+        if (x != beg && !n_open_delim) return x;
         x++;
     }
     return NULL;
+}
+char *str_matching_end_paren(char *beg) {
+    return str_matching_end_delim(beg, '(', ')');
 }
 
 /* PARSER PARSER PARSER PARSER PARSER PARSER PARSER PARSER PARSER PARSER */
@@ -273,31 +283,41 @@ char *next_token_delim3(char *p, char x, char z) {
 char *get_next_token_nonparaned_comma(char *token) {
    bool got_oparn = 0;
    while (token) {
-       sds x    = token;
-       int xlen = get_token_len(x);
+       char *x    = token;
+       int   xlen = get_token_len(x);
        if (_strnchr(x, '(', xlen)) got_oparn = 1;
        if (got_oparn) {
            char *y = _strnchr(x, ')', xlen);
            if (y) {
-               got_oparn = 0;
-               int ylen  = get_token_len(y);
-               char *z = _strnchr(y, ',', ylen);
-               if (z) {
-                   token = z + 1;
-                   break;
-               }
+               got_oparn  = 0;
+               int   ylen = get_token_len(y);
+               char *z    = _strnchr(y, ',', ylen);
+               if (z) { token = z + 1; break; }
            }
        } else {
            char *z = _strnchr(x, ',', xlen);
-           if (z) {
-               token = z + 1;
-               break;
-           }
+           if (z) { token = z + 1; break; }
        }
        token = next_token(token);
    }
    if (token) while (ISBLANK(*token)) token++;
    return token;
+}
+
+char *get_next_comma_ignore_quotes_n_parens(char *tkn) {
+   while (1) {
+       char c = *tkn;
+       if        (c == ',') return tkn;
+       else if   (c == '(')  tkn = str_matching_end_delim(tkn, '(',  ')');
+       else if   (c == '\'') {
+           tkn++; tkn = str_next_unescaped_chr(tkn, tkn, '\''); 
+       } else if (c == '"')  {
+           tkn++; tkn = str_next_unescaped_chr(tkn, tkn, '"');
+       }
+       if (!tkn || !*tkn) return NULL;
+       tkn++;
+   }
+   return NULL;
 }
 
 /* PIPE_PARSING PIPE_PARSING PIPE_PARSING PIPE_PARSING PIPE_PARSING */

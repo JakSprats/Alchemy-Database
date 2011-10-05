@@ -128,10 +128,10 @@ void updateLru(cli *c, int tmatch, aobj *apk, uchar *lruc, bool lrud) {
         char     LruBuf[32]; snprintf(LruBuf, 32, "%u", getLru(tmatch));
         MATCH_INDICES(tmatch)
         int      ncols = rt->col_count;
-        uchar    cmiss[ncols]; ue_t    ue   [ncols];
+        uchar    cmiss[ncols]; ue_t    ue   [ncols]; lue_t le[ncols];
         char    *vals [ncols]; uint32  vlens[ncols];
         for (int i = 0; i < ncols; i++) {
-            ue[i].yes = 0;
+            ue[i].yes = 0; le[i].yes = 0;
             if (i == rt->lruc) {
                 cmiss[i] = 0;
                 vals [i] = LruBuf; vlens[i] = strlen(LruBuf);
@@ -139,8 +139,11 @@ void updateLru(cli *c, int tmatch, aobj *apk, uchar *lruc, bool lrud) {
         }
         bt      *btr   = getBtr(tmatch);
         void    *rrow  = btFind(btr, apk);
-        updateRow(c, btr, apk, rrow, tmatch, ncols, matches, inds,
-                  vals, vlens, cmiss, ue); /* NOTE: ALWAYS succeeds */
+        uc_t uc;
+        init_uc(&uc, btr, tmatch, ncols, matches, inds, vals, vlens, cmiss,
+                ue,  le);
+        updateRow(c, &uc, apk, rrow); /* NOTE: ALWAYS succeeds */
         //NOTE: rrow is no longer valid, updateRow() can change it
+        release_uc(&uc);
     }
 }

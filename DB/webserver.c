@@ -443,7 +443,7 @@ bool luafunc_call(redisClient *c, int argc, robj **argv) {
     selectDb(c, server.lua_client->db->id); /* set DB ID from Lua client */
     if (ret) {
         sds err = sdscatprintf(sdsempty(), "Error running script (%s): %s\n",
-                                            fname, lua_tostring(server.lua,-1));
+                                           fname, lua_tostring(server.lua, -1));
         if (c->http.mode == HTTP_MODE_ON) {
             send_http_200_reponse_header(c, err);
             SEND_REPLY_FROM_STRING(err); sdsfree(err);

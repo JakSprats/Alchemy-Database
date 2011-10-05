@@ -69,6 +69,7 @@ typedef struct range_update {
     uint32   *vlens;
     uchar    *cmiss;
     ue_t     *ue;
+    lue_t    *le;
 } rup_t;
 
 typedef struct range_common {
@@ -100,23 +101,16 @@ bool passFilters(bt *btr, aobj *akey, void *rrow, list *flist, int tmatch);
 
 bool opSelectSort(cli  *c,    list *ll,   wob_t *wb,
                   bool ofree, long *sent, int    tmatch);
+
 void iselectAction(cli *c,         cswc_t *w,     wob_t *wb,
                    int  cmatchs[], int     qcols, bool   cstar);
 
-void ideleteAction(redisClient *c,
-                   cswc_t      *w,
-                   wob_t       *wb);
+void ideleteAction(cli *c,         cswc_t *w,       wob_t *wb);
 
-void iupdateAction(redisClient *c,
-                   cswc_t      *w,
-                   wob_t       *wb,
-                   int          ncols,
-                   int          matches,
-                   int          inds [],
-                   char        *vals [],
-                   uint32       vlens[],
-                   uchar        cmiss[],
-                   ue_t         ue   []);
+void iupdateAction(cli  *c,        cswc_t *w,       wob_t *wb,
+                   int   ncols,    int     matches, int    inds[],
+                   char *vals[],   uint32  vlens[], uchar  cmiss[],
+                   ue_t  ue[],     lue_t  *le);
 
 void setQueued(cswc_t *w, wob_t *wb, qr_t *q);
 void dumpQueued(printer *prn, cswc_t *w, wob_t *wb, qr_t *q, bool debug);

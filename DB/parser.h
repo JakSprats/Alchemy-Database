@@ -34,6 +34,7 @@ char *_strdup(char *s);
 char *_strnchr(char *s, int c, int len);
 bool is_int(char *s);
 bool is_float(char *s);
+bool is_text(char *beg, int len);
 
 char *extract_string_col(char *start, int *len);
 char *strcasestr_blockchar(char *haystack, char *needle, char blockchar);
@@ -63,6 +64,7 @@ char *str_matching_end_paren(char *beg);
 
 #define ISDIGIT(c) (c >= 48 && c <= 57)
 #define ISALPHA(c) ((c >= 65 && c <= 90) || (c >= 97 && c <= 122))
+#define ISALNUM(c) (ISDIGIT(c) || ISALPHA(c))
 #define ISBLANK(c) (c == 32 || c == 9)
 #define SKIP_SPACES(tok)     while (ISBLANK(*tok)) tok++;
 #define REV_SKIP_SPACES(tok) while (ISBLANK(*tok) || !*tok) tok--;
@@ -78,6 +80,7 @@ char *next_token_delim2(char *p, char x);
 int   get_tlen_delim3(char *nextp, char x, char z);
 char *next_token_delim3(char *p, char x, char z);
 char *get_next_token_nonparaned_comma(char *token);
+char *get_next_comma_ignore_quotes_n_parens(char *tkn);
 
 robj **parseScanCmdToArgv(char *as_cmd, int *argc);
 

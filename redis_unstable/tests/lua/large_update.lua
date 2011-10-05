@@ -14,6 +14,8 @@ local c      = 200;
 local req    = 10000000;
 local mod    = 100;
 local tbl    = "ten_mill_mod100";
+local populater = false;
+populater = true;
 
 function init_ten_mill_mod100()
     local indx = "ind_ten_mill_mod100_fk";
@@ -109,7 +111,7 @@ function large_delete_test()
 end
 
 if is_external.yes == 1 then
-    --init_ten_mill_mod100();
+    if (populater) then init_ten_mill_mod100(); end
     large_update_test();
     --large_delete_test();
 end

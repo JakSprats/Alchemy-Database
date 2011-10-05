@@ -61,7 +61,6 @@ extern char OUTPUT_DELIM;
 extern char PLUS;  extern char MINUS;
 extern char MULT;  extern char DIVIDE;
 extern char POWER; extern char MODULO;
-extern char STRCAT;
 
 #define RFLAG_1BYTE_INT   1
 #define RFLAG_2BYTE_INT   2
@@ -94,7 +93,9 @@ static aobj colFromLU(ulong key, bool force_s, int cmatch);
 static aobj colFromLL(ulong key, bool force_s, int cmatch);
 static aobj getOtherBTRawCol(bt   *btr, void *orow, int cmatch,
                              aobj *apk, bool  force_s);
-static bool evalExpr(redisClient *c, ue_t *ue, aobj *aval, uchar ctype);
+static bool evalExpr   (cli *c, ue_t  *ue, aobj *aval, uchar ctype);
+static bool evalLuaExpr(cli  *c,    int cmatch, uc_t *uc, aobj *apk,
+                        void *orow, aobj *aval);
 
 /* CREATE_ROW CREATE_ROW CREATE_ROW CREATE_ROW CREATE_ROW CREATE_ROW */
 typedef struct create_row_ctrl {
@@ -119,7 +120,7 @@ static void init_cr(cr_t *cr, crd_t *crd, int tmatch, int ncols, int tcols) {
     cr->cnt    = 0;
     bzero(crd, sizeof(crd_t) * tcols);
 }
-#define INIT_CR                                   \
+#define INIT_CR(tmatch, ncols)                    \
   cr_t cr;                                        \
   int tcols = ncols + (Tbl[tmatch].lrud ? 1 : 0); \
   crd_t crd[tcols];                               \
@@ -242,8 +243,10 @@ static void zipCol(cr_t *cr, crd_t *crd, cz_t *cz, czd_t *czd) {
         crd[i].mcofsts -= shrunk;
     }
 }
-/*  ROW BINARY FORMAT: [ 1B |StreamUINT|NC*(1-4B)|data ... no PK, no commas] */
-/*                     [flag|  ncols   | cofsts  |a,b,c,...................] */
+// NORMALROW BIN FRMT: [ 1B |StreamUINT |NC*(1-4B) |data ... no PK, no commas]
+//                     [flag|  ncols    |  cofsts  |a,b,c,...................]
+// HASHROW   BIN FRMT: [ 1B |SUINT|SUINT| ht.size  |data ... no PK, no commas]
+//                     [flag|rlen |ncols| hash_tbl |a,b,c,...................]
 static uchar assign_rflag(uint32 rlen, uchar ztype) {
     uchar rflag;
     if (     rlen < UCHAR_MAX) rflag = RFLAG_1BYTE_INT;
@@ -407,7 +410,7 @@ void *createRow(cli    *c,    bt     *btr,      int tmatch, int  ncols,
         memcpy(uubuf, vals + cofsts[1].i, c1len); uubuf[c1len] = '\0';
         return (void *)strtoul(uubuf, NULL, 10); /* OK: DELIM: \0 */
     }
-    INIT_CR
+    INIT_CR(tmatch, ncols)
     for (int i = 1; i < cr.ncols; i++) { /* MOD cofsts (no PK,no commas,PACK) */
         uchar ctype  = Tbl[tmatch].col[i].type;
         if (cofsts[i].i == -1) { //TODO next block's logic should be done here
@@ -418,7 +421,7 @@ void *createRow(cli    *c,    bt     *btr,      int tmatch, int  ncols,
                 crd[i].strs = EmptyCol;       crd[i].slens = 0;
             }
         } else {
-            cr.cnt++; crd[i].empty = 0;
+            crd[i].empty = 0; cr.cnt++; 
             char *startc = vals + cofsts[i].i;
             char *endc   = vals + cofsts[i].j;
             crd[i].strs  = startc;
@@ -478,10 +481,10 @@ static uchar *getRowPayload(uchar  *row,   uchar  *rflag,
         *ncols      = streamIntToUInt(row, &clen);   row += clen; // GET ncols
         if (*rflag & RFLAG_HASH32_ROW) {
             ahash32 *ht = (ahash32 *)row;
-                          /* SKIP HASH_TABLE */      row += alc_hash32_size(ht);
+                          /* SKIP HASH32_TABLE */    row += alc_hash32_size(ht);
         } else { // RFLAG_HASH16_ROW
             ahash16 *ht = (ahash16 *)row;
-                          /* SKIP HASH_TABLE */      row += alc_hash16_size(ht);
+                          /* SKIP HASH16_TABLE */    row += alc_hash16_size(ht);
         }
     } else {
         char sflag = *rflag & RFLAG_SIZE_FLAG;
@@ -538,7 +541,7 @@ uchar *getColData(uchar *orow, int cmatch, uint32 *clen, uchar *rflag) {
             }
             next = *(uint32 *)(uchar *)(cofst + (mcmatch * sflag));
         }
-        *clen  = next - start;
+        *clen = next - start;
         return row + start;
     }
 }
@@ -651,7 +654,6 @@ static aobj colFromLU(ulong key, bool force_s, int cmatch) {
 static aobj colFromLL(ulong key, bool force_s, int cmatch) {
     aobj a; initLongAobjFromVal(&a, key, force_s, cmatch); return a;
 }
-
 
 /* OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT */
 static void destroy_erow(erow_t *er) { //printf("destroy_embedded_row\n");
@@ -794,11 +796,29 @@ bool deleteRow(int tmatch, aobj *apk, int matches, int inds[]) {
 }
 
 /* UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE */
+static void init_lue(lue_t *le)    { bzero(le, sizeof(lue_t)); }
+static void release_lue(lue_t *le) {
+    if (le->cmatchs) free(le->cmatchs); // FREED 096
+}
+void init_uc(uc_t  *uc,     bt     *btr, 
+             int    tmatch, int     ncols,   int    matches, int   inds[],
+             char  *vals[], uint32  vlens[], uchar  cmiss[], ue_t  ue[],
+             lue_t *le) {
+    uc->btr    =   btr;
+    uc->tmatch = tmatch; uc->ncols = ncols; uc->matches = matches;
+    uc->inds   = inds;   uc->vals  = vals;  uc->vlens   = vlens;
+    uc->cmiss  = cmiss;  uc->ue    = ue;    uc->le      = le;
+    init_lue(uc->le); //TODO this should be a separate call
+}
+void release_uc(uc_t *uc) {
+    if (uc->le) release_lue(uc->le); //TODO this should be a separate call
+}
+
 #define INIT_COL_AVALS \
-  aobj avs[ncols];     \
-  for (int i = 0; i < ncols; i++) initAobj(&avs[i]);
+  aobj avs[tcols];     \
+  for (int i = 0; i < tcols; i++) initAobj(&avs[i]);
 #define DESTROY_COL_AVALS \
-  for (int i = 0; i < ncols; i++) releaseAobj(&avs[i]);
+  for (int i = 0; i < tcols; i++) releaseAobj(&avs[i]);
 
 static bool upEffctdInds(cli  *c,     bt   *btr,  aobj *apk,     void *orow,
                          aobj  avs[], void *nrow, int   matches, int   inds[],
@@ -829,8 +849,8 @@ static bool aobj_sflag(aobj *a, uchar *sflag) {
     cIcol(l, sflag, &col, C_IS_I(a->type));
     return !a->empty;
 }
-#define DEBUG_UPDATE_ROW                                                 \
-  if (i) { printf ("%d: oflag: %d cmiss: %d ", i, osflags[i], cmiss[i]); \
+#define DEBUG_UPDATE_ROW                                                     \
+  if (i) { printf ("%d: oflag: %d cmiss: %d ", i, osflags[i], uc->cmiss[i]); \
     DEBUG_CREATE_ROW printf("\t\t\t\t"); dumpAobj(printf, &avs[i]); }
 
 #define OVRWR(i, ovrwr, ctype) /*NOTE: !indexed -> upIndex uses orow & nrow */ \
@@ -838,58 +858,61 @@ static bool aobj_sflag(aobj *a, uchar *sflag) {
 
 #define UP_ERR goto up_end;
 
-//TODO too many arguments for a per-row-OP, merge into a struct
-int updateRow(cli  *c,      bt      *btr,    aobj  *apk,     void *orow,
-              int   tmatch, int     ncols,   int    matches, int   inds[],
-              char *vals[], uint32  vlens[], uchar  cmiss[], ue_t  ue[])   {
+int updateRow(cli *c, uc_t *uc, aobj *apk, void *orow) {
+    INIT_CR(uc->tmatch, uc->ncols) /* holds values written to new ROW */
     INIT_COL_AVALS      /* merges values in update_string and vals from ROW */
-    INIT_CR             /* holds values written to new ROW */
     uchar osflags[tcols]; bzero(osflags, tcols);
     uchar   *nrow  = NULL; /* B4 GOTO */
-    r_tbl_t *rt    = &Tbl[tmatch];
-    bool     ovrwr = NORM_BT(btr);
+    r_tbl_t *rt    = &Tbl[uc->tmatch];
+    bool     ovrwr = NORM_BT(uc->btr);
     int      ret   = -1;    /* presume failure */
     for (int i = 0; i < cr.ncols; i++) { /* 1st loop UPDATE columns -> cr */
         uchar ctype = rt->col[i].type;
-        if (cmiss[i]) {
-            avs[i] = getCol(btr, orow, i, apk, tmatch);
+        if (uc->cmiss[i]) {
+            avs[i] = getCol(uc->btr, orow, i, apk, uc->tmatch);
             if (rt->lrud && rt->lruc == i) {
                 if (avs[i].empty) ovrwr      = 0; // makes updateLRU not recurse
                 else              osflags[i] = getLruSflag();/* Overwrite LRU */
             }
-        } else if (ue[i].yes) {
-            avs[i] = getCol(btr, orow, i, apk, tmatch);
-            if (avs[i].empty) { addReply(c, shared.up_on_mt_col);     UP_ERR }
+        } else if (uc->ue[i].yes) { // SIMPLE UPDATE EXPR
+            avs[i] = getCol(uc->btr, orow, i, apk, uc->tmatch);
+            if (avs[i].empty) { addReply(c, shared.up_on_mt_col);       UP_ERR }
             if (!OVRWR(i, ovrwr, ctype) ||
                 !aobj_sflag(&avs[i], &osflags[i])) ovrwr = 0;
-            if (!evalExpr(c, &ue[i], &avs[i], ctype))                 UP_ERR
+            if (!evalExpr(c, &uc->ue[i], &avs[i], ctype))               UP_ERR
+        } else if (uc->le[i].yes) { // LUA UPDATE EXPR
+            avs[i] = getCol(uc->btr, orow, i, apk, uc->tmatch);
+            if (avs[i].empty) { addReply(c, shared.up_on_mt_col);       UP_ERR }
+            if (!OVRWR(i, ovrwr, ctype) ||
+                !aobj_sflag(&avs[i], &osflags[i])) ovrwr = 0;
+            if (!evalLuaExpr(c, i, uc, apk, orow, &avs[i]))             UP_ERR
         } else { /* comes from UPDATE VALUE LIST (no expression) */
             if OVRWR(i, ovrwr, ctype) {
-                aobj a = getCol(btr, orow, i, apk, tmatch);
+                aobj a = getCol(uc->btr, orow, i, apk, uc->tmatch);
                 if (!aobj_sflag(&a, &osflags[i])) ovrwr = 0;
             } else ovrwr = 0;
             char *endptr  = NULL;
             if        C_IS_I(ctype) {
-                ulong l = strtoul(vals[i], &endptr, 10); // OK: DELIM: [\ ,=,\0]
+                ulong l = strtoul(uc->vals[i], &endptr, 10);//OK:DELIM:[\ ,=,\0]
                 if (endptr && !*endptr) { // valid ULONG
-                    if (l >= TWO_POW_32) { addReply(c, shared.u2big); UP_ERR }
+                    if (l >= TWO_POW_32) { addReply(c, shared.u2big);   UP_ERR }
                     initAobjInt(&avs[i], l);
-                } else { addReply(c, shared.updatesyntax); UP_ERR }
+                } else { addReply(c, shared.updatesyntax);              UP_ERR }
             } else if C_IS_L(ctype) {
-                ulong l = strtoul(vals[i], &endptr, 10); // OK: DELIM: [\ ,=,\0]
+                ulong l = strtoul(uc->vals[i], &endptr, 10);//OK:DELIM:[\ ,=,\0]
                 if (endptr && !*endptr) initAobjLong(&avs[i], l); // valid ULONG
                 else                { addReply(c, shared.updatesyntax); UP_ERR }
             } else if C_IS_F(ctype) {
-                float f = atof(vals[i]);              /* OK: DELIM: [\ ,=,\0] */
+                float f = atof(uc->vals[i]);              //OK: DELIM: [\ ,=,\0]
                 initAobjFloat(&avs[i], f);
-            } else {/* COL_TYPE_STRING*/  /* ignore \' delimiters */
-                initAobjString(&avs[i], vals[i] + 1, vlens[i] - 2);
+            } else {// S_IS_S()           /* ignore \' delimiters */
+                initAobjString(&avs[i], uc->vals[i] + 1, uc->vlens[i] - 2);
             }
         }
         int nclen = 0;
         if (i) { /* NOT PK, populate cr values (PK not stored in row)*/
             if (rt->lrud && rt->lruc == i) { // NOTE: updateLRU (UPDATE_1)
-                nclen = cLRUcol(getLru(tmatch), &crd[i].iflags,
+                nclen = cLRUcol(getLru(uc->tmatch), &crd[i].iflags,
                                 &(crd[i].icols));
             } else if C_IS_I(ctype) { //TODO push empty logic into cr8*()
                 if (avs[i].empty) { crd[i].iflags = 0; nclen = 0; }
@@ -912,7 +935,7 @@ int updateRow(cli  *c,      bt      *btr,    aobj  *apk,     void *orow,
         for (int i = 1; i < cr.ncols; i++) {
             if (osflags[i] && osflags[i] != crd[i].iflags) { ovrwr = 0; break; }
     }}
-    if (ovrwr) { /* just OVERWRITE INTS & LONGS */
+    if (ovrwr) { /* just OVERWRITE INTS & LONGS */ //printf("OVRWR\n");
         for (int i = 1; i < cr.ncols; i++) {
             if (osflags[i]) {
                 uint32 clen; uchar rflag;
@@ -920,7 +943,7 @@ int updateRow(cli  *c,      bt      *btr,    aobj  *apk,     void *orow,
                 uchar  ctype = rt->col[i].type;
                 if       (rt->lrud && rt->lruc == i) {// updateLRU (UPDATE_2)
                     // NOTE LRU is always 4 bytes, so orow will NOT change
-                    updateLru(c, tmatch, apk, data, rt->lrud); // orow 
+                    updateLru(c, uc->tmatch, apk, data, rt->lrud);
                 } else if C_IS_I(ctype) {
                     writeUIntCol(&data,  crd[i].iflags, crd[i].icols);
                 } else if C_IS_L(ctype) {
@@ -929,44 +952,91 @@ int updateRow(cli  *c,      bt      *btr,    aobj  *apk,     void *orow,
             }
         }
         if (rt->nltrgr) { /* OVERWRITE still needs to run LUATRIGGERs */
-            for (int i = 0; i < matches; i++) {
-                if (!Index[inds[i]].luat) continue;
-                if (!updateIndex(c, btr, apk, orow, &avs[0], nrow, inds[i])) {
-                                                                      UP_ERR
-            }}
+            for (int i = 0; i < uc->matches; i++) {
+                if (!Index[uc->inds[i]].luat) continue;
+                if (!updateIndex(c, uc->btr, apk, orow, &avs[0],
+                                 nrow, uc->inds[i]))                    UP_ERR
+            }
         }
         ret = getIorLKeyLen(apk) + getRowMallocSize(orow);
     } else {
-        nrow = (UU(btr) || LU(btr)) ? (uchar *)(long)avs[1].i :
-               (UL(btr) || LL(btr)) ? (uchar *)      avs[1].l :
-                                       writeRow(&cr, crd);
-        if (!cmiss[0]) { /* PK update */
-            for (int i = 0; i < matches; i++) { /* Redo ALL inds */
-                if (!updateIndex(c, btr, apk, orow, &avs[0], nrow, inds[i])) {
-                                                                      UP_ERR
-            }}
-            btDelete(btr, apk);              /* DELETE row w/ OLD PK */
-            ret = btAdd(btr, &avs[0], nrow); /* ADD row w/ NEW PK */
+        nrow = (UU(uc->btr) || LU(uc->btr)) ? (uchar *)(long)avs[1].i :
+               (UL(uc->btr) || LL(uc->btr)) ? (uchar *)      avs[1].l :
+                                              writeRow(&cr, crd);
+        if (!uc->cmiss[0]) { /* PK update */
+            for (int i = 0; i < uc->matches; i++) { /* Redo ALL inds */
+                if (!updateIndex(c, uc->btr, apk, orow, &avs[0],
+                                 nrow, uc->inds[i]))                    UP_ERR
+            }
+            btDelete(uc->btr, apk);              /* DELETE row w/ OLD PK */
+            ret = btAdd(uc->btr, &avs[0], nrow); /* ADD row w/ NEW PK */
             UPDATE_AUTO_INC(rt->col[0].type, avs[0])
         } else {
-            if (!upEffctdInds(c, btr, apk, orow, avs, nrow,
-                              matches, inds, cmiss))                  UP_ERR
-            ret = btReplace(btr, apk, nrow); /* overwrite w/ new row */
+            if (!upEffctdInds(c, uc->btr, apk, orow, avs, nrow,
+                              uc->matches, uc->inds, uc->cmiss))        UP_ERR
+            ret = btReplace(uc->btr, apk, nrow); /* overwrite w/ new row */
         }
     }
     server.dirty++;
 
 up_end:
-    if (nrow && NORM_BT(btr)) free(nrow);                /* FREED 023 */
+    if (nrow && NORM_BT(uc->btr)) free(nrow);            /* FREED 023 */
     DESTROY_COL_AVALS
     return ret;
 }
 
 /* UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR */
-static bool evalExpr(redisClient *c, ue_t *ue, aobj *aval, uchar ctype) {
+static bool evalLuaExpr(cli *c,    int   cmatch, uc_t *uc, aobj *apk,
+                       void *orow, aobj *aval) {
+    r_tbl_t *rt = &Tbl[uc->tmatch];
+    lue_t   *le = &uc->le[cmatch];
+    lua_getglobal(server.lua, le->fname);
+    for (int i = 0; i < le->ncols; i++) {
+        int  cm    = le->cmatchs[i];
+        aobj acol  = getCol(uc->btr, orow, cm, apk, uc->tmatch);
+        int  ctype = rt->col[cm].type;
+        if        C_IS_I(ctype) {
+            if (acol.empty) lua_pushnil    (server.lua);
+            else            lua_pushinteger(server.lua, acol.i);
+        } else if C_IS_L(ctype) {
+            if (acol.empty) lua_pushnil    (server.lua);
+            else            lua_pushinteger(server.lua, acol.l);
+        } else if C_IS_F(ctype) {
+            if (acol.empty) lua_pushnil   (server.lua);
+            else            lua_pushnumber(server.lua, acol.f);
+        } else {/* COL_TYPE_STRING */
+            if (acol.empty) lua_pushnil   (server.lua);
+            else            lua_pushlstring(server.lua, acol.s, acol.len);
+        }
+        releaseAobj(&acol);
+    }
+    int ret = lua_pcall(server.lua, le->ncols, 1, 0);
+    if (ret) {
+        sds err = sdscatprintf(sdsempty(),
+                               "Error running LUA UPDATE (%s): %s\n",
+                                le->fname, lua_tostring(server.lua, -1));
+        addReplyErrorFormat(c, "%s", err);
+        lua_pop(server.lua, 1);
+        return 0;
+    }
+    int  ctype = rt->col[cmatch].type;
+    if      (C_IS_I(ctype)) aval->i = (uint32)lua_tointeger(server.lua, -1);
+    else if (C_IS_L(ctype)) aval->l = (ulong) lua_tointeger(server.lua, -1);
+    else if (C_IS_F(ctype)) aval->f = (float) lua_tonumber (server.lua, -1);
+    else {// C_IS_S()
+        size_t len;
+        char *s   = (char *)lua_tolstring(server.lua, -1, &len);
+        aval->len = (uint32)len; 
+        if (s) { aval->s = _strdup(s); aval->freeme = 1; }
+    }
+    lua_pop(server.lua, 1);
+    return 1;
+}
+
+static bool evalExpr(cli *c, ue_t *ue, aobj *aval, uchar ctype) {
     if (C_IS_NUM(ctype)) { /* INT & LONG */
         ulong l      = 0; double f = 0.0;
-        bool  is_f   = (ue->type == UETYPE_FLOAT);
+        bool  is_f   = (ue->type == UETYPE_FLT);
         if (is_f) f  = atof(ue->pred);              /* OK: DELIM: [\ ,\,,\0] */
         else      l  = strtoul(ue->pred, NULL, 10); /* OK: DELIM: [\ ,\,,\0] */
         if ((ue->op == DIVIDE || ue->op == MODULO)) {
@@ -977,19 +1047,19 @@ static bool evalExpr(redisClient *c, ue_t *ue, aobj *aval, uchar ctype) {
         if (is_f && f < 0.0) { addReply(c, shared.neg_on_uint); return 0; }
         ulong m = C_IS_I(ctype) ? aval->i : aval->l;
         //TODO OVERFLOW and UNDERFLOW CHECKING
-        if      (ue->op == PLUS)   m += (is_f ? (ulong)f : l);
-        else if (ue->op == MINUS)  m -= (is_f ? (ulong)f : l);
-        else if (ue->op == MODULO) m %= (is_f ? (ulong)f : l);
+        if      (ue->op == PLUS)        m += (is_f ? (ulong)f : l);
+        else if (ue->op == MINUS)       m -= (is_f ? (ulong)f : l);
+        else if (ue->op == MODULO)      m %= (is_f ? (ulong)f : l);
         else if (ue->op == DIVIDE) {
-            if (ue->type == UETYPE_FLOAT) m = (ulong)((double)m / f);
-            else                          m = m / l;
+            if (ue->type == UETYPE_FLT) m = (ulong)((double)m / f);
+            else                        m = m / l;
         } else if (ue->op == MULT) {
-            if (ue->type == UETYPE_FLOAT) m = (ulong)((double)m * f);
+            if (ue->type == UETYPE_FLT) m = (ulong)((double)m * f);
             else {
                 if (C_IS_L(ctype) && l > 0 && m > (ulong)TWO_POW_64 / l) {
                     addReply(c, shared.u2big); return 0;
                 }
-                m = m * l;
+                                        m = m * l;
             }
         } else {          /* POWER */
             if (ue->type == UETYPE_INT) f = (float)l;
@@ -999,7 +1069,7 @@ static bool evalExpr(redisClient *c, ue_t *ue, aobj *aval, uchar ctype) {
             if (C_IS_L(ctype) && d > (double)TWO_POW_64) {
                 addReply(c, shared.u2big); return 0;
             }
-            m        = (ulong)d;
+                                        m = (ulong)d;
         }
         if (C_IS_I(ctype)) {
             if (m >= TWO_POW_32) { addReply(c, shared.u2big); return 0; }
@@ -1028,17 +1098,6 @@ static bool evalExpr(redisClient *c, ue_t *ue, aobj *aval, uchar ctype) {
             addReply(c, shared.update_expr_float_overflow); return 0;
         }
         aval->f = (float)m;
-    } else { /* COL_TYPE_STRING*/
-        int len      = aval->len + ue->plen;
-        char *s      = malloc(len + 1);
-        memcpy(s,             aval->s,  aval->len);
-        memcpy(s + aval->len, ue->pred, ue->plen);
-        s[len]       = '\0';
-        //TODO MEMLEAK (adding info later: byproduct of a previous SEGV-hunt)
-        //free(aval->s);
-        aval->freeme = 1; /* this new string must be freed later */
-        aval->s      = s;
-        aval->len    = len;
     }
     return 1;
 }

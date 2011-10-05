@@ -178,7 +178,7 @@ int cr8IcolFromStr(cli   *c,     char  *start, uint32 len,
 }
 int cr8LcolFromStr(cli   *c,     char  *start, uint32 len,
                       uchar *sflag, ulong *col) {
-    if (!len) { *sflag = 0; *col = 0; return 0; } //TODO TEST
+    if (!len) { *sflag = 0; *col = 0; return 0; }
     if (!strToULong(c, start, len, col, 0)) return -1;
     return cr8Lcol(*col, sflag, col);
 }
@@ -303,7 +303,7 @@ int btTextCmp(void *a, void *b) {
 
 #define BTK_BSIZE 2048
 static uchar BTKeyBuffer[BTK_BSIZE]; /* avoid malloc()s */
-ulk UL_BTKeyPtr; luk LU_BTKeyPtr; llk LL_BTKeyPtr; //TODO make static?
+static ulk UL_BTKeyPtr; static luk LU_BTKeyPtr; static llk LL_BTKeyPtr;
 
 void destroyBTKey(char *btkey, bool med) { if (med) free(btkey);/* FREED 033 */}
 char *createBTKey(aobj *akey, bool *med, uint32 *ksize, bt *btr) {
@@ -440,7 +440,11 @@ uint32 getStreamRowSize(bt *btr, uchar *stream) { /* for rdbSaveAllRows() */
     }
 }
 
-ulk UL_StreamPtr; luk LU_StreamPtr; llk LL_StreamPtr; //TODO make static?
+static ulk UL_StreamPtr; static luk LU_StreamPtr; static llk LL_StreamPtr;
+// btkey from createBTKey() - bit-packed-num or string-w-length
+// row from writeRow() - [normal|hash]_row of [bit-packed-num|string-w-length]
+// NOTE: rows (but NOT btkeys) can have compressed strings
+// STREAM BINARY FORMAT: [btkey|row]
 void *createStream(bt *btr, void *val, char *btkey, uint32 klen, uint32 *size) {
     *size             = 0;                               // DEBUG_BT_TYPE(btr);
     if        INODE(btr) { return btkey;

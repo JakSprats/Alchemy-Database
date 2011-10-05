@@ -45,3 +45,5 @@ function ltrig_cnt(tbl, ...)
 end
 
 function hiya() print ('hiya'); end
+
+function fib(n) return n<2 and n or fib(n-1)+fib(n-2) end

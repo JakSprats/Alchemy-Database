@@ -156,8 +156,8 @@ function updater() {
   echo "UPDATE"
   echo SELECT "*" FROM employee WHERE id = 1
   $CLI SELECT "*" FROM employee WHERE "id = 1"
-  echo UPDATE employee SET "salary = salary + 5.55,name= name || 'my',division= division + 11" WHERE id = 1
-  $CLI UPDATE employee SET "salary = salary + 5.55,name= name || 'my',division= division + 11" WHERE id = 1
+  echo UPDATE employee SET "salary = salary + 5.55,name= name .. 'my',division= division + 11" WHERE id = 1
+  $CLI UPDATE employee SET "salary = salary + 5.55,name= name .. 'my',division= division + 11" WHERE id = 1
   echo SELECT "*" FROM employee WHERE id = 1
   $CLI SELECT "*" FROM employee WHERE "id = 1"
    echo UPDATE employee SET "salary=5.55,name='NEWNAME',division=66" WHERE id = 1
@@ -774,6 +774,9 @@ function all_tests() {
   test_replace
   test_insert_output
   test_iup
+  $CLI DEBUG RELOAD
+
+  lua_update_test
   $CLI DEBUG RELOAD
 
   create_1000_tables  > /dev/null
@@ -2541,3 +2544,40 @@ function test_sparse_table() {
   time $CLI INSERT INTO sparse "$CDECL" VALUES "$CVALS" "RETURN SIZE"
 }
 
+
+function lua_update_test() {
+  $CLI DROP TABLE updated > /dev/null
+  $CLI CREATE TABLE updated "(pk LONG, fk INT, col2 INT, col3 INT, col4 INT)"
+  $CLI CREATE INDEX i_up ON updated "(fk)"
+  $CLI INSERT INTO updated VALUES "(,1,1,1,1)"
+  $CLI INSERT INTO updated VALUES "(,1,2,2,2)"
+  $CLI INSERT INTO updated VALUES "(,2,3,3,3)"
+  $CLI INSERT INTO updated VALUES "(,2,4,4,4)"
+
+  echo $CLI SELECT \* FROM updated WHERE "fk = 1"
+  $CLI SELECT \* FROM updated WHERE "fk = 1"
+  echo $CLI UPDATE updated SET "col2=math.pow(col2,4), col3=math.exp(col3), col4 = col2 * col3 * col4" WHERE "fk = 1"
+  $CLI UPDATE updated SET "col2=math.pow(col2,4), col3=math.exp(col3), col4 = col2 * col3 * col4" WHERE "fk = 1"
+  echo $CLI SELECT \* FROM updated WHERE "fk = 1"
+  $CLI SELECT \* FROM updated WHERE "fk = 1"
+
+  echo
+  echo $CLI SELECT \* FROM updated WHERE "fk = 2"
+  $CLI SELECT \* FROM updated WHERE "fk = 2"
+  echo $CLI UPDATE updated SET "col2=math.random(1000,2000), col3=((col3 + (col2 * col4))), col4 = col4 * 10000" WHERE "fk = 2"
+  $CLI UPDATE updated SET "col2=math.random(1000,2000), col3=((col3 + (col2 * col4))), col4 = col4 * 10000" WHERE "fk = 2"
+  echo $CLI SELECT \* FROM updated WHERE "fk = 2"
+  $CLI SELECT \* FROM updated WHERE "fk = 2"
+
+  echo
+  echo $CLI SELECT \* FROM updated WHERE "fk = 2"
+  $CLI SELECT \* FROM updated WHERE "fk = 2"
+  echo $CLI UPDATE updated SET "col2=string.len('abc col2 col3 xyz') + string.len('abc col2 col3 xyz')" WHERE "fk = 2"
+  $CLI UPDATE updated SET "col2=string.len('abc col2 col3 xyz') + string.len('abc col2 col3 xyz')" WHERE "fk = 2"
+  echo $CLI SELECT \* FROM updated WHERE "fk = 2"
+  $CLI SELECT \* FROM updated WHERE "fk = 2"
+
+  echo
+  echo "ERROR undefined function"
+  $CLI UPDATE updated SET "col2=LUARTERR()" WHERE "fk = 1"
+}

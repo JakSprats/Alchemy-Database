@@ -74,12 +74,9 @@ bool parseSelect(cli  *c,     bool  is_scan, bool *no_wc, int  *tmatch,
 int parseUpdateColListReply(cli  *c,  int   tmatch, char *vallist,
                             list *cs, list *vals,   list *vlens);
 
-char isExpression(char *val, uint32 vlen);
-
-uchar determineExprType(char *pred, int plen);
-
-bool parseExpr(cli   *c,     char  e,   int    tmatch, int   cmatch,
-               uchar  ctype, char *val, uint32 vlen,   ue_t *ue);
+uchar getExprType(char *pred, int plen);
+int parseExpr(cli *c, int tmatch, int cmatch, char *val, uint32 vlen, ue_t *ue);
+bool parseLuaExpr(int tmatch, int cmatch, char *val, uint32 vlen, lue_t *le);
 
 bool parseColType(cli *c, sds type, uchar *col_type);
 bool parseCreateTable(cli  *c,      list *ctypes, list  *cnames,

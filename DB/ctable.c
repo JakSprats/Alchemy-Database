@@ -29,6 +29,7 @@ ALL RIGHTS RESERVED
 #include "redis.h"
 
 #include "wc.h"
+#include "find.h"
 #include "colparse.h"
 #include "alsosql.h"
 #include "ctable.h"

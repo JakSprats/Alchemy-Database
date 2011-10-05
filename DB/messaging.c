@@ -144,8 +144,8 @@ int luaSubscribeFDCommand(lua_State *lua) {
     size_t   len;
     robj   **rargv = zmalloc(sizeof(robj *));
     char    *s     = (char *)lua_tolstring(lua, -1, &len);
-    lua_pop(lua, 1);
     rargv[0]       = createStringObject(s, len);
+    lua_pop(lua, 1);
     t = lua_type(lua, 1);
     if (t != LUA_TNUMBER && t != LUA_TSTRING) {
         LUA_POP_WHOLE_STACK
@@ -175,8 +175,8 @@ int luaGetFDForChannelCommand(lua_State *lua) {
     }
     size_t   len;
     char *s       = (char *)lua_tolstring(lua, -1, &len);
-    lua_pop(lua, 1);
     robj *channel = createStringObject(s, len);
+    lua_pop(lua, 1);
 
     struct dictEntry *de = dictFind(server.pubsub_channels, channel);
     if (de) {
@@ -208,8 +208,8 @@ int luaUnsubscribeFDCommand(lua_State *lua) {
     }
     size_t   len;
     char *s       = (char *)lua_tolstring(lua, -1, &len);
-    lua_pop(lua, 1);
     robj *channel = createStringObject(s, len);
+    lua_pop(lua, 1);
     t = lua_type(lua, 1);
     if (t != LUA_TNUMBER && t != LUA_TSTRING) {
         LUA_POP_WHOLE_STACK
@@ -303,8 +303,8 @@ int luaSQLCommand(lua_State *lua) { //printf("SQL\n");
     }
     size_t len;
     char *s     = (char *)lua_tolstring(lua, -1, &len);
-    lua_pop(lua, 1);
     sds   sql   = sdsnewlen(s, len);
+    lua_pop(lua, 1);
     int   sargc;
     sds  *sargv = sdssplitargs(sql, &sargc);
     DXDB_cliSendCommand(&sargc, sargv);

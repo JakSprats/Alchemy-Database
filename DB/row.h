@@ -55,9 +55,27 @@ robj *outputRow(bt   *btr,       void *row,  int qcols,
 
 bool deleteRow(int tmatch, aobj *apk, int matches, int inds[]);
 
-int updateRow(cli  *c,      bt      *btr,    aobj  *apk,     void *orow,
-              int   tmatch, int     ncols,   int    matches, int   inds[],
-              char *vals[], uint32  vlens[], uchar  cmiss[], ue_t  ue[]) ;
+typedef struct update_ctl {
+    bt      *btr;
+    aobj    *apk;
+    void    *orow;
+    int      tmatch;
+    int      ncols;
+    int      matches;
+    int     *inds;
+    char   **vals;
+    uint32  *vlens;
+    uchar   *cmiss;
+    ue_t    *ue;
+    lue_t   *le;
+} uc_t;
+
+void init_uc(uc_t  *uc,     bt     *btr,
+             int    tmatch, int     ncols,   int    matches, int   inds[],
+             char  *vals[], uint32  vlens[], uchar  cmiss[], ue_t  ue[],
+             lue_t *le);
+void release_uc(uc_t *uc);
+int updateRow(cli *c, uc_t *uc, aobj *apk, void *orow);
 
 void dumpRow(printer *prn, bt *btr, void *rrow, aobj *apk, int tmatch);
 
