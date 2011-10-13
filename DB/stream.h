@@ -46,7 +46,7 @@ int    cr8LcolFromStr(cli *c, char *strt, uint32 len, uchar *sflag, ulong *col);
 int    cr8FColFromStr(cli *c, char *strt, uint32 len, float *col);
 void   writeUIntCol (uchar **row, uchar sflag, ulong icol);
 void   writeULongCol(uchar **row, uchar sflag, ulong icol);
-void   writeFloatCol(uchar **row,              float fcol);
+void   writeFloatCol(uchar **row, bool  fflag, float fcol);
 uint32 streamIntToUInt   (uchar *data, uint32 *clen);
 ulong  streamLongToULong (uchar *data, uint32 *clen);
 float  streamFloatToFloat(uchar *data, uint32 *clen);

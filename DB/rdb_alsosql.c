@@ -160,6 +160,7 @@ int rdbSaveBT(FILE *fp, bt *btr) { //printf("rdbSaveBT\n");
             decrRefCount(r);
             if (rdbSaveLen(fp, (int)rt->col[i].type) == -1)     return -1;
         }
+        if (rdbSaveLen(fp, rt->hashy) == -1)                    return -1;
         if (fwrite(&(btr->s.ktype),    1, 1, fp) == 0)          return -1;
         if (rdbSaveLen(fp, btr->numkeys)       == -1)           return -1;
         if (btr->root && btr->numkeys > 0) {
@@ -261,9 +262,10 @@ bool rdbLoadBT(FILE *fp) { //printf("rdbLoadBT\n");
             rt->col[i].type   = (uchar)u;
             rt->col[i].imatch = -1;
         }
-        uchar ktype;
-        if (fread(&ktype,    1, 1, fp) == 0)                        return 0;
-        rt->btr  = createDBT(ktype, tmatch);
+        if (fread(&u,    1, 1, fp) == 0)                            return 0;
+        rt->hashy = (bool)u;
+        if (fread(&u,    1, 1, fp) == 0)                            return 0;
+        rt->btr   = createDBT(u, tmatch);
         uint32 bt_nkeys; 
         if ((bt_nkeys = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)  return 0;
         for (uint32 i = 0; i < bt_nkeys; i++) {

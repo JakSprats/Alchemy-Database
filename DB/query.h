@@ -39,7 +39,7 @@ typedef struct r_col {
     sds   name; uchar type; bool  indxd; int imatch;
 } r_col_t;
 
-typedef struct r_tbl { // 92 bytes
+typedef struct r_tbl { // 113 bytes -> 120B
     sds      name;
     bt      *btr;
     int      vimatch;
@@ -54,12 +54,16 @@ typedef struct r_tbl { // 92 bytes
     uint32   lrud;       /* LRU: timestamp & bool */
     int      lruc;       /* LRU: column containing LRU */
     int      lrui;       /* LRU: index containing LRU */
-    uchar    nmci;       /* MCI: number of MultipleColumnIndexes */
-    uchar    nltrgr;     /* LAUT: number of LuaTriggers */
+    uint32   nmci;       /* MCI: number of MultipleColumnIndexes */ //TODO bool?
+    uint32   nltrgr;     /* LAUT: number of LuaTriggers */          //TODO bool?
     int      sk;         /* SK: index of shard-key column */
     int      fk_cmatch;  /* SK: Foreign-key local column */
     int      fk_otmatch; /* SK: Foreign-key other table's table */
     int      fk_ocmatch; /* SK: Foreign-key other table's column */
+    bool     hashy;      /* HASH: adds "HASHABILITY" to the table */
+    uint32   tcols;      /* HASH: on INSERT num new columns */
+    sds     *tcnames;    /* HASH: on INSERT new column names */
+    uint32   ctcol;      /* HASH: on INSERT current new columns */
 } r_tbl_t;
 
 typedef struct r_ind { // 57 bytes

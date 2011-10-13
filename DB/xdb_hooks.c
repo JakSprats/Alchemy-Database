@@ -158,7 +158,7 @@ struct redisCommand DXDBCommandTable[] = {
     {"dump",       sqlDumpCommand,    -2, 0,                   GLOB_FUNC_END},
 
     {"explain",    explainCommand,     7, 0,                   GLOB_FUNC_END},
-    {"alter",      alterCommand,      -6, 0,                   GLOB_FUNC_END},
+    {"alter",      alterCommand,      -5, 0,                   GLOB_FUNC_END},
 
     {"purge",      purgeCommand,       1, 0,                   GLOB_FUNC_END},
     {"dirty",      dirtyCommand,      -1, 0,                   GLOB_FUNC_END},

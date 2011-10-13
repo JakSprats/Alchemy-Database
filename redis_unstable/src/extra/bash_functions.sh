@@ -2581,3 +2581,28 @@ function lua_update_test() {
   echo "ERROR undefined function"
   $CLI UPDATE updated SET "col2=LUARTERR()" WHERE "fk = 1"
 }
+
+function hashability_test() {
+  $CLI DROP TABLE hashy > /dev/null
+  $CLI CREATE TABLE hashy "(pk LONG, fk1 INT, fk2 LONG)"
+  $CLI CREATE INDEX i_h1 ON hashy "(fk1)"
+  $CLI CREATE INDEX i_h2 ON hashy "(fk2)"
+  echo ERROR
+  $CLI INSERT INTO hashy "(fk1, c1)" VALUES "(1,1)"
+  echo $CLI ALTER TABLE hashy ADD HASHABILITY
+  $CLI ALTER TABLE hashy ADD HASHABILITY
+  $CLI INSERT INTO hashy "(fk1, fk2, c1)" VALUES "(1,11,1)"
+  $CLI INSERT INTO hashy "(fk1, fk2, c2)" VALUES "(1,22,2)"
+  $CLI INSERT INTO hashy "(fk1, fk2, c3)" VALUES "(1,11,3)"
+  $CLI INSERT INTO hashy "(fk1, fk2, c4)" VALUES "(1,22,4)"
+  $CLI INSERT INTO hashy "(fk1, fk2, c5)" VALUES "(1,11,5)"
+  $CLI INSERT INTO hashy "(fk1, fk2, c6)" VALUES "(1,22,6)"
+  $CLI INSERT INTO hashy "(fk1, fk2, c7)" VALUES "(1,11,7)"
+  $CLI INSERT INTO hashy "(fk1, fk2, c8)" VALUES "(1,22,8)"
+  $CLI INSERT INTO hashy "(fk1, fk2, c9)" VALUES "(1,11,9)"
+  $CLI DESC hashy
+  echo $CLI SELECT \* FROM hashy WHERE "fk1 = 1"
+  $CLI SELECT \* FROM hashy WHERE "fk1 = 1"
+  echo $CLI SELECT \* FROM hashy WHERE "fk2 = 22"
+  $CLI SELECT \* FROM hashy WHERE "fk2 = 22"
+}

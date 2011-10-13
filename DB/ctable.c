@@ -87,37 +87,45 @@ sds override_getKeysFromComm(rcommand *cmd, robj **argv, int argc, bool *err) {
     sds tname = argv[argt]->ptr;
     if (proc == sqlSelectCommand || proc == tscanCommand) {
         if (strchr(tname, ',')) { printf("JOIN\n"); //TODO
-            //TODO this is TOTALLY outdated (instant SEGV) use list's
-            int  ts  [MAX_JOIN_INDXS];
-            int  jans[MAX_JOIN_INDXS];
-            int  numt = 0;
-            if (!parseCommaSpaceList(c, argv[3]->ptr, 0, 1, 0, -1, NULL, &numt,
-                                     ts, jans, NULL, NULL, &Bdum)) return NULL;
-            uint32 n_clstr = 0, n_shrd = 0;
-            for (int i = 0; i < numt; i++) {
-                r_tbl_t *rt = &Tbl[ts[i]];
+            listNode *ln;
+            list *tl   = listCreate(); //TODO combine: [tl & janl] //FREE 105
+            list *janl = listCreate();                             //FREE 106
+            if (!parseCommaSpaceList(c, argv[3]->ptr, 0, 1, 0, 0, 0, -1, NULL,
+                                     tl, janl, NULL, NULL, &Bdum)) {
+                goto ovrd_sel_end;
+            }
+            uint32    n_clstr = 0, n_shrd = 0;
+            listIter *li      = listGetIterator(tl, AL_START_HEAD);
+            while((ln = listNext(li))) {
+                int tmatch = (int)(long)ln->value;
+                r_tbl_t *rt = &Tbl[tmatch];
                 if (rt->sk == -1) n_clstr++;
                 else              n_shrd++;
-            }
+            } listReleaseIterator(li);
             if (n_shrd > 1) { // check for FK relations
                 //TODO parse WC, validate join-chain
                 int fk_otmatch[MAX_JOIN_INDXS];
                 int fk_ocmatch[MAX_JOIN_INDXS];
                 int n_fk = 0;
-                for (int i = 0; i < numt; i++) {
-                    r_tbl_t *rt = &Tbl[ts[i]];
+                li       = listGetIterator(tl, AL_START_HEAD);
+                while((ln = listNext(li))) {
+                    int tmatch = (int)(long)ln->value;
+                    r_tbl_t *rt = &Tbl[tmatch];
                     if (rt->sk != -1 && rt->fk_cmatch != -1) {
                         fk_otmatch[n_fk] = rt->fk_otmatch;
                         fk_ocmatch[n_fk] = rt->fk_ocmatch;
                         n_fk++;
                     }
-                }
+                } listReleaseIterator(li);
                 for (int i = 0; i < n_fk; i++) {
                     printf("%d: ot: %d oc: %d\n",
                            i, fk_otmatch[i], fk_ocmatch[i]);
                 }
             }
             printf("n_clstr: %d n_shrd: %d\n", n_clstr, n_shrd);
+
+ovrd_sel_end:
+            listRelease(tl); listRelease(janl); // FREED 105 & 106
             return NULL;
         }
     }

@@ -259,76 +259,74 @@ void addColumn(int tmatch, char *cname, int ctype) {// Used by ALTER TABLE & LRU
     rt->col[col_count].imatch = -1;
     ASSERT_OK(dictAdd(rt->cdict, sdsnew(cname), VOIDINT (col_count + 1)));
 }
+
+//TODO ALTER TABLE DROP [COLUMN cname] [HASHABILITY]
 void alterCommand(cli *c) {
-    bool altc = 0, altsk = 0, altfk = 0;
+    bool altc = 0, altsk = 0, altfk = 0, althsh = 0;
     if (strcasecmp(c->argv[1]->ptr, "TABLE") ||
         strcasecmp(c->argv[3]->ptr, "ADD")) {
-        addReply(c, shared.altersyntax);                              return;
+        addReply(c, shared.altersyntax);                                return;
     }
-    if      (!strcasecmp(c->argv[4]->ptr, "COLUMN"))   altc  = 1;
-    else if (!strcasecmp(c->argv[4]->ptr, "SHARDKEY")) altsk = 1;
+    if      (!strcasecmp(c->argv[4]->ptr, "COLUMN"))      altc  = 1;
+    else if (!strcasecmp(c->argv[4]->ptr, "SHARDKEY"))    altsk = 1;
+    else if (!strcasecmp(c->argv[4]->ptr, "HASHABILITY")) althsh = 1;
     else if (!strcasecmp(c->argv[4]->ptr, "FOREIGN") &&
-             !strcasecmp(c->argv[5]->ptr, "KEY"))      altfk = 1;
-    else { addReply(c, shared.altersyntax);                           return; }
+             !strcasecmp(c->argv[5]->ptr, "KEY"))         altfk = 1;
+    else { addReply(c, shared.altersyntax);                             return;}
     uchar  ctype;
     int    len   = sdslen(c->argv[2]->ptr);
     char  *tname = rem_backticks(c->argv[2]->ptr, &len); /* Mysql compliant */
     TABLE_CHECK_OR_REPLY(tname,)
-    if (OTHER_BT(getBtr(tmatch))) { addReply(c, shared.alter_other);  return; }
+    if (OTHER_BT(getBtr(tmatch))) { addReply(c, shared.alter_other);    return;}
     if         (altc) {
-        if (c->argc < 7) { addReply(c, shared.altersyntax);           return; }
-        if (!checkRepeatCnames(c, tmatch, c->argv[5]->ptr))           return;
-        if (!parseColType     (c, c->argv[6]->ptr, &ctype))           return;
+        if (c->argc < 7) { addReply(c, shared.altersyntax);             return;}
+        if (!checkRepeatCnames(c, tmatch, c->argv[5]->ptr))             return;
+        if (!parseColType     (c, c->argv[6]->ptr, &ctype))             return;
         addColumn(tmatch, c->argv[5]->ptr, ctype);
+    } else if  (althsh) {
+        if (c->argc > 5) { addReply(c, shared.altersyntax);             return;}
+        Tbl[tmatch].hashy = 1; addReply(c, shared.ok);                  return;
     } else if  (altsk) {
-        if (c->argc < 6) { addReply(c, shared.altersyntax);           return; }
+        if (c->argc < 6) { addReply(c, shared.altersyntax);             return;}
         sds cname  = c->argv[5]->ptr;
-        if (Tbl[tmatch].sk != -1) { addReply(c, shared.alter_sk_rpt); return; }
+        if (Tbl[tmatch].sk != -1) { addReply(c, shared.alter_sk_rpt);   return;}
         int cmatch = find_column_n(tmatch, cname, sdslen(cname));
-        if (cmatch == -1)      { addReply(c, shared.altersyntax);     return; }
+        if (cmatch == -1)      { addReply(c, shared.altersyntax);       return;}
         int imatch = find_index(tmatch, cmatch);
-        if (imatch == -1)      { addReply(c, shared.alter_sk_no_i);   return; }
-        if (Index[imatch].lru) { addReply(c, shared.alter_sk_no_lru); return; }
+        if (imatch == -1)      { addReply(c, shared.alter_sk_no_i);     return;}
+        if (Index[imatch].lru) { addReply(c, shared.alter_sk_no_lru);   return;}
         Tbl[tmatch].sk = cmatch;
     } else { /* altfk */
-        if (c->argc < 10) { addReply(c, shared.altersyntax);           return; }
+        if (c->argc < 10) { addReply(c, shared.altersyntax);            return;}
         if (strcasecmp(c->argv[7]->ptr, "REFERENCES")) {
-            addReply(c, shared.altersyntax);                           return;
+            addReply(c, shared.altersyntax);                            return;
         }
         sds   fkname  = c->argv[6]->ptr;
         int   fklen   = sdslen(fkname);
         char *fkend   = fkname + fklen - 1;
         if (*fkname != '(' || *fkend != ')') {
-            addReply(c, shared.altersyntax);                           return;
+            addReply(c, shared.altersyntax);                            return;
         }
         sds   o_tname = c->argv[8]->ptr;
         sds   o_cname = c->argv[9]->ptr;
         int   oclen   = sdslen(o_cname);
         char *o_cend  = o_cname + oclen - 1;
         if (*o_cname != '(' || *o_cend != ')') {
-            addReply(c, shared.altersyntax);                           return;
+            addReply(c, shared.altersyntax);                            return;
         }
         int cmatch = find_column_n(tmatch, fkname + 1, fklen - 2);
-        if (cmatch == -1) {
-            addReply(c, shared.altersyntax);                           return;
-        }
+        if (cmatch == -1) { addReply(c, shared.altersyntax);            return;}
         int otmatch = find_table(o_tname);
-        if (otmatch == -1) {
-            addReply(c, shared.altersyntax);                           return;
-        }
+        if (otmatch == -1) { addReply(c, shared.altersyntax);           return;}
         int ocmatch = find_column_n(otmatch, o_cname + 1, oclen - 2);
-        if (ocmatch == -1) {
-            addReply(c, shared.altersyntax);                           return;
-        }
+        if (ocmatch == -1) { addReply(c, shared.altersyntax);           return;}
         r_tbl_t *rt  = &Tbl[tmatch];
         r_tbl_t *ort = &Tbl[otmatch];
         if (rt->sk != cmatch || ort->sk != ocmatch) {
-            addReply(c, shared.alter_fk_not_sk);                       return;
+            addReply(c, shared.alter_fk_not_sk);                        return;
         }
         //NOTE: BOTH are indexed because shardkey's must be
-        if (rt->fk_cmatch != -1) {
-            addReply(c, shared.alter_fk_repeat);                       return;
-        }
+        if (rt->fk_cmatch != -1) { addReply(c, shared.alter_fk_repeat); return;}
         rt->fk_cmatch  = cmatch;
         rt->fk_otmatch = otmatch;
         rt->fk_ocmatch = ocmatch;

@@ -55,20 +55,18 @@ void *row_malloc(bt *btr, int size) {
 // FLOAT FLOAT FLOAT FLOAT FLOAT FLOAT FLOAT FLOAT FLOAT FLOAT FLOAT FLOAT
 int strToFloat(redisClient *c, char *start, uint32 len, float *f) {
     if (len >= 31) { addReply(c, shared.col_float_string_too_long); return -1; }
+    if (!len) return 0;
     char buf[32]; memcpy(buf, start, len); buf[len] = '\0';
     *f       = (float)atof(buf);       /* OK: DELIM: \0 */
     return 4;
 }
-static bool strToULong(cli *c, char *start, uint32 len, ulong *l, bool isi) {
-    if (len >= 31) { addReply(c, shared.col_uint_string_too_long); return 0; }
-    char buf[32]; memcpy(buf, start, len); buf[len] = '\0';
-    ulong m  = strtoul(buf, NULL, 10); /* OK: DELIM: \0 */
-    if (isi && m >= TWO_POW_32) { addReply(c, shared.u2big); return 0; }
-    *l       = m;
-    return 1;
-}
 int cr8FColFromStr(cli *c, char *start, uint32 len, float *col) {
     return strToFloat(c, start, len, col);
+}
+void writeFloatCol(uchar **row, bool fflag, float fcol) {
+    if (!fflag) return;
+    memcpy(*row, &fcol, 4);
+    *row  = *row + 4;
 }
 /* LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU */
 inline uchar getLruSflag() { return COL_4BYTE_INT; }
@@ -164,6 +162,14 @@ static ulong sI2I(uchar *data, uint32 *clen, bool isi) {
     }
     return val;
 }
+static bool strToULong(cli *c, char *start, uint32 len, ulong *l, bool isi) {
+    if (len >= 31) { addReply(c, shared.col_uint_string_too_long); return 0; }
+    char buf[32]; memcpy(buf, start, len); buf[len] = '\0';
+    ulong m  = strtoul(buf, NULL, 10); /* OK: DELIM: \0 */
+    if (isi && m >= TWO_POW_32) { addReply(c, shared.u2big); return 0; }
+    *l       = m;
+    return 1;
+}
 int cr8Icol(ulong l, uchar *sflag, ulong *col) {
     return cIcol(l, sflag, col, 1);
 }
@@ -187,10 +193,6 @@ void writeUIntCol(uchar **row, uchar sflag, ulong icol) {
 }
 void writeULongCol(uchar **row, uchar sflag, ulong icol) {
     wUCol(row, sflag, icol, 0);
-}
-void writeFloatCol(uchar **row, float fcol) {
-    memcpy(*row, &fcol, 4);
-    *row  = *row + 4;
 }
 uint32 streamIntToUInt(uchar *data, uint32 *clen) {
     return (uint32)sI2I(data, clen, 1);
@@ -268,7 +270,7 @@ static void cr8BTKLong(aobj *akey, uint32 *ksize, uchar *btkey) {
     writeULongCol(&btkey, sflag, l);
 }
 static void cr8BTKFloat(aobj *akey, uint32 *ksize, uchar *btkey) {
-    writeFloatCol(&btkey, akey->f);
+    writeFloatCol(&btkey, 1, akey->f);
     *ksize = 4;
 }
 int btIntCmp(void *a, void *b) {

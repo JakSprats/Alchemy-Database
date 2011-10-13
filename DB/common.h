@@ -71,6 +71,7 @@ typedef int printer(const char *format, ...);
 #define DECR(x)     {x = x - 1;}
 #define DECRBY(x,y) {x = x - y;}
 
+#define C_IS_N(ctype) (ctype == COL_TYPE_NONE)
 #define C_IS_I(ctype) (ctype == COL_TYPE_INT)
 #define C_IS_L(ctype) (ctype == COL_TYPE_LONG)
 #define C_IS_S(ctype) (ctype == COL_TYPE_STRING)

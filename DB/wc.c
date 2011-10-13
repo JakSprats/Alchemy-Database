@@ -585,12 +585,11 @@ bool parseJoinReply(cli *c, jb_t *jb, char *clist, char *tlist, char *wc) {
     list *tl   = listCreate(); //TODO combine: [tl & janl]
     list *janl = listCreate();
     list *jl   = listCreate();
-    int   numt = 0;            // TODO numt is just tl->len
     /* Check tbls in "FROM tbls,,,," */
-    if (!parseCommaSpaceList(c, tlist, 0, 1, 0, -1, NULL, &numt, tl, janl,
+    if (!parseCommaSpaceList(c,  tlist, 0, 1, 0, 0, 0, -1, NULL, tl, janl,
                              NULL, NULL, &Bdum))          goto prs_join_end;
     /* Check all tbl.cols in "SELECT tbl1.col1, tbl2.col2,,,,," */
-    if (!parseCommaSpaceList(c,  clist, 0, 0, 1, -1, NULL, &numt, tl, janl,
+    if (!parseCommaSpaceList(c,  clist, 0, 0, 1, 0, 0, -1, NULL, tl, janl,
                              jl, &jb->qcols, &jb->cstar)) goto prs_join_end;
     jb->js = malloc(sizeof(jc_t) * jl->len);
     listNode *lnjs; int ijs  = 0;

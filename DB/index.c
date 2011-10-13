@@ -497,6 +497,7 @@ static bool ICommit(cli *c,      sds   iname,   sds   tname, char *cname,
                 addReply(c, shared.uniq_mci_pk_notint);             return 0;
             }
         }
+        //TODO use parseCommaSpaceList() ???
         int ocmatch = -1; /* first column can be used as normal index */
         clist       = listCreate();                  /* DESTROY ME 054 */
         while (1) {

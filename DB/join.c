@@ -174,7 +174,7 @@ static robj *join_reply_norm(range_t *g) {
     uint32  totlen = 0;
     for (int i = 0; i < g->se.qcols; i++) {
         totlen += (Jcols[i].len + 1);
-        if (C_IS_S(Jcols[i].type)) totlen += 2; /* 2 quotes per col */
+        if (C_IS_S(Jcols[i].type) && Jcols[i].len) totlen += 2; // 2 '' per col
     }
     totlen--; /* -1 no final comma */
     return write_output_row(g->se.qcols, 0, NULL, totlen, Jcols);
@@ -241,10 +241,11 @@ static bool join_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
     int   nfree = 0;
     for (int i = 0; i < g->se.qcols; i++) { // Extract queried columns
         if (jb->js[i].jan == w->wf.jan) {
-            Resp = getSCol(g->co.btr, rrow, jb->js[i].c, apk, jb->js[i].t);//037
+            int tm = jb->js[i].t; int cm = jb->js[i].c; 
+            Resp = getSCol(g->co.btr, rrow, cm, apk, tm);//037
             Jcols[i].len    = Resp.len;
             Jcols[i].freeme = 0; /* freed via freeme[] */
-            Jcols[i].type   = Tbl[jb->js[i].t].col[jb->js[i].c].type;
+            Jcols[i].type   = (cm == -1) ? COL_TYPE_NONE : Tbl[tm].col[cm].type;
             if (Resp.freeme) Jcols[i].s = Resp.s;
             else             Jcols[i].s = memclone(Resp.s, Resp.len);
             freeme[nfree++] = Jcols[i].s;                          //JOP_DEBUG_2
@@ -256,7 +257,8 @@ static bool join_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
         if (!jb->ob) jb->ob = create_obsl(NULL, jb->wb.nob); /*DESTROY ME 057*/
         for (uint32 i = 0; i < jb->wb.nob; i++) {
             if (jb->wb.obt[i] == tmatch) {
-                uchar ctype = Tbl[jb->wb.obt[i]].col[jb->wb.obc[i]].type;
+                int tm = jb->wb.obt[i]; int cm = jb->wb.obc[i];
+                uchar ctype = (cm == -1) ? COL_TYPE_NONE : Tbl[tm].col[cm].type;
                 assignObKey(&jb->wb, g->co.btr, rrow, apk, i, jb->ob);
                 if (C_IS_S(ctype)) obfreei[obnfree++] = i;
             }

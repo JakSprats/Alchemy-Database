@@ -39,9 +39,10 @@ char *parseRowVals(sds vals,  char   **pk,        int    *pklen,
                    int pcols, int      cmatchs[]);
 
 bool parseCommaSpaceList(cli  *c,         char  *tkn,
-                         bool  col_check, bool   tbl_check, bool join_check,
+                         bool  col_check, bool   tbl_check, bool  join_check,
+                         bool  exact,     bool   isi,
         /* COL or TBL */ int   tmatch,    list  *cs,
-        /* JOIN */       int  *numt,      list  *ts, list *jans, list *js,
+        /* JOIN */       list *ts,        list *jans,       list *js,
                          int  *qcols,     bool  *cstar);
 
 #define CMATCHS_FROM_CMATCHL                                                   \

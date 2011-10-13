@@ -180,9 +180,33 @@ insc_end:
 
 #define AEQ(a,b) !strcasecmp(c->argv[a]->ptr, b)
 
+static bool checkRepeatHashCnames(cli *c, int tmatch) {
+    r_tbl_t *rt = &Tbl[tmatch];
+    for (uint32 i = 0; i < rt->tcols; i++) {
+        for (uint32 j = 0; j < rt->tcols; j++) { if (i == j) continue;
+            if (!strcmp(rt->tcnames[i], rt->tcnames[j])) {
+                addReply(c, shared.repeat_hash_cnames); return 0;
+            }}}
+    return 1;
+}
+static bool checkRepeatInsertCnames(cli *c, int *cmatchs, int matches) {
+    for (int i = 0; i < matches; i++) {
+        for (int j = 0; j < matches; j++) { if (i == j) continue;
+            if (cmatchs[i] != -1 && cmatchs[i] == cmatchs[j]) {
+                addReply(c, shared.nonuniquecolumns); return 0;
+            }}}
+    return 1;
+
+}
+static void resetTCNames(int tmatch) {
+    r_tbl_t *rt  = &Tbl[tmatch]; if (!rt->tcols) return;
+    for (uint32 i = 0; i < rt->tcols; i++) sdsfree(rt->tcnames[i]); //FREED 107
+    free(rt->tcnames);                                              //FREED 106
+    rt->tcnames = NULL; rt->tcols = 0; rt->ctcol = 0;
+}
 void insertParse(cli *c, robj **argv, bool repl, int tmatch,
                  bool parse, sds *key) {
-    MATCH_INDICES(tmatch)
+    resetTCNames(tmatch); MATCH_INDICES(tmatch)
     r_tbl_t *rt      = &Tbl[tmatch];
     int      ncols   = rt->col_count; /* NOTE: need space for LRU */
     list    *cmatchl = listCreate();
@@ -193,20 +217,23 @@ void insertParse(cli *c, robj **argv, bool repl, int tmatch,
         sds  cols = argv[valc]->ptr;
         if (cols[0] == '(' && cols[sdslen(cols) - 1] == ')' ) { /* COL DECL */
             STACK_STRDUP(clist, (cols + 1), (sdslen(cols) - 2));
-            parseCommaSpaceList(c, clist, 1, 0, 0, tmatch, cmatchl,
-                                0, NULL, NULL, NULL, &pcols, NULL);
+            if (!parseCommaSpaceList(c, clist, 1, 0, 0, 0, 1, tmatch, cmatchl,
+                                     NULL, NULL, NULL, &pcols, NULL)) return;
+            if (rt->tcols && !checkRepeatHashCnames(c, tmatch)) goto insprserr;
             CMATCHS_FROM_CMATCHL //TODO unneeded work, need: initLRUCS(cmatchl)
+            if (!checkRepeatInsertCnames(c, cmatchs, matches))  goto insprserr;
             if (pcols) {
                 if (initLRUCS(tmatch, cmatchs, pcols)) { /* LRU in ColDecl */
-                    addReply(c, shared.insert_lru);            goto insprserr;
+                    addReply(c, shared.insert_lru);             goto insprserr;
                 }
                 if (OTHER_BT(getBtr(tmatch)) && pcols != 2 && !cmatchs[0]) {
-                    addReply(c, shared.part_insert_other);     goto insprserr;
+                    addReply(c, shared.part_insert_other);      goto insprserr;
                 }
                 valc++; if (!strcasecmp(argv[valc]->ptr, "VALUES")) ok = 1;
             }
         }
-        if (!ok) { addReply(c, shared.insertsyntax_no_values); goto insprserr; }
+        if (!ok) { addReply(c, shared.insertsyntax_no_values);  goto insprserr;}
+
     }
     bool print = 0; uint32 upd = 0; int largc = c->argc;
     if (largc > 5) {
@@ -222,7 +249,8 @@ void insertParse(cli *c, robj **argv, bool repl, int tmatch,
     if (upd && repl) {
         addReply(c, shared.insert_replace_update);             goto insprserr;
     }
-    uchar ret = INS_ERR; uint32 tsize = 0;
+    uchar ret  = INS_ERR; uint32 tsize = 0;
+    ncols     += rt->tcols; // ADD in HASHABILITY columns
     for (int i = valc + 1; i < largc; i++) {
         ret = insertCommit(c, argv, argv[i]->ptr, ncols, tmatch, matches, inds,
                            pcols, cmatchl, repl, upd, print ? &tsize : NULL,

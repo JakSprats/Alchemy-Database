@@ -336,25 +336,27 @@ void descCommand(redisClient *c) {
     if (btr->numkeys) { assignMinKey(btr, &mink); assignMaxKey(btr, &maxk); }
     else              { initAobj(&mink);          initAobj(&maxk);          }
 
-    char buf[256];
-    if (C_IS_S(mink.type)) {
-        sds mins = sdsnewlen(mink.s, (mink.len > 64) ? 64 : mink.len);
-        sds maxs = sdsnewlen(maxk.s, (mink.len > 64) ? 64 : mink.len);
-        snprintf(buf, 255, "INFO: KEYS: [NUM: %d MIN: %s MAX: %s]" \
-                          " BYTES: [BT-TOTAL: %ld [BT-DATA: %ld] INDEX: %lld]]",
-                btr->numkeys, mins, maxs, btr->msize, btr->dsize, index_size);
-        buf[255] = '\0';
-        sdsfree(mins); sdsfree(maxs);
+    sds s = sdsempty();                                  // FREEME 102(1)
+    if        (C_IS_S(mink.type)) {
+        sds mins = sdsnewlen(mink.s, (mink.len > 64) ? 64 : mink.len); //FREE103
+        sds maxs = sdsnewlen(maxk.s, (mink.len > 64) ? 64 : mink.len); //FREE104
+        s = sdscatprintf(s, "INFO: KEYS: [NUM: %d MIN: %s MAX: %s]",
+                             btr->numkeys, mins, maxs);
+        sdsfree(mins); sdsfree(maxs);                       // FREED 103 & 104
+    } else if (C_IS_F(mink.type)) {
+        s = sdscatprintf(s, "INFO: KEYS: [NUM: %d MIN: %f MAX: %f]",
+                             btr->numkeys, mink.f, maxk.f);
     } else {
-        ulong min = C_IS_I(mink.type) ? mink.i : mink.l; //TODO FLOAT
-        ulong max = C_IS_I(mink.type) ? maxk.i : maxk.l; //TODO FLOAT
-        snprintf(buf, 255, "INFO: KEYS: [NUM: %d MIN: %lu MAX: %lu]" \
-                          " BYTES: [BT-TOTAL: %ld [BT-DATA: %ld] INDEX: %lld]]",
-               btr->numkeys, min, max, btr->msize,
-               btr->dsize, index_size);
-        buf[255] = '\0';
+        ulong min = C_IS_I(mink.type) ? mink.i : mink.l;
+        ulong max = C_IS_I(mink.type) ? maxk.i : maxk.l;
+        s = sdscatprintf(s, "INFO: KEYS: [NUM: %d MIN: %lu MAX: %lu]",
+                             btr->numkeys, min, max);
     }
-    robj *r = _createStringObject(buf); addReplyBulk(c, r); decrRefCount(r);
+    s = sdscatprintf(s, " BYTES: [BT-TOTAL: %ld [BT-DATA: %ld] INDEX: %lld]]%s",
+                        btr->msize, btr->dsize, index_size,
+                        rt->hashy ? " - HASHABILITY" : "");
+    robj *r = createObject(REDIS_STRING, s);             // FREEME 102(2)
+    addReplyBulk(c, r); decrRefCount(r);                 // FREED 102
     card++;
 
     setDeferredMultiBulkLength(c, rlen, card);

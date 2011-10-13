@@ -111,6 +111,7 @@ typedef struct create_row_data {
     uchar   iflags;
     ulong   icols; /* for INT & LONG */
     float   fcols;
+    bool    fflags;
     bool    empty; // for HashRows
 } crd_t;
 static void init_cr(cr_t *cr, crd_t *crd, int tmatch, int ncols, int tcols) {
@@ -378,7 +379,7 @@ static uchar *writeRow(cr_t *cr, crd_t *crd) {
         } else if C_IS_L(ctype) {
             writeULongCol(&row, crd[i].iflags, crd[i].icols);
         } else if C_IS_F(ctype) {
-            writeFloatCol(&row, crd[i].fcols);
+            writeFloatCol(&row, crd[i].fflags, crd[i].fcols);
         } else {//C_IS_S()
             if        (cz.type == CZIP_SIX) {
                 memcpy(row, czd[k].sixs, czd[k].sixl); row += czd[k].sixl; k++;
@@ -444,6 +445,7 @@ void *createRow(cli    *c,    bt     *btr,      int tmatch, int  ncols,
         } else if (C_IS_F(ctype)) {
             nclen = cr8FColFromStr(c, crd[i].strs, crd[i].slens, &crd[i].fcols);
             if (nclen == -1) return NULL;
+            crd[i].fflags = nclen ? 1 : 0;
         }
         cr.rlen        += nclen;
         crd[i].mcofsts  = (int)cr.rlen;                      //DEBUG_CREATE_ROW
@@ -549,6 +551,7 @@ aobj getRawCol(bt  *btr,    uchar *orow, int cmatch, aobj *apk,
                int  tmatch, bool  force_s) {
     if (OTHER_BT(btr)) return getOtherBTRawCol(btr, orow, cmatch, apk, force_s);
     aobj a; initAobj(&a); //DEBUG_GET_RAW_COL
+    if (cmatch == -1) return a; // NOTE: used for HASHABILITY miss
     r_tbl_t *rt    = &Tbl[tmatch];
     uchar    ctype = rt->col[cmatch].type;
     if (!cmatch) { /* PK stored ONLY in KEY not in ROW, echo it */
@@ -735,10 +738,8 @@ robj *write_output_row(int   qcols,   uint32  prelen, char *pbuf,
     for (int i = 0; i < qcols; i++) {
         QUOTE_COL
         memcpy(obuf + slot, outs[i].s, outs[i].len);
-        slot += outs[i].len;
-        release_sl(outs[i]);
-        QUOTE_COL
-        FINAL_COMMA
+        slot += outs[i].len; release_sl(outs[i]);
+        QUOTE_COL FINAL_COMMA
     }
     robj *r = createStringObject(obuf, totlen);
     if (obuf != OutBuff) free(obuf);                     /* FREED 072 */
@@ -767,7 +768,8 @@ static robj *orow_normal(bt   *btr,       void *rrow, int   qcols,
         outs[i].s       = col.s;
         outs[i].len     = col.len;
         outs[i].freeme  = col.freeme;
-        outs[i].type    = Tbl[tmatch].col[cmatchs[i]].type;
+        outs[i].type    = (cmatchs[i] == -1) ? COL_TYPE_NONE :
+                                               Tbl[tmatch].col[cmatchs[i]].type;
         totlen         += col.len;
         if (C_IS_S(outs[i].type) && outs[i].len) totlen += 2;/* 2 \'s per col */
     }

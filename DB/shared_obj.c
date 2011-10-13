@@ -117,9 +117,9 @@ void DXDB_createSharedObjects() {
     shared.dropsyntax = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: DROP TABLE tablename OR DROP INDEX indexname OR DROP LUATRIGGER\r\n"));
     shared.altersyntax = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: ALTER TABLE tablename ADD [COLUMN columname columntype[INT,LONG,FLOAT,TEXT]] [SHARDKEY columname] [FOREIGN KEY (fk_name) REFERENCES othertable (other_table_indexed_column)]\r\n"));
+        "-ERR SYNTAX: ALTER TABLE tablename ADD [COLUMN columname type[INT,LONG,FLOAT,TEXT]] [SHARDKEY columname] [FOREIGN KEY (fk_name) REFERENCES othertable (other_table_indexed_column)] [HASHABILITY]\r\n"));
     shared.alter_other = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: ALTER TABLE tablename ADD COLUMN columname columntype - CAN NOT be done on OPTIMISED 2 COLUMN TABLES\r\n"));
+        "-ERR SYNTAX: ALTER TABLE - CAN NOT be done on OPTIMISED 2 COLUMN TABLES\r\n"));
     shared.lru_other = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: CREATE LRUINDEX ON tablename - CAN NOT be done on OPTIMISED 2 COLUMN TABLES\r\n"));
     shared.lru_repeat = createObject(REDIS_STRING,sdsnew(
@@ -302,4 +302,7 @@ void DXDB_createSharedObjects() {
 
     shared.obindexviol            = createObject(REDIS_STRING,sdsnew(
         "-ERR ORDER BY INDEX - ordered by column has a repeat value, this is analagous to a duplicate PK and a violation\r\n"));
+
+    shared.repeat_hash_cnames     = createObject(REDIS_STRING,sdsnew(
+        "-ERR INSERT into TABLE with HASHABILITY - REPEATING column names\r\n"));
 }
