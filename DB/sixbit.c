@@ -41,8 +41,8 @@ static uchar to_six_bit_strings  [256];
 static uchar from_six_bit_strings[256];
 
 void init_six_bit_strings() {
-    bzero(to_six_bit_strings, 256);
     uint32 len = strlen(sixbitchars);
+    bzero(to_six_bit_strings, 256);
     for (uint32 i = 0; i < len; i++) {
         to_six_bit_strings[(int)sixbitchars[i]]  = i + 1;
     }
@@ -53,9 +53,13 @@ void init_six_bit_strings() {
     }
 }
 
+#define DEBUG_SIXBIT_PACK \
+  printf("pack %d: c: %c -> %d (%u,%u) res(%u,%u)\n", \
+          state, s_c, s_p, b0, b1, *o_dest, **dest);
+
 static bool six_bit_pack(char s_c, uint32 s_i, uchar **dest) {
-    //uchar *o_dest = *dest;
-    char           s_p    = to_six_bit_strings[(int)s_c];
+    uchar *o_dest = *dest;
+    char   s_p    = to_six_bit_strings[(int)s_c];
     if (!s_p) return 0;
     char           state  = s_i % 4;
     uchar  b0     = s_p;
@@ -78,15 +82,17 @@ static bool six_bit_pack(char s_c, uint32 s_i, uchar **dest) {
     } else {
         **dest += b0;
         *dest = *dest + 1;
-    }
-    //printf("pack %d: c: %c -> %d (%u,%u) res(%u,%u)\n",
-            //state, s_c, s_p, b0, b1, *o_dest, **dest);
+    } //DEBUG_SIXBIT_PACK
     return 1;
 }
 
+#define DEBUG_SIXBIT_UNPACK                          \
+  printf("unpack %d: (%u,%u) -> res(%u,%u) =>%u\n",  \
+            state, *o_dest, **dest, b1, b2, b3);
+
 static uchar six_bit_unpack(uint32 s_i, uchar **dest) {
-    //uchar *o_dest = *dest;
-    char           state  = s_i % 4;
+    uchar *o_dest = *dest;
+    char   state  = s_i % 4;
     uchar  b1     = **dest;
     uchar  b2     = 0;;
     if      (state == 0) {
@@ -108,25 +114,17 @@ static uchar six_bit_unpack(uint32 s_i, uchar **dest) {
         b1 >>= 2;
         *dest = *dest + 1;
     }
-    uchar b3 = b1 + b2;
-    //printf("unpack %d: (%u,%u) -> res(%u,%u) =>%u\n",
-            //state, *o_dest, **dest, b1, b2, b3);
+    uchar b3 = b1 + b2; //DEBUG_SIXBIT_UNPACK
     return from_six_bit_strings[b3];
 }
 
 uchar *_createSixBit(char *src, uint32  src_len, uint32 *new_len) {
-    uchar *dest    = malloc(src_len + 1); //printf("_createSixBit malloc\n");
-    bzero(dest, src_len + 1);
-    uchar *o_dest  = dest;
-    if (!src_len) {
-        *new_len = 0;
-        return o_dest;
-    } 
+    uchar *dest   = malloc(src_len + 1); bzero(dest, src_len + 1);
+    uchar *o_dest = dest;
+    if (!src_len) { *new_len = 0; return o_dest; }
     for (uint32 i = 0; i < src_len; i++) {
         if(!six_bit_pack(src[i], i, &dest)) {
-            free(o_dest);
-            *new_len = 0;
-            return NULL;
+            free(o_dest); *new_len = 0; return NULL;
         }
     }
     *new_len = (dest - o_dest) + 1;

@@ -779,6 +779,9 @@ function all_tests() {
   lua_update_test
   $CLI DEBUG RELOAD
 
+  hashability_test
+  $CLI DEBUG RELOAD
+
   create_1000_tables  > /dev/null
   create_1000_columns > /dev/null
   $CLI DESC foo_999

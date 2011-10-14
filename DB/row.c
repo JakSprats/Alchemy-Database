@@ -79,6 +79,9 @@ extern char POWER; extern char MODULO;
 //NOTE: this may be WAY too high for fast READ ops (it favors memusage totally)
 #define MIN_FILL_PERC_HASH_ROW    0.25
 
+static char *EmptyStringCol = "''";
+static char *EmptyCol       = "";
+
 typedef robj *row_outputter(bt   *btr,       void *rrow, int   qcols,
                             int   cmatchs[], aobj *apk,  int   tmatch);
 
@@ -223,25 +226,21 @@ static void zipCol(cr_t *cr, crd_t *crd, cz_t *cz, czd_t *czd) {
             uint32  len  = crd[i].slens;
             uchar  *dest = _createSixBit(crd[i].strs, len, &len); //FREE 022
             if (!dest) { cz->type = CZIP_NONE; return; }
-            czd[cz->sixn].sixs = dest;
-            czd[cz->sixn].sixl = len;
-            INCR(cz->sixn)
+            czd[cz->sixn].sixs = dest; czd[cz->sixn].sixl = len; INCR(cz->sixn)
         }}
     }
     uint32 k = 0; uint32 shrunk = 0;
     for (int i = 1; i < cr->ncols; i++) { /* MOD cofsts (zipping) */
         int diff = 0;
         if (C_IS_S(Tbl[cr->tmatch].col[i].type)) {
-            if (       cz->type == CZIP_SIX) {
+            if        (cz->type == CZIP_SIX) {
                 diff = (crd[i].slens - czd[k].sixl);
             } else if (cz->type == CZIP_LZF) {
                 diff = (crd[i].slens - (czd[k].lsocl + czd[k].lzf_l));
             }
             k++;
         }
-        shrunk         += diff;
-        cr->rlen       -= diff;
-        crd[i].mcofsts -= shrunk;
+        shrunk += diff; cr->rlen -= diff; crd[i].mcofsts -= shrunk;
     }
 }
 // NORMALROW BIN FRMT: [ 1B |StreamUINT |NC*(1-4B) |data ... no PK, no commas]
@@ -356,7 +355,6 @@ static uchar *createHashRow(cr_t *cr, crd_t *crd, uchar *rflag, uint32 *mlen) {
     return use16 ? createHash16Row(cr, crd, rflag, mlen, msize) :
                    createHash32Row(cr, crd, rflag, mlen, msize);
 }
-
 static uchar *writeRow(cr_t *cr, crd_t *crd) {
     cz_t cz; czd_t czd[cr->ncols]; init_cz(&cz, cr);
     uchar *row; uint32 mlen = 0; // compiler warning
@@ -396,13 +394,10 @@ static uchar *writeRow(cr_t *cr, crd_t *crd) {
 #define DEBUG_CREATE_ROW                                                       \
   if (!crd[i].empty) {                                                         \
     printf("nclen: %d rlen: %d c[%d]: %d", nclen, cr.rlen, i, crd[i].mcofsts); \
-    if C_IS_NUM(ctype) printf(" iflags: %d col: %u",                           \
-                              crd[i].iflags, crd[i].icols);                    \
+    if C_IS_NUM(ctype) printf(" iflgs: %d c: %u", crd[i].iflags, crd[i].icols);\
     printf("\n");                                                              \
   }
 
-static char *EmptyStringCol = "''";
-static char *EmptyCol       = "";
 void *createRow(cli    *c,    bt     *btr,      int tmatch, int  ncols,
                 char   *vals, twoint  cofsts[]) {
     if OTHER_BT(btr) { /* UU,UL,LU,LL rows no malloc, 'void *' of 1st COL */
@@ -411,7 +406,11 @@ void *createRow(cli    *c,    bt     *btr,      int tmatch, int  ncols,
         memcpy(uubuf, vals + cofsts[1].i, c1len); uubuf[c1len] = '\0';
         return (void *)strtoul(uubuf, NULL, 10); /* OK: DELIM: \0 */
     }
+    int k;
+    for (k = ncols - 1; k >= 0; k--) { if (cofsts[k].i != -1) break; }
+    ncols = k + 1; // starting from the right, only write FILLED columns
     INIT_CR(tmatch, ncols)
+
     for (int i = 1; i < cr.ncols; i++) { /* MOD cofsts (no PK,no commas,PACK) */
         uchar ctype  = Tbl[tmatch].col[i].type;
         if (cofsts[i].i == -1) { //TODO next block's logic should be done here
@@ -925,11 +924,13 @@ int updateRow(cli *c, uc_t *uc, aobj *apk, void *orow) {
             } else if C_IS_F(ctype) {
                 if (avs[i].empty) nclen = 0;
                 else              { crd[i].fcols = avs[i].f; nclen = 4; }
+                crd[i].fflags = nclen ? 1 : 0;
             } else {/* COL_TYPE_STRING*/
                 crd[i].strs  = avs[i].s; nclen = avs[i].len;
                 crd[i].slens = nclen;
             } 
         }
+        crd[i].empty    = nclen ? 0 : 1;
         crd[i].mcofsts  = cr.rlen + nclen;
         cr.rlen        += nclen;                             //DEBUG_UPDATE_ROW
     }
@@ -962,6 +963,10 @@ int updateRow(cli *c, uc_t *uc, aobj *apk, void *orow) {
         }
         ret = getIorLKeyLen(apk) + getRowMallocSize(orow);
     } else {
+        int k;
+        for (k = cr.ncols - 1; k >= 0; k--) { if (!crd[k].empty) break; }
+        cr.ncols = k + 1; // starting from the right, only write FILLED columns
+
         nrow = (UU(uc->btr) || LU(uc->btr)) ? (uchar *)(long)avs[1].i :
                (UL(uc->btr) || LL(uc->btr)) ? (uchar *)      avs[1].l :
                                               writeRow(&cr, crd);
@@ -1030,7 +1035,7 @@ static bool evalLuaExpr(cli *c,    int   cmatch, uc_t *uc, aobj *apk,
         char *s   = (char *)lua_tolstring(server.lua, -1, &len);
         aval->len = (uint32)len; 
         if (s) { aval->s = _strdup(s); aval->freeme = 1; }
-    }
+    } //printf("evalLuaExpr: aval: "); dumpAobj(printf, aval);
     lua_pop(server.lua, 1);
     return 1;
 }
