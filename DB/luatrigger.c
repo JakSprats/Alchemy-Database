@@ -121,7 +121,8 @@ static bool parseLuatCmd(cli *c, sds cmd, ltc_t *ltc, int tmatch) {
     return ok;
 }
 void luaTAdd(cli *c, sds trname, sds tname, sds acmd, sds dcmd) {
-    //printf("luaTAdd; trname: %s tname: %s acmd: %s dcmd: %s\n", trname, tname, acmd, dcmd);
+    //printf("luaTAdd; trname: %s tname: %s acmd: %s dcmd: %s\n", 
+    //        trname, tname, acmd, dcmd);
     int     tmatch = find_table(tname);
     if (tmatch == -1) { addReply(c, shared.nonexistenttable);    return; }
     luat_t *luat   = init_lua_trigger();                   /* FREEME 079 */
@@ -133,7 +134,7 @@ void luaTAdd(cli *c, sds trname, sds tname, sds acmd, sds dcmd) {
             addReply(c, shared.luat_decl_fmt); goto luatadd_err;
         }
     }
-    newIndex(c, trname, tmatch, -1, NULL, 0, 0, 0, luat, -1, 0); // Can not fail
+    newIndex(c, trname, tmatch, -1, NULL, 0, 0, 0, luat, -1, 0, 0); //Cant fail
     addReply(c, shared.ok);
     return;
 

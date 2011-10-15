@@ -32,10 +32,11 @@ ALL RIGHTS RESERVED
 #include "redis.h"
 
 #include "debug.h"
+#include "lru.h"
+#include "lfu.h"
 #include "qo.h"
 #include "row.h"
 #include "index.h"
-#include "lru.h"
 #include "orderby.h"
 #include "filter.h"
 #include "range.h"
@@ -185,7 +186,7 @@ static robj *outputJoinRow(range_t *g) {
     else             return join_reply_norm    (g);
 }
 static bool addReplyJoinRow(cli *c, robj *r) {
-    return addReplyRow(c, r, -1, NULL, NULL, 0);
+    return addReplyRow(c, r, -1, NULL, NULL, 0, NULL, 0);
 }
 static bool join_reply(range_t *g, long *card) {
     bool  ret = 1;
@@ -325,6 +326,7 @@ static bool join_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
                 if      (rcard == -1) { JoinErr = 1; ret = 0; }
                 else if (rcard > 0) { //NOTE: updateLRU (JOIN)
                     GET_LRUC updateLru(g->co.c, tmatch, apk, lruc, lrud);
+                    GET_LFUC updateLfu(g->co.c, tmatch, apk, lfuc, lfu);
                     //NOTE rrow is no longer valid, updateLru() can change it
                 }
                 INCRBY(*card, rcard);
@@ -363,6 +365,7 @@ void joinGeneric(redisClient *c, jb_t *jb) {
     cswc_t w; setupFirstJoinStep(&w, jb, &q);
     if (w.wf.imatch == -1) { addReply(c, shared.join_qo_err); return; }
     c->LruColInSelect = initLRUCS_J(jb);
+    c->LfuColInSelect = initLFUCS_J(jb);
     list *ll          = initOBsort(JoinQed, &jb->wb, 0);
     range_t g;
     init_range(&g, c, &w, &jb->wb, &q, ll, OBY_FREE_ROBJ, jb);

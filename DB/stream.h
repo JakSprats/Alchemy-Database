@@ -32,11 +32,19 @@ ALL RIGHTS RESERVED
 
 void *row_malloc(bt *ibtr, int size);
 
+// LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU
 uchar  getLruSflag();
 int    cLRUcol(ulong l, uchar *sflag, ulong *col);
 uint32 streamLRUToUInt(uchar *data);
 void   overwriteLRUcol(uchar *row,    ulong icol);
 
+// LFU LFU LFU LFU LFU LFU LFU LFU LFU LFU LFU LFU LFU
+uchar getLfuSflag();
+int   cLFUcol(ulong l, uchar *sflag, ulong *col);
+void  overwriteLFUcol(uchar *row, ulong icol);
+ulong streamLFUToULong(uchar *data);
+
+// NORMAL NORMAL NORMAL NORMAL NORMAL NORMAL NORMAL NORMAL NORMAL NORMAL NORMAL
 int    getCSize(ulong l, bool isi);
 int    cIcol   (ulong l, uchar *sflag, ulong *col, bool isi);// NOTE: protected 
 int    cr8Icol (ulong l, uchar *sflag, ulong *col);

@@ -173,7 +173,7 @@ void sqlDumpCommand(redisClient *c) {
         uchar  o_out   = OutputMode;
         OutputMode     = OUTPUT_NORMAL; /* REDIS output not OK here */
         list  *cmatchl = listCreate();
-        int    qcols   = get_all_cols(tmatch, cmatchl, 1);
+        int    qcols   = get_all_cols(tmatch, cmatchl, 1, 1);
         CMATCHS_FROM_CMATCHL
         btSIter *bi    = btGetFullRangeIter(btr, 1);
         while ((be = btRangeNext(bi, 1))) {
@@ -315,6 +315,7 @@ void descCommand(redisClient *c) {
                                         isize);
                 if (idesc) sdsfree(idesc);               /* DESTROYED 051 */
                 if (ri->lru) r->ptr = sdscatprintf(r->ptr, " - LRUINDEX");
+                if (ri->lfu) r->ptr = sdscatprintf(r->ptr, " - LFUINDEX");
                 if (ri->obc != -1) {
                     r->ptr = sdscatprintf(r->ptr, " - ORDER BY %s",
                                             rt->col[ri->obc].name);

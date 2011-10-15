@@ -271,6 +271,8 @@ void DXDB_createSharedObjects() {
         "-ERR ALTER TABLE ADD FOREIGN KEY: must point from this table's shard-key to the foreign table's shard-key\r\n"));
     shared.alter_fk_repeat = createObject(REDIS_STRING,sdsnew(
         "-ERR ALTER TABLE ADD FOREIGN KEY: table already has foreign key, drop foreign key first to redefine ... and caution if your data is already distributed\r\n"));
+    shared.alter_sk_no_lfu = createObject(REDIS_STRING,sdsnew(
+        "-ERR SHARDKEY: can not be on LFU column\r\n"));
 
     shared.select_on_sk = createObject(REDIS_STRING,sdsnew(
         "-ERR SELECT: NOT ON SHARDKEY\r\n"));
@@ -305,4 +307,16 @@ void DXDB_createSharedObjects() {
 
     shared.repeat_hash_cnames     = createObject(REDIS_STRING,sdsnew(
         "-ERR INSERT into TABLE with HASHABILITY - REPEATING column names\r\n"));
+
+    shared.lfu_other = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: CREATE LFUINDEX ON tablename - CAN NOT be done on OPTIMISED 2 COLUMN TABLES\r\n"));
+    shared.lfu_repeat = createObject(REDIS_STRING,sdsnew(
+        "-ERR LOGIC: LFUINDEX already exists on this table\r\n"));
+    shared.drop_lfu = createObject(REDIS_STRING,sdsnew(
+        "-ERR PROHIBITED: LFU Indices can not be dropped\r\n"));
+    shared.col_lfu = createObject(REDIS_STRING,sdsnew(
+        "-ERR KEYWORD: LFU is a keyword, can not be used as a columnname\r\n"));
+
+    shared.kw_cname = createObject(REDIS_STRING,sdsnew(
+        "-ERR KEYWORD: ColumnName is a keyword [LRU,LFU]\r\n"));
 }

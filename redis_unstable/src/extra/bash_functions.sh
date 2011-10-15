@@ -782,6 +782,10 @@ function all_tests() {
   hashability_test
   $CLI DEBUG RELOAD
 
+  lfu_test
+  middle_lru_lfu_test
+  $CLI DEBUG RELOAD
+
   create_1000_tables  > /dev/null
   create_1000_columns > /dev/null
   $CLI DESC foo_999
@@ -2005,8 +2009,7 @@ function init_lru() {
   $CLI CREATE TABLE LRU "(pk INT, c1 INT, c2 INT)"
   $CLI CREATE LRUINDEX ON LRU
 }
-function test_lru() {
-  SLEEP_TIME=4
+function lru_populate() {
   $CLI DROP   TABLE LRU
   $CLI CREATE TABLE LRU "(pk INT, c1 INT, c2 INT)"
   $CLI INSERT INTO LRU VALUES "(,9,666)"
@@ -2018,11 +2021,17 @@ function test_lru() {
   $CLI INSERT INTO LRU VALUES "(,66,999)"
   $CLI INSERT INTO LRU VALUES "(,88,222)"
   $CLI INSERT INTO LRU VALUES "(,99,333)"
+}
+function test_lru() {
+  SLEEP_TIME=4
+  lru_populate
   $CLI DESC LRU
   echo SCAN \* FROM LRU
   $CLI SCAN \* FROM LRU
   echo CREATE LRUINDEX ON LRU
   $CLI CREATE LRUINDEX ON LRU
+  echo CREATE LFUINDEX ON LRU
+  $CLI CREATE LFUINDEX ON LRU
   $CLI DESC LRU
   echo SCAN \* FROM LRU
   $CLI SCAN \* FROM LRU
@@ -2485,6 +2494,7 @@ function test_fully_loaded_table() {
   $CLI CREATE UNIQUE INDEX i_flu ON fullload "(fk1,fk2)"
   $CLI CREATE INDEX i_flt ON fullload "(fkt)"
   $CLI CREATE LRUINDEX ON fullload
+  $CLI CREATE LFUINDEX ON fullload
   $CLI CREATE INDEX i_fl_ob_lru ON fullload "(fk2)" ORDER BY fk3
   $CLI CREATE LUATRIGGER lt_fl ON fullload "ltrig_cnt(table, *)"
   $CLI CREATE LUATRIGGER lt_fl2 ON fullload "hiya()"
@@ -2499,11 +2509,11 @@ function test_fully_loaded_table() {
   $CLI SELECT \* FROM fullload WHERE "fk2 = 1 ORDER BY fk3 DESC"
 
   echo "test LRU"
-  $CLI SCAN LRU FROM fullload
+  $CLI SCAN id,LRU,LFU FROM fullload
   echo sleep 10
   sleep 10
   $CLI SELECT \* FROM fullload WHERE "fkt = '1'"
-  $CLI SCAN LRU FROM fullload
+  $CLI SCAN id,LRU,LFU FROM fullload
 }
 
 function test_drop_add_table_list() {
@@ -2608,4 +2618,82 @@ function hashability_test() {
   $CLI SELECT \* FROM hashy WHERE "fk1 = 1"
   echo $CLI SELECT \* FROM hashy WHERE "fk2 = 22"
   $CLI SELECT \* FROM hashy WHERE "fk2 = 22"
+}
+
+function lfu_populate() {
+  $CLI DROP TABLE hot >/dev/null
+  $CLI CREATE TABLE hot "(pk LONG, fk1 INT, col LONG)";
+  $CLI CREATE LFUINDEX ON hot
+  $CLI CREATE LRUINDEX ON hot
+  I=1;
+  while [ $I -lt 10 ]; do
+    $CLI INSERT INTO hot "(fk1, col)" VALUES "(1,$I)";
+    I=$[${I}+1];
+  done
+  $CLI DESC hot
+}
+function lfu_test() {
+  lfu_populate
+  I=1;
+  while [ $I -lt 20 ]; do
+    $CLI SELECT \* FROM hot WHERE pk=1 > /dev/null
+    I=$[${I}+1];
+  done
+  I=1;
+  while [ $I -lt 10 ]; do
+    $CLI SELECT \* FROM hot WHERE pk=2 > /dev/null
+    I=$[${I}+1];
+  done
+  I=1;
+  while [ $I -lt 7 ]; do
+    $CLI SELECT \* FROM hot WHERE pk=3 > /dev/null
+    I=$[${I}+1];
+  done
+  I=1;
+  while [ $I -lt 3 ]; do
+    $CLI SELECT \* FROM hot WHERE pk=4 > /dev/null
+    I=$[${I}+1];
+  done
+  echo $CLI DUMP hot
+  $CLI DUMP hot
+  I=1;
+  while [ $I -le 5 ]; do
+    echo $CLI SELECT \* FROM hot WHERE LFU=$I
+    $CLI SELECT \* FROM hot WHERE LFU=$I
+    I=$[${I}+1];
+  done
+  echo $CLI DELETE FROM hot WHERE "LFU=3"
+  $CLI DELETE FROM hot WHERE "LFU=3"
+  echo $CLI DELETE FROM hot WHERE "LFU=1"
+  $CLI DELETE FROM hot WHERE "LFU=1"
+  echo $CLI DUMP hot
+  $CLI DUMP hot
+}
+
+function middle_lru_lfu_test() {
+  $CLI DROP   TABLE lots >/dev/null
+  $CLI CREATE TABLE lots "(pk INT, a INT, b INT)"
+  $CLI CREATE LRUINDEX ON lots
+  $CLI ALTER TABLE lots ADD COLUMN c INT
+  $CLI ALTER TABLE lots ADD COLUMN d INT
+  $CLI CREATE LFUINDEX ON lots
+  $CLI ALTER TABLE lots ADD COLUMN e INT
+  $CLI ALTER TABLE lots ADD COLUMN f INT
+  $CLI DESC lots
+
+  echo $CLI INSERT INTO lots "(a,b)" VALUES "(1,11)" "RETURN SIZE"
+  $CLI INSERT INTO lots "(a,b)" VALUES "(1,11)" "RETURN SIZE"
+  echo $CLI INSERT INTO lots "(c,d)" VALUES "(222,2222)" "RETURN SIZE"
+  $CLI INSERT INTO lots "(c,d)" VALUES "(222,2222)" "RETURN SIZE"
+  echo $CLI INSERT INTO lots "(b,e)" VALUES "(33,33333)" "RETURN SIZE"
+  $CLI INSERT INTO lots "(b,e)" VALUES "(33,33333)" "RETURN SIZE"
+  echo $CLI INSERT INTO lots "(f)" VALUES "(444444)" "RETURN SIZE"
+  $CLI INSERT INTO lots "(f)" VALUES "(444444)" "RETURN SIZE"
+
+  $CLI DUMP lots
+}
+
+function create_illegal_cnames() {
+  $CLI CREATE TABLE bad "(pk INT, LRU INT, col INT)"
+  $CLI CREATE TABLE bad "(pk INT, LFU INT, col INT)"
 }

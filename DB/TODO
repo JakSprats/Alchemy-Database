@@ -8,5 +8,5 @@ TODO LIST:
   C.) AddTable, AddIndex, AddColumn are NOT efficient - lots of copying
 
 FIX:
-  1.) [shard-key & foreign-key] info not in RDB or AOF-rewrite
-      [lruc, lrui, sk, fk_cmatch, fk_otmatch, fk_ocmatch] -> PERSISTENT
+  1.) [shard-key & foreign-key] info not in RDB
+      [sk, fk_cmatch, fk_otmatch, fk_ocmatch] -> MAKE PERSISTENT

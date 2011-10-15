@@ -134,11 +134,15 @@ int find_column_n(int tmatch, char *c, int len) {
     sdsfree(cname); // DESTD 092
     return ptr ? ((int)(long)ptr) - 1 : -1;
 }
-int get_all_cols(int tmatch, list *cs, bool lru2) {
+int get_all_cols(int tmatch, list *cs, bool lru2, bool lfu2) {
     r_tbl_t *rt = &Tbl[tmatch];
     for (int i = 0; i < rt->col_count; i++) {
         if (!lru2 && rt->lrud && rt->lruc == i) continue; /* DONT PRINT LRU */
+        if (!lfu2 && rt->lfu &&  rt->lfuc == i) continue; /* DONT PRINT LFU */
         listAddNodeTail(cs, VOIDINT i);
     }
-    return lru2 ? rt->col_count : rt->lrud ? rt->col_count - 1 : rt->col_count;
+    int ret = rt->col_count;
+    if (!lru2 && rt->lrud) ret--;
+    if (!lfu2 && rt->lfu)  ret--;
+    return ret;
 }

@@ -86,6 +86,6 @@ int find_column_n(int tmatch, char *column, int len);
         return retval;                             \
     }
 
-int get_all_cols(int tmatch, list *cmatchs, bool lru2);
+int get_all_cols(int tmatch, list *cmatchs, bool lru2, bool lfu2);
 
 #endif /* __FIND__H */ 

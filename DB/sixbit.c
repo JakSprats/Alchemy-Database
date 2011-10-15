@@ -58,7 +58,7 @@ void init_six_bit_strings() {
           state, s_c, s_p, b0, b1, *o_dest, **dest);
 
 static bool six_bit_pack(char s_c, uint32 s_i, uchar **dest) {
-    uchar *o_dest = *dest;
+    //uchar *o_dest = *dest;
     char   s_p    = to_six_bit_strings[(int)s_c];
     if (!s_p) return 0;
     char           state  = s_i % 4;
@@ -91,7 +91,7 @@ static bool six_bit_pack(char s_c, uint32 s_i, uchar **dest) {
             state, *o_dest, **dest, b1, b2, b3);
 
 static uchar six_bit_unpack(uint32 s_i, uchar **dest) {
-    uchar *o_dest = *dest;
+    //uchar *o_dest = *dest;
     char   state  = s_i % 4;
     uchar  b1     = **dest;
     uchar  b2     = 0;;

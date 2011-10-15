@@ -39,6 +39,7 @@ typedef int printer(const char *format, ...);
 #define ulong    unsigned long
 #define lolo     long long
 #define ull      unsigned long long
+#define dbl      double
 
 #define COL_TYPE_NONE         0
 #define COL_TYPE_INT          1
@@ -63,6 +64,7 @@ typedef int printer(const char *format, ...);
 
 #define INDEX_DELIM     "index"
 #define LRUINDEX_DELIM  "lru"
+#define LFUINDEX_DELIM  "lfu"
 
 #define MIN(A,B) ((A > B) ? B : A)
 #define MAX(A,B) ((A > B) ? A : B)

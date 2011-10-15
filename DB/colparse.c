@@ -125,7 +125,7 @@ static bool determineColType(char *nextc, uchar *ctype, int tmatch) {
 }
 char *parseRowVals(sds vals,  char   **pk,        int    *pklen,
                    int ncols, twoint   cofsts[],  int     tmatch,
-                   int pcols, int      cmatchs[]) {
+                   int pcols, int      cmatchs[], int     lncols) {
     if (vals[sdslen(vals) - 1] != ')' || *vals != '(') return NULL;
     int      cmatch;
     r_tbl_t *rt     = &Tbl[tmatch];
@@ -173,8 +173,8 @@ char *parseRowVals(sds vals,  char   **pk,        int    *pklen,
     numc++;
     /* NOTE: create PK if none exists for INT & LONG */
     if (!*pklen && !assign_pk(tmatch, pklen, pk, token)) return NULL;
-    if (pcols) { if (numc != pcols) return NULL; }
-    else if         (numc != ncols) return NULL;
+    if (pcols) { if (numc != pcols)  return NULL; }
+    else if         (numc != lncols) return NULL;
     return mvals;
 }
 
@@ -185,7 +185,7 @@ char *parseRowVals(sds vals,  char   **pk,        int    *pklen,
 
 static bool parseSelCol(int  tmatch, char *cname, int  clen,  list *cs,
                         int *qcols,  bool *cstar, bool exact, bool  isi) {
-    if (*cname == '*') { *qcols = get_all_cols(tmatch, cs, 0); return 1; }
+    if (*cname == '*') { *qcols = get_all_cols(tmatch, cs, 0, 0); return 1; }
     if (!strcasecmp(cname, "COUNT(*)")) { *cstar = 1; *qcols = 1; return 1; }
     int cmatch = find_column_n(tmatch, cname, clen);
     if (cmatch == -1) {
@@ -233,6 +233,7 @@ static bool parseJCols(cli   *c,    char *y,    int   len,
             r_tbl_t  *rt     = &Tbl[tmatch];
             for (int j = 0; j < rt->col_count; j++) {
                 if (rt->lrud && rt->lruc == j) continue; /* DONT PRINT LRU */
+                if (rt->lfu  && rt->lfuc == j) continue; /* DONT PRINT LFU */
                 jc_t     *jc  = malloc(sizeof(jc_t));
                 jc->t         = tmatch;
                 jc->c         = j;
@@ -538,6 +539,9 @@ bool parseCreateTable(cli    *c,      list *ctypes,  list *cnames,
         if (!token) break;
    
         sds cname = sdsnewlen(token, clen);
+        if (!strcmp(cname, "LRU") || !strcmp(cname, "LFU")) {
+            addReply(c, shared.kw_cname); return 0;
+        }
         listAddNodeTail(cnames, cname);
 
         token       = next_token_delim3(token, ',', ')'); /* parse ctype*/

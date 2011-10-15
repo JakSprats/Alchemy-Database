@@ -70,15 +70,27 @@ void writeFloatCol(uchar **row, bool fflag, float fcol) {
 }
 /* LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU */
 inline uchar getLruSflag() { return COL_4BYTE_INT; }
-int cLRUcol(ulong l, uchar *sflag, ulong *col) { // updateLRU (UPDATE_1)
+inline int cLRUcol(ulong l, uchar *sflag, ulong *col) { // updateLRU (UPDATE_1)
     *sflag = getLruSflag(); *col = (l * 8) + 4; return 4; /* COL_4BYTE_INT */
 }
-uint32 streamLRUToUInt(uchar *data) {
+inline uint32 streamLRUToUInt(uchar *data) {
     ulong val = (*(uint32 *)data);
     val -= 4; val /= 8; return val;                       /* COL_4BYTE_INT */
 }
-void overwriteLRUcol(uchar *row, ulong icol) {
+inline void overwriteLRUcol(uchar *row, ulong icol) {
     icol = (icol * 8) + 4; memcpy(row, &icol, 4);         /* COL_4BYTE_INT */
+}
+// LFU LFU LFU LFU LFU LFU LFU LFU LFU LFU LFU LFU LFU LFU LFU LFU LFU
+inline uchar getLfuSflag() { return COL_8BYTE_INT; }
+inline int cLFUcol(ulong l, uchar *sflag, ulong *col) { // updateLFU (UPDATE_1)
+    *sflag = getLfuSflag(); *col = (l * 32) + 16; return 8; /* COL_8BYTE_INT */
+}
+inline ulong streamLFUToULong(uchar *data) {
+    ulong val = (*(uint32 *)data);
+    val -= 16; val /= 32; return val;                       /* COL_8BYTE_INT */
+}
+inline void overwriteLFUcol(uchar *row, ulong icol) {
+    icol = (icol * 32) + 16; memcpy(row, &icol, 8);         /* COL_8BYTE_INT */
 }
 /* INT+LONG INT+LONG INT+LONG INT+LONG INT+LONG INT+LONG INT+LONG INT+LONG */
 int getCSize(ulong l, bool isi) {
@@ -245,14 +257,10 @@ static inline uchar getSflag(uchar b1) {
     return (b1 & 1) ? 1 : 0;
 }
 static inline uchar *getTString(uchar *s, uint32 *slen) {
-    *slen = ((uchar)*s / 2);
-    s++;
-    return s;
+    *slen = ((uchar)*s / 2);    s++;    return s;
 }
 static inline uchar *getString(uchar *s, uint32 *slen) {
-    *slen  = *((uint32 *)s) / 2;
-    s     += 4;
-    return s;
+    *slen = *((uint32 *)s) / 2; s += 4; return s;
 }
 
 static bool cr8BTKInt(aobj *akey, uint32 *ksize, uchar *btkey) {
@@ -270,8 +278,7 @@ static void cr8BTKLong(aobj *akey, uint32 *ksize, uchar *btkey) {
     writeULongCol(&btkey, sflag, l);
 }
 static void cr8BTKFloat(aobj *akey, uint32 *ksize, uchar *btkey) {
-    writeFloatCol(&btkey, 1, akey->f);
-    *ksize = 4;
+    writeFloatCol(&btkey, 1, akey->f); *ksize = 4;
 }
 int btIntCmp(void *a, void *b) {
     uint32 key1 = streamIntToUInt(a, NULL);

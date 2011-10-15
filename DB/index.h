@@ -37,18 +37,18 @@ ALL RIGHTS RESERVED
 
 sds  getMCIlist(list *clist, int tmatch);
 bool addC2MCI(cli *c, int cmatch, list *clist);
-bool newIndex(cli    *c,     sds   iname, int  tmatch, int   cmatch,
+int  newIndex(cli    *c,     sds   iname, int  tmatch, int   cmatch,
               list   *clist, uchar cnstr, bool virt,   bool  lru,
-              luat_t *luat,  int   obc,   bool prtl);
+              luat_t *luat,  int   obc,   bool prtl,   bool  lfu);
 void createIndex(cli *c);
 
 long buildIndex(cli *c,  bt *btr, int imatch, long limit);
 
-bool addToIndex (cli *c, bt *btr, aobj *apk,  void *rrow, int imatch);
-void delFromIndex       (bt *btr, aobj *apk,  void *rrow, int imatch);
+bool addToIndex (cli *c, bt *btr, aobj *apk,  void *rrow,   int imatch);
+void delFromIndex       (bt *btr, aobj *apk,  void *rrow,   int imatch);
 bool upIndex    (cli *c, bt *btr, aobj *aopk,  aobj *ocol, 
-                                  aobj *anpk,  aobj *ncol, int pktyp,
-                                  aobj *oocol, aobj *nocol);
+                                  aobj *anpk,  aobj *ncol,  int pktyp,
+                                  aobj *oocol, aobj *nocol, int imatch);
 bool updateIndex(cli *c, bt *btr, aobj *aopk, void *orow,
                                   aobj *anpk, void *nrow, int imatch);
 

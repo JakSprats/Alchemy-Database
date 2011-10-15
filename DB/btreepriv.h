@@ -43,8 +43,7 @@
 #define BTFLAG_ULONG_PTR    64 /* ULONG Index */
 #define BTFLAG_OBC         128 /* ORDER BY Index */
 
-/* SIZE: 2ptr(16), 2L(16), 2INT(8), 4Ushort(8), 2uchar(2) 1BTS(6)-> 56B */
-typedef struct btree {
+typedef struct btree { // 56 Bytes
     struct btreenode  *root;
     bt_cmp_t           cmp;
  

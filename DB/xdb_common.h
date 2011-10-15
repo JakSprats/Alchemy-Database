@@ -64,11 +64,12 @@ typedef struct embedded_row_t {
 
 typedef bool select_callback(erow_t* erow);
 
-//TODO move this into a single struct, that can be memset(0)ed
+//TODO move this into a single struct, that can be bzero'ed
 #define ALCHEMY_CLIENT_EXTENSIONS           \
     struct sockaddr_in  sa;                 \
     bool                Explain;            \
     bool                LruColInSelect;     \
+    bool                LfuColInSelect;     \
     bool                InternalRequest;    \
     alchemy_http_info   http;               \
     int                 LastJTAmatch;       \
@@ -86,7 +87,7 @@ typedef bool select_callback(erow_t* erow);
     *nonuniquekeyname,    *indexedalready,         *index_wrong_nargs, \
     *trigger_wrong_nargs, *luatrigger_wrong_nargs, \
     *nonexistenttable,    *insertcolumn, \
-    *nonexistentcolumn,      *nonexistentindex, \
+    *nonexistentcolumn,   *nonexistentindex, \
     *invalidrange,        *toofewindicesinjoin,    *toomanyindicesinjoin, \
     *invalidupdatestring, *badindexedcolumnsyntax, \
     *u2big, *col_uint_string_too_long, *col_float_string_too_long, *uint_pkbig,\
@@ -125,20 +126,23 @@ typedef bool select_callback(erow_t* erow);
     *join_order_by_syntax,       *join_order_by_tbl,       *join_order_by_col, \
     *join_table_not_in_query,    *joinsyntax_no_tablename, *join_chain, \
     *joindanglingfilter,         *join_noteq,              *join_coltypediff, \
-    *join_col_not_indexed,       *join_qo_err,           \
-    *createtable_as_on_wrong_type,                       \
-    *create_table_err,                                   \
-    *create_table_as_count,                              \
-    *dump_syntax, *show_syntax,                          \
-    *alter_sk_rpt, *alter_sk_no_i, *alter_sk_no_lru,     \
-    *alter_fk_not_sk, *alter_fk_repeat,                  \
-    *select_on_sk, *scan_sharded,                        \
-    *constraint_wrong_nargs, *constraint_col_indexed,    \
-    *constraint_not_num,     *constraint_table_mismatch, \
-    *constraint_nonuniq,     *constraint_viol,           \
-    *indexobcerr,            *indexobcrpt,               \
-    *indexobcill,            *indexcursorerr,            \
-    *obindexviol,            *repeat_hash_cnames;
+    *join_col_not_indexed,       *join_qo_err,            \
+    *createtable_as_on_wrong_type,                        \
+    *create_table_err,                                    \
+    *create_table_as_count,                               \
+    *dump_syntax, *show_syntax,                           \
+    *alter_sk_rpt,    *alter_sk_no_i,   *alter_sk_no_lru, \
+    *alter_fk_not_sk, *alter_fk_repeat, *alter_sk_no_lfu, \
+    *select_on_sk, *scan_sharded,                         \
+    *constraint_wrong_nargs, *constraint_col_indexed,     \
+    *constraint_not_num,     *constraint_table_mismatch,  \
+    *constraint_nonuniq,     *constraint_viol,            \
+    *indexobcerr,            *indexobcrpt,                \
+    *indexobcill,            *indexcursorerr,             \
+    *obindexviol,            *repeat_hash_cnames,         \
+    *lfu_other,              *lfu_repeat,                 \
+    *drop_lfu,               *col_lfu,                    \
+    *insert_lfu,             *kw_cname;
 
 #define DEBUG_C_ARGV(c) \
   for (int i = 0; i < c->argc; i++) \

@@ -113,8 +113,8 @@ bool rdbLoadLuaTrigger(FILE *fp) {
     if (loadLtc(fp, &luat->add)              == 0)                  return 0;
     if (which == LUAT_WITH_DEL && loadLtc(fp, &luat->del) == 0)     return 0;
 
-    if (!newIndex(NULL, trname->ptr, tmatch, -1, NULL, 0, 0, 0,
-                  luat, -1,          0))                            return 0;
+    if ((newIndex(NULL, trname->ptr, tmatch, -1, NULL, 0, 0, 0,
+                  luat, -1,          0,       0)) == -1)            return 0;
     decrRefCount(trname);
     return 1;
 }
@@ -162,6 +162,7 @@ int rdbSaveBT(FILE *fp, bt *btr) { //printf("rdbSaveBT\n");
         }
         if (rdbSaveLen(fp, rt->hashy) == -1)                    return -1;
         if (fwrite(&(btr->s.ktype),    1, 1, fp) == 0)          return -1;
+
         if (rdbSaveLen(fp, btr->numkeys)       == -1)           return -1;
         if (btr->root && btr->numkeys > 0) {
             if (rdbSaveAllRows(fp, btr, btr->root) == -1)       return -1;
@@ -184,6 +185,7 @@ int rdbSaveBT(FILE *fp, bt *btr) { //printf("rdbSaveBT\n");
         }
         if (rdbSaveLen(fp, ri->cnstr) == -1)                    return -1;
         if (rdbSaveLen(fp, ri->lru)   == -1)                    return -1;
+        if (rdbSaveLen(fp, ri->lfu)   == -1)                    return -1;
         // NOTE: obc: -1 not handled well, so incr on SAVE, decr on LOAD
         if (rdbSaveLen(fp, (ri->obc + 1)) == -1)                return -1;//INCR
         if (fwrite(&(btr->s.ktype),    1, 1, fp) == 0)          return -1;
@@ -240,7 +242,7 @@ bool rdbLoadBT(FILE *fp) { //printf("rdbLoadBT\n");
         r_tbl_t *rt   = &Tbl[tmatch]; initTable(rt);
         if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)         return 0;
         int imatch    = u;
-        //TODO [lruc, lrui, sk, fk_cmatch, fk_otmatch, fk_ocmatch] -> PERSISTENT
+        //TODO [sk, fk_cmatch, fk_otmatch, fk_ocmatch] -> PERSISTENT
         rt->vimatch   = imatch; //DEBUG_LOAD_DATA_BT
         robj *r;
         if (!(r = rdbLoadStringObject(fp)))                         return 0;
@@ -327,10 +329,13 @@ bool rdbLoadBT(FILE *fp) { //printf("rdbLoadBT\n");
         if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)         return 0;
         ri->lru     = (int)u;
         if (ri->lru) {
-            r_tbl_t *rt  = &Tbl[ri->table];
-            rt->lrui     = imatch;
-            rt->lruc     = ri->column;
-            rt->lrud     = (uint32)getLru(ri->table);
+            rt->lrui = imatch; rt->lruc = ri->column;
+            rt->lrud = (uint32)getLru(ri->table);
+        }
+        if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)         return 0;
+        ri->lfu     = (int)u;
+        if (ri->lfu) {
+            rt->lfu = 1; rt->lfui = imatch; rt->lfuc = ri->column;
         }
         ri->luat    = 0;
         if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)         return 0;

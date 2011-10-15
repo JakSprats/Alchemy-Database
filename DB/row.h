@@ -44,8 +44,8 @@ aobj getSCol(bt *btr, uchar *rrow, int cmatch, aobj *apk, int tmatch);
 robj *cloneRobjErow(robj *r);   // EMBEDDED
 void decrRefCountErow(robj *r); // EMBEDDED
 
-bool addReplyRow(cli   *c,    robj *r, int tmatch, aobj *apk,
-                 uchar *lruc, bool  lrud);
+bool addReplyRow(cli   *c,    robj *r,    int    tmatch, aobj *apk,
+                 uchar *lruc, bool  lrud, uchar *lfuc,   bool  lfu);
 
 int output_start(char *buf, uint32 blen, int qcols);
 robj *write_output_row(int   qcols,   uint32  prelen, char *pbuf,

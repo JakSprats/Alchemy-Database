@@ -37,13 +37,14 @@ ALL RIGHTS RESERVED
 
 #include "debug.h"
 #include "embed.h"
+#include "lru.h"
+#include "lfu.h"
+#include "rpipe.h"
+#include "desc.h"
 #include "bt.h"
 #include "filter.h"
 #include "index.h"
-#include "lru.h"
 #include "range.h"
-#include "rpipe.h"
-#include "desc.h"
 #include "cr8tblas.h"
 #include "wc.h"
 #include "parser.h"
@@ -110,16 +111,18 @@ static uchar insertCommit(cli  *c,      robj **argv,   sds     vals,
                           bool  parse,  sds   *key) {
     CMATCHS_FROM_CMATCHL
     twoint cofsts[ncols];
-    if (pcols) for (int i = 0; i < ncols; i++) cofsts[i].i = cofsts[i].j = -1;
+    for (int i = 0; i < ncols; i++) cofsts[i].i = cofsts[i].j = -1;
     aobj     apk; initAobj(&apk);
     bool     ret    = INS_ERR;    /* presume failure */
     void    *nrow   = NULL;       /* B4 GOTO */
     sds      pk     = NULL;
     int      pklen  = 0;                              // NEEDED? use sdslen(pk)
     r_tbl_t *rt     = &Tbl[tmatch];
-    int      lncols = rt->lrud ? ncols - 1 : ncols; /* w/o LRU */
-    char    *mvals  = parseRowVals(vals, &pk, &pklen, lncols, cofsts, tmatch,
-                                   pcols, cmatchs);  /* ERR now GOTO */
+    int      lncols = ncols;
+    if (rt->lrud) lncols--; // INSERT can NOT have LRU
+    if (rt->lfu)  lncols--; // INSERT can NOT have LFU
+    char    *mvals  = parseRowVals(vals, &pk, &pklen, ncols, cofsts, tmatch,
+                                   pcols, cmatchs, lncols);  // ERR now GOTO
     if (!mvals) { addReply(c, shared.insertcolumn);            goto insc_end; }
     if (parse) { // used in cluster-mode to get sk's value
         int skl = cofsts[rt->sk].j - cofsts[rt->sk].i;
@@ -149,7 +152,7 @@ static uchar insertCommit(cli  *c,      robj **argv,   sds     vals,
         if (len == -1)                                         goto insc_end;
         ret = INS_UP;             /* negate presumed failure */
     } else {
-        nrow = createRow(c, btr, tmatch, lncols, mvals, cofsts);
+        nrow = createRow(c, btr, tmatch, ncols, mvals, cofsts);
         if (!nrow) /* e.g. (UINT_COL > 4GB) error */           goto insc_end;
         if (matches) { /* Add to Indexes */
             for (int i = 0; i < matches; i++) { /* REQ: addIndex B4 delIndex */
@@ -182,6 +185,7 @@ insc_end:
 
 static bool checkRepeatHashCnames(cli *c, int tmatch) {
     r_tbl_t *rt = &Tbl[tmatch];
+    if (rt->tcols < 2) return 1;
     for (uint32 i = 0; i < rt->tcols; i++) {
         for (uint32 j = 0; j < rt->tcols; j++) { if (i == j) continue;
             if (!strcmp(rt->tcnames[i], rt->tcnames[j])) {
@@ -190,9 +194,10 @@ static bool checkRepeatHashCnames(cli *c, int tmatch) {
     return 1;
 }
 static bool checkRepeatInsertCnames(cli *c, int *cmatchs, int matches) {
+    if (matches < 2) return 1;
     for (int i = 0; i < matches; i++) {
         for (int j = 0; j < matches; j++) { if (i == j) continue;
-            if (cmatchs[i] != -1 && cmatchs[i] == cmatchs[j]) {
+            if (cmatchs[i] > 0 && cmatchs[i] == cmatchs[j]) {
                 addReply(c, shared.nonuniquecolumns); return 0;
             }}}
     return 1;
@@ -225,6 +230,9 @@ void insertParse(cli *c, robj **argv, bool repl, int tmatch,
             if (pcols) {
                 if (initLRUCS(tmatch, cmatchs, pcols)) { /* LRU in ColDecl */
                     addReply(c, shared.insert_lru);             goto insprserr;
+                }
+                if (initLFUCS(tmatch, cmatchs, pcols)) { /* LFU in ColDecl */
+                    addReply(c, shared.insert_lfu);             goto insprserr;
                 }
                 if (OTHER_BT(getBtr(tmatch)) && pcols != 2 && !cmatchs[0]) {
                     addReply(c, shared.part_insert_other);      goto insprserr;
@@ -322,22 +330,7 @@ bool leftoverParsingReply(redisClient *c, char *x) {
     return 1;
 }
 
-/* LruColInSelect LruColInSelect LruColInSelect LruColInSelect */
-inline bool initLRUCS(int tmatch, int cmatchs[], int qcols) {
-    r_tbl_t *rt    = &Tbl[tmatch];
-    if (rt->lrud) {
-        for (int i = 0; i < qcols; i++) {
-            if (cmatchs[i] == rt->lruc) return 1;
-    }}
-    return 0;
-}
-inline bool initLRUCS_J(jb_t *jb) {
-    for (int i = 0; i < jb->qcols; i++) {
-        if (Tbl[jb->js[i].t].lruc == jb->js[i].c) return 1;
-    }
-    return 0;
-}
-
+// SELECT SELECT SELECT SELECT SELECT SELECT SELECT SELECT SELECT SELECT
 void sqlSelectCommand(redisClient *c) {
     if (c->argc == 2) { /* this is a REDIS "select DB" command" */
         selectCommand(c); return;
@@ -356,40 +349,42 @@ void sqlSelectCommand(redisClient *c) {
     CMATCHS_FROM_CMATCHL listRelease(cmatchl); 
 
     c->LruColInSelect = initLRUCS(tmatch, cmatchs, qcols);
+    c->LfuColInSelect = initLFUCS(tmatch, cmatchs, qcols);
     cswc_t w; wob_t wb;
     init_check_sql_where_clause(&w, tmatch, c->argv[5]->ptr);
     init_wob(&wb);
     parseWCReply(c, &w, &wb, SQL_SELECT);
-    if (w.wtype == SQL_ERR_LKP)                             goto sel_cmd_end;
-    if (!leftoverParsingReply(c, w.lvr))                    goto sel_cmd_end;
+    if (w.wtype == SQL_ERR_LKP)                                     goto sel_e;
+    if (!leftoverParsingReply(c, w.lvr))                            goto sel_e;
     if (cstar && wb.nob) { /* SELECT COUNT(*) ORDER BY -> stupid */
-        addReply(c, shared.orderby_count);                  goto sel_cmd_end;
+        addReply(c, shared.orderby_count);                          goto sel_e;
     }
-    if (c->Explain) { explainRQ(c, &w, &wb);                goto sel_cmd_end; }
+    if (c->Explain) { explainRQ(c, &w, &wb);                        goto sel_e;}
     //dumpW(printf, &w); dumpWB(printf, &wb);
 
     if (EREDIS) embeddedSaveSelectedColumnNames(tmatch, cmatchs, qcols);
     if (w.wtype != SQL_SINGLE_LKP) { /* FK, RQ, IN */
         if (w.wf.imatch == -1) {
-            addReply(c, shared.rangequery_index_not_found); goto sel_cmd_end;
+            addReply(c, shared.rangequery_index_not_found);         goto sel_e;
         }
         if (w.wf.imatch == Tbl[tmatch].lrui) c->LruColInSelect = 1;
+        if (w.wf.imatch == Tbl[tmatch].lfui) c->LfuColInSelect = 1;
         iselectAction(c, &w, &wb, cmatchs, qcols, cstar);
     } else {                         /* SQL_SINGLE_LKP */
         bt    *btr   = getBtr(w.wf.tmatch);
         aobj  *apk   = &w.wf.akey;
         void *rrow = btFind(btr, apk);
-        if (!rrow) { addReply(c, shared.nullbulk);          goto sel_cmd_end; }
-        if (cstar) { addReply(c, shared.cone);              goto sel_cmd_end; }
+        if (!rrow) { addReply(c, shared.nullbulk);                  goto sel_e;}
+        if (cstar) { addReply(c, shared.cone);                      goto sel_e;}
         robj *r = outputRow(btr, rrow, qcols, cmatchs, apk, tmatch);
         addReply(c, shared.singlerow);
-        GET_LRUC 
-        if (!addReplyRow(c, r, tmatch, apk, lruc, lrud))    goto sel_cmd_end;
+        GET_LRUC GET_LFUC
+        if (!addReplyRow(c, r, tmatch, apk, lruc, lrud, lfuc, lfu)) goto sel_e;
         decrRefCount(r);
         if (wb.ovar) incrOffsetVar(c, &wb, 1);
     }
 
-sel_cmd_end:
+sel_e:
     destroy_wob(&wb); destroy_check_sql_where_clause(&w);
 }
 

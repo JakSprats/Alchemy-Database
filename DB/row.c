@@ -42,9 +42,10 @@ ALL RIGHTS RESERVED
 
 #include "hash.h"
 #include "sixbit.h"
+#include "lru.h"
+#include "lfu.h"
 #include "bt.h"
 #include "index.h"
-#include "lru.h"
 #include "stream.h"
 #include "alsosql.h"
 #include "aobj.h"
@@ -117,18 +118,17 @@ typedef struct create_row_data {
     bool    fflags;
     bool    empty; // for HashRows
 } crd_t;
-static void init_cr(cr_t *cr, crd_t *crd, int tmatch, int ncols, int tcols) {
+static void init_cr(cr_t *cr, crd_t *crd, int tmatch, int ncols) {
     cr->tmatch = tmatch;
     cr->ncols  = ncols;
     cr->rlen   = 0;
     cr->cnt    = 0;
-    bzero(crd, sizeof(crd_t) * tcols);
+    bzero(crd, sizeof(crd_t) * ncols);
 }
-#define INIT_CR(tmatch, ncols)                    \
-  cr_t cr;                                        \
-  int tcols = ncols + (Tbl[tmatch].lrud ? 1 : 0); \
-  crd_t crd[tcols];                               \
-  init_cr(&cr, crd, tmatch, ncols, tcols);
+#define INIT_CR(tmatch, ncols)     \
+  cr_t cr;                         \
+  crd_t crd[ncols];                \
+  init_cr(&cr, crd, tmatch, ncols);
 
 static bool contains_text_col(int tmatch, int ncols) {
     for (int i = 1; i < ncols; i++) {       /* sixzip needs a string */
@@ -398,64 +398,76 @@ static uchar *writeRow(cr_t *cr, crd_t *crd) {
     printf("\n");                                                              \
   }
 
+static void insert_LRU(cr_t *cr, crd_t *crd, int tmatch, int i) {
+    int nclen       = cLRUcol(getLru(tmatch), &crd[i].iflags, &(crd[i].icols));
+    cr->rlen       += nclen;
+    crd[i].mcofsts  = (int)cr->rlen;
+}
+static void insert_LFU(cr_t *cr, crd_t *crd, int i) {
+    int nclen       = cLFUcol(1, &crd[i].iflags, &(crd[i].icols));
+    cr->rlen       += nclen;
+    crd[i].mcofsts  = (int)cr->rlen;
+}
 void *createRow(cli    *c,    bt     *btr,      int tmatch, int  ncols,
-                char   *vals, twoint  cofsts[]) {
+                char   *vals, twoint  cofsts[])                         {
     if OTHER_BT(btr) { /* UU,UL,LU,LL rows no malloc, 'void *' of 1st COL */
         char uubuf[32];
         int c1len = (cofsts[1].j - cofsts[1].i);
         memcpy(uubuf, vals + cofsts[1].i, c1len); uubuf[c1len] = '\0';
         return (void *)strtoul(uubuf, NULL, 10); /* OK: DELIM: \0 */
     }
-    int k;
-    for (k = ncols - 1; k >= 0; k--) { if (cofsts[k].i != -1) break; }
+    r_tbl_t *rt = &Tbl[tmatch];
+    int k; for (k = ncols - 1; k >= 0; k--) { if (cofsts[k].i != -1) break; }
     ncols = k + 1; // starting from the right, only write FILLED columns
+    if (rt->lrud && rt->lruc >= ncols) ncols = rt->lruc + 1; // up to LRUC
+    if (rt->lfu  && rt->lfuc >= ncols) ncols = rt->lfuc + 1; // up to LFUC
     INIT_CR(tmatch, ncols)
 
+    int modi = 0;
     for (int i = 1; i < cr.ncols; i++) { /* MOD cofsts (no PK,no commas,PACK) */
-        uchar ctype  = Tbl[tmatch].col[i].type;
-        if (cofsts[i].i == -1) { //TODO next block's logic should be done here
-            crd[i].empty = 1; // used in writeRow to compute hash-row's size
-            if (C_IS_S(ctype)) {
-                crd[i].strs = EmptyStringCol; crd[i].slens = 2;
-            } else  {
-                crd[i].strs = EmptyCol;       crd[i].slens = 0;
-            }
+        if        (rt->lrud && rt->lruc == i) { //printf("insert_LRU\n");
+            insert_LRU(&cr, crd, tmatch, i); modi++;
+        } else if (rt->lfu  && rt->lfuc == i) { //printf("insert_LFU\n");
+            insert_LFU(&cr, crd, i); modi++;
         } else {
-            crd[i].empty = 0; cr.cnt++; 
-            char *startc = vals + cofsts[i].i;
-            char *endc   = vals + cofsts[i].j;
-            crd[i].strs  = startc;
-            int   clen   = endc - startc;
-            SKIP_SPACES(crd[i].strs)
-            char *mendc  = endc;
-            if (ISBLANK(*(mendc))) REV_SKIP_SPACES(mendc)
-            crd[i].slens  = clen - (crd[i].strs - startc) - (endc - mendc);
+            uchar ctype = Tbl[tmatch].col[i].type;
+            if (cofsts[i].i == -1) { //TODO do next block's logic here
+                crd[i].empty = 1; // used in writeRow 2 compute hash-row's size
+                if (C_IS_S(ctype)) {
+                    crd[i].strs = EmptyStringCol; crd[i].slens = 2;
+                } else  {
+                    crd[i].strs = EmptyCol;       crd[i].slens = 0;
+                }
+            } else {
+                crd[i].empty = 0; cr.cnt++; 
+                char *startc  = vals + cofsts[i].i;
+                char *endc    = vals + cofsts[i].j;
+                crd[i].strs  = startc;
+                int   clen    = endc - startc;
+                SKIP_SPACES(crd[i].strs)
+                char *mendc   = endc;
+                if (ISBLANK(*(mendc))) REV_SKIP_SPACES(mendc)
+                crd[i].slens = clen - (crd[i].strs - startc) - (endc - mendc);
+            }
+            int nclen = 0;
+            if        (C_IS_S(ctype)) { /* dont store \' delimiters */
+                crd[i].strs++; crd[i].slens -= 2; nclen = crd[i].slens;
+            } else if (C_IS_I(ctype)) {
+                nclen = cr8IcolFromStr(c, crd[i].strs,    crd[i].slens,
+                                          &crd[i].iflags, &crd[i].icols);
+                if (nclen == -1) return NULL;
+            } else if (C_IS_L(ctype)) {
+                nclen = cr8LcolFromStr(c, crd[i].strs,    crd[i].slens,
+                                          &crd[i].iflags, &crd[i].icols);
+            } else if (C_IS_F(ctype)) {
+                nclen = cr8FColFromStr(c, crd[i].strs,    crd[i].slens,
+                                          &crd[i].fcols);
+                if (nclen == -1) return NULL;
+                crd[i].fflags = nclen ? 1 : 0;
+            }
+            cr.rlen        += nclen;
+            crd[i].mcofsts  = (int)cr.rlen;                 //DEBUG_CREATE_ROW
         }
-        int nclen    = 0;
-        if        (C_IS_S(ctype)) { /* dont store \' delimiters */
-            crd[i].strs++; crd[i].slens -= 2; nclen = crd[i].slens;
-        } else if (C_IS_I(ctype)) {
-            nclen = cr8IcolFromStr(c, crd[i].strs,    crd[i].slens,
-                                      &crd[i].iflags, &crd[i].icols);
-            if (nclen == -1) return NULL;
-        } else if (C_IS_L(ctype)) {
-            nclen = cr8LcolFromStr(c, crd[i].strs,    crd[i].slens,
-                                      &crd[i].iflags, &crd[i].icols);
-        } else if (C_IS_F(ctype)) {
-            nclen = cr8FColFromStr(c, crd[i].strs, crd[i].slens, &crd[i].fcols);
-            if (nclen == -1) return NULL;
-            crd[i].fflags = nclen ? 1 : 0;
-        }
-        cr.rlen        += nclen;
-        crd[i].mcofsts  = (int)cr.rlen;                      //DEBUG_CREATE_ROW
-    }
-    if (Tbl[tmatch].lrud) { /* NOTE: updateLRU (INSERT) */
-        int    i        = cr.ncols;
-        int    nclen    = cLRUcol(getLru(tmatch), &crd[i].iflags,
-                                  &(crd[i].icols));
-        cr.rlen        += nclen;
-        crd[i].mcofsts  = (int)cr.rlen;
-        cr.ncols++;
     }
     return writeRow(&cr, crd);
 }
@@ -683,9 +695,10 @@ void decrRefCountErow(robj *r) { // NOTE Used in cloneRobj()
     r->ptr      = NULL;       /* already destroyed */
     decrRefCount(r);
 }
-bool addReplyRow(cli   *c,    robj *r, int tmatch, aobj *apk,
-                 uchar *lruc, bool  lrud) {
+bool addReplyRow(cli   *c,    robj *r,    int    tmatch, aobj *apk,
+                 uchar *lruc, bool  lrud, uchar *lfuc,   bool  lfu) {
     updateLru(c, tmatch, apk, lruc, lrud); /* NOTE: updateLRU (RQ_SELECT) */
+    updateLfu(c, tmatch, apk, lfuc, lfu);  /* NOTE: updateLFU (RQ_SELECT) */
     if      (EREDIS) {
         erow_t *er  = (erow_t *)r->ptr;
         bool    ret = c->scb ? (*c->scb)(er) : 1;
@@ -815,11 +828,11 @@ void release_uc(uc_t *uc) {
     if (uc->le) release_lue(uc->le); //TODO this should be a separate call
 }
 
-#define INIT_COL_AVALS \
-  aobj avs[tcols];     \
-  for (int i = 0; i < tcols; i++) initAobj(&avs[i]);
-#define DESTROY_COL_AVALS \
-  for (int i = 0; i < tcols; i++) releaseAobj(&avs[i]);
+#define INIT_COL_AVALS                                      \
+  aobj avs[uc->ncols];                                      \
+  for (int i = 0; i < uc->ncols; i++) initAobj(&avs[i]);
+#define DESTROY_COL_AVALS                                   \
+  for (int i = 0; i < uc->ncols; i++) releaseAobj(&avs[i]);
 
 static bool upEffctdInds(cli  *c,     bt   *btr,  aobj *apk,     void *orow,
                          aobj  avs[], void *nrow, int   matches, int   inds[],
@@ -828,6 +841,7 @@ static bool upEffctdInds(cli  *c,     bt   *btr,  aobj *apk,     void *orow,
         bool up = 0;
         r_ind_t *ri = &Index[inds[i]];
         if      (ri->lru) up = 1; /* ALWAYS update LRU Index */
+        else if (ri->lfu) up = 1; /* ALWAYS update LFU Index */
         else if (ri->clist) {
             for (int i = 0; i < ri->nclist; i++) {
                 if (!cmiss[ri->bclist[i]]) { up = 1; break; }
@@ -860,21 +874,25 @@ static bool aobj_sflag(aobj *a, uchar *sflag) {
 #define UP_ERR goto up_end;
 
 int updateRow(cli *c, uc_t *uc, aobj *apk, void *orow) {
+    r_tbl_t *rt     = &Tbl[uc->tmatch];
     INIT_CR(uc->tmatch, uc->ncols) /* holds values written to new ROW */
     INIT_COL_AVALS      /* merges values in update_string and vals from ROW */
-    uchar osflags[tcols]; bzero(osflags, tcols);
-    uchar   *nrow  = NULL; /* B4 GOTO */
-    r_tbl_t *rt    = &Tbl[uc->tmatch];
-    bool     ovrwr = NORM_BT(uc->btr);
-    int      ret   = -1;    /* presume failure */
+    uchar osflags[uc->ncols]; bzero(osflags, uc->ncols);
+    uchar   *nrow   = NULL; /* B4 GOTO */
+    bool     ovrwr  = NORM_BT(uc->btr);
+    int      ret    = -1;    /* presume failure */
     for (int i = 0; i < cr.ncols; i++) { /* 1st loop UPDATE columns -> cr */
         uchar ctype = rt->col[i].type;
-        if (uc->cmiss[i]) {
+        if        (rt->lrud && rt->lruc == i) {
             avs[i] = getCol(uc->btr, orow, i, apk, uc->tmatch);
-            if (rt->lrud && rt->lruc == i) {
-                if (avs[i].empty) ovrwr      = 0; // makes updateLRU not recurse
-                else              osflags[i] = getLruSflag();/* Overwrite LRU */
-            }
+            if (avs[i].empty) ovrwr      = 0; // makes updateLRU not recurse
+            else              osflags[i] = getLruSflag();/* Overwrite LRU */
+        } else if (rt->lfu  && rt->lfuc == i) {
+            avs[i] = getCol(uc->btr, orow, i, apk, uc->tmatch);
+            if (avs[i].empty) ovrwr      = 0; // makes updateLFU not recurse
+            else              osflags[i] = getLfuSflag();/* Overwrite LFU */
+        } else if (uc->cmiss[i]) {
+            avs[i] = getCol(uc->btr, orow, i, apk, uc->tmatch);
         } else if (uc->ue[i].yes) { // SIMPLE UPDATE EXPR
             avs[i] = getCol(uc->btr, orow, i, apk, uc->tmatch);
             if (avs[i].empty) { addReply(c, shared.up_on_mt_col);       UP_ERR }
@@ -915,6 +933,9 @@ int updateRow(cli *c, uc_t *uc, aobj *apk, void *orow) {
             if (rt->lrud && rt->lruc == i) { // NOTE: updateLRU (UPDATE_1)
                 nclen = cLRUcol(getLru(uc->tmatch), &crd[i].iflags,
                                 &(crd[i].icols));
+            } else if (rt->lfu && rt->lfuc == i) { //NOTE: updateLFU (UPDATE_1)
+                avs[i].l = getLfu(avs[i].l);
+                nclen = cLFUcol(avs[i].l, &crd[i].iflags, &(crd[i].icols));
             } else if C_IS_I(ctype) { //TODO push empty logic into cr8*()
                 if (avs[i].empty) { crd[i].iflags = 0; nclen = 0; }
                 else nclen = cr8Icol(avs[i].i, &crd[i].iflags, &(crd[i].icols));
@@ -947,6 +968,9 @@ int updateRow(cli *c, uc_t *uc, aobj *apk, void *orow) {
                 if       (rt->lrud && rt->lruc == i) {// updateLRU (UPDATE_2)
                     // NOTE LRU is always 4 bytes, so orow will NOT change
                     updateLru(c, uc->tmatch, apk, data, rt->lrud);
+                } else if (rt->lfu && rt->lfuc == i) { // updateLFU (UPDATE_2)
+                    // NOTE LFU is always 8 bytes, so orow will NOT change
+                    updateLfu(c, uc->tmatch, apk, data, rt->lfu);
                 } else if C_IS_I(ctype) {
                     writeUIntCol(&data,  crd[i].iflags, crd[i].icols);
                 } else if C_IS_L(ctype) {
@@ -962,10 +986,11 @@ int updateRow(cli *c, uc_t *uc, aobj *apk, void *orow) {
             }
         }
         ret = getIorLKeyLen(apk) + getRowMallocSize(orow);
-    } else {
-        int k;
-        for (k = cr.ncols - 1; k >= 0; k--) { if (!crd[k].empty) break; }
+    } else { //printf("NEW ROW UPDATE\n");
+        int k; for (k = cr.ncols - 1; k >= 0; k--) { if (!crd[k].empty) break; }
         cr.ncols = k + 1; // starting from the right, only write FILLED columns
+        if (rt->lrud && rt->lruc >= cr.ncols) cr.ncols = rt->lruc + 1; // 2 LRUC
+        if (rt->lfu  && rt->lfuc >= cr.ncols) cr.ncols = rt->lfuc + 1; // 2 LFUC
 
         nrow = (UU(uc->btr) || LU(uc->btr)) ? (uchar *)(long)avs[1].i :
                (UL(uc->btr) || LL(uc->btr)) ? (uchar *)      avs[1].l :

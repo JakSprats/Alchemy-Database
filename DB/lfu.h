@@ -1,5 +1,5 @@
 /*
- * This file implements LRU Indexes
+ * This file implements LFU Indexes
  *
 
 AAGPL License
@@ -24,32 +24,29 @@ ALL RIGHTS RESERVED
 
  */
 
-#ifndef __ALCHEMY_LRU__H
-#define __ALCHEMY_LRU__H
+#ifndef __ALCHEMY_LFU__H
+#define __ALCHEMY_LFU__H
 
 #include "redis.h"
 
-#include "row.h"
-#include "query.h"
 #include "aobj.h"
 
-#define SERVER_BEGINNING_OF_TIME 1317473183 /* oldest LRU time possible */
+ulong getLfu(ulong num);
 
-uint32 getLru(int tmatch);
+void createLfuIndex(cli *c);
+void updateLfu     (cli *c, int tmatch, aobj *apk, uchar *lfuc, bool lfu);
 
-void createLruIndex(cli *c);
-void updateLru     (cli *c, int tmatch, aobj *apk, uchar *lruc, bool lrud);
+bool initLFUCS(int tmatch, int cmatchs[], int qcols);
+bool initLFUCS_J(jb_t *jb);
 
-bool initLRUCS(int tmatch, int cmatchs[], int qcols);
-bool initLRUCS_J(jb_t *jb);
-
-#define GET_LRUC                                                \
-  bool   lrud = Tbl[tmatch].lrud;                               \
-  uchar *lruc = NULL;                                           \
-  if (lrud) {                                                   \
+#define GET_LFUC                                                \
+  bool   lfu = Tbl[tmatch].lfu;                                 \
+  uchar *lfuc = NULL;                                           \
+  if (lfu) {                                                    \
       uint32 clen; uchar rflag;                                 \
-      lruc = getColData(rrow, Tbl[tmatch].lruc, &clen, &rflag); \
-      if (!clen) lruc = NULL;                                   \
+      lfuc = getColData(rrow, Tbl[tmatch].lfuc, &clen, &rflag); \
+      if (!clen) lfuc = NULL;                                   \
   }
 
-#endif /* __ALCHEMY_LRU__H */ 
+
+#endif /* __ALCHEMY_LFU__H */ 

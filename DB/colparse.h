@@ -36,7 +36,7 @@ void incrOffsetVar(redisClient *c, wob_t *wb, long incr);
 
 char *parseRowVals(sds vals,  char   **pk,        int    *pklen,
                    int ncols, twoint   cofsts[],  int     tmatch,
-                   int pcols, int      cmatchs[]);
+                   int pcols, int      cmatchs[], int     lncols);
 
 bool parseCommaSpaceList(cli  *c,         char  *tkn,
                          bool  col_check, bool   tbl_check, bool  join_check,

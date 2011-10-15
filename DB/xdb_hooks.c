@@ -412,6 +412,7 @@ int DXDB_loadServerConfig(int argc, sds *argv) {
 static void initClient(redisClient *c) {       //printf("initClient\n");
     c->Explain         =  0;
     c->LruColInSelect  =  0;
+    c->LfuColInSelect  =  0;
     c->InternalRequest =  0;
     bzero(&c->http, sizeof(alchemy_http_info));
     c->http.retcode    = 200; // DEFAULT to "HTTP 200 OK"

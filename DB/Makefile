@@ -57,7 +57,7 @@ endif
 
 CCOPT= $(CFLAGS) $(CCLINK) $(ARCH) $(PROF)
 
-OBJ = bt.o bt_code.o bt_output.o ddl.o alsosql.o sixbit.o row.o index.o rdb_alsosql.o aof_alsosql.o join.o bt_iterator.o wc.o scan.o orderby.o luatrigger.o parser.o cr8tblas.o rpipe.o range.o desc.o aobj.o stream.o colparse.o filter.o qo.o lru.o internal_commands.o xdb_hooks.o xdb_client_hooks.o ctable.o shared_obj.o webserver.o messaging.o embed.o find.o debug.o hash.o
+OBJ = bt.o bt_code.o bt_output.o ddl.o alsosql.o sixbit.o row.o index.o rdb_alsosql.o aof_alsosql.o join.o bt_iterator.o wc.o scan.o orderby.o luatrigger.o parser.o cr8tblas.o rpipe.o range.o desc.o aobj.o stream.o colparse.o filter.o qo.o lru.o internal_commands.o xdb_hooks.o xdb_client_hooks.o ctable.o shared_obj.o webserver.o messaging.o embed.o find.o debug.o hash.o lfu.o
 
 LIBNAME = libx_db.a
 
@@ -93,6 +93,7 @@ hash.o: hash.c common.h
 index.o: index.h luatrigger.h colparse.h bt_iterator.h alsosql.h orderby.h stream.h find.h aobj.h common.h
 internal_commands.o: internal_commands.h
 join.o: join.h wc.h colparse.h range.h bt_iterator.h alsosql.h orderby.h aobj.h common.h
+lfu.o: lfu.h find.h bt.h ddl.h index.h stream.h aobj.h query.h common.h
 lru.o: lru.h row.h stream.h alsosql.h aobj.h query.h common.h
 luatrigger.o: luatrigger.h rpipe.h find.h
 messaging.o: messaging.h rpipe.h

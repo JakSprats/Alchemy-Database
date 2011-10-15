@@ -83,28 +83,27 @@ void createLruIndex(cli *c) {
     if (strcasecmp(c->argv[2]->ptr, "ON")) {
         addReply(c, shared.createsyntax); return;
     }
-    int    len   = sdslen(c->argv[3]->ptr);
-    char  *tname = rem_backticks(c->argv[3]->ptr, &len); /* Mysql compliant */
+    int      len   = sdslen(c->argv[3]->ptr);
+    char    *tname = rem_backticks(c->argv[3]->ptr, &len); /* Mysql compliant */
     TABLE_CHECK_OR_REPLY(tname,)
     if (OTHER_BT(getBtr(tmatch))) { addReply(c, shared.lru_other); return; }
-    r_tbl_t *rt  = &Tbl[tmatch];
+    r_tbl_t *rt    = &Tbl[tmatch];
     if (rt->lrud) { addReply(c, shared.lru_repeat); return; }
 
-    rt->lrud     = (uint32)getLru(tmatch);
-    rt->lrui     = Num_indx;      // -> new Index
-    rt->lruc     = rt->col_count; // -> new Column
+    rt->lrud       = (uint32)getLru(tmatch);
+    rt->lruc       = rt->col_count; // -> new Column
     addColumn(tmatch, "LRU", COL_TYPE_INT);
 
-    sds  iname   = P_SDS_EMT "%s_%s", LRUINDEX_DELIM, tname); /* DEST 072 */
-    newIndex(c, iname, tmatch, rt->lruc, NULL, CONSTRAINT_NONE,
-             0, 1, NULL, -1, 0); // Can not fail
+    sds  iname     = P_SDS_EMT "%s_%s", LRUINDEX_DELIM, tname); /* DEST 072 */
+    rt->lrui       = newIndex(c, iname, tmatch, rt->lruc, NULL, CONSTRAINT_NONE,
+                              0, 1, NULL, -1, 0, 0); // Can not fail
     sdsfree(iname);                                            /*DESTROYED 072*/
     addReply(c, shared.ok);
 }
 
 #define DEBUG_UPDATE_LRU \
   printf("updateLru: tmatch: %d lruc: %p lrud: %d LruColInSelect: %d apk: ", \
-         tmatch, lruc, lrud, c->LruColInSelect);                             \
+         tmatch, lruc, lrud, c? c->LruColInSelect : 0);                      \
   if (apk) dumpAobj(printf, apk); else printf("\n");
 
 void updateLru(cli *c, int tmatch, aobj *apk, uchar *lruc, bool lrud) {
@@ -112,8 +111,9 @@ void updateLru(cli *c, int tmatch, aobj *apk, uchar *lruc, bool lrud) {
     if (!lrud)                return;
     if (tmatch == -1)         return; /* from JOIN opSelectSort */
     if (c->LruColInSelect)    return; /* NOTE: otherwise TOO cyclical */
-    r_tbl_t *rt = &Tbl[tmatch];
-    if (lruc) {
+    r_tbl_t *rt     = &Tbl[tmatch];
+    int      imatch = rt->lrui;
+    if (lruc) { //printf("updateLru: LRU -> lruc update\n");
         uint32  oltime = streamLRUToUInt(lruc);
         uint32  nltime = getLru(tmatch);
         if (oltime == nltime) return;
@@ -122,19 +122,18 @@ void updateLru(cli *c, int tmatch, aobj *apk, uchar *lruc, bool lrud) {
         int     pktyp  = rt->col[0].type;
         aobj ocol; initAobjInt(&ocol, oltime);
         aobj ncol; initAobjInt(&ncol, nltime); 
-        upIndex(c, ibtr, apk, &ocol, apk, &ncol, pktyp, NULL, NULL);
+        upIndex(c, ibtr, apk, &ocol, apk, &ncol, pktyp, NULL, NULL, imatch);
         releaseAobj(&ocol); releaseAobj(&ncol);
     } else { /* LRU empty -> run "UPDATE tbl SET LRU = now WHERE PK = apk" */
         char     LruBuf[32]; snprintf(LruBuf, 32, "%u", getLru(tmatch));
         MATCH_INDICES(tmatch)
-        int      ncols = rt->col_count;
+        int      ncols  = rt->col_count;
         uchar    cmiss[ncols]; ue_t    ue   [ncols]; lue_t le[ncols];
         char    *vals [ncols]; uint32  vlens[ncols];
         for (int i = 0; i < ncols; i++) {
             ue[i].yes = 0; le[i].yes = 0;
             if (i == rt->lruc) {
-                cmiss[i] = 0;
-                vals [i] = LruBuf; vlens[i] = strlen(LruBuf);
+                cmiss[i] = 0; vals [i] = LruBuf; vlens[i] = strlen(LruBuf);
             } else cmiss[i] = 1;
         }
         bt      *btr   = getBtr(tmatch);
@@ -147,3 +146,18 @@ void updateLru(cli *c, int tmatch, aobj *apk, uchar *lruc, bool lrud) {
         release_uc(&uc);
     }
 }
+
+inline bool initLRUCS(int tmatch, int cmatchs[], int qcols) {
+    r_tbl_t *rt = &Tbl[tmatch];
+    if (rt->lrud) {
+        for (int i = 0; i < qcols; i++) if (cmatchs[i] == rt->lruc) return 1;
+    }
+    return 0;
+}
+inline bool initLRUCS_J(jb_t *jb) {
+    for (int i = 0; i < jb->qcols; i++) {
+        if (Tbl[jb->js[i].t].lruc == jb->js[i].c) return 1;
+    }
+    return 0;
+}
+

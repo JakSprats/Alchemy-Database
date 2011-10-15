@@ -150,7 +150,7 @@ static bool SQLappendOnlyDumpTable(FILE *fp, bt *btr, int tmatch) {
         uchar  o_out  = OutputMode;
         OutputMode    = OUTPUT_NORMAL; /* REDIS output not OK here */
         list *cmatchl = listCreate();
-        int   qcols   = get_all_cols(tmatch, cmatchl, 1);
+        int   qcols   = get_all_cols(tmatch, cmatchl, 1, 1);
         CMATCHS_FROM_CMATCHL
         btSIter *bi  = btGetFullRangeIter(btr, 1);
         while ((be = btRangeNext(bi, 1)) != NULL) {
@@ -197,7 +197,7 @@ bool appendOnlyDumpTable(FILE *fp, bt *btr, int tmatch) {
         uchar  o_out  = OutputMode;
         OutputMode    = OUTPUT_NORMAL; /* REDIS output not OK here */
         list *cmatchl = listCreate();
-        int   qcols   = get_all_cols(tmatch, cmatchl, 1);
+        int   qcols   = get_all_cols(tmatch, cmatchl, 1, 1);
         CMATCHS_FROM_CMATCHL
         btSIter *bi  = btGetFullRangeIter(btr, 1);
         while ((be = btRangeNext(bi, 1)) != NULL) {

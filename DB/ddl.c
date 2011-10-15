@@ -40,6 +40,7 @@ ALL RIGHTS RESERVED
 #include "query.h"
 #include "index.h"
 #include "lru.h"
+#include "lfu.h"
 #include "cr8tblas.h"
 #include "parser.h"
 #include "colparse.h"
@@ -80,8 +81,9 @@ dictType sdsDictType = {
 /* CREATE_TABLE CREATE_TABLE CREATE_TABLE CREATE_TABLE CREATE_TABLE */
 void initTable(r_tbl_t *rt) { // NOTE: also used in rdbLoadBT
     bzero(rt, sizeof(r_tbl_t));
-    rt->vimatch = rt->lruc       = rt->lrui       = rt->sk  = rt->fk_cmatch = \
-                  rt->fk_otmatch = rt->fk_ocmatch = -1;
+    rt->vimatch = rt->lruc      = rt->lrui       = rt->sk         = \
+                  rt->fk_cmatch = rt->fk_otmatch = rt->fk_ocmatch = \
+                  rt->lfuc      = rt->lfui       = -1;
 }
 static void addTable() { //printf("addTable: Tbl_HW: %d\n", Tbl_HW);
     Tbl_HW++;
@@ -131,7 +133,6 @@ static void newTable(cli *c, list *ctypes, list *cnames, int ccount, sds tname){
     } //printf("newTable: tmatch: %d\n", tmatch);
     r_tbl_t *rt      = &Tbl[tmatch]; initTable(rt);
     rt->name         = sdsdup(tname);
-    rt->vimatch      = tmatch;
     rt->col_count    = ccount;
     rt->col          = malloc(sizeof(r_col_t) * rt->col_count); // FREE 081
     bzero(rt->col, sizeof(r_col_t) * rt->col_count);
@@ -150,7 +151,7 @@ static void newTable(cli *c, list *ctypes, list *cnames, int ccount, sds tname){
     /* BTREE implies an index on "tbl_pk_index" -> autogenerate */
     sds  pkname  = rt->col[0].name;
     sds  iname   = P_SDS_EMT "%s_%s_%s", rt->name, pkname, INDEX_DELIM); //D073
-    newIndex(c, iname, tmatch, 0, NULL, 0, 1, 0, NULL, -1, 0); // Can not fail
+    newIndex(c, iname, tmatch, 0, NULL, 0, 1, 0, NULL, -1, 0, 0);// Can not fail
     sdsfree(iname);                                      /* DESTROYED 073 */
 }
 
@@ -178,12 +179,13 @@ static void createTable(redisClient *c) { //printf("createTable\n");
 }
 
 void createCommand(redisClient *c) { //printf("createCommand\n");
-    bool  tbl  = 0; bool ind = 0; bool lru = 0; bool luat = 0;
+    bool  tbl  = 0, ind = 0, lru = 0, lfu = 0, luat = 0;
     uchar slot = 2;
     if      (!strcasecmp(c->argv[1]->ptr, "TABLE"))      { tbl   = 1; }
     else if (!strcasecmp(c->argv[1]->ptr, "INDEX"))      { ind   = 1; }
     else if (!strcasecmp(c->argv[1]->ptr, "UNIQUE"))     { ind   = 1; slot = 3;}
     else if (!strcasecmp(c->argv[1]->ptr, "LRUINDEX"))   { lru   = 1; }
+    else if (!strcasecmp(c->argv[1]->ptr, "LFUINDEX"))   { lfu   = 1; }
     else if (!strcasecmp(c->argv[1]->ptr, "LUATRIGGER")) { luat  = 1; }
     else                           { addReply(c, shared.createsyntax); return; }
     robj *o = lookupKeyRead(c->db, c->argv[slot]);
@@ -191,6 +193,7 @@ void createCommand(redisClient *c) { //printf("createCommand\n");
     if      (tbl)     createTable     (c);
     else if (ind)     createIndex     (c);
     else if (lru)     createLruIndex  (c);
+    else if (lfu)     createLfuIndex  (c);
     else /* (luat) */ createLuaTrigger(c);
     server.dirty++; /* for appendonlyfile */
 }
@@ -240,10 +243,12 @@ void dropCommand(redisClient *c) {
 // ALTER ALTER ALTER ALTER ALTER ALTER ALTER ALTER ALTER ALTER ALTER ALTER
 static bool checkRepeatCnames(cli *c, int tmatch, sds cname) {
     if (!strcasecmp(cname, "LRU")) { addReply(c, shared.col_lru); return 0; }
+    if (!strcasecmp(cname, "LFU")) { addReply(c, shared.col_lfu); return 0; }
     if (find_column(tmatch, cname) == -1)        return 1;
     else { addReply(c, shared.nonuniquecolumns); return 0; }
 }
-void addColumn(int tmatch, char *cname, int ctype) {// Used by ALTER TABLE & LRU
+// addColumn(): Used by ALTER TABLE & LRU & HASHABILITY
+void addColumn(int tmatch, char *cname, int ctype) {
     r_tbl_t *rt        = &Tbl[tmatch];
     int      col_count = rt->col_count;
     rt->col_count++;
@@ -295,6 +300,7 @@ void alterCommand(cli *c) {
         int imatch = find_index(tmatch, cmatch);
         if (imatch == -1)      { addReply(c, shared.alter_sk_no_i);     return;}
         if (Index[imatch].lru) { addReply(c, shared.alter_sk_no_lru);   return;}
+        if (Index[imatch].lfu) { addReply(c, shared.alter_sk_no_lfu);   return;}
         Tbl[tmatch].sk = cmatch;
     } else { /* altfk */
         if (c->argc < 10) { addReply(c, shared.altersyntax);            return;}

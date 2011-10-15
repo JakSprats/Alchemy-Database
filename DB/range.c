@@ -34,6 +34,7 @@ ALL RIGHTS RESERVED
 
 #include "debug.h"
 #include "lru.h"
+#include "lfu.h"
 #include "bt.h"
 #include "bt_iterator.h"
 #include "filter.h"
@@ -532,8 +533,10 @@ static bool select_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
             addRow2OBList(g->co.ll, g->co.wb, g->co.btr, r, g->co.ofree,
                           rrow, apk);
         } else {
-            GET_LRUC
-            if (!addReplyRow(g->co.c, r, tmatch, apk, lruc, lrud)) ret = 0;
+            GET_LRUC GET_LFUC
+            if (!addReplyRow(g->co.c, r, tmatch, apk, lruc, lrud, lfuc, lfu)) {
+                ret = 0;
+            }
         }
         if (!(EREDIS)) decrRefCount(r);
     }
@@ -550,7 +553,8 @@ bool opSelectSort(cli  *c,    list *ll,   wob_t *wb,
         else {
             *sent      = *sent + 1;
             obsl_t *ob = v[i];
-            if (!addReplyRow(c, ob->row, tmatch, ob->apk, ob->lruc, ob->lrud)) {
+            if (!addReplyRow(c, ob->row, tmatch, ob->apk, ob->lruc, ob->lrud,
+                                                          ob->lfuc, ob->lfu)) {
                 ret = 0; break;
             }
         }

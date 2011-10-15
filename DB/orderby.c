@@ -34,6 +34,7 @@ ALL RIGHTS RESERVED
 #include "adlist.h"
 
 #include "lru.h"
+#include "lfu.h"
 #include "row.h"
 #include "rpipe.h"
 #include "parser.h"
@@ -160,6 +161,7 @@ obsl_t * cloneOb(obsl_t *ob, uint32 nob) { /* JOIN's API */
     }
     if (ob->apk) ob2->apk = cloneAobj(ob->apk);          /* DESTROY ME 071 */
     ob2->lruc = ob->lruc; ob2->lrud = ob->lrud;
+    ob2->lfuc = ob->lfuc; ob2->lfu  = ob->lfu;
     return ob2;
 }
 
@@ -193,6 +195,7 @@ void addRow2OBList(list   *ll,    wob_t  *wb,   bt     *btr, void   *r,
     for (uint32 i = 0; i < wb->nob; i++) assignObKey(wb, btr, rrow, apk, i, ob);
     ob->apk = cloneAobj(apk);                           /* DESTROY ME 071 */
     GET_LRUC ob->lruc = lruc; ob->lrud = lrud; // updateLRU (SELECT ORDER BY)
+    GET_LFUC ob->lfuc = lfuc; ob->lfu  = lfu;  // updateLFU (SELECT ORDER BY)
     listAddNodeTail(ll, ob);
 }
 obsl_t **sortOB2Vector(list *ll) {

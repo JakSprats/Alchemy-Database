@@ -39,15 +39,16 @@ typedef struct r_col {
     sds   name; uchar type; bool  indxd; int imatch;
 } r_col_t;
 
-typedef struct r_tbl { // 113 bytes -> 120B
+//TODO many of r_tbl's elements are optional -> bitmap + malloc(elements)
+typedef struct r_tbl { // 106 bytes -> 112B
     sds      name;
     bt      *btr;
     int      vimatch;
-    ulong    ainc;
+    ulong    ainc;       // PK AUTO INCREMEMNT VALUE
     int      col_count;
     r_col_t *col;
-    list    *ilist;
-    dict    *cdict;
+    list    *ilist;      // USAGE: list of this table's imatch's
+    dict    *cdict;      // USAGE: maps cname to cmatch
     uint32   n_intr;     /* LRU: num ACCESSES in current LRU interval */
     uint32   lastts;     /* LRU: HIGH-LOAD: last timestamp of lru interval */
     uint32   nextts;     /* LRU: HIGH-LOAD: next timestamp of lru interval */
@@ -64,9 +65,12 @@ typedef struct r_tbl { // 113 bytes -> 120B
     uint32   tcols;      /* HASH: on INSERT num new columns */
     sds     *tcnames;    /* HASH: on INSERT new column names */
     uint32   ctcol;      /* HASH: on INSERT current new columns */
+    bool     lfu;        /* LFU: indexing on/off */
+    int      lfuc;       /* LFU: column containing LFU */
+    int      lfui;       /* LFU: index containing LFU */
 } r_tbl_t;
 
-typedef struct r_ind { // 57 bytes
+typedef struct r_ind { // 59 bytes -> 64B
     bt    *btr;     /* Btree of index                                     */
     sds    name;    /* Name of index                                      */
     int    table;   /* table index is ON                                  */
@@ -81,6 +85,7 @@ typedef struct r_ind { // 57 bytes
     int    obc;     /* ORDER BY col                                       */
     bool   done;    /* CREATE INDEX OFFSET -> not done until finished     */
     long   ofst;    /* CREATE INDEX OFFSET partial indexes current offset */
+    bool   lfu;     /* LFUINDEX                                           */
 } r_ind_t;
 
 typedef struct update_expression {
@@ -128,7 +133,7 @@ typedef struct lua_trigger_command {
 typedef struct lua_trigger {
     ltc_t     add;
     ltc_t     del;
-    ushort16  num; /* Index[][num] */
+    ushort16  num; /* Index[num] */
 } luat_t;
 
 typedef struct where_clause_order_by {
@@ -155,6 +160,8 @@ typedef struct order_by_sort_element {
     aobj   *apk;
     uchar  *lruc;
     bool    lrud;
+    uchar  *lfuc;
+    bool    lfu;
 } obsl_t;
 
 typedef struct join_column {

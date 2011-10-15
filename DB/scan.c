@@ -33,6 +33,8 @@ ALL RIGHTS RESERVED
 
 #include "debug.h"
 #include "embed.h"
+#include "lru.h"
+#include "lfu.h"
 #include "bt_iterator.h"
 #include "wc.h"
 #include "qo.h"
@@ -122,6 +124,7 @@ void tscanCommand(redisClient *c) { //printf("tscanCommand\n");
     CMATCHS_FROM_CMATCHL
 
     c->LruColInSelect = initLRUCS(tmatch, cmatchs, qcols);
+    c->LfuColInSelect = initLFUCS(tmatch, cmatchs, qcols);
     cswc_t w; wob_t wb;
     init_check_sql_where_clause(&w, tmatch, wc); /* on error: GOTO tscan_end */
     init_wob(&wb);
