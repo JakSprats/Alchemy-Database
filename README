@@ -25,8 +25,8 @@ OK
 ./alchemy-cli INSERT INTO test VALUES "(2,'field2','name2')"
 OK
 ./alchemy-cli SELECT "*" FROM test WHERE id BETWEEN 1 AND 2
-1. "1,field1,name1"
-2. "2,field2,name2"
+1) "1,'field1','name1'"
+2) "2,'field2','name2'"
 
 Many examples can be found here: https://github.com/JakSprats/Alchemy-Database/blob/master/redis_unstable/src/bash_functions.sh
 
