@@ -20,9 +20,9 @@ RUN:
 EXPERIMENT (run from command line, some characters '(',')','*' must be escaped)
 ./alchemy-cli CREATE TABLE test "(id int primary key, field TEXT, name TEXT)"
 OK
-./alchemy-cli INSERT INTO test VALUES "(1,field1,'name1')"
+./alchemy-cli INSERT INTO test VALUES "(1,'field1','name1')"
 OK
-./alchemy-cli INSERT INTO test VALUES "(2,field2,'name2')"
+./alchemy-cli INSERT INTO test VALUES "(2,'field2','name2')"
 OK
 ./alchemy-cli SELECT "*" FROM test WHERE id BETWEEN 1 AND 2
 1. "1,field1,name1"
