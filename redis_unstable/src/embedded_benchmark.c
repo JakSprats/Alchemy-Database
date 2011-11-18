@@ -182,7 +182,7 @@ int main(int argc, char **argv) {
     int nrows = 10000000;
     int nkeys = 10000000;
 
-    nrows = nkeys = 1000000; // DEBUG values
+    //nrows = nkeys = 1000000; // DEBUG values
 
     populate_unsafe_kv(nkeys);
     get_unsafe_kv(nkeys);
