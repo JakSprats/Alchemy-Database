@@ -11,7 +11,7 @@ Alchemy Database is a lightweight OLTP SQL server w/ full support for redis data
 
 QUICK HOW TO
 BUILD:
-1,) git://github.com/JakSprats/Alchemy-Database.git
+1,) git clone git://github.com/JakSprats/Alchemy-Database.git
 2.) cd Alchemy-Database
 3.) make
 RUN:
