@@ -713,7 +713,9 @@ bool addReplyRow(cli   *c,    robj *r,    int    tmatch, aobj *apk,
 robj *EmbeddedRobj = NULL;
 static robj *orow_embedded(bt   *btr,       void *rrow, int   qcols,
                            int   cmatchs[], aobj *apk,  int   tmatch) {
-    if (!EmbeddedRobj) EmbeddedRobj = createObject(REDIS_STRING, NULL);
+    robj *r = EmbeddedRobj;
+    if      (!r)           r           = createObject(REDIS_STRING, NULL);
+    else if (!r->refcount) r->refcount = 1;
     erow_t *er = malloc(sizeof(erow_t));
     er->ncols  = qcols;
     er->cols   = malloc(sizeof(aobj *) * er->ncols);
@@ -722,8 +724,7 @@ static robj *orow_embedded(bt   *btr,       void *rrow, int   qcols,
         er->cols[i] = cloneAobj(&acol);
         releaseAobj(&acol);
     }
-    EmbeddedRobj->ptr = er;
-    return EmbeddedRobj;
+    r->ptr = er; return r;
 }
 #define OBUFF_SIZE 4096
 static char OutBuff[OBUFF_SIZE]; /*avoid malloc()s */

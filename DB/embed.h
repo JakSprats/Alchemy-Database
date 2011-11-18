@@ -40,12 +40,15 @@ typedef struct embedded_response_t {
     struct aobj **objs;    /* returned objects */
 } eresp_t;
 
+void initEmbeddedAlchemy(); // NOTE: used for UNSAFE access
+
 void embeddedSaveSelectedColumnNames(int tmatch, int cmatchs[], int qcols);
 struct jb_t;
 void embeddedSaveJoinedColumnNames(struct jb_t *jb);
 
-eresp_t *e_alchemy_raw(char *sql,             select_callback *scb);
-eresp_t *e_alchemy    (int argc, robj **argv, select_callback *scb);
+eresp_t *e_alchemy_raw    (char *sql,             select_callback *scb);
+eresp_t *e_alchemy        (int argc, robj **argv, select_callback *scb);
+eresp_t *e_alchemy_no_free(int argc, robj **argv, select_callback *scb);
 
 // DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
 void printEmbedResp(eresp_t *ersp);

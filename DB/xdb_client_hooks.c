@@ -33,7 +33,7 @@ ALL RIGHTS RESERVED
 
 #include "xdb_client_hooks.h"
 
-static void merge_vals(int *argc,   char **argv, int first,
+static void merge_vals(int *argc,   sds *argv, int first,
                        int  second, unsigned char space) {
     //printf("merge_vals: first: %d second: %d\n", first, second);
     if (first == second) return;
@@ -53,6 +53,7 @@ static void merge_vals(int *argc,   char **argv, int first,
     }
     sds s          = sdsnewlen(x, len);
     zfree(x);
+    if (argv[first]) sdsfree(argv[first]);
     argv[first]    = s;
     int first_copy = first;
     for (int i = second + 1; i < *argc; i++) {

@@ -73,7 +73,8 @@ endif
 OBJ1 = adlist.o ae.o anet.o dict.o
 OBJ2 = sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o zipmap.o sha1.o ziplist.o release.o networking.o util.o object.o db.o replication.o rdb.o t_string.o t_list.o t_set.o t_zset.o t_hash.o config.o aof.o dscache.o pubsub.o multi.o debug.o sort.o intset.o syncio.o diskstore.o cluster.o crc16.o endian.o scripting.o
 SERVEROBJ =  $(OBJ1) redis.o $(OBJ2)
-EMBEDDEDOBJ = $(OBJ1) embedded_redis.o embedded_test.o $(OBJ2)
+EMBEDDEDTESTOBJ = $(OBJ1) embedded_redis.o embedded_test.o $(OBJ2)
+EMBEDDEDBENCHOBJ = $(OBJ1) embedded_redis.o embedded_benchmark.o $(OBJ2)
 BENCHOBJ = ae.o anet.o redis-benchmark.o sds.o adlist.o zmalloc.o
 CLIOBJ = anet.o sds.o adlist.o redis-cli.o zmalloc.o release.o
 CHECKDUMPOBJ = redis-check-dump.o lzf_c.o lzf_d.o
@@ -87,8 +88,9 @@ CHECKDUMPPRGNAME = alchemy-check-dump
 CHECKAOFPRGNAME = alchemy-check-aof
 GENBENCHPRGNAME = alchemy-gen-benchmark
 EMBEDDEDTESTPRGNAME = embedded_test
+EMBEDDEDBENCHPRGNAME = embedded_benchmark
 
-all: alchemy-lib alchemy-benchmark alchemy-cli alchemy-check-dump alchemy-check-aof alchemy-server alchemy-gen-benchmark embedded_test
+all: alchemy-lib alchemy-benchmark alchemy-cli alchemy-check-dump alchemy-check-aof alchemy-server alchemy-gen-benchmark embedded_test embedded_benchmark
 	@echo ""
 	@echo "Hint: To run 'make test' is a good idea ;)"
 	@echo ""
@@ -216,8 +218,11 @@ alchemy-lib: dependencies $(ALLOC_DEP)
 embedded_redis.o:
 	$(QUIET_CC)$(CC) -o embedded_redis.o -c $(CFLAGS) $(DEBUG) $(COMPILE_TIME) -I$(LUAINC) -DNO_MAIN redis.c
 
-embedded_test: $(EMBEDDEDOBJ)
-	$(QUIET_CC)$(CC) -o $(EMBEDDEDTESTPRGNAME) $(CCOPT) $(DEBUG) $(EMBEDDEDOBJ) $(CCLINK) $(ALLOC_LINK) -L../../DB/ -lx_db $(LUALIB) ../deps/hiredis/libhiredis.a ../deps/linenoise/linenoise.o
+embedded_test: $(EMBEDDEDTESTOBJ)
+	$(QUIET_CC)$(CC) -o $(EMBEDDEDTESTPRGNAME) $(CCOPT) $(DEBUG) $(EMBEDDEDTESTOBJ) $(CCLINK) $(ALLOC_LINK) -L../../DB/ -lx_db $(LUALIB) ../deps/hiredis/libhiredis.a ../deps/linenoise/linenoise.o
+
+embedded_benchmark: $(EMBEDDEDBENCHOBJ)
+	$(QUIET_CC)$(CC) -o $(EMBEDDEDBENCHPRGNAME) $(CCOPT) $(DEBUG) $(EMBEDDEDBENCHOBJ) $(CCLINK) $(ALLOC_LINK) -L../../DB/ -lx_db $(LUALIB) ../deps/hiredis/libhiredis.a ../deps/linenoise/linenoise.o
 
 # Because the jemalloc.h header is generated as a part of the jemalloc build
 # process, building it should complete before building any other object.
