@@ -1,6 +1,5 @@
 /*
- * This file implements the basic SQL commands of Alsosql (single row ops)
- *  and calls the range-query and join ops
+ * This file implements the DDL SQL commands of AlchemyDatabase
  *
 
 AGPL License

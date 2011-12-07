@@ -33,9 +33,13 @@ ALL RIGHTS RESERVED
 #include "common.h"
 
 typedef struct btEntry {
-    void *key;
-    void *val;
-    void *stream; // some iterators need the raw stream (INDEX CURSORS)
+    void   *key;
+    void   *val;
+    void   *stream; // some iterators need the raw stream (INDEX CURSORS)
+    bt_n   *x;      // some iterators need the position in the bt_n
+    int     i;      // some iterators need the position in the bt_n
+    bool    missed;
+    uint32  dr;     // RANGE DELETEs simulate Keys using DR
 } btEntry;
 
 typedef struct bTreeLinkedListNode { // 3ptr(24) 2int(8) -> 32 bytes
@@ -43,55 +47,56 @@ typedef struct bTreeLinkedListNode { // 3ptr(24) 2int(8) -> 32 bytes
     struct btreenode           *self;
     struct bTreeLinkedListNode *child;
     int                         ik;
-    int                         in;
+    int                         in; //TODO in not needed, ik & logic is enough
 } bt_ll_n;
 
 typedef void iter_single(struct btIterator *iter);
 
-/* NOTE: btIterator is generic */
 /* using 16 as 8^16 can hold 2.8e14 elements (8 is min members in a btn)*/
 #define MAX_BTREE_DEPTH 16
-typedef struct btIterator { // 5*ptr(40) int(4) 2*char(2) long(8) float(4)
-                            // ptr(8) int(4) 16*bt_ll_n(512) -> i.e. dont malloc
+typedef struct btIterator { // 60B + 16*bt_ll_n(512) -> dont malloc
     bt          *btr;
     bt_ll_n     *bln;
     int          depth;
- 
-    iter_single *iNode; /* function to iterate on node's */
-    iter_single *iLeaf; /* function to iterate on leaf's */
-
-    void        *data;  /* iNode and iLeaf can change "data" */
+    iter_single *iNode;     // function to iterate on node's
+    iter_single *iLeaf;     // function to iterate on leaf's
+    void        *data;      // iNode and iLeaf can change "data"
     bool         finished;
-
-    ulong        high;  /* for INT & LONG */
-    float        highf;
-    char        *highs;
-
-    uchar        num_nodes;
+    ulong        high;      // HIGH for INT & LONG
+    float        highf;     // HIGH for FLOAT
+    char        *highs;     // HIGH for TEXT
+    uchar        num_nodes; // \/-slot in nodes[]
     bt_ll_n      nodes[MAX_BTREE_DEPTH];
 } btIterator;
 
-typedef struct btSIter { // btIterator(?500?) 1*char(1) int(1)
-                         // btEntry(16) 2*aobj(23) i.e. dont malloc
+typedef struct btSIter { // btIterator 500+ bytes -> STACK (globals) ALLOCATE
     btIterator x;
+    bool       missed; // CURRENT iteration is miss
+    uint32     mdelta; // CURRENT iteration missed by how much (delta)
+    bool       nim;    // NEXT    iteration is miss
+    bool       empty;
+    bool       scan;
     uchar      ktype;
-    int        which;
+    int        which; // which BT_Iterators[] slot
     btEntry    be;
     aobj       key; /* static AOBJ for be.key */
 } btSIter;
 
-#define RET_LEAF_EXIT  1
-#define RET_ONLY_RIGHT 2
+#define II_FAIL       -1
+#define II_OK          0
+#define II_LEAF_EXIT   1
+#define II_ONLY_RIGHT  2
+#define II_MISS        3
+#define II_L_MISS      4
 
 bt_ll_n *get_new_iter_child(btIterator *iter);
 void     to_child(btIterator *iter, bt_n* self);
 int      init_iterator(bt *btr, bt_data_t simkey, struct btIterator *iter);
-void    *btNext(btIterator *iter);
 
 btSIter *btGetRangeIter    (bt *btr, aobj *alow, aobj *ahigh,         bool asc);
 btSIter *btGetXthIter      (bt *btr, aobj *alow, aobj *ahigh, long x, bool asc);
-btSIter *btGetFullXthIter  (bt *btr,                          long x, bool asc);
-btSIter *btGetFullRangeIter(bt *btr,                                  bool asc);
+btSIter *btGetFullRangeIter(bt *btr,             bool asc, cswc_t *w);
+btSIter *btGetFullXthIter  (bt *btr,     long x, bool asc, cswc_t *w, long lim);
 
 btEntry *btRangeNext           (btSIter *iter,                        bool asc);
 void     btReleaseRangeIterator(btSIter *iter);

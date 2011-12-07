@@ -78,6 +78,10 @@ typedef bool select_callback(erow_t* erow);
     int                 bindport;           \
     select_callback    *scb;
 
+#define ALCHEMY_SERVER_EXTENSIONS \
+    long long     stat_num_dirty_commands; /* number of dirty commands */ \
+    unsigned char delete_miss;             /* DELETE hit a MISSing ROW */
+
 #define SHARED_OBJ_DECLARATION \
     robj \
     *singlerow,           *inserted,               *upd8ed, \
@@ -133,16 +137,19 @@ typedef bool select_callback(erow_t* erow);
     *dump_syntax, *show_syntax,                           \
     *alter_sk_rpt,    *alter_sk_no_i,   *alter_sk_no_lru, \
     *alter_fk_not_sk, *alter_fk_repeat, *alter_sk_no_lfu, \
-    *select_on_sk, *scan_sharded,                         \
-    *constraint_wrong_nargs, *constraint_col_indexed,     \
-    *constraint_not_num,     *constraint_table_mismatch,  \
-    *constraint_nonuniq,     *constraint_viol,            \
-    *indexobcerr,            *indexobcrpt,                \
-    *indexobcill,            *indexcursorerr,             \
-    *obindexviol,            *repeat_hash_cnames,         \
-    *lfu_other,              *lfu_repeat,                 \
-    *drop_lfu,               *col_lfu,                    \
-    *insert_lfu,             *kw_cname;
+    *select_on_sk,            *scan_sharded,               \
+    *constraint_wrong_nargs,  *constraint_col_indexed,     \
+    *constraint_not_num,      *constraint_table_mismatch,  \
+    *constraint_nonuniq,      *constraint_viol,            \
+    *indexobcerr,             *indexobcrpt,                \
+    *indexobcill,             *indexcursorerr,             \
+    *obindexviol,             *repeat_hash_cnames,         \
+    *lfu_other,               *lfu_repeat,                 \
+    *drop_lfu,                *col_lfu,                    \
+    *insert_lfu,              *kw_cname,                   \
+    *dirty_miss,              *evict_other,                \
+    *replace_on_dirty_w_inds, *insert_dirty_pkdecl,        \
+    *update_on_dirty_w_inds; 
 
 #define DEBUG_C_ARGV(c) \
   for (int i = 0; i < c->argc; i++) \

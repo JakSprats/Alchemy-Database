@@ -40,6 +40,7 @@ ALL RIGHTS RESERVED
 #define TWO_POW_44     17592186044416
 #define TWO_POW_59 576460752303423488
 
+// the value 0 here is reserved for GHOST rows
 #define COL_1BYTE_INT   1
 #define COL_2BYTE_INT   2
 #define COL_4BYTE_INT   4
@@ -104,7 +105,9 @@ int getCSize(ulong l, bool isi) {
         else                     return 9;
     }
 }
-int cIcol(ulong l, uchar *sflag, ulong *col, bool isi) {
+
+
+int cIcol(ulong l, uchar *sflag, ulong *col, bool isi) { // 0 -> GHOST row
     if        (l < TWO_POW_7) {
         if (sflag) *sflag = COL_1BYTE_INT; *col = (l * 2) + 1;       return 1;
     } else if (l < TWO_POW_14) {
@@ -268,8 +271,7 @@ static bool cr8BTKInt(aobj *akey, uint32 *ksize, uchar *btkey) {
     ulong l = (ulong)akey->i;
     *ksize  = cr8Icol(l, &sflag, &l);
     if (l >= TWO_POW_32) return 0;
-    writeUIntCol(&btkey, sflag, l);
-    return 1;
+    writeUIntCol(&btkey, sflag, l); return 1;
 }
 static void cr8BTKLong(aobj *akey, uint32 *ksize, uchar *btkey) {
     uchar sflag;
@@ -344,10 +346,9 @@ char *createBTKey(aobj *akey, bool *med, uint32 *ksize, bt *btr) {
             key        = btkey + 4;
         }
         memcpy(key, akey->s, akey->len); /* after LEN, copy raw STRING */
-    } else if (C_IS_L(ktype))        cr8BTKLong (akey, ksize, btkey);
-      else if (C_IS_F(ktype))        cr8BTKFloat(akey, ksize, btkey);
-      else if (C_IS_I(ktype)) { if (!cr8BTKInt(akey, ksize, btkey)) return NULL;
-    }
+    } else if (C_IS_L(ktype))    cr8BTKLong (akey, ksize, btkey);
+      else if (C_IS_F(ktype))    cr8BTKFloat(akey, ksize, btkey);
+      else if (C_IS_I(ktype) && !cr8BTKInt  (akey, ksize, btkey)) return NULL;
     return (char *)btkey;
 }
 static uint32 skipToVal(uchar **stream, uchar ktype) {
@@ -383,7 +384,7 @@ void convertStream2Key(uchar *stream, aobj *key, bt *btr) {
     initAobj(key);
     if        INODE_I(btr) {
         key->type = key->enc = COL_TYPE_INT;
-        key->i    = (uint32)(ulong)stream;
+        key->i    = INTVOID stream;
     } else if INODE_L(btr) {
         key->type = key->enc = COL_TYPE_LONG;
         key->l    = (ulong)stream;
@@ -478,8 +479,11 @@ void *createStream(bt *btr, void *val, char *btkey, uint32 klen, uint32 *size) {
     char   *o_bt_val  = bt_val;
     memcpy(bt_val, btkey, klen);
     bt_val           += klen;
-    if      (btr->s.btype == BTREE_TABLE) memcpy(bt_val, val, vlen);
-    else if (btr->s.btype != BTREE_INODE) memcpy(bt_val, &val, sizeof(void *));
+    uchar btype = btr->s.btype;
+    if        (btype == BTREE_TABLE) {
+        if (val) memcpy(bt_val, val, vlen);
+        else     bzero (bt_val, sizeof(void *));
+    } else if (btype != BTREE_INODE) memcpy(bt_val, &val, sizeof(void *));
     return o_bt_val; /* line above is for STRING & FLOAT INDEX */
 }
 bool destroyStream(bt *btr, uchar *ostream) {

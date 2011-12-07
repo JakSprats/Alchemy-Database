@@ -200,7 +200,9 @@ static int rdbLoadRow(FILE *fp, bt *btr, int tmatch) {
     if ((ssize = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)     return -1;
     void *stream = UU(btr) ? &UUbuf : row_malloc(btr, ssize);
     if (fread(stream, ssize, 1, fp) == 0)                       return -1;
+#ifndef TEST_WITH_TRANS_ONE_ONLY
     if (btr->numkeys == TRANS_ONE_MAX) btr = abt_resize(btr, TRANS_TWO);
+#endif
     if      UU(btr) {
         bt_insert(btr, UUbuf);
     } else if LU(btr) {

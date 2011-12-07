@@ -98,10 +98,6 @@ static void replaceHead(list *flist, listNode *ln, f_t *flt) {
     listDelNode(    flist, ln); /* delete from curr position */
     listAddNodeHead(flist, flt);  /* reADD @ head */
 }
-static void addFltKey(list **flist, f_t *flt) {
-    if (!*flist) *flist = listCreate();                  /* DESTROY ME 044 */
-    listAddNodeTail(*flist, flt);
-}
 
 static int jpIndexesTopSort(const void *s1, const void *s2) {
     ijp_t *ij1 = (ijp_t *)s1;

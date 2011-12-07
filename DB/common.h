@@ -128,5 +128,8 @@ typedef struct twoint {
 #define ASSERT_OK(x) assert(x == DICT_OK)
 
 #define VOIDINT (void *)(long)
+#define INTVOID (uint32)(ulong)
+
+#define CLIENT_BTREE_DEBUG
 
 #endif /* __ALSOSQL_COMMON__H */

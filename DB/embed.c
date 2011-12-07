@@ -48,11 +48,11 @@ redisContext *redisContextInit();               // from hiredis.c
 void __redisCreateReplyReader(redisContext *c); // from hiredis.c
 
 // GLOBALS
-char        *ConfigFile      = NULL;
-redisClient *EmbeddedCli     = NULL;
-eresp_t     *CurrEresp       = NULL;
-static int   NumSelectedCols = 0;
-static sds  *SelectedCols    = NULL;
+char               *ConfigFile      = NULL;
+static redisClient *EmbeddedCli     = NULL;
+eresp_t            *CurrEresp       = NULL;
+static int          NumSelectedCols = 0;
+static sds         *SelectedCols    = NULL;
 
 void SetConfig(char *file) { ConfigFile = file; }
 
@@ -70,33 +70,29 @@ static inline void initEmbeddedResponse() {
     }
 }
 
-static inline void resetEmbeddedResponse() {
-    eresp_t *ersp = CurrEresp;
-    if (ersp->objs) {
-        for (int i = 0; i < ersp->nobj; i++) destroyAobj(ersp->objs[i]);
-        free(ersp->objs); ersp->objs = NULL;
-    }
-    ersp->nobj = 0;
-}
-
 static bool embeddedInited = 0;
-void initEmbeddedAlchemy() {
+static void initEmbeddedAlchemy() {
     OutputMode = OUTPUT_EMBEDDED;
     if (!embeddedInited) {
         initEmbedded(); // defined in redis.c -DNO_MAIN
         initEmbeddedClient();
         initEmbeddedResponse();
         embeddedInited  = 1;
+        NumSelectedCols = 0;
+        SelectedCols    = NULL;
     } else {
-        resetEmbeddedResponse();
+        //TODO as much of "resetClient(EmbeddedCli)" as needed
         cli *c          = EmbeddedCli;
-        listRelease(c->reply); c->reply = listCreate();
+        listRelease(c->reply);
+        c->reply        = listCreate();
         c->bufpos       = 0;
         for (int i = 0; i < NumSelectedCols; i++) sdsfree(SelectedCols[i]);
         free(SelectedCols);
+        NumSelectedCols = 0;
+        SelectedCols    = NULL;
     }
-    NumSelectedCols   = 0; SelectedCols      = NULL;
-    CurrEresp->ncols  = 0; CurrEresp->cnames = NULL;
+    CurrEresp->ncols  = 0;
+    CurrEresp->cnames = NULL;
 }
 
 static uint32 numElementsReply(redisReply *r) {
@@ -178,13 +174,11 @@ static void redisReplyToEmbedResp(cli *c, eresp_t *ersp) {
             redisReply *reply = (redisReply*)_reply;
             ersp->nobj        = numElementsReply(reply);
             ersp->objs        = malloc(sizeof(aobj) * ersp->nobj);
-            int         cnt   = 0;
+            int cnt = 0;
             createEmbedRespFromReply(ersp, reply, &cnt);
-            freeReplyObject(reply);
         }
-        redisFree(context);
+        sdsfree(out);
     }
-    sdsfree(out);
 }
 
 static void addSelectedColumnNames() {
@@ -214,27 +208,18 @@ void embeddedSaveJoinedColumnNames(jb_t *jb) {
     addSelectedColumnNames();
 }
 
-static eresp_t *__e_alchemy(int argc, robj **rargv, select_callback *scb,
-                            unsigned char freer) {
+eresp_t *e_alchemy(int argc, robj **rargv, select_callback *scb) {
     initEmbeddedAlchemy();
-    cli *c   = EmbeddedCli;
-    c->scb   = scb;
-    c->argc  = argc;
-    c->argv  = rargv;
+    cli *c  = EmbeddedCli;
+    c->scb  = scb;
+    c->argc = argc;
+    c->argv = rargv;
     processCommand(c);
     redisReplyToEmbedResp(c, CurrEresp);
 
-    if (freer) {
-        for (int i = 0; i < argc; i++) decrRefCount(rargv[i]);
-        zfree(rargv);
-    }
+    for (int i = 0; i < argc; i++) decrRefCount(rargv[i]);
+    zfree(rargv);
     return CurrEresp;
-}
-eresp_t *e_alchemy(int argc, robj **rargv, select_callback *scb) {
-    return __e_alchemy(argc, rargv, scb, 1);
-}
-eresp_t *e_alchemy_no_free(int argc, robj **rargv, select_callback *scb) {
-    return __e_alchemy(argc, rargv, scb, 0);
 }
 
 eresp_t *e_alchemy_raw(char *sql, select_callback *scb) {
@@ -251,3 +236,4 @@ eresp_t *e_alchemy_raw(char *sql, select_callback *scb) {
 
     return e_alchemy(argc, rargv, scb);
 }
+

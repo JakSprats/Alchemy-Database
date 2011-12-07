@@ -272,6 +272,7 @@ void end_http_session(cli *c) {
                 argc++; //NOTE: rargv[0] is ignored
                 zfree(argv);
             }
+            //TODO do lookupCommand(argv[0]) -> REST API
             if (!luafunc_call(c, argc, rargv)) {
                 robj *resp = luaReplyToHTTPReply(server.lua);
                 send_http_reponse_header(c, resp->ptr);

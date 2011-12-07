@@ -123,6 +123,13 @@ void convertFilterListToAobj(list *flist) {
         }
     } listReleaseIterator(li);
 }
+
+void addFltKey(list **flist, f_t *flt) {
+    if (!*flist) *flist = listCreate();                  /* DESTROY ME 044 */
+    listAddNodeTail(*flist, flt);
+}
+
+// DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
 void dumpFilter(printer *prn, f_t *flt, char *prfx) {
     if (!flt) return;
     int t = flt->tmatch; int c = flt->cmatch; int i = flt->imatch;

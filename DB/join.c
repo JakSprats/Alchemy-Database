@@ -61,7 +61,8 @@ extern char *EMPTY_STRING;
 extern char  OUTPUT_DELIM;
 
 // TODO push into JoinBlock & -> single struct
-bool JoinErr   =  0; long JoinCard  =  0; long JoinLoops =  0;
+bool JoinErr   =  0; bool JoinMiss  =  0;
+long JoinCard  =  0; long JoinLoops =  0;
 long JoinLim   = -1; long JoinOfst  = -1; bool JoinQed   =  0;
 
 static aobj Resp;
@@ -231,7 +232,7 @@ static bool popKlist(range_t *g,   int   imatch, list **klist,
 }
 static bool join_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
     q = 0; /* compiler warning */
-    if (JoinErr)  return 0;
+    if (JoinErr || JoinMiss)  return 0;
     if (!JoinLim) return 1; /* this means LIMIT OFFSET has been fulfilled */
     jb_t   *jb     = g->jb;   /* code compaction */
     cswc_t *w      = g->co.w; /* code compaction */
@@ -323,7 +324,7 @@ static bool join_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
             if (w2.wf.imatch == -1) { JoinErr = 1; }
             else {
                 long rcard = keyOp(&g2, join_op); /* RECURSE */
-                if      (rcard == -1) { JoinErr = 1; ret = 0; }
+                if      (rcard == -1) { JoinMiss = 1; ret = 0; }
                 else if (rcard > 0) { //NOTE: updateLRU (JOIN)
                     GET_LRUC updateLru(g->co.c, tmatch, apk, lruc, lrud);
                     GET_LFUC updateLfu(g->co.c, tmatch, apk, lfuc, lfu);
@@ -361,7 +362,7 @@ void setupFirstJoinStep(cswc_t *w, jb_t *jb, qr_t *q) {
     JoinOfst  = jb->wb.ofst;                                   //DEBUG_JOIN_QED
 }
 void joinGeneric(redisClient *c, jb_t *jb) {
-    qr_t q; bzero(&q, sizeof(qr_t)); //TODO make GLOBAL
+    qr_t q; bzero(&q, sizeof(qr_t));
     cswc_t w; setupFirstJoinStep(&w, jb, &q);
     if (w.wf.imatch == -1) { addReply(c, shared.join_qo_err); return; }
     c->LruColInSelect = initLRUCS_J(jb);
@@ -370,11 +371,12 @@ void joinGeneric(redisClient *c, jb_t *jb) {
     range_t g;
     init_range(&g, c, &w, &jb->wb, &q, ll, OBY_FREE_ROBJ, jb);
     g.se.qcols        = jb->qcols;
-    JoinLoops         = -1; JoinCard = 0; JoinErr = 0;
-    void *rlen        = addDeferredMultiBulkLength(c);
+    JoinLoops         = -1; JoinCard = 0; JoinErr = 0; JoinMiss = 0;
+    void *rlen        = jb->cstar ? NULL : addDeferredMultiBulkLength(c);
     long  card        = 0;
-    Op(&g, join_op); /* NOTE Op() retval ignored as SELECTs can NOT FAIL */
-    if (JoinErr) { addReply(c, shared.join_qo_err); goto join_gen_err; }
+    if (Op(&g, join_op) == -1) JoinMiss = 1;
+    if (JoinMiss) { replaceDMB_WithDirtyMissErr(c, rlen); goto join_gen_err; }
+    if (JoinErr)  { replaceDMB_With_QO_Err     (c, rlen); goto join_gen_err; }
     card              = JoinCard;
     long sent         =  0;
     if (card) {
@@ -384,7 +386,7 @@ void joinGeneric(redisClient *c, jb_t *jb) {
         } else sent = card;
     }
     if (JoinLim != -1 && sent < card) card = sent;
-    if (jb->cstar) setDeferredMultiBulkLong(c, rlen, card);
+    if (jb->cstar) addReplyLongLong(c, card);
     else           setDeferredMultiBulkLength(c, rlen, card);
     if (jb->wb.ovar) { incrOffsetVar(c, &jb->wb, card); } //TODO done use w
 

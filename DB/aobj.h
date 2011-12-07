@@ -33,17 +33,20 @@ ALL RIGHTS RESERVED
 #include "query.h"
 #include "common.h"
 
-void initAobj(       aobj *a);
-void initAobjZeroNum(aobj *a, uchar ctype);
-bool initAobjInt(    aobj *a, ulong l);
-void initAobjLong(   aobj *a, ulong l);
-void initAobjString( aobj *a, char *s, int len);
-void initAobjFloat(  aobj *a, float f);
-void initAobjFromStr(aobj *a, char *s, int len, uchar ctype);
+void initAobj        (aobj *a);
+void initAobjZeroNum (aobj *a,                   uchar ctype);
+bool initAobjInt     (aobj *a, ulong l);
+void initAobjLong    (aobj *a, ulong l);
+void initAobjString  (aobj *a, char *s, int len);
+void initAobjFloat   (aobj *a, float f);
+void initAobjFromStr (aobj *a, char *s, int len, uchar ctype);
+void initAobjFromLong(aobj *a, ulong l,          uchar ctype);
 void releaseAobj(void *a);
 void destroyAobj(void *a);
 
 void  aobjClone( aobj *dest, aobj *src);
+#define CREATE_CLONE(dest, src) \
+  aobj dest; aobjClone(&dest, src);
 aobj *cloneAobj( aobj *a);
 void *vcloneAobj(void *a);
 void  convertSdsToAobj(sds s, aobj *a, uchar ctype);
@@ -69,6 +72,11 @@ bool aobjLE(aobj *a, aobj *b);
 bool aobjGT(aobj *a, aobj *b);
 bool aobjGE(aobj *a, aobj *b);
 
+void  incrbyAobj  (aobj *a, ulong l);
+void  decrbyAobj  (aobj *a, ulong l);
+ulong subtractAobj(aobj *a, aobj *b);
+
+// DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
 void dumpAobj(printer *prn, aobj *a);
 
 void vsdsfree(void *v); //TODO this should be somewhere else

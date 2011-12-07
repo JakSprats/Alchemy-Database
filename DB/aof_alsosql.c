@@ -49,6 +49,9 @@ extern uchar    OutputMode;
 extern bool     SQL_AOF;
 extern bool     SQL_AOF_MYSQL;
 
+//TODO server.delete_miss will prepend a SELECT before the DELETE
+//       to the SQLSUBSCRIBE channel
+
 static bool SQLappendOnlyDumpIndices(FILE *fp, int tmatch) {
     r_tbl_t *rt     = &Tbl[tmatch];
     MATCH_INDICES(tmatch)
@@ -152,7 +155,7 @@ static bool SQLappendOnlyDumpTable(FILE *fp, bt *btr, int tmatch) {
         list *cmatchl = listCreate();
         int   qcols   = get_all_cols(tmatch, cmatchl, 1, 1);
         CMATCHS_FROM_CMATCHL
-        btSIter *bi  = btGetFullRangeIter(btr, 1);
+        btSIter *bi  = btGetFullRangeIter(btr, 1, NULL);
         while ((be = btRangeNext(bi, 1)) != NULL) {
             if (fwrite(cmd2 ,sizeof(cmd2) - 1, 1, fp) == 0)       A_BRK
             if (fwrite(tname, strlen(tname), 1, fp) == 0)         A_BRK
@@ -199,7 +202,7 @@ bool appendOnlyDumpTable(FILE *fp, bt *btr, int tmatch) {
         list *cmatchl = listCreate();
         int   qcols   = get_all_cols(tmatch, cmatchl, 1, 1);
         CMATCHS_FROM_CMATCHL
-        btSIter *bi  = btGetFullRangeIter(btr, 1);
+        btSIter *bi  = btGetFullRangeIter(btr, 1, NULL);
         while ((be = btRangeNext(bi, 1)) != NULL) {
             if (fwrite(cmd2 ,sizeof(cmd2) - 1, 1, fp) == 0)       A_BRK
             if (fwriteBulkString(fp, tname, sdslen(tname)) == -1) A_BRK

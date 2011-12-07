@@ -43,6 +43,8 @@ void *vcloneFilter(void *oflt);
 
 void convertFilterListToAobj(list *flist);
 
+void addFltKey(list **flist, f_t *flt);
+
 /* DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG */
 void dumpFilter(printer *prn, f_t *flt, char *prfx);
 

@@ -127,12 +127,17 @@ void luafuncCommand   (redisClient *c);
 
 void explainCommand   (redisClient *c);
 
+#ifdef CLIENT_BTREE_DEBUG
 void btreeCommand     (redisClient *c);
+void validateBTommand (redisClient *c);
+#endif
 
 void messageCommand   (redisClient *c);
 
 void purgeCommand     (redisClient *c);
 void dirtyCommand     (redisClient *c);
+
+void evictCommand     (redisClient *c);
 
 #ifdef REDIS3
   #define CMD_END       NULL,1,1,1,0,0
@@ -151,6 +156,7 @@ struct redisCommand DXDBCommandTable[] = {
 
     {"lua",        luafuncCommand,    -2, 0,                   GLOB_FUNC_END},
     {"message",    messageCommand,    -2, 0,                   GLOB_FUNC_END},
+    {"evict",      evictCommand,      -3, 0,                   GLOB_FUNC_END},
 
     {"create",     createCommand,     -4, REDIS_CMD_DENYOOM,   GLOB_FUNC_END},
     {"drop",       dropCommand,        3, 0,                   GLOB_FUNC_END},
@@ -164,7 +170,10 @@ struct redisCommand DXDBCommandTable[] = {
     {"dirty",      dirtyCommand,      -1, 0,                   GLOB_FUNC_END},
 
     {"show",       showCommand,        2, 0,                   GLOB_FUNC_END},
+#ifdef CLIENT_BTREE_DEBUG
     {"btree",      btreeCommand,      -2, 0,                   GLOB_FUNC_END},
+    {"vbtree",     validateBTommand,  -2, 0,                   GLOB_FUNC_END},
+#endif
 };
 
 
@@ -229,6 +238,8 @@ static void init_Tbl_and_Index(uint32 ntbl, uint32 nindx) {
 }
 
 void DXDB_initServer() { //printf("DXDB_initServer\n");
+    server.stat_num_dirty_commands = 0;
+    server.delete_miss             = 0;
     aeCreateTimeEvent(server.el, 1, luaCronTimeProc, NULL, NULL);
     initX_DB_Range();
     initAccessCommands();
@@ -327,6 +338,7 @@ rcommand *DXDB_lookupCommand(sds name) {
 }
 
 void DXDB_call(struct redisCommand *cmd, long long *dirty) {
+    server.delete_miss = 0;
     if (cmd->proc == luafuncCommand || cmd->proc == messageCommand) *dirty = 0;
     if (*dirty) server.stat_num_dirty_commands++;
 }

@@ -1015,9 +1015,6 @@ void initServer() {
     server.lastsave = time(NULL);
     server.dirty = 0;
     server.stat_numcommands = 0;
-#ifdef ALCHEMY_DATABASE
-    server.stat_num_dirty_commands = 0;
-#endif
     server.stat_numconnections = 0;
     server.stat_expiredkeys = 0;
     server.stat_evictedkeys = 0;

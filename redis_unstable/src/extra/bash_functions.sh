@@ -437,6 +437,14 @@ function test_UU() {
   echo DUMP UU
   $CLI DUMP UU
 }
+function extended_test_UU() {
+  test_UU
+  I=100;
+  while [ $I -lt 500 ]; do
+    $CLI INSERT INTO UU VALUES "($I,$I)";
+    I=$[${I}+1];
+  done
+}
 
 function sql_test() {
   dropper
@@ -1623,6 +1631,14 @@ function test_UL() {
   insert_UL
   $CLI DUMP UL
 }
+function extended_test_UL() {
+  test_UL
+  I=100;
+  while [ $I -lt 500 ]; do
+    $CLI INSERT INTO UL VALUES "($I,$I)";
+    I=$[${I}+1];
+  done
+}
 
 function init_LU() {
   $CLI DROP   TABLE LU
@@ -1642,6 +1658,15 @@ function test_LU() {
   insert_LU
   $CLI DUMP LU
 }
+function extended_test_LU() {
+  test_LU
+  I=100;
+  while [ $I -lt 500 ]; do
+    $CLI INSERT INTO LU VALUES "($I,$I)";
+    I=$[${I}+1];
+  done
+}
+
 function test_LU_longs() {
   test_LU
   I=1844674407370954161;
@@ -1743,6 +1768,14 @@ function test_LL() {
   insert_LL
   $CLI DUMP LL
 }
+function extended_test_LL() {
+  test_LL
+  I=100;
+  while [ $I -lt 500 ]; do
+    $CLI INSERT INTO LL VALUES "($I,$I)";
+    I=$[${I}+1];
+  done
+}
 
 function init_uniq_LL() {
   $CLI DROP   TABLE U_LL
@@ -1802,7 +1835,41 @@ function test_uniq_LL() {
   $CLI SCAN "COUNT(*)" FROM U_LL
   $CLI DUMP U_LL
 }
+function extended_test_uniq_LL() {
+  test_uniq_LL
+  I=100;
+  while [ $I -lt 500 ]; do
+    $CLI INSERT INTO U_LL VALUES "($I,$I,$I)"; I=$[${I}+1];
+  done
+}
 
+function all_extended_btreenodes_test() {
+  extended_test_uniq_LL
+  extended_test_LU
+  extended_test_UL
+  extended_test_UU
+  extended_test_LL
+  $CLI CREATE TABLE pki_fki "(id INT, fk INT, msg TEXT)"
+  $CLI CREATE INDEX i_pki_fki ON pki_fki "(fk)"
+  I=100; while [ $I -lt 500 ]; do
+    $CLI INSERT INTO pki_fki VALUES "(,1,'$I')"; I=$[${I}+1];
+  done
+  $CLI CREATE TABLE pki_fkl "(id INT, fk LONG, msg TEXT)"
+  $CLI CREATE INDEX i_pki_fkl ON pki_fkl "(fk)"
+  I=100; while [ $I -lt 500 ]; do
+    $CLI INSERT INTO pki_fkl VALUES "(,1,'$I')"; I=$[${I}+1];
+  done
+  $CLI CREATE TABLE pkl_fki "(id LONG, fk INT, msg TEXT)"
+  $CLI CREATE INDEX i_pkl_fki ON pkl_fki "(fk)"
+  I=100; while [ $I -lt 500 ]; do
+    $CLI INSERT INTO pkl_fki VALUES "(,1,'$I')"; I=$[${I}+1];
+  done
+  $CLI CREATE TABLE pkl_fkl "(id LONG, fk LONG, msg TEXT)"
+  $CLI CREATE INDEX i_pkl_fkl ON pkl_fkl "(fk)"
+  I=100; while [ $I -lt 500 ]; do
+    $CLI INSERT INTO pkl_fkl VALUES "(,1,'$I')"; I=$[${I}+1];
+  done
+}
 function test_other_bt_mem_usage() {
   C=200
   N=1000000
@@ -2696,4 +2763,71 @@ function middle_lru_lfu_test() {
 function create_illegal_cnames() {
   $CLI CREATE TABLE bad "(pk INT, LRU INT, col INT)"
   $CLI CREATE TABLE bad "(pk INT, LFU INT, col INT)"
+}
+
+function populate_simple() {
+  $CLI DROP TABLE simple;
+  $CLI CREATE TABLE simple "(pk INT, fk INt, col2 INT)";
+  $CLI CREATE INDEX i_simple ON simple "(fk)"
+  J=1; I=1; NUM=6000; FKMOD=10
+  if [ -n "$1" ]; then NUM=$1;   fi
+  if [ -n "$2" ]; then FKMOD=$2; fi
+  while [ $I -le $NUM ]; do
+    $CLI INSERT INTO simple VALUES "(,$J,$I)";
+    I=$[${I}+1];
+    if [ $[${I}%${FKMOD}] -eq 0 ]; then J=$[${J}+1]; fi
+  done
+}
+function evict_random_from_simple() {
+  #populate_simple
+  LO=1;
+  HI=6000;
+  if [ -n "$1" ]; then HI=$1; fi
+  NUM=400
+  NUMS="$NUMS "$(echo "function lots_of_random_nums(lo, hi, n) math.randomseed(os.time());for i=1,n do io.write(math.random(lo,hi) .. \" \"); end end lots_of_random_nums($LO,$HI,$NUM);" |lua);
+  echo $NUMS;
+  $CLI EVICT simple $NUMS;
+  echo "$($CLI vbtree simple )"
+}
+function populate_join_to_simple() {
+  $CLI DROP TABLE joinsimple;
+  $CLI CREATE TABLE joinsimple "(pk INT, col6 INT, col7 INT)";
+  NUM=6000; FKMOD=10 # from populate_simple
+  N=$[${NUM}/${FKMOD}]
+  I=1;
+  while [ $I -lt $N ]; do
+    $CLI INSERT INTO joinsimple VALUES "(,$I,$[${I}*1000])";
+    I=$[${I}+1];
+  done
+}
+function populate_simple_mci() {
+  $CLI DROP TABLE mcisimple;
+  $CLI CREATE TABLE mcisimple "(pk LONG, fk1 INt, fk2 INT, col2 INT)";
+  $CLI CREATE INDEX i_mcisimple ON mcisimple "(fk1, fk2)"
+  J=1; K=1; FK1MOD=10; FK2MOD=5;
+  I=1; NUM=600;
+  while [ $I -le $NUM ]; do
+    $CLI INSERT INTO mcisimple VALUES "(,$J,$K,$I)";
+    I=$[${I}+1];
+    if [ $[${I}%${FK1MOD}] -eq 0 ]; then J=$[${J}+1]; fi
+    if [ $[${I}%${FK2MOD}] -eq 0 ]; then K=$[${K}+1]; fi
+  done
+  $CLI CREATE INDEX i_ob_mcisimple ON mcisimple "(fk2)" ORDER BY col2
+  $CLI CREATE LFUINDEX ON mcisimple
+}
+
+function illegal_dirty_table_ops() {
+  populate_simple 50
+  $CLI EVICT simple 6 7 8;
+  $CLI DELETE FROM simple WHERE pk = 7
+  echo ERROR UPDATE
+  $CLI UPDATE simple SET col2=333333,fk=3 WHERE pk = 1
+  echo ERROR REPLACE
+  $CLI REPLACE INTO simple VALUES "(999,999,999)"
+  echo ERROR INSERT
+  $CLI INSERT INTO simple VALUES "(7,77,777)"
+  echo OK UPDATE
+  $CLI UPDATE simple SET col2=333333 WHERE pk = 1
+  echo OK INSERT
+  $CLI INSERT INTO simple VALUES "(999,999,999)"
 }

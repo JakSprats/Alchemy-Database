@@ -29,20 +29,27 @@ ALL RIGHTS RESERVED
 
 #include "row.h"
 #include "btreepriv.h"
+#include "btree.h"
 #include "aobj.h"
 #include "common.h"
 
-bt   *abt_resize(bt *obtr, uchar trans);
+bt *abt_resize(bt *obtr, uchar trans);
 
-bt   *createUUBT(int num, uchar btype);
-bt   *createLUBT(int num, uchar btype);
-bt   *createULBT(int num, uchar btype);
-bt   *createLLBT(int num, uchar btype);
+bt *createUUBT(int num, uchar btype);
+bt *createLUBT(int num, uchar btype);
+bt *createULBT(int num, uchar btype);
+bt *createLLBT(int num, uchar btype);
 
-bt   *createMCI_MIDBT(uchar ktype, int imatch);
-bt   *createIndexBT  (uchar ktype, int imatch);
-bt   *createMCIndexBT(list *clist, int imatch);
-bt   *createDBT      (uchar ktype, int tmatch);
+bt *createMCI_MIDBT(uchar ktype, int imatch);
+bt *createIndexBT  (uchar ktype, int imatch);
+bt *createMCIndexBT(list *clist, int imatch);
+bt *createDBT      (uchar ktype, int tmatch);
+bt *createIndexNode(uchar pktyp, bool hasobc);
+
+#define DECLARE_BT_KEY(akey, ret)                                          \
+    bool  med; uint32 ksize;                                               \
+    char *btkey = createBTKey(akey, &med, &ksize, btr);  /* FREE ME 026 */ \
+    if (!btkey) return ret;
 
 /* different Btree types */
 #define BTREE_TABLE    0
@@ -105,21 +112,32 @@ typedef struct ulong_ulong_key {
 /* NOTE: NORM_BT has a dependency on order of flags */
 #define NORM_BT(btr) (btr->s.bflag <= BTFLAG_UINT_UINT)
 
-int   btAdd    (bt *btr, aobj *apk, void *val);
-void *btFind   (bt *btr, aobj *apk);
-int   btReplace(bt *btr, aobj *apk, void *val);
-int   btDelete (bt *btr, aobj *apk);
+int    btAdd    (bt *btr, aobj *apk, void *val);
+void  *btFind   (bt *btr, aobj *apk);
+dwm_t  btFindD  (bt *btr, aobj *apk);
+int    btReplace(bt *btr, aobj *apk, void *val);
+typedef int btdeleter(bt *btr, aobj *apk);
+        int btDelete (bt *btr, aobj *apk);
+        int btDeleteD(bt *btr, aobj *apk);
+bool   btEvict  (bt *btr, aobj *apk);
 
-void  btIndAdd   (bt *btr, aobj *akey, bt  *nbtr);
-bt   *btIndFind  (bt *btr, aobj *akey);
-int   btIndDelete(bt *btr, aobj *akey);
+void  btIndAdd   (bt *ibtr, aobj *ikey, bt  *nbtr);
+bt   *btIndFind  (bt *ibtr, aobj *ikey);
+bool  btIndExist (bt *ibtr, aobj *ikey);
+int   btIndDelete(bt *ibtr, aobj *ikey);
+void  btIndNull  (bt *ibtr, aobj *ikey);
 
-bt   *createIndexNode(uchar pktyp, bool hasobc);
-void  btIndNodeAdd   (bt *btr, aobj *apk);
-void *btIndNodeFind  (bt *btr, aobj *apk);
-int   btIndNodeDelete(bt *btr, aobj *apk);
+bool  btIndNodeAdd    (cli *c, bt *nbtr, aobj *apk, aobj *ocol);
+void *btIndNodeFind   (        bt *nbtr, aobj *apk);
+int   btIndNodeDelete (        bt *nbtr, aobj *apk, aobj *ocol);
+void  btIndNodeDeleteD(        bt *nbtr, aobj *apk, aobj *ocol);
+int   btIndNodeEvict  (        bt *nbtr, aobj *apk, aobj *ocol);
 
-bool  btIndNodeOBCAdd   (cli *c, bt *nbtr, aobj *apk, aobj *ocol);
-int   btIndNodeOBCDelete(        bt *nbtr,            aobj *ocol);
+// HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER
+uint32  btGetDR    (bt *btr, aobj *akey);
+aobj   *btGetNext  (bt *btr, aobj *akey);
+bool    btDecrDR_PK(bt *btr, aobj *akey, uint32 by);
 
+// DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
+#define TEST_WITH_TRANS_ONE_ONLY
 #endif /* __ALSO_SQL_BT_H */
