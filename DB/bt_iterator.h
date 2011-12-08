@@ -64,6 +64,7 @@ typedef struct btIterator { // 5*ptr(40) int(4) 2*char(2) long(8) float(4)
     bool         finished;
 
     ulong        high;  /* for INT & LONG */
+    uint128      highx;
     float        highf;
     char        *highs;
 

@@ -52,7 +52,7 @@ void bt_dumptree(printer *prn, bt *btr, bool is_index) {
     }
     (*prn)("\n");
 }
-void dump_node(bt *btr, bt_n *x) {
+void dump_one_node(bt *btr, bt_n *x) {
     printf(" NODE: n: %d scion: %d -> (%p)\n", x->n, x->scion, (void *)x);
     for (int i = 0; i < x->n; i++) {
         void *be = KEYS(btr, x, i);
@@ -96,37 +96,65 @@ static void dumpnode(printer *prn, bt *btr, bt_n *x,
     else          (*prn)("%d: LEAF: n: %d -> (%p)\n", depth, x->n, (void *)x);
 
     for (i = 0; i < x->n; i++) {
-        void *be = KEYS(btr, x, i);
-        aobj  key;
-        convertStream2Key(be, &key, btr);
+        void *be  = KEYS(btr, x, i); aobj key; convertStream2Key(be, &key, btr);
         void *rrow = parseStream(be, btr);
         if (is_index) {
             (*prn)("\tINDEX-KEY: "); dumpAobj(prn, &key);
             bt_dumptree(prn, (bt *)rrow, 0);
         } else {
-            //TODO UU & LUP
-            if        UL(btr) { 
+            bool key_printed = 0;
+            if        UU(btr) {  key_printed = 1;
+                ulong uu = (ulong)rrow;
+                (*prn)("\t\tUU[%d]: KEY: %u VAL: %u\n",
+                       i, (uu / UINT_MAX), (uu % UINT_MAX));
+            } else if UL(btr) { 
                 if UP(btr) (*prn)("\t\tUL: PTR: %p\t", rrow);
-                else {
+                else { key_printed = 1;
                     ulk *ul = (ulk *)rrow;
-                    (*prn)("\t\tUL[%d]: KEY: %u VAL: %lu\t",
-                                    i, ul->key, ul->val); 
+                    (*prn)("\t\tUL[%d]: KEY: %u VAL: %lu\n",
+                           i, ul->key, ul->val); 
                 }
             } else if LU(btr) { 
-                luk *lu = (luk *)rrow;
-                (*prn)("\t\tLU[%d]: KEY: %lu VAL: %lu\t",
-                                i, lu->key, lu->val);
-            } else if LL(btr) { 
-                if LP(btr) (*prn)("\t\tLL: PTR: %p\t", rrow);
-                else {
-                    llk *ll = (llk *)rrow;
-                    (*prn)("\t\tLL[%d]: KEY: %lu VAL: %lu\t",
-                                    i, ll->key, ll->val);
+                if LUP(btr) (*prn)("\t\tLU: PTR: %p\t", rrow);
+                else { key_printed = 1;
+                    luk *lu = (luk *)rrow;
+                    (*prn)("\t\tLU[%d]: KEY: %lu VAL: %lu\n",
+                           i, lu->key, lu->val);
                 }
+            } else if LL(btr) { 
+                if LLP(btr) (*prn)("\t\tLL: PTR: %p\t", rrow);
+                else { key_printed = 1;
+                    llk *ll = (llk *)rrow;
+                    (*prn)("\t\tLL[%d]: KEY: %lu VAL: %lu\n",
+                           i, ll->key, ll->val);
+                }
+            } else if UX(btr) { key_printed = 1;
+                uxk *ux = (uxk *)rrow;
+                (*prn)("\t\tUX[%d]: KEY: %u ", i, ux->key);
+                (*prn)(" VAL: "); DEBUG_128(prn, ux->val); (*prn)("\n");
+            } else if XU(btr) { key_printed = 1;
+                xuk *xu = (xuk *)rrow;
+                (*prn)("\t\tXU[%d]: KEY: ", i); DEBUG_128(prn, xu->key);
+                (*prn)(" VAL: %u\n", xu->val);
+            } else if LX(btr) { key_printed = 1;
+                lxk *lx = (lxk *)rrow;
+                (*prn)("\t\tLX[%d]: KEY: %lu ", i, lx->key);
+                (*prn)(" VAL: "); DEBUG_128(prn, lx->val); (*prn)("\n");
+            } else if XL(btr) { 
+                if XLP(btr) (*prn)("\t\tXL: PTR: %p\t", rrow);
+                else { key_printed = 1;
+                    xlk *xl = (xlk *)rrow;
+                    (*prn)("\t\tXL[%d]: KEY: ", i); DEBUG_128(prn, xl->key);
+                    (*prn)(" VAL: %lu\n", xl->val);
+                }
+            } else if XX(btr) { key_printed = 1;
+                xxk *xx = (xxk *)rrow;
+                (*prn)("\t\tXX[%d]: KEY: ", i); DEBUG_128(prn, xx->key);
+                (*prn)(" VAL: "); DEBUG_128(prn, xx->val); (*prn)("\n");
             } else {
                 (*prn)("\t\tROW[%d]: %p\t", i, rrow);
             }
-            (*prn)("KEY: "); dumpAobj(prn, &key);
+            if (!key_printed) { (*prn)("KEY: "); dumpAobj(prn, &key); }
         }
     }
 
@@ -175,12 +203,10 @@ int bt_checktree(bt *btr, void *kmin, void *kmax) {
 }
 
 int treeheight(bt *btr) {
-    bt_n *x   = btr->root;
-    if (!x) return 0;
+    bt_n *x   = btr->root; if (!x) return 0;
     int   ret = 0;
     while (!x->leaf) {
-        x = NODES(btr, x)[0];
-        ret++;
+        x = NODES(btr, x)[0]; ret++;
     }
     return ++ret;
 }

@@ -99,10 +99,9 @@ static bool assign_pk(int tmatch, int *pklen, char **pk, char *cstart) {
         if (C_IS_NUM(pktyp)) assign_auto_inc_pk(pk, pklen, tmatch);
         else                 return 0;
     } else {
-        char *s    = malloc(*pklen + 1);              /* FREE ME 021 */
-        memcpy(s, cstart, *pklen);
-        s[*pklen]  = '\0';
-        *pk        = s;
+        char *s = malloc(*pklen + 1);              /* FREE ME 021 */
+        memcpy(s, cstart, *pklen); s[*pklen] = '\0';
+        *pk     = s;
     }
     return 1;
 }
@@ -110,6 +109,7 @@ static bool assign_pk(int tmatch, int *pklen, char **pk, char *cstart) {
   printf("addColumn: type: %d ctcol: %d name: %s cmatch: %d\n", \
           ctype, rt->ctcol, rt->tcnames[rt->ctcol - 1], cmatch);
 
+//NOTE used only for HASHABILITY
 static bool determineColType(char *nextc, uchar *ctype, int tmatch) {
     r_tbl_t *rt = &Tbl[tmatch];
     if (*nextc == '\'') *ctype = COL_TYPE_STRING;
@@ -123,6 +123,22 @@ static bool determineColType(char *nextc, uchar *ctype, int tmatch) {
     }
     addColumn(tmatch, rt->tcnames[rt->ctcol], *ctype); rt->ctcol++; return 1;
 }
+static bool _parseU128(char *s, char *c, uint128 *x) {
+    c++;                                    if (!*c) return 0;
+    ull high = strtoul(s, NULL, 10); /* OK: DELIM: | */
+    ull low  = strtoul(c, NULL, 10); /* OK: DELIM: \0 */
+    char *pbu = (char *)x;
+    memcpy(pbu + 8, &high, 8); memcpy(pbu, &low, 8); return 1;
+}
+bool parseU128(char *s, uint128 *x) {
+    char *c = strchr(s, '|');        if (!c)  return 0;
+    return _parseU128(s, c, x);
+}
+bool parseU128n(char *s, uint32 len, uint128 *x) {
+    char *c = _strnchr(s, '|', len); if (!c)  return 0;
+    return _parseU128(s, c, x);
+}
+
 char *parseRowVals(sds vals,  char   **pk,        int    *pklen,
                    int ncols, twoint   cofsts[],  int     tmatch,
                    int pcols, int      cmatchs[], int     lncols) {
@@ -386,6 +402,7 @@ uchar getExprType(char *pred, int plen) {
     memcpy(up_col_buf, pred, plen); up_col_buf[plen] = '\0';
     if (is_int  (up_col_buf)) return UETYPE_INT;
     if (is_float(up_col_buf)) return UETYPE_FLT;
+    if (is_u128 (up_col_buf)) return UETYPE_U128;
     return UETYPE_ERR;
 }
 int parseExpr(cli *c, int tmatch, int cmatch, char *val, uint32 vlen, ue_t *ue){
@@ -506,16 +523,17 @@ bool ignore_cname(char *tkn, int tlen) {
 }
 bool parseColType(cli *c, sds type, uchar *ctype) {
     if      (strcasestr(type, "BIGINT") ||
-             strcasestr(type, "LONG"))    *ctype = COL_TYPE_LONG;
-    else if (strcasestr(type, "INT"))     *ctype = COL_TYPE_INT;
-    else if (strcasestr(type, "FLOAT") ||
-             strcasestr(type, "REAL")  ||
-             strcasestr(type, "DOUBLE"))  *ctype = COL_TYPE_FLOAT;
-    else if (strcasestr(type, "CHAR") ||
-             strcasestr(type, "TEXT")  ||
-             strcasestr(type, "BLOB")  ||
-             strcasestr(type, "BYTE")  ||
-             strcasestr(type, "BINARY"))  *ctype = COL_TYPE_STRING;
+             strcasestr(type, "LONG"))     *ctype = COL_TYPE_LONG;
+    else if (strcasestr(type, "INT"))      *ctype = COL_TYPE_INT; // must be 2nd
+    else if (strcasestr(type, "U128"))     *ctype = COL_TYPE_U128;
+    else if (strcasestr(type, "FLOAT")  ||
+             strcasestr(type, "REAL")   ||
+             strcasestr(type, "DOUBLE"))   *ctype = COL_TYPE_FLOAT;
+    else if (strcasestr(type, "CHAR")   ||
+             strcasestr(type, "TEXT")   ||
+             strcasestr(type, "BLOB")   ||
+             strcasestr(type, "BYTE")   ||
+             strcasestr(type, "BINARY"))   *ctype = COL_TYPE_STRING;
     else { addReply(c, shared.undefinedcolumntype); return 0; }
     return 1;
 }

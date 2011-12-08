@@ -34,6 +34,7 @@ char *strcasestr(const char *haystack, const char *needle); /*compiler warning*/
 #include "redis.h"
 #include "zmalloc.h"
 
+#include "colparse.h"
 #include "row.h"
 #include "parser.h"
 
@@ -44,8 +45,7 @@ extern uchar OutputMode;
 inline char *_strdup(char *s) {
     int len = strlen(s);
     char *x = malloc(len + 1);
-    memcpy(x, s, len);
-    x[len]  = '\0';
+    memcpy(x, s, len); x[len]  = '\0';
     return x;
 }
 
@@ -66,6 +66,9 @@ bool is_int(char *s) { // Used in UPDATE EXPRESSIONS
     else                   return 1;
 }
 
+bool is_u128(char *s) { // Used in UPDATE EXPRESSIONS
+    uint128 x; return parseU128(s, &x);
+}
 bool is_float(char *s) { // Used in UPDATE EXPRESSIONS
     char *endptr;
     long val = strtod(s, &endptr);

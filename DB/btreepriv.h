@@ -29,21 +29,28 @@
 
 #include "btree.h"
 
+// BTREE TRANSITION FLAGS
 #define TRANS_ONE 1
 #define TRANS_TWO 2
 #define TRANS_ONE_MAX 64
 
-#define BTFLAG_NONE          0
-#define BTFLAG_AUTO_INC      1
-#define BTFLAG_UINT_UINT     2
-#define BTFLAG_UINT_ULONG    4
-#define BTFLAG_ULONG_UINT    8
-#define BTFLAG_ULONG_ULONG  16
-#define BTFLAG_UINT_PTR     32 /* UINT  Index */
-#define BTFLAG_ULONG_PTR    64 /* ULONG Index */
-#define BTFLAG_OBC         128 /* ORDER BY Index */
+// BTREE TYPE FLAGS
+#define BTFLAG_NONE           0
+#define BTFLAG_UINT_INDEX     1 /* UINT     Index */
+#define BTFLAG_ULONG_INDEX    2 /* ULONG    Index */
+#define BTFLAG_U128_INDEX     4 /* U128     Index */
+#define BTFLAG_OBC            8 /* ORDER BY Index */
+#define BTFLAG_UINT_UINT     16
+#define BTFLAG_UINT_ULONG    32
+#define BTFLAG_ULONG_UINT    64
+#define BTFLAG_ULONG_ULONG  128
+#define BTFLAG_UINT_U128    256
+#define BTFLAG_U128_UINT    512
+#define BTFLAG_ULONG_U128  1024
+#define BTFLAG_U128_ULONG  2048
+#define BTFLAG_U128_U128   4096
 
-typedef struct btree { // 56 Bytes
+typedef struct btree { // 57 Bytes
     struct btreenode  *root;
     bt_cmp_t           cmp;
  
@@ -58,21 +65,22 @@ typedef struct btree { // 56 Bytes
     unsigned short     nbyte;    /*             | */
     unsigned short     kbyte;    /* ------------| */
 
-    unsigned char      t;        /* --------------------------- 8 bytes | */
-    unsigned char      nbits;    /*                                     | */
-    bts_t              s;        /*-------------------------------------| */
+    unsigned char      t;
+    unsigned char      nbits;
+    bts_t              s;      // 7 bytes
 } __attribute__ ((packed)) bt;
 
 //#define BTREE_DEBUG
 typedef struct btreenode { /* 8 bytes */
-    unsigned int scion;       /* 4 billion scion possible */
-    int          n    : 31;   /* 2 billion entries (per bt_n)*/
-    int          leaf : 1;
+    unsigned int  scion;       /* 4 billion scion possible */
+    int           n    : 31;   /* 2 billion entries (per bt_n)*/
+    int           leaf : 1;
 #ifdef BTREE_DEBUG
     unsigned long num;
 #endif
 } bt_n;
 
+// BTREE access of KEYs & NODEs via position in bt_n
 void *KEYS(bt *btr, bt_n *x, int i);
 #define NODES(btr, x) ((bt_n **)((char *)x + btr->nodeofst))
 

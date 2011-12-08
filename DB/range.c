@@ -50,7 +50,6 @@ ALL RIGHTS RESERVED
 #include "range.h"
 
 // CONSTANT GLOBALS
-extern char     *Col_type_defs[];
 extern aobj_cmp *OP_CMP[7];
 extern r_tbl_t  *Tbl;
 extern r_ind_t  *Index;

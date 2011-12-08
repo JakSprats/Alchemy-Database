@@ -60,8 +60,6 @@ extern r_tbl_t *Tbl;
 extern int      Num_indx;
 extern r_ind_t *Index;
 
-extern char *Col_type_defs[];
-
 // GLOBALS
 uchar  OutputMode = OUTPUT_NORMAL;
 
@@ -138,7 +136,10 @@ static uchar insertCommit(cli  *c,      robj **argv,   sds     vals,
         if (l >= TWO_POW_32) { addReply(c, shared.uint_pkbig); goto insc_end; }
         apk.i       = (int)l;
     } else if (C_IS_L(pktyp)) apk.l = strtoul(pk, NULL, 10); /* OK: DELIM: \0 */
-      else if (C_IS_F(pktyp)) apk.f = atof(pk);              /* OK: DELIM: \0 */
+      else if (C_IS_X(pktyp)) {
+          bool r = parseU128(pk, &apk.x); 
+          if (!r) { addReply(c, shared.u128_parse); goto insc_end; }
+    } else if (C_IS_F(pktyp)) apk.f = atof(pk);              /* OK: DELIM: \0 */
       else { /* COL_TYPE_STRING */
         apk.s       = pk; apk.len = pklen; apk.freeme = 0; /* "pk freed below */
     }
@@ -444,14 +445,19 @@ static bool assignMisses(cli   *c,      int    tmatch,    int   ncols,
             if (i == cmatch) {
                 bool simp = 0;
                 miss      = 0; vals[i] = mvals[j]; vlens[i] = mvlens[j];
-                if        C_IS_NUM(ctype) {
-                    if (getExprType(vals[i], vlens[i]) == UETYPE_INT) simp = 1;
+                if        (C_IS_I(ctype) || C_IS_L(ctype)) {
+                    if (getExprType(vals[i], vlens[i]) == UETYPE_INT)  simp = 1;
+                } else if C_IS_X(ctype) {
+                    if (getExprType(vals[i], vlens[i]) == UETYPE_U128) simp = 1;
                 } else if C_IS_F(ctype) {
-                    if (getExprType(vals[i], vlens[i]) == UETYPE_FLT) simp = 1;
+                    if (getExprType(vals[i], vlens[i]) == UETYPE_FLT)  simp = 1;
                 } else {// S_IS_S() 
-                    if (is_text(vals[i], vlens[i]))                   simp = 1;
+                    if (is_text(vals[i], vlens[i]))                    simp = 1;
                 }
                 if (simp) break;
+                if C_IS_X(ctype) { // update expr's (lua 2) not allowed on U128
+                    addReply(c, shared.update_u128_complex); return 0;
+                }
                 int k = parseExpr(c, tmatch, cmatch, vals[i], vlens[i], &ue[i]);
                 if (k == -1) return 0;
                 if (k) { ue[i].yes = 1; break; }

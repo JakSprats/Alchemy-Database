@@ -23,8 +23,6 @@
  * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  *
- *	$Id: btree.h,v 1.4.2.1 2001/03/28 06:17:12 jmg Exp $
- *
  */
 
 #ifndef _BTREE_H_
@@ -37,15 +35,16 @@
 struct btree;
 struct btreenode;
 
-#define UINTSIZE  4
-#define VOIDSIZE  8 /* force to 8, otherwise UU would not work on 32bit */
-#define ULONGSIZE 8
+#define UINTSIZE   4
+#define VOIDSIZE   8 /* force to 8, otherwise UU would not work on 32bit */
+#define ULONGSIZE  8
+#define U128SIZE  16
 
-typedef struct btree_specification { /* size 6B */
+typedef struct btree_specification { /* size 7B */
     unsigned char   ktype;    /* [STRING,INT,FLOAT,LONG]--------------------| */
     unsigned char   btype;    /* [data,index,node]                          | */
     unsigned char   ksize;    /* INODE_I(4), UU&INDEX(8), UL&LU(12), LL(16) | */
-    unsigned char   bflag;    /* [INT_AUTO_INC || UINT_UINT]                | */
+    unsigned short  bflag;    /* [OTHER_BT + BTFLAG_*_INDEX]                | */
     unsigned short  num;      /*--------------------------------------------| */
 } __attribute__ ((packed)) bts_t;
 

@@ -44,7 +44,7 @@ typedef struct r_tbl { // 106 bytes -> 112B
     sds      name;
     bt      *btr;
     int      vimatch;
-    ulong    ainc;       // PK AUTO INCREMEMNT VALUE
+    ulong    ainc;       // PK AUTO INCREMEMNT VALUE TODO: make uint128
     int      col_count;
     r_col_t *col;
     list    *ilist;      // USAGE: list of this table's imatch's

@@ -41,49 +41,51 @@ ALL RIGHTS RESERVED
 extern r_tbl_t *Tbl;
 extern r_ind_t *Index;
 
+#define CREATE_OBT(kt, ks, bf, cmp)                                         \
+    bts_t bts;           bts.ktype = kt;                 bts.btype = btype; \
+    bts.ksize = ks;      bts.bflag = bf;                 bts.num   = num;   \
+    return bt_create(cmp, TRANS_ONE, &bts);
+
 bt *createUUBT(int num, uchar btype) {                //printf("createUUBT\n");
-    bts_t bts;
-    bts.ktype = COL_TYPE_INT;
-    bts.btype = btype;
-    bts.ksize = UU_SIZE;
-    bts.bflag = BTFLAG_AUTO_INC + BTFLAG_UINT_UINT;
-    bts.num   = num;
-    return bt_create(uuCmp, TRANS_ONE, &bts);
+    CREATE_OBT(COL_TYPE_INT, UU_SIZE, BTFLAG_UINT_UINT, uuCmp);
 }
 bt *createULBT(int num, uchar btype) {                //printf("createULBT\n");
-    bts_t bts;
-    bts.ktype = COL_TYPE_INT;
-    bts.btype = btype;
-    bts.ksize = UL_SIZE;
-    bts.bflag = BTFLAG_AUTO_INC + BTFLAG_UINT_ULONG;
-    bts.num   = num;
-    return bt_create(ulCmp, TRANS_ONE, &bts);
+    CREATE_OBT(COL_TYPE_INT, UL_SIZE, BTFLAG_UINT_ULONG, ulCmp);
 }
 bt *createLUBT(int num, uchar btype) {                //printf("createLUBT\n");
-    bts_t bts;
-    bts.ktype = COL_TYPE_LONG;
-    bts.btype = btype;
-    bts.ksize = LU_SIZE;
-    bts.bflag = BTFLAG_AUTO_INC + BTFLAG_ULONG_UINT;
-    bts.num   = num;
-    return bt_create(luCmp, TRANS_ONE, &bts);
+    CREATE_OBT(COL_TYPE_LONG, LU_SIZE, BTFLAG_ULONG_UINT, luCmp);
 }
 bt *createLLBT(int num, uchar btype) {                //printf("createLLBT\n");
-    bts_t bts;
-    bts.ktype = COL_TYPE_LONG;
-    bts.btype = btype;
-    bts.ksize = LL_SIZE;
-    bts.bflag = BTFLAG_AUTO_INC + BTFLAG_ULONG_ULONG;
-    bts.num   = num;
-    return bt_create(llCmp, TRANS_ONE, &bts);
+    CREATE_OBT(COL_TYPE_LONG, LL_SIZE, BTFLAG_ULONG_ULONG, llCmp);
+}
+bt *createUXBT(int num, uchar btype) {                //printf("createUXBT\n");
+    CREATE_OBT(COL_TYPE_INT, UX_SIZE, BTFLAG_UINT_U128, uxCmp);
+}
+bt *createXUBT(int num, uchar btype) {                //printf("createXUBT\n");
+    CREATE_OBT(COL_TYPE_U128, XU_SIZE, BTFLAG_U128_UINT, xuCmp);
+}
+bt *createLXBT(int num, uchar btype) {                //printf("createLXBT\n");
+    CREATE_OBT(COL_TYPE_LONG, LX_SIZE, BTFLAG_ULONG_U128, lxCmp);
+}
+bt *createXLBT(int num, uchar btype) {                //printf("createXLBT\n");
+    CREATE_OBT(COL_TYPE_U128, XL_SIZE, BTFLAG_U128_ULONG, xlCmp);
+}
+bt *createXXBT(int num, uchar btype) {                //printf("createXXBT\n");
+    CREATE_OBT(COL_TYPE_U128, XX_SIZE, BTFLAG_U128_U128, xxCmp);
 }
 static bt *createOBT(uchar ktype, uchar vtype, int tmatch, uchar btype) {
     if        (C_IS_I(ktype)) {
         if (C_IS_I(vtype)) return createUUBT(tmatch, btype);
         if (C_IS_L(vtype)) return createULBT(tmatch, btype);
+        if (C_IS_X(vtype)) return createUXBT(tmatch, btype);
     } else if (C_IS_L(ktype)) {
         if (C_IS_I(vtype)) return createLUBT(tmatch, btype);
         if (C_IS_L(vtype)) return createLLBT(tmatch, btype);
+        if (C_IS_X(vtype)) return createLXBT(tmatch, btype);
+    } else if (C_IS_X(ktype)) {
+        if (C_IS_I(vtype)) return createXUBT(tmatch, btype);
+        if (C_IS_L(vtype)) return createXLBT(tmatch, btype);
+        if (C_IS_X(vtype)) return createXXBT(tmatch, btype);
     }
     return NULL;
 }
@@ -99,31 +101,25 @@ bt *createDBT(uchar ktype, int tmatch) {
         if (obtr) return obtr;
     }
     bts_t bts;
-    bts.ktype    = ktype;
-    bts.btype    = BTREE_TABLE;
-    bts.ksize    = VOIDSIZE;
-    bts.bflag    = C_IS_NUM(ktype) ? BTFLAG_AUTO_INC : BTFLAG_NONE;
-    bts.num      = tmatch;
-    bt_cmp_t cmp = ASSIGN_CMP(ktype);
-    return bt_create(cmp, TRANS_ONE, &bts);
+    bts.ktype = ktype;       bts.btype = BTREE_TABLE; bts.ksize = VOIDSIZE;
+    bts.bflag = BTFLAG_NONE; bts.num   = tmatch; 
+    return bt_create(ASSIGN_CMP(ktype), TRANS_ONE, &bts);
 }
 bt *createIBT(uchar ktype, int imatch, uchar btype) {
     bt_cmp_t cmp; bts_t bts;
-    bts.ktype    = ktype;
-    bts.btype    = btype;
-    bts.num      = imatch;
+    bts.ktype = ktype; bts.btype = btype; bts.num = imatch;
     if        C_IS_I(ktype) { /* NOTE: under the covers: ULBT */
-        bts.ksize = UL_SIZE;
-        bts.bflag = BTFLAG_UINT_ULONG  + BTFLAG_UINT_PTR;
-        cmp       = ulCmp;
+        bts.ksize = UL_SIZE; cmp = ulCmp;
+        bts.bflag = BTFLAG_UINT_ULONG  + BTFLAG_UINT_INDEX;
     } else if C_IS_L(ktype) { /* NOTE: under the covers: LLBT */
-        bts.ksize = LL_SIZE;
-        bts.bflag = BTFLAG_ULONG_ULONG + BTFLAG_ULONG_PTR;
-        cmp       = llCmp;
-    } else { /* STRING or FLOAT */
-        bts.ksize = VOIDSIZE;
+        bts.ksize = LL_SIZE; cmp = llCmp;
+        bts.bflag = BTFLAG_ULONG_ULONG + BTFLAG_ULONG_INDEX;
+    } else if C_IS_X(ktype) { /* NOTE: under the covers: XLBT */
+        bts.ksize = XL_SIZE; cmp = xlCmp;
+        bts.bflag = BTFLAG_U128_ULONG  + BTFLAG_U128_INDEX;
+    } else {                  /* STRING or FLOAT */
+        bts.ksize = VOIDSIZE; cmp = ASSIGN_CMP(ktype);
         bts.bflag = BTFLAG_NONE;
-        cmp       = ASSIGN_CMP(ktype);
     }
     return bt_create(cmp, TRANS_ONE, &bts);
 }
@@ -140,29 +136,24 @@ bt *createIndexNode(uchar ktype, uchar obctype) {                /* INODE_BT */
     if (obctype != COL_TYPE_NONE) {
         bt *btr       =  createOBT(obctype, ktype, -1, BTREE_INODE);
         btr->s.bflag |= BTFLAG_OBC; // will fail INODE(btr) -> OBC is different
-        // NOTE: BTFLAG_*_PTR used as the RAW [VALUE] is pulled out in
+        // NOTE: BTFLAG_*_INDEX used as the RAW [VALUE] is pulled out in
         //       parseStream() and passed to nodeBT_Op()
         //       [UU,UL,LU,LL] are passed as [KEY,VALUE] to getRawCol()
-        btr->s.bflag |= (C_IS_I(obctype)) ? BTFLAG_UINT_PTR :
-                      /* C_IS_L(ktype) */   BTFLAG_ULONG_PTR;
+        btr->s.bflag |= (C_IS_I(obctype)  ? BTFLAG_UINT_INDEX  :
+                        (C_IS_L(ktype)    ? BTFLAG_ULONG_INDEX :
+                      /* C_IS_X(ktype) */   BTFLAG_U128_INDEX));
         return btr;
     }
     bt_cmp_t cmp; bts_t bts;
-    bts.ktype = ktype;
-    bts.btype = BTREE_INODE;
-    bts.num   = -1;
-    if (C_IS_I(ktype)) {
-        cmp       = uintCmp;
-        bts.ksize = UINTSIZE;
-        bts.bflag = BTFLAG_AUTO_INC;
+    bts.ktype = ktype; bts.btype = BTREE_INODE; bts.num   = -1;
+    if        (C_IS_I(ktype)) {
+        cmp = uintCmp;           bts.ksize = UINTSIZE;  bts.bflag = BTFLAG_NONE;
     } else if (C_IS_L(ktype)) {
-        cmp       = ulongCmp;
-        bts.ksize = ULONGSIZE;
-        bts.bflag = BTFLAG_AUTO_INC;
+        cmp = ulongCmp;          bts.ksize = ULONGSIZE; bts.bflag = BTFLAG_NONE;
+    } else if (C_IS_X(ktype)) {
+        cmp = u128Cmp;           bts.ksize = U128SIZE;  bts.bflag = BTFLAG_NONE;
     } else {
-        cmp       = ASSIGN_CMP(ktype);
-        bts.ksize = VOIDSIZE;
-        bts.bflag = BTFLAG_NONE;
+        cmp = ASSIGN_CMP(ktype); bts.ksize = VOIDSIZE;  bts.bflag = BTFLAG_NONE;
     }
     return bt_create(cmp, TRANS_ONE, &bts);
 }

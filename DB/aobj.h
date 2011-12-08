@@ -33,12 +33,13 @@ ALL RIGHTS RESERVED
 #include "query.h"
 #include "common.h"
 
-void initAobj(       aobj *a);
+void initAobj       (aobj *a);
 void initAobjZeroNum(aobj *a, uchar ctype);
-bool initAobjInt(    aobj *a, ulong l);
-void initAobjLong(   aobj *a, ulong l);
-void initAobjString( aobj *a, char *s, int len);
-void initAobjFloat(  aobj *a, float f);
+bool initAobjInt    (aobj *a, ulong l);
+void initAobjLong   (aobj *a, ulong l);
+void initAobjString (aobj *a, char *s, int len);
+void initAobjU128   (aobj *a, uint128 x);
+void initAobjFloat  (aobj *a, float f);
 void initAobjFromStr(aobj *a, char *s, int len, uchar ctype);
 void releaseAobj(void *a);
 void destroyAobj(void *a);

@@ -34,6 +34,9 @@ ALL RIGHTS RESERVED
 
 void incrOffsetVar(redisClient *c, wob_t *wb, long incr);
 
+bool parseU128 (char *s,             uint128 *x);
+bool parseU128n(char *s, uint32 len, uint128 *x);
+
 char *parseRowVals(sds vals,  char   **pk,        int    *pklen,
                    int ncols, twoint   cofsts[],  int     tmatch,
                    int pcols, int      cmatchs[], int     lncols);

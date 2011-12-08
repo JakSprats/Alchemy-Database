@@ -180,9 +180,7 @@ static void get_unsafe_kv(int nkeys) {
 int main(int argc, char **argv) {
     argc = 0; argv = NULL; /* compiler warning */
     int nrows = 10000000;
-    int nkeys = 10000000;
-
-    //nrows = nkeys = 1000000; // DEBUG values
+    int nkeys = 10000000; //nrows = nkeys = 1000000; // DEBUG values
 
     populate_unsafe_kv(nkeys);
     get_unsafe_kv(nkeys);

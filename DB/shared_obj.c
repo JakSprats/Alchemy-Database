@@ -33,7 +33,7 @@ ALL RIGHTS RESERVED
 void DXDB_createSharedObjects() {
     shared.singlerow = createObject(REDIS_STRING,sdsnew("*1\r\n"));
     shared.undefinedcolumntype = createObject(REDIS_STRING,sdsnew(
-        "-ERR Column Type Unknown ALCHEMY_DATABASE uses[INT,LONG,FLOAT,TEXT] and recognizes INT=[*INT],LONG=[BIGINT],FLOAT=[FLOAT,REAL,DOUBLE],TEXT=[*CHAR,TEXT,BLOB,BINARY,BYTE]\r\n"));
+        "-ERR Column Type Unknown ALCHEMY_DATABASE uses[INT,LONG,FLOAT,TEXT,U128] and recognizes INT=[*INT],LONG=[BIGINT],FLOAT=[FLOAT,REAL,DOUBLE],TEXT=[*CHAR,TEXT,BLOB,BINARY,BYTE]\r\n"));
     shared.toofewcolumns = createObject(REDIS_STRING,sdsnew(
         "-ERR Too few columns (min 2)\r\n"));
     shared.nonuniquecolumns = createObject(REDIS_STRING,sdsnew(
@@ -117,7 +117,7 @@ void DXDB_createSharedObjects() {
     shared.dropsyntax = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: DROP TABLE tablename OR DROP INDEX indexname OR DROP LUATRIGGER\r\n"));
     shared.altersyntax = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: ALTER TABLE tablename ADD [COLUMN columname type[INT,LONG,FLOAT,TEXT]] [SHARDKEY columname] [FOREIGN KEY (fk_name) REFERENCES othertable (other_table_indexed_column)] [HASHABILITY]\r\n"));
+        "-ERR SYNTAX: ALTER TABLE tablename ADD [COLUMN columname type[INT,LONG,FLOAT,TEXT,U128]] [SHARDKEY columname] [FOREIGN KEY (fk_name) REFERENCES othertable (other_table_indexed_column)] [HASHABILITY]\r\n"));
     shared.alter_other = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: ALTER TABLE - CAN NOT be done on OPTIMISED 2 COLUMN TABLES\r\n"));
     shared.lru_other = createObject(REDIS_STRING,sdsnew(
@@ -208,7 +208,7 @@ void DXDB_createSharedObjects() {
     shared.up_on_mt_col = createObject(REDIS_STRING,sdsnew(
         "-ERR LOGIC: UPDATE expression against an empty COLUMN - behavior undefined\r\n"));
     shared.neg_on_uint = createObject(REDIS_STRING,sdsnew(
-        "-ERR MATH: UPDATE expression: NEGATIVE value against UNSIGNED [INT,LONG]\r\n"));
+        "-ERR MATH: UPDATE expression: NEGATIVE value against UNSIGNED [INT,LONG,U128]\r\n"));
 
     shared.wc_col_not_found = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: WHERE indexed_column = val - Column does not exist\r\n"));
@@ -319,4 +319,9 @@ void DXDB_createSharedObjects() {
 
     shared.kw_cname = createObject(REDIS_STRING,sdsnew(
         "-ERR KEYWORD: ColumnName is a keyword [LRU,LFU]\r\n"));
+
+    shared.u128_parse = createObject(REDIS_STRING,sdsnew(
+        "-ERR PARSE: U128's are represented as \"high|low\" - the '|' is mandatory\r\n"));
+    shared.update_u128_complex = createObject(REDIS_STRING,sdsnew(
+        "-ERR PARSE: UPDATING U128 columns MUST be simple equality updates (e.g. SET u128col = 11111|2222222)\r\n"));
 }

@@ -2697,3 +2697,106 @@ function create_illegal_cnames() {
   $CLI CREATE TABLE bad "(pk INT, LRU INT, col INT)"
   $CLI CREATE TABLE bad "(pk INT, LFU INT, col INT)"
 }
+
+function test_X_INT() {
+  TBL=$1
+  echo test_X_INT $TBL
+  $CLI INSERT INTO $TBL VALUES "(888|9999,888)"
+  $CLI INSERT INTO $TBL VALUES "(333|444,888)" 
+  echo 2 rows
+  $CLI DUMP $TBL
+  $CLI INSERT INTO $TBL VALUES "(111|222,777)" 
+  $CLI CREATE INDEX i_$TBL ON $TBL "(cu)"
+  echo 2 rows
+  $CLI SELECT \* FROM $TBL WHERE "cu = 888"
+  echo 1 row
+  $CLI SELECT \* FROM $TBL WHERE "cu = 777"
+  $CLI INSERT INTO $TBL VALUES "(555|66666,777)"
+  echo 2 rows
+  $CLI SELECT \* FROM $TBL WHERE "cu = 777"
+}
+function test_XU() {
+  echo test_XU
+  $CLI DROP   TABLE XU > /dev/null
+  $CLI CREATE TABLE XU "(pk U128, cu INT)"
+  test_X_INT XU
+}
+function test_XL() {
+  echo test_XL
+  $CLI DROP   TABLE XL > /dev/null
+  $CLI CREATE TABLE XL "(pk U128, cu LONG)"
+  test_X_INT XL
+}
+
+function test_INT_X() {
+  TBL=$1
+  echo test_INT_X $TBL
+  $CLI INSERT INTO $TBL VALUES "(111,888|9999)"
+  $CLI INSERT INTO $TBL VALUES "(222,888|9999)" 
+  echo 2 rows
+  $CLI DUMP $TBL
+  $CLI INSERT INTO $TBL VALUES "(333,222|777)" 
+  $CLI CREATE INDEX i_$TBL ON $TBL "(cu)"
+  echo 2 rows
+  $CLI SELECT \* FROM $TBL WHERE "cu = 888|9999"
+  echo 1 row
+  $CLI SELECT \* FROM $TBL WHERE "cu = 222|777"
+  $CLI INSERT INTO $TBL VALUES "(555,222|777)"
+  echo 2 rows
+  $CLI SELECT \* FROM $TBL WHERE "cu = 222|777"
+}
+function test_UX() {
+  echo test_UX
+  $CLI DROP   TABLE UX > /dev/null
+  $CLI CREATE TABLE UX "(pk INT, cu U128)"
+  test_INT_X UX
+}
+function test_LX() {
+  echo test_LX
+  $CLI DROP   TABLE LX > /dev/null
+  $CLI CREATE TABLE LX "(pk LONG, cu U128)"
+  test_INT_X LX
+}
+
+function test_XX() {
+  echo test_XX
+  $CLI DROP   TABLE XX > /dev/null
+  $CLI CREATE TABLE XX "(pk U128, cu U128)"
+  $CLI INSERT INTO XX VALUES "(111|2222,888|9999)"
+  $CLI INSERT INTO XX VALUES "(222|33333,888|9999)" 
+  echo 2 rows
+  $CLI DUMP XX
+  $CLI INSERT INTO XX VALUES "(333|444444,222|777)" 
+  $CLI CREATE INDEX i_XX ON XX "(cu)"
+  echo 2 rows
+  $CLI SELECT \* FROM XX WHERE "cu = 888|9999"
+  echo 1 row
+  $CLI SELECT \* FROM XX WHERE "cu = 222|777"
+  $CLI INSERT INTO XX VALUES "(555|6666666,222|777)"
+  echo 2 rows
+  $CLI SELECT \* FROM XX WHERE "cu = 222|777"
+}
+
+function test_OBT() {
+  test_UU; test_LU; test_UL; test_LL
+  test_uniq_UL; test_uniq_LU; test_uniq_LL
+  test_XU; test_XL; test_UX; test_LX; test_XX
+}
+
+function test_XTBL() {
+  $CLI DROP   TABLE XTBL >/dev/null
+  $CLI CREATE TABLE XTBL "(pk U128, fk U128, col U128)"
+  $CLI INSERT INTO XTBL VALUES "(11|22,333|44,555|777)"
+  $CLI INSERT INTO XTBL VALUES "(11000|22000,333000|44000,555000|777000)"
+  $CLI INSERT INTO XTBL VALUES "(11000000|22000000,333000000|44000000,555000000|777000000)"
+  $CLI INSERT INTO XTBL VALUES "(11000000000|22000000000,333000000000|44000000000,555000000000|777000000000)"
+  $CLI INSERT INTO XTBL VALUES "(11111|22222,333|44,555|777)"
+  $CLI CREATE INDEX i1_XTBL ON XTBL "(fk)"
+  $CLI CREATE INDEX i2_XTBL ON XTBL "(col)"
+  echo "2 rows"
+  $CLI SELECT \* FROM XTBL WHERE "fk = 333|44"
+  echo "1 row"
+  $CLI SELECT \* FROM XTBL WHERE "fk = 333000|44000"
+  echo 2 rows
+  $CLI SELECT \* FROM XTBL WHERE "col = 555|777"
+}

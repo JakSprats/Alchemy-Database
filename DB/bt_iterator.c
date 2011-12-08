@@ -172,15 +172,13 @@ static int btIterInit(bt *btr, bt_data_t bkey, struct btIterator *iter) {
 static void init_iter(btIterator  *iter, bt          *btr,
                       iter_single *itl, iter_single *itn) {
     iter->btr         = btr;
-    iter->highs       = NULL; iter->high  = 0; iter->highf = FLT_MIN;
-    iter->iLeaf       = itl;  iter->iNode = itn;
-    iter->finished    = 0;
-    iter->num_nodes   = 0;
+    iter->highs       = NULL; iter->high      = 0; iter->highx = 0;
+    iter->highf       = FLT_MIN;
+    iter->iLeaf       = itl;  iter->iNode     = itn;
+    iter->finished    = 0;    iter->num_nodes = 0;
     iter->bln         = &(iter->nodes[0]);
     iter->num_nodes++;
-    iter->bln->parent = NULL;
-    iter->bln->self   = btr->root;
-    iter->bln->child  = NULL;
+    iter->bln->self   = btr->root; iter->bln->parent = iter->bln->child  = NULL;
     iter->depth       = 0;
 }
 
@@ -213,6 +211,7 @@ static void setHigh(btSIter *siter, aobj *high, uchar ktype) {
         siter->x.highs[high->len] = '\0';
     } else if (C_IS_I(ktype)) { siter->x.high  = high->i; }
       else if (C_IS_L(ktype)) { siter->x.high  = high->l; }
+      else if (C_IS_X(ktype)) { siter->x.highx = high->x; }
       else if (C_IS_F(ktype)) { siter->x.highf = high->f; }
 }
 
@@ -240,6 +239,12 @@ btEntry *btRangeNext(btSIter *siter, bool asc) {
         if (l == siter->x.high)  siter->x.finished = 1;       /* exact match */
         return asc ? ((l <= siter->x.high) ?  &(siter->be) : NULL) :
                      ((l >= siter->x.high) ?  &(siter->be) : NULL);
+    } else if (C_IS_X(siter->ktype)) {
+        uint128 x = siter->key.x;
+        if (x == siter->x.highx)  siter->x.finished = 1;      /* exact match */
+        return asc ? ((x <= siter->x.highx) ?  &(siter->be) : NULL) :
+                     ((x >= siter->x.highx) ?  &(siter->be) : NULL);
+  
     } else if (C_IS_F(siter->ktype)) {
         float f = siter->key.f;
         if (f == siter->x.highf) siter->x.finished = 1;       /* exact match */
@@ -419,6 +424,7 @@ static void btScionFind(btSIter *siter, bt_n *x, long ofst, bt *btr, bool asc) {
     int fin = asc ? x->n + 1 : -1;   // LOOPS: (i=0,i<=x-n) & (i=x->n,i>= 0)
     int i   = beg;
     while (i != fin) { //printf("%d: ofst: %ld scion: %d\n", i, ofst, scion);
+        if (x->leaf) break;
         uint32_t scion = NODES(btr, x)[i]->scion;
         if (scion >= ofst) { //printf("MAKE CHILD: i: %d\n", i);
             bool i_end_n = (i == siter->x.bln->self->n);

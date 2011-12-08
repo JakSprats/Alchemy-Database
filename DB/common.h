@@ -39,6 +39,7 @@ typedef int printer(const char *format, ...);
 #define ulong    unsigned long
 #define lolo     long long
 #define ull      unsigned long long
+#define uint128  __uint128_t
 #define dbl      double
 
 #define COL_TYPE_NONE         0
@@ -46,13 +47,15 @@ typedef int printer(const char *format, ...);
 #define COL_TYPE_LONG         2
 #define COL_TYPE_STRING       3
 #define COL_TYPE_FLOAT        4
+#define COL_TYPE_U128         5
 
 #define PTR_SIZE    sizeof(char *)
 #define USHORT_SIZE sizeof(unsigned short)
 #define UINT_SIZE   sizeof(unsigned int)
 #define ULONG_SIZE  sizeof(unsigned long)
+#define U128_SIZE   sizeof(__uint128_t)
 
-#define NUM_ACCESS_TYPES        2 /* CREATE TABLE AS [SELECT,SCAN] */
+#define NUM_ACCESS_TYPES 2 /* CREATE TABLE AS [SELECT,SCAN] */
 
 #define INIT_MAX_NUM_TABLES         64
 #define INIT_MAX_NUM_INDICES        64
@@ -78,14 +81,16 @@ typedef int printer(const char *format, ...);
 #define C_IS_L(ctype) (ctype == COL_TYPE_LONG)
 #define C_IS_S(ctype) (ctype == COL_TYPE_STRING)
 #define C_IS_F(ctype) (ctype == COL_TYPE_FLOAT)
-#define C_IS_NUM(ctype) (C_IS_I(ctype) || C_IS_L(ctype))
+#define C_IS_X(ctype) (ctype == COL_TYPE_U128)
+#define C_IS_NUM(ctype) (C_IS_I(ctype) || C_IS_L(ctype) || C_IS_X(ctype))
 
 #define NOP 9
 enum OP {NONE, EQ, NE, GT, GE, LT, LE, RQ, IN};
 
 #define UETYPE_ERR  0
 #define UETYPE_INT  1 /* also LONG */
-#define UETYPE_FLT  2
+#define UETYPE_U128 2
+#define UETYPE_FLT  3
 
 #define OBY_FREE_NONE 0
 #define OBY_FREE_ROBJ 1
@@ -103,8 +108,9 @@ enum OP {NONE, EQ, NE, GT, GE, LT, LE, RQ, IN};
 #define FLOAT_FMT "%.10g"
 
 #define DEBUG_BT_TYPE(prn, btr) \
-  prn("INODE: %d UU: %d UL: %d LU: %d LL: %d NORM: %d\n", \
-       INODE(btr), UU(btr), UL(btr), LU(btr), LL(btr), NORM_BT(btr));
+  prn("INODE: %d UU: %d UL: %d LU: %d LL: %d UX: %d XU: %d LX: %d XL: %d XX: %d NORM: %d\n", \
+       INODE(btr), UU(btr), UL(btr), LU(btr), LL(btr), UX(btr), XU(btr), LX(btr), XL(btr), XX(btr), \
+       NORM_BT(btr));
 
 typedef struct twoint {
     int i; int j;
@@ -119,7 +125,8 @@ typedef struct twoint {
 
 #define UPDATE_AUTO_INC(pktyp, apk)                             \
   if      (C_IS_I(pktyp) && apk.i > rt->ainc) rt->ainc = apk.i; \
-  else if (C_IS_L(pktyp) && apk.l > rt->ainc) rt->ainc = apk.l;
+  else if (C_IS_L(pktyp) && apk.l > rt->ainc) rt->ainc = apk.l; \
+  else if (C_IS_X(pktyp) && apk.x > rt->ainc) rt->ainc = apk.x;
 
 #define DEL_NODE_ON_EMPTY_RELEASE_LIST(l, ln) \
     listDelNode(l, ln);                       \
@@ -128,5 +135,18 @@ typedef struct twoint {
 #define ASSERT_OK(x) assert(x == DICT_OK)
 
 #define VOIDINT (void *)(long)
+
+#define SPLICE_128(num) {                                  \
+  uint128 bu = num; char *pbu = (char *)&bu; ull ubl, ubh; \
+  memcpy(&ubh, pbu + 8, 8);                                \
+  memcpy(&ubl, pbu,     8);
+
+#define SPRINTF_128(dest, dsize, num)                   \
+  SPLICE_128(num)                                       \
+  snprintf(dest, dsize, "%llu|%llu", ubh, ubl); }
+
+#define DEBUG_128(prn, num)                             \
+  SPLICE_128(num)                                       \
+  (*prn)("DEBUG_128: high: %llu low: %llu", ubh, ubl); }
 
 #endif /* __ALSOSQL_COMMON__H */

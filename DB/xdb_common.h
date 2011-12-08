@@ -27,6 +27,7 @@
 #define ulong    unsigned long
 #define lolo     long long
 #define ull      unsigned long long
+#define uint128  __uint128_t
 
 #define DEFINE_ALCHEMY_HTTP_INFO     \
   typedef struct alchemy_http_info { \
@@ -45,16 +46,17 @@
       list   *resp_hdr;              \
   } alchemy_http_info;
 
-typedef struct aobj { /* SIZE: 32 BYTES */
-    char   *s;
-    uint32  len;
-    uint32  i;
-    ulong   l;
-    float   f;
-    uchar   type;
-    uchar   enc;
-    uchar   freeme;
-    uchar   empty;
+typedef struct aobj { /* SIZE: 48 BYTES */ //TODO only pass aobj * to functions
+    char    *s;
+    uint32   len;
+    uint32   i;
+    ulong    l;
+    uint128  x;
+    float    f;
+    uchar    type;
+    uchar    enc;
+    uchar    freeme;
+    uchar    empty;
 } aobj;
 
 typedef struct embedded_row_t {
@@ -142,7 +144,8 @@ typedef bool select_callback(erow_t* erow);
     *obindexviol,            *repeat_hash_cnames,         \
     *lfu_other,              *lfu_repeat,                 \
     *drop_lfu,               *col_lfu,                    \
-    *insert_lfu,             *kw_cname;
+    *insert_lfu,             *kw_cname,                   \
+    *u128_parse,             *update_u128_complex;
 
 #define DEBUG_C_ARGV(c) \
   for (int i = 0; i < c->argc; i++) \

@@ -85,8 +85,12 @@ static dp_t init_dp(bt *ibtr, aobj *acol, bt *nbtr) {
     return dp;
 }
 
+#define DEBUG_IADD                               \
+  printf("iAdd: acol: "); dumpAobj(printf, acol); \
+  printf("iAdd: apk:  "); dumpAobj(printf, apk);
+
 static bool iAdd(cli  *c,   bt    *ibtr, aobj *acol,
-                 aobj *apk, uchar  pktyp, aobj *ocol) {
+                 aobj *apk, uchar  pktyp, aobj *ocol) {            //DEBUG_IADD
     bt *nbtr = btIndFind(ibtr, acol);
     if (!nbtr) {
         uchar otype  = ocol ? ocol->type : COL_TYPE_NONE;

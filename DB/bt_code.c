@@ -137,24 +137,45 @@ static inline int _log2(unsigned int a, int nbits) {
                printf("\t\tUU: v: %d KEY: %lu VAL: %lu\n", v, key, val); }     \
   if LU(btr) { luk *lu = (luk *)v; printf("\t\tLU: KEY: %lu VAL: %lu\n",       \
                                            lu->key, lu->val); }                \
-  if UL(btr) { ulk *ul = (ulk *)v; printf("\t\tUL: KEY: %u  VAL: %lu\n",       \
-                                           ul->key, ul->val); }                \
-  if LL(btr) { llk *ll = (llk *)v; printf("\t\tLL: KEY: %lu VAL: %lu\n",       \
-                                           ll->key, ll->val); }                \
-  if ISVOID(btr) printf("\t\tVOID: p: %p lu: %lu\n", v, v);
+  else if UL(btr) { ulk *ul = (ulk *)v; printf("\t\tUL: KEY: %u  VAL: %lu\n",  \
+                                               ul->key, ul->val); }            \
+  else if LL(btr) { llk *ll = (llk *)v; printf("\t\tLL: KEY: %lu VAL: %lu\n",  \
+                                               ll->key, ll->val); }            \
+  else if UX(btr) { uxk *ux = (uxk *)v; printf("\t\tUX: KEY: %u ", ux->key);   \
+                                        printf(" VAL: ");                      \
+                                   DEBUG_128(printf, ux->val); printf("\n"); } \
+  else if XU(btr) { xuk *xu = (xuk *)v; printf("\t\tXU: KEY: ");               \
+                                   DEBUG_128(printf, xu->key);                 \
+                                        printf(" VAL: %u\n", xu->val); }       \
+  else if LX(btr) { lxk *lx = (lxk *)v; printf("\t\tLX: KEY: %llu ", lx->key); \
+                                        printf(" VAL: ");                      \
+                                   DEBUG_128(printf, lx->val); printf("\n"); } \
+  else if XL(btr) { xlk *xl = (xlk *)v; printf("\t\tXL: KEY: ");               \
+                                   DEBUG_128(printf, xl->key);                 \
+                                   printf(" VAL: %lu\n", xl->val); }           \
+  else if XX(btr) { xxk *xx = (xxk *)v; printf("\t\tXX: KEY: ");               \
+                                   DEBUG_128(printf, xx->key);                 \
+                                   printf(" VAL: ");                           \
+                                   DEBUG_128(printf, xx->val); printf("\n"); } \
+  if ISVOID(btr) printf("\t\tVOID: p: %p lu: %lu\n", v, v);                    \
+  if INODE_X(btr) {                                                            \
+      uint128 *pbu = v; printf("\t\tINODE_X: ");                               \
+      DEBUG_128(printf, *pbu); printf("\n"); }
+
 #define DEBUG_SET_KEY \
   printf("setBTKey: ksize: %d btr: %p v: %p p: %p uint: %d void: %d uu: %d " \
-         "lu: %d ul: %d ll: %d\n",                                           \
+         "lu: %d ul: %d ll: %d ux: %d xu: %d lx: %d xl: %d xx: %d\n",        \
           btr->s.ksize, btr, v, p, ISUINT(btr), ISVOID(btr), UU(btr),        \
-          LU(btr), UL(btr), LL(btr));                                        \
+          LU(btr), UL(btr), LL(btr), UX(btr), XU(btr),                       \
+          LX(btr), XL(btr), XX(btr));                                        \
   DEBUG_KEY_OTHER
-#define DEBUG_AKEYS \
+#define DEBUG_AKEYS                                                            \
   printf("AKEYS: i: %d ofst: %d v: %p uint: %d uu: %d lu: %d ul: %d ll: %d\n", \
-          i, ofst, v, ISUINT(btr), UU(btr), LU(btr), UL(btr), LL(btr));       \
+          i, ofst, v, ISUINT(btr), UU(btr), LU(btr), UL(btr), LL(btr));        \
   DEBUG_KEY_OTHER
 #define DEBUG_KEYS \
   printf("KEYS: uint: %d void: %d i: %d\n", ISUINT(btr), ISVOID(btr), i);
-#define DEBUG_SETBTKEY_OTHERBT \
+#define DEBUG_SETBTKEY_OBT \
   if (p) printf("setBTKey: memcpy to v: %p\n", v);
 
 /* NOTE KEYS can be (void *) or uint, [8 and 4 bytes], so logic is needed */
@@ -163,9 +184,9 @@ static inline int _log2(unsigned int a, int nbits) {
 static inline void setBTKey(bt *btr, void **v, void *p) {
     if      ISVOID(btr) *v                  = p;   
     else if ISUINT(btr) *(int *)((long *)v) = (int)(long)p;
-    else { /* OTHER_BT */                               //DEBUG_SETBTKEY_OTHERBT
+    else { /* OTHER_BT */                                  //DEBUG_SETBTKEY_OBT
         if (p) memcpy(v, p, btr->s.ksize);
-        else   bzero(v,     btr->s.ksize);
+        else   bzero (v,    btr->s.ksize);
     }                                                           //DEBUG_SET_KEY
 }
 static inline void **AKEYS(bt *btr, bt_n *x, int i) {
@@ -243,7 +264,7 @@ void bt_free_btree(bt *btr) {
 bt *bt_create(bt_cmp_t cmp, uchar trans, bts_t *s) {
     /* NOTE: the two BT node sizes are 128 and 4096 */
     int    n        = (trans == TRANS_ONE) ? 7 : 255;
-    uchar  t        = (uchar)((int)(n + 1) /2);
+    uchar  t        = (uchar)((int)(n + 1) / 2);
     int    kbyte    = sizeof(bt_n) + n * s->ksize;
     int    nbyte    = kbyte + (n + 1) * VOIDSIZE;
     bt    *btr      = allocbtree();
@@ -259,7 +280,8 @@ bt *bt_create(bt_cmp_t cmp, uchar trans, bts_t *s) {
     btr->nbyte      = nbyte;
     btr->kbyte      = kbyte;
     btr->root       = allocbtreenode(btr, 1);
-    btr->numnodes   = 1;                           //bt_dump_info(printf, btr);
+    btr->numnodes   = 1;
+    //printf("bt_create\n"); bt_dump_info(printf, btr);
     return btr;
 }
 
@@ -423,7 +445,7 @@ void *case_2c_ptr = NULL;
    2.) delete the max node, pass it as 1,
    3.) delete the min node, pass it as 2.
  */
-#define MAX_KEY_SIZE 16 /* NOTE: ksize > 8 bytes needs buffer for CASE 1 */
+#define MAX_KEY_SIZE 32 /* NOTE: ksize > 8 bytes needs buffer for CASE 1 */
 static char BT_DelBuf[MAX_KEY_SIZE];
 
 static inline void move_scion(bt *btr, bt_n *z, bt_n *y, int n) {

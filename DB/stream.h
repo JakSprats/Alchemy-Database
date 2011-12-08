@@ -45,19 +45,23 @@ void  overwriteLFUcol(uchar *row, ulong icol);
 ulong streamLFUToULong(uchar *data);
 
 // NORMAL NORMAL NORMAL NORMAL NORMAL NORMAL NORMAL NORMAL NORMAL NORMAL NORMAL
-int    getCSize(ulong l, bool isi);
-int    cIcol   (ulong l, uchar *sflag, ulong *col, bool isi);// NOTE: protected 
-int    cr8Icol (ulong l, uchar *sflag, ulong *col);
-int    cr8Lcol (ulong l, uchar *sflag, ulong *col);
-int    cr8IcolFromStr(cli *c, char *strt, uint32 len, uchar *sflag, ulong *col);
-int    cr8LcolFromStr(cli *c, char *strt, uint32 len, uchar *sflag, ulong *col);
-int    cr8FColFromStr(cli *c, char *strt, uint32 len, float *col);
-void   writeUIntCol (uchar **row, uchar sflag, ulong icol);
-void   writeULongCol(uchar **row, uchar sflag, ulong icol);
-void   writeFloatCol(uchar **row, bool  fflag, float fcol);
-uint32 streamIntToUInt   (uchar *data, uint32 *clen);
-ulong  streamLongToULong (uchar *data, uint32 *clen);
-float  streamFloatToFloat(uchar *data, uint32 *clen);
+int     getCSize(ulong l, bool isi);
+int     cIcol   (ulong l, uchar *sflag, ulong *col, bool isi);//NOTE: protected 
+int     cr8Icol (ulong l, uchar *sflag, ulong *col);
+int     cr8Lcol (ulong l, uchar *sflag, ulong *col);
+int     cr8IcolFromStr(cli *c, char *strt, uint32 len, uchar *sflg, ulong *col);
+int     cr8LcolFromStr(cli *c, char *strt, uint32 len, uchar *sflg, ulong *col);
+int     cr8XcolFromStr(cli *c, char *strt, uint32 len, uint128 *col);
+int     cr8FColFromStr(cli *c, char *strt, uint32 len, float *col);
+void    writeUIntCol (uchar **row, uchar sflag, ulong icol);
+void    writeULongCol(uchar **row, uchar sflag, ulong icol);
+void    writeU128Col (uchar **row, uint128 xcol);
+void    writeFloatCol(uchar **row, bool  fflag, float fcol);
+uint32  streamIntToUInt   (uchar *data, uint32 *clen);
+ulong   streamLongToULong (uchar *data, uint32 *clen);
+uint128 streamToU128(uchar *data, uint32 *clen);
+float   streamFloatToFloat(uchar *data, uint32 *clen);
+
 
 uint32 getStreamMallocSize(bt *ibtr, uchar *stream);
 uint32 getStreamRowSize   (bt *ibtr, uchar *stream);
@@ -65,10 +69,16 @@ uint32 getStreamRowSize   (bt *ibtr, uchar *stream);
 /* INODE_I/L,UU,UL,LU,LL cmp */
 int uintCmp (void *s1, void *s2);
 int ulongCmp(void *s1, void *s2);
+int u128Cmp (void *s1, void *s2);
 int uuCmp   (void *s1, void *s2);
 int ulCmp   (void *s1, void *s2);
 int luCmp   (void *s1, void *s2);
 int llCmp   (void *s1, void *s2);
+int uxCmp   (void *s1, void *s2);
+int xuCmp   (void *s1, void *s2);
+int lxCmp   (void *s1, void *s2);
+int xlCmp   (void *s1, void *s2);
+int xxCmp   (void *s1, void *s2);
 
 /* BT DATA cmp */
 int btIntCmp  (void *a, void *b);

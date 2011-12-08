@@ -30,6 +30,7 @@ ALL RIGHTS RESERVED
 #include <strings.h>
 
 #include "bt.h"
+#include "colparse.h"
 #include "aobj.h"
 #include "common.h"
 #include "stream.h"
@@ -68,7 +69,11 @@ void writeFloatCol(uchar **row, bool fflag, float fcol) {
     memcpy(*row, &fcol, 4);
     *row  = *row + 4;
 }
-/* LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU */
+float streamFloatToFloat(uchar *data, uint32 *clen) {
+    float val; if (clen) *clen  = 4; memcpy(&val, data, 4); return val;
+}
+
+// LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU 
 inline uchar getLruSflag() { return COL_4BYTE_INT; }
 inline int cLRUcol(ulong l, uchar *sflag, ulong *col) { // updateLRU (UPDATE_1)
     *sflag = getLruSflag(); *col = (l * 8) + 4; return 4; /* COL_4BYTE_INT */
@@ -80,6 +85,7 @@ inline uint32 streamLRUToUInt(uchar *data) {
 inline void overwriteLRUcol(uchar *row, ulong icol) {
     icol = (icol * 8) + 4; memcpy(row, &icol, 4);         /* COL_4BYTE_INT */
 }
+
 // LFU LFU LFU LFU LFU LFU LFU LFU LFU LFU LFU LFU LFU LFU LFU LFU LFU
 inline uchar getLfuSflag() { return COL_8BYTE_INT; }
 inline int cLFUcol(ulong l, uchar *sflag, ulong *col) { // updateLFU (UPDATE_1)
@@ -92,7 +98,8 @@ inline ulong streamLFUToULong(uchar *data) {
 inline void overwriteLFUcol(uchar *row, ulong icol) {
     icol = (icol * 32) + 16; memcpy(row, &icol, 8);         /* COL_8BYTE_INT */
 }
-/* INT+LONG INT+LONG INT+LONG INT+LONG INT+LONG INT+LONG INT+LONG INT+LONG */
+
+// INT+LONG INT+LONG INT+LONG INT+LONG INT+LONG INT+LONG INT+LONG INT+LONG 
 int getCSize(ulong l, bool isi) {
     if          (l < TWO_POW_7)  return 1;
     else if     (l < TWO_POW_14) return 2;
@@ -190,69 +197,85 @@ int cr8Lcol(ulong l, uchar *sflag, ulong *col) {
 }
 int cr8IcolFromStr(cli   *c,     char  *start, uint32 len,
                       uchar *sflag, ulong *col) {
-    if (!len) { *sflag = 0; *col = 0; return 0; }
+    if (!len) { *sflag = 0; *col = 0;       return 0; }
     if (!strToULong(c, start, len, col, 1)) return -1;
     return cr8Icol(*col, sflag, col);
 }
-int cr8LcolFromStr(cli   *c,     char  *start, uint32 len,
-                      uchar *sflag, ulong *col) {
-    if (!len) { *sflag = 0; *col = 0; return 0; }
+int cr8LcolFromStr(cli *c, char  *start, uint32 len, uchar *sflag, ulong *col) {
+    if (!len) { *sflag = 0; *col = 0;       return 0; }
     if (!strToULong(c, start, len, col, 0)) return -1;
     return cr8Lcol(*col, sflag, col);
 }
-void writeUIntCol(uchar **row, uchar sflag, ulong icol) {
+void writeUIntCol(uchar **row,  uchar sflag, ulong icol) {
     wUCol(row, sflag, icol, 1);
 }
 void writeULongCol(uchar **row, uchar sflag, ulong icol) {
     wUCol(row, sflag, icol, 0);
 }
-uint32 streamIntToUInt(uchar *data, uint32 *clen) {
+uint32 streamIntToUInt(uchar *data,   uint32 *clen) {
     return (uint32)sI2I(data, clen, 1);
 }
 ulong  streamLongToULong(uchar *data, uint32 *clen) {
     return sI2I(data, clen, 0);
 }
-float streamFloatToFloat(uchar *data, uint32 *clen) {
-    float val;
-    if (clen) *clen  = 4;
-    memcpy(&val, data, 4);
-    return val;
+
+// STREAM_U128_COL STREAM_U128_COL STREAM_U128_COL STREAM_U128_COL
+void writeU128Col(uchar **row, uint128 xcol) {
+    memcpy(*row, &xcol, 16); INCRBY(*row, 16);
 }
+int cr8XcolFromStr(cli *c, char *start, uint32 len, uint128 *col) {
+    if (!len) { *col = 0; return 0; }
+    if (!parseU128n(start, len, col)) {
+        addReply(c, shared.u128_parse); return -1;
+    }
+    return 16;
+}
+uint128 streamToU128(uchar *data, uint32 *clen) {
+    if (clen) *clen  = 16;
+    uint128 val = (*(uint128 *)data); return val;
+}
+int cr8Xcol(uint128 x, uint128 *col) { *col = x; return 16; }
 
 /* COMPARE COMPARE COMPARE COMPARE COMPARE COMPARE COMPARE COMPARE */
+// INDEX_COMP INDEX_COMP INDEX_COMP INDEX_COMP INDEX_COMP INDEX_COMP INDEX_COMP
 int ulongCmp(void *s1, void *s2) {
-    ulong l1  = (ulong)s1;
-    ulong l2  = (ulong)s2;
+    ulong l1  = (ulong)s1; ulong l2  = (ulong)s2;
     return l1 == l2 ? 0 : (l1 > l2) ? 1 : -1;
 }
-int uintCmp(void *s1, void *s2) {
-    return ulongCmp(s1, s2);
+int uintCmp(void *s1, void *s2) { return ulongCmp(s1, s2); }
+int u128Cmp(void *s1, void *s2) {
+    uint128 x1, x2; memcpy(&x1, s1, 16); memcpy(&x2, s2, 16);
+    return x1 == x2 ? 0 : (x1 > x2) ? 1 : -1;
 }
+// OTHER_BT_COMP OTHER_BT_COMP OTHER_BT_COMP OTHER_BT_COMP OTHER_BT_COMP
 int uuCmp(void *s1, void *s2) { //TODO can be done w/ bit-shifting
     return (int)(((long)s1 / UINT_MAX) - ((long)s2 / UINT_MAX));
 }
-int luCmp(void *s1, void *s2) { /* 12 bytes [8:ULONG,4:UINT] */
-    luk   *lu1 = (luk *)s1;
-    luk   *lu2 = (luk *)s2;
-    ulong  l1  = lu1->key;
-    ulong  l2  = lu2->key;
+static inline int UCmp(void *s1, void *s2) { //struct: first arg is UINT
+    ulk  *ul1 = (ulk *)s1; ulk  *ul2 = (ulk *)s2;
+    long  l1  = ul1->key;  long  l2  = ul2->key;
     return l1 == l2 ? 0 : (l1 > l2) ? 1 : -1;
 }
-int ulCmp(void *s1, void *s2) { /* 12 bytes [4:UINT,8:ULONG] */
-    ulk  *ul1 = (ulk *)s1;
-    ulk  *ul2 = (ulk *)s2;
-    long  l1  = ul1->key;
-    long  l2  = ul2->key;
+int ulCmp(void *s1, void *s2) { return UCmp(s1, s2); }
+int uxCmp(void *s1, void *s2) { return UCmp(s1, s2); }
+static inline int LCmp(void *s1, void *s2) { // struct: first arg is ULONG
+    luk   *lu1 = (luk *)s1; luk   *lu2 = (luk *)s2;
+    ulong  l1  = lu1->key;  ulong  l2  = lu2->key;
     return l1 == l2 ? 0 : (l1 > l2) ? 1 : -1;
 }
-int llCmp(void *s1, void *s2) { /* 16 bytes [8:UINT,8:ULONG] */
-    llk   *ll1 = (llk *)s1;
-    llk   *ll2 = (llk *)s2;
-    ulong  l1  = ll1->key;
-    ulong  l2  = ll2->key;
-    return l1 == l2 ? 0 : (l1 > l2) ? 1 : -1;
+int luCmp(void *s1, void *s2) { return LCmp(s1, s2); }
+int llCmp(void *s1, void *s2) { return LCmp(s1, s2); }
+int lxCmp(void *s1, void *s2) { return LCmp(s1, s2); }
+static inline int XCmp(void *s1, void *s2) { // struct: first arg is U128
+    xuk     *xu1 = (xuk *)s1; xuk     *xu2 = (xuk *)s2;
+    uint128  x1  = xu1->key;  uint128  x2  = xu2->key;
+    return x1 == x2 ? 0 : (x1 > x2) ? 1 : -1;
 }
+int xuCmp(void *s1, void *s2) { return XCmp(s1, s2); }
+int xlCmp(void *s1, void *s2) { return XCmp(s1, s2); }
+int xxCmp(void *s1, void *s2) { return XCmp(s1, s2); }
 
+// PK_COMP PK_COMP PK_COMP PK_COMP PK_COMP PK_COMP PK_COMP PK_COMP PK_COMP
 static inline uchar getSflag(uchar b1) {
     return (b1 & 1) ? 1 : 0;
 }
@@ -276,6 +299,9 @@ static void cr8BTKLong(aobj *akey, uint32 *ksize, uchar *btkey) {
     ulong l = akey->l;
     *ksize  = cr8Lcol(l, &sflag, &l);
     writeULongCol(&btkey, sflag, l);
+}
+static void cr8BTKU128(aobj *akey, uint32 *ksize, uchar *btkey) {
+    uint128 x = akey->x; *ksize = cr8Xcol(x, &x); writeU128Col(&btkey, x);
 }
 static void cr8BTKFloat(aobj *akey, uint32 *ksize, uchar *btkey) {
     writeFloatCol(&btkey, 1, akey->f); *ksize = 4;
@@ -313,20 +339,28 @@ int btTextCmp(void *a, void *b) {
 #define BTK_BSIZE 2048
 static uchar BTKeyBuffer[BTK_BSIZE]; /* avoid malloc()s */
 static ulk UL_BTKeyPtr; static luk LU_BTKeyPtr; static llk LL_BTKeyPtr;
+static xxk XX_BTKeyPtr; static xlk XL_BTKeyPtr; static lxk LX_BTKeyPtr;
+static uxk UX_BTKeyPtr; static xuk XU_BTKeyPtr;
 
 void destroyBTKey(char *btkey, bool med) { if (med) free(btkey);/* FREED 033 */}
+
+#define OBT_CR8_BTK(btkeyptr, aobjpart)            \
+  { btkeyptr.key = akey->aobjpart; return (char *)&btkeyptr; }
+
 char *createBTKey(aobj *akey, bool *med, uint32 *ksize, bt *btr) {
     *med   = 0; *ksize = VOIDSIZE;
-    if        INODE_I(btr) { return (char *) (long)akey->i;
-    } else if INODE_L(btr) { return (char *) (long)akey->l;
-    } else if UU     (btr) { return (char *)((long)akey->i * UINT_MAX);
-    } else if UL     (btr) { /* NOTE: UP() also */
-        UL_BTKeyPtr.key = akey->i; return (char *)&UL_BTKeyPtr;
-    } else if LU     (btr) { /* NOTE: LUP() also */
-        LU_BTKeyPtr.key = akey->l; return (char *)&LU_BTKeyPtr;
-    } else if LL     (btr) { /* NOTE: LP() also */
-        LL_BTKeyPtr.key = akey->l; return (char *)&LL_BTKeyPtr;
-    }
+    if      INODE_I(btr) return (char *) (long) akey->i;
+    else if INODE_L(btr) return (char *)        akey->l;
+    else if INODE_X(btr) return (char *)       &akey->x;// 2 big -> pass ref
+    else if UU     (btr) return (char *)((long)akey->i * UINT_MAX);
+    else if UL     (btr) OBT_CR8_BTK(UL_BTKeyPtr, i)
+    else if LU     (btr) OBT_CR8_BTK(LU_BTKeyPtr, l)
+    else if LL     (btr) OBT_CR8_BTK(LL_BTKeyPtr, l)
+    else if UX     (btr) OBT_CR8_BTK(UX_BTKeyPtr, i)
+    else if XU     (btr) OBT_CR8_BTK(XU_BTKeyPtr, x)
+    else if LX     (btr) OBT_CR8_BTK(LX_BTKeyPtr, l)
+    else if XL     (btr) OBT_CR8_BTK(XL_BTKeyPtr, x)
+    else if XX     (btr) OBT_CR8_BTK(XX_BTKeyPtr, x)
     int     ktype = btr->s.ktype;
     uchar  *btkey = BTKeyBuffer;
     if        (C_IS_S(ktype)) {
@@ -345,15 +379,17 @@ char *createBTKey(aobj *akey, bool *med, uint32 *ksize, bt *btr) {
         }
         memcpy(key, akey->s, akey->len); /* after LEN, copy raw STRING */
     } else if (C_IS_L(ktype))        cr8BTKLong (akey, ksize, btkey);
+      else if (C_IS_X(ktype))        cr8BTKU128 (akey, ksize, btkey);
       else if (C_IS_F(ktype))        cr8BTKFloat(akey, ksize, btkey);
       else if (C_IS_I(ktype)) { if (!cr8BTKInt(akey, ksize, btkey)) return NULL;
     }
     return (char *)btkey;
 }
-static uint32 skipToVal(uchar **stream, uchar ktype) {
+static uint32 skipToVal(uchar **stream, uchar ktype) { //printf("skipToVal\n");
     uint32  klen  = 0;
     if      (C_IS_I(ktype)) streamIntToUInt(   *stream, &klen);
     else if (C_IS_L(ktype)) streamLongToULong( *stream, &klen);
+    else if (C_IS_X(ktype)) streamToU128     ( *stream, &klen);
     else if (C_IS_F(ktype)) streamFloatToFloat(*stream, &klen);
     else {
         if (getSflag(**stream)) { getTString(*stream, &klen); klen++; }
@@ -363,43 +399,50 @@ static uint32 skipToVal(uchar **stream, uchar ktype) {
     return klen;
 }
 
-#define DEBUG_PARSE_STREAM \
-printf("parseStream: INODE: %d UU: %d UP: %d LU: %d LP: %d OTHER: %d\n", \
-                 INODE(btr), UU(btr), UP(btr), LU(btr), LP(btr), OTHER_BT(btr));
+#define DEBUG_PARSE_STREAM                                                    \
+printf("parseStream: "                                                        \
+       "INODE: %d UU: %d UP: %d LUP: %d LLP: %d XLP: %d XXP: %d OTHER: %d\n", \
+        INODE(btr), UU(btr), UP(btr), LUP(btr), LLP(btr),                     \
+                       XLP(btr), XXP(btr), OTHER_BT(btr));
 
-uchar *parseStream(uchar *stream, bt *btr) { //DEBUG_PARSE_STREAM
+uchar *parseStream(uchar *stream, bt *btr) {               //DEBUG_PARSE_STREAM
     if     (!stream || INODE(btr)) return NULL;
     else if UU      (btr)          return (uchar *)((long)stream % UINT_MAX);
     else if UP      (btr)          return (uchar *)(*(ulk *)(stream)).val; 
     else if LUP     (btr)          return (uchar *)(long)(*(luk *)(stream)).val;
-    else if LP      (btr)          return (uchar *)(*(llk *)(stream)).val; 
+    else if LLP     (btr)          return (uchar *)(*(llk *)(stream)).val; 
+    else if XUP     (btr)          return (uchar *)(*(xuk *)(stream)).val; 
+    else if XLP     (btr)          return (uchar *)(*(xlk *)(stream)).val; 
+    else if XXP     (btr)          return (uchar *)(*(xxk *)(stream)).val; 
     else if OTHER_BT(btr)          return stream;
     skipToVal(&stream, btr->s.ktype);
     if      (btr->s.btype == BTREE_TABLE)   return stream;
     else if (btr->s.btype == BTREE_INODE)   return NULL;
     else                  /* BTREE_INDEX */ return *((uchar **)stream);
 }
+#define OBT_CONV2STREAM(t, aobjpart, cast) \
+  {  key->type = key->enc = t;  key->aobjpart = (*(cast *)(stream)).key; }
+
 void convertStream2Key(uchar *stream, aobj *key, bt *btr) {
     initAobj(key);
     if        INODE_I(btr) {
-        key->type = key->enc = COL_TYPE_INT;
-        key->i    = (uint32)(ulong)stream;
+        key->type = key->enc = COL_TYPE_INT;  key->i    = (uint32)(ulong)stream;
     } else if INODE_L(btr) {
-        key->type = key->enc = COL_TYPE_LONG;
-        key->l    = (ulong)stream;
+        key->type = key->enc = COL_TYPE_LONG; key->l    = (ulong)stream;
+    } else if INODE_X(btr) { 
+        key->type = key->enc = COL_TYPE_U128; memcpy(&key->x, stream, 16);
     } else if UU     (btr) {
         key->type = key->enc = COL_TYPE_INT;
         key->i    = (uint32)((long)stream / UINT_MAX);
-    } else if UL     (btr) { /* NOTE: UP() also */
-        key->type = key->enc = COL_TYPE_INT;
-        key->i    = (*(ulk *)(stream)).key;
-    } else if LU     (btr) { /* NOTE: LUP() also */
-        key->type = key->enc = COL_TYPE_LONG;
-        key->l    = (*(luk *)(stream)).key;
-    } else if LL     (btr) { /* NOTE: LP() also */
-        key->type = key->enc = COL_TYPE_LONG;
-        key->l    = (*(luk *)(stream)).key;
-    } else { /* NORM_BT */
+    } else if UL     (btr) OBT_CONV2STREAM(COL_TYPE_INT,  i, ulk)
+      else if LU     (btr) OBT_CONV2STREAM(COL_TYPE_LONG, l, luk)
+      else if LL     (btr) OBT_CONV2STREAM(COL_TYPE_LONG, l, llk)
+      else if UX     (btr) OBT_CONV2STREAM(COL_TYPE_INT,  i, uxk)
+      else if XU     (btr) OBT_CONV2STREAM(COL_TYPE_U128, x, xuk)
+      else if LX     (btr) OBT_CONV2STREAM(COL_TYPE_LONG, l, lxk)
+      else if XL     (btr) OBT_CONV2STREAM(COL_TYPE_U128, x, xlk)
+      else if XX     (btr) OBT_CONV2STREAM(COL_TYPE_U128, x, xxk)
+      else { /* NORM_BT */
         int ktype = btr->s.ktype;
         if        (C_IS_I(ktype)) {
             key->type = key->enc = COL_TYPE_INT;
@@ -407,6 +450,9 @@ void convertStream2Key(uchar *stream, aobj *key, bt *btr) {
         } else if (C_IS_L(ktype)) {
             key->type = key->enc = COL_TYPE_LONG;
             key->l    = streamLongToULong(stream, NULL);
+        } else if (C_IS_X(ktype)) {
+            key->type = key->enc = COL_TYPE_U128;
+            key->x    = streamToU128(stream, NULL);
         } else if (C_IS_F(ktype)) {
             key->type = key->enc = COL_TYPE_FLOAT;
             key->f    = streamFloatToFloat(stream, NULL);
@@ -421,7 +467,7 @@ void convertStream2Key(uchar *stream, aobj *key, bt *btr) {
         }
     }
 }
-#define DEBUG_CREATE_STREAM \
+#define DEBUG_CREATE_STREAM                                      \
   printf("createStream: size: %u klen: %d vlen: %d btype: %d\n", \
           *size, klen, vlen, btr->s.btype);
 #define DEBUG_DESTROY_STREAM \
@@ -442,35 +488,54 @@ uint32 getStreamRowSize(bt *btr, uchar *stream) { /* for rdbSaveAllRows() */
         return skipToVal(&stream, btr->s.ktype) + getStreamVlen(btr, stream);
     } else {
         if      INODE(btr) return 0;
+        //TODO, this can be an array
         else if UU   (btr) return UU_SIZE;
-        else if UL   (btr) return UL_SIZE; /* NOTE: UP() also */
-        else if LU   (btr) return LU_SIZE; /* NOTE: LUP() also */
-        else /* LL */      return LL_SIZE; /* NOTE: LP() also */
+        else if UL   (btr) return UL_SIZE; else if LU   (btr) return LU_SIZE;
+        else if LL   (btr) return LL_SIZE;
+        else if UX   (btr) return UX_SIZE; else if XU   (btr) return XU_SIZE;
+        else if LX   (btr) return LX_SIZE; else if XL   (btr) return XL_SIZE;
+        else if XX   (btr) return XX_SIZE;
+        assert(!"getStreamRowSize ERROR"); return -1;
     }
 }
 
 static ulk UL_StreamPtr; static luk LU_StreamPtr; static llk LL_StreamPtr;
+static xxk XX_StreamPtr; static xlk XL_StreamPtr; static lxk LX_StreamPtr;
+static uxk UX_StreamPtr; static xuk XU_StreamPtr;
+#define OBT_CR8_STRM(tcast, sptr, vcast)        \
+  { tcast *ul = (tcast *)btkey;                 \
+    sptr.key  = ul->key; sptr.val = (vcast)val; \
+    return &sptr; }
+#define XOBT_CR8_STRM(tcast, sptr)                       \
+  { tcast *ux = (tcast *)btkey;                          \
+    sptr.key  = ux->key; sptr.val = ((tcast *)val)->val; \
+    return &sptr; }
+
+static void *OBT_createStream(bt *btr, void *val, char *btkey) {
+    if      UU(btr) return (void *)((long)btkey + (long)val); /* merge */
+    else if UL(btr) OBT_CR8_STRM (ulk, UL_StreamPtr, ulong)
+    else if LU(btr) OBT_CR8_STRM (luk, LU_StreamPtr, uint32)
+    else if LL(btr) OBT_CR8_STRM (llk, LL_StreamPtr, ulong)
+    else if UX(btr) XOBT_CR8_STRM (uxk, UX_StreamPtr)
+    else if XU(btr) XOBT_CR8_STRM(xuk, XU_StreamPtr)
+    else if LX(btr) XOBT_CR8_STRM(lxk, LX_StreamPtr)
+    else if XX(btr) XOBT_CR8_STRM(xxk, XX_StreamPtr)
+    else if XL(btr) { //NOTE: XL is special it can be XXP()
+        xlk *xl          = (xlk *)btkey;
+        XL_StreamPtr.key = xl->key;
+        XL_StreamPtr.val = XXP(btr) ? (ulong)val : ((xlk *)val)->val;
+        return &XL_StreamPtr;
+    }
+    assert(!"OBT_createStream ERROR"); return NULL;
+}
 // btkey from createBTKey() - bit-packed-num or string-w-length
 // row from writeRow() - [normal|hash]_row of [bit-packed-num|string-w-length]
 // NOTE: rows (but NOT btkeys) can have compressed strings
 // STREAM BINARY FORMAT: [btkey|row]
 void *createStream(bt *btr, void *val, char *btkey, uint32 klen, uint32 *size) {
-    *size             = 0;                               // DEBUG_BT_TYPE(btr);
-    if        INODE(btr) { return btkey;
-    } else if UU   (btr) { return (void *)((long)btkey + (long)val); /* merge */
-    } else if UL   (btr) { /* NOTE: UP() also */
-        ulk *ul          = (ulk *)btkey;
-        UL_StreamPtr.key = ul->key; UL_StreamPtr.val = (ulong)val;
-        return &UL_StreamPtr;
-    } else if LU   (btr) { /* NOTE: LUP() also */
-        luk *lu          = (luk *)btkey;
-        LU_StreamPtr.key = lu->key; LU_StreamPtr.val = (uint32)(long)val;
-        return &LU_StreamPtr;
-    } else if LL   (btr) { /* NOTE: LP() also */
-        llk *ll          = (llk *)btkey;
-        LL_StreamPtr.key = ll->key; LL_StreamPtr.val = (ulong)val;
-        return &LL_StreamPtr;
-    }
+    *size = 0;                                           // DEBUG_BT_TYPE(btr);
+    if      INODE(btr)    return btkey;
+    else if OTHER_BT(btr) return OBT_createStream(btr, val, btkey);
     uint32  vlen      = getStreamVlen(btr, val);
     *size             = klen + vlen;                      //DEBUG_CREATE_STREAM
     char   *bt_val    = (btr->s.btype == BTREE_TABLE) ? row_malloc(btr, *size) :

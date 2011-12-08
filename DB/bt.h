@@ -52,58 +52,107 @@ bt   *createDBT      (uchar ktype, int tmatch);
 #define BTREE_MCI_MID  4
 #define BT_MCI_UNIQ    5
 
-/* INT Indexes have been optimised */
+/* INT Inodes have been optimised */
 #define INODE_I(btr) \
-  (btr->s.btype == BTREE_INODE && \
-   C_IS_I(btr->s.ktype) &&        \
+  (btr->s.btype == BTREE_INODE && C_IS_I(btr->s.ktype) && \
    !(btr->s.bflag & BTFLAG_OBC)) 
-/* LONG Indexes have been optimised */
+/* LONG Inodes have been optimised */
 #define INODE_L(btr) \
-  (btr->s.btype == BTREE_INODE && \
-   C_IS_L(btr->s.ktype) &&        \
+  (btr->s.btype == BTREE_INODE && C_IS_L(btr->s.ktype) && \
    !(btr->s.bflag & BTFLAG_OBC)) 
-#define INODE(btr) (INODE_I(btr) || INODE_L(btr))
+/* U128 Inodes have been optimised */
+#define INODE_X(btr) \
+  (btr->s.btype == BTREE_INODE && C_IS_X(btr->s.ktype) && \
+   !(btr->s.bflag & BTFLAG_OBC)) 
+#define INODE(btr) (INODE_I(btr) || INODE_L(btr) || INODE_X(btr))
 
 /* UU tables containing ONLY [PK=INT,col1=INT]  have been optimised */
-#define UU(btr) (btr->s.bflag & BTFLAG_UINT_UINT)
+#define UU(btr) (btr->s.bflag == BTFLAG_UINT_UINT)
 #define UU_SIZE 8
-
-/* LU tables containing ONLY [PK=LONG,col1=INT] have been optimised */
-typedef struct ulong_uint_key {
-    ulong  key;
-    uint32 val;
-}  __attribute__ ((packed)) luk;
-#define LU(btr) (btr->s.bflag & BTFLAG_ULONG_UINT)
-#define LU_SIZE 12
 
 /* UL tables containing ONLY [PK=INT,col1=LONG] have been optimised */
 typedef struct uint_ulong_key {
-    uint32 key;
-    ulong  val;
+    uint32 key; ulong  val;
 }  __attribute__ ((packed)) ulk;
 #define UL(btr) (btr->s.bflag & BTFLAG_UINT_ULONG)
 #define UL_SIZE 12
 
+/* LU tables containing ONLY [PK=LONG,col1=INT] have been optimised */
+typedef struct ulong_uint_key {
+    ulong  key; uint32 val;
+}  __attribute__ ((packed)) luk;
+#define LU(btr) (btr->s.bflag & BTFLAG_ULONG_UINT)
+#define LU_SIZE 12
+
 /* LL tables containing ONLY [PK=LONG,col1=LONG] have been optimised */
 typedef struct ulong_ulong_key {
-    ulong key;
-    ulong val;
+    ulong key; ulong val;
 }  __attribute__ ((packed)) llk;
 #define LL(btr) (btr->s.bflag & BTFLAG_ULONG_ULONG)
 #define LL_SIZE 16
 
-/* Indexes containing INTs AND LONGs have been optimised */
-#define UP(btr)  (btr->s.bflag & BTFLAG_UINT_PTR)
-#define LUP(btr) (btr->s.bflag & BTFLAG_ULONG_PTR && \
-                  btr->s.bflag & BTFLAG_ULONG_UINT)
-#define LP(btr)  (btr->s.bflag & BTFLAG_ULONG_PTR)
+// START: 128 bit (16 byte) OTHER_BTs - 128_128_128_128_128_128_128_128_128_128
+/* UX tables containing ONLY [PK=INT,col1=U128] have been optimised */
+typedef struct uint_u128_key {
+    uint32  key; uint128 val;
+}  __attribute__ ((packed)) uxk;
+#define UX(btr) (btr->s.bflag & BTFLAG_UINT_U128)
+#define UX_SIZE 20
 
-/* NOTE OTHER_BT covers UP & LP as they are [UL & LL] respectively */
-#define OTHER_BT(ibtr) (UU(ibtr) || UL(ibtr) || LU(ibtr) || LL(ibtr))
+/* XU tables containing ONLY [PK=U128,col1=INT] have been optimised */
+typedef struct u128_uint_key {
+    uint128 key; uint32  val;
+}  __attribute__ ((packed)) xuk;
+#define XU(btr) (btr->s.bflag & BTFLAG_U128_UINT)
+#define XU_SIZE 20
+
+/* LX tables containing ONLY [PK=LONG,col1=U128] have been optimised */
+typedef struct ulong_u128_key {
+    ulong   key; uint128 val;
+}  __attribute__ ((packed)) lxk;
+#define LX(btr) (btr->s.bflag & BTFLAG_ULONG_U128)
+#define LX_SIZE 24
+
+/* XL tables containing ONLY [PK=U128,col1=LONG] have been optimised */
+typedef struct u128_ulong_key {
+    uint128 key; ulong   val;
+}  __attribute__ ((packed)) xlk;
+#define XL(btr) (btr->s.bflag & BTFLAG_U128_ULONG)
+#define XL_SIZE 24
+
+/* XX tables containing ONLY [PK=U128,col1=U128] have been optimised */
+typedef struct u128_u128_key {
+    uint128 key; uint128 val;
+}  __attribute__ ((packed)) xxk;
+#define XX(btr) (btr->s.bflag & BTFLAG_U128_U128)
+#define XX_SIZE 32
+
+// END: 128 bit (16 byte) OTHER_BTs - 128_128_128_128_128_128_128_128_128_128
+
+/* Indexes containing INTs AND LONGs have been optimised */
+#define UP(btr)  (btr->s.bflag & BTFLAG_UINT_INDEX)
+
+#define LUP(btr) (btr->s.bflag & BTFLAG_ULONG_INDEX && \
+                  btr->s.bflag & BTFLAG_ULONG_UINT)
+#define LLP(btr) (btr->s.bflag & BTFLAG_ULONG_INDEX && \
+                  btr->s.bflag & BTFLAG_ULONG_ULONG)
+
+#define XUP(btr) (btr->s.bflag & BTFLAG_UINT_INDEX && \
+                  btr->s.bflag & BTFLAG_U128_UINT)
+#define XLP(btr) (btr->s.bflag & BTFLAG_ULONG_INDEX && \
+                  btr->s.bflag & BTFLAG_U128_ULONG)
+#define XXP(btr) (btr->s.bflag & BTFLAG_U128_INDEX && \
+                  btr->s.bflag & BTFLAG_U128_ULONG)
+
+#define UKEY(btr) (UU(btr) || LU(btr) || XU(btr))
+#define LKEY(btr) (UL(btr) || LL(btr) || XL(btr))
+#define XKEY(btr) (UX(btr) || LX(btr) || XX(btr))
+
+/* NOTE OTHER_BT covers *P as they are [UL,LL,XL] respectively */
+#define OTHER_BT(btr) (btr->s.bflag >= BTFLAG_UINT_UINT)
 /* NOTE: BIG_BT means the KEYS are bigger than 8 bytes */
-#define BIG_BT(ibtr)   (UL(ibtr) || LU(ibtr) || LL(ibtr))
-/* NOTE: NORM_BT has a dependency on order of flags */
-#define NORM_BT(btr) (btr->s.bflag <= BTFLAG_UINT_UINT)
+#define BIG_BT(btr)   (btr->s.bflag >  BTFLAG_UINT_UINT)
+#define NORM_BT(btr)  (btr->s.bflag == BTFLAG_NONE)
 
 int   btAdd    (bt *btr, aobj *apk, void *val);
 void *btFind   (bt *btr, aobj *apk);
