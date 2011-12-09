@@ -87,16 +87,19 @@ static char *parse_insert_val_list_nextc(char *start, uchar ctype, bool *err) {
     return str_next_unescaped_chr(start, start, ',');
 }
 
-static void assign_auto_inc_pk(char **pk, int *pklen, int tmatch) {
+static void assign_auto_inc_pk(uchar pktyp, char **pk, int *pklen, int tmatch) {
     r_tbl_t *rt  = &Tbl[tmatch];
-    char PKBuf[32]; snprintf(PKBuf, 32, "%lu", ++rt->ainc); /* AUTO_INCREMENT */
+    rt->ainc++; /* AUTO_INCREMENT */
+    char PKBuf[64];
+    if C_IS_X(pktyp) SPRINTF_128(PKBuf, 64,               rt->ainc)
+    else             snprintf   (PKBuf, 64, "%lu", (ulong)rt->ainc);
     *pklen       = strlen(PKBuf);
     *pk          = _strdup(PKBuf);
 }
 static bool assign_pk(int tmatch, int *pklen, char **pk, char *cstart) {
     if (!*pklen) {
         uchar pktyp = Tbl[tmatch].col[0].type;
-        if (C_IS_NUM(pktyp)) assign_auto_inc_pk(pk, pklen, tmatch);
+        if (C_IS_NUM(pktyp)) assign_auto_inc_pk(pktyp, pk, pklen, tmatch);
         else                 return 0;
     } else {
         char *s = malloc(*pklen + 1);              /* FREE ME 021 */

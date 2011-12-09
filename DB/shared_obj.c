@@ -86,7 +86,7 @@ void DXDB_createSharedObjects() {
     shared.badindexedcolumnsyntax = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: JOIN WHERE tablename.columname ...\r\n"));
     shared.luat_decl_fmt = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: CREATE LUATRIGGER name ON table ADD_FUNC [DEL_FUNC]\r\n"));
+        "-ERR SYNTAX: CREATE LUATRIGGER name ON table ADD_FUNC [DEL_FUNC] - NOTE: no U128 support\r\n"));
     shared.luat_c_decl = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: CREATE LUATRIGGER ... ADD_FUNC can ONLY contain column names and commas, e.g. \"luafunc(col1, col2, col3)\"\r\n"));
 
@@ -324,4 +324,6 @@ void DXDB_createSharedObjects() {
         "-ERR PARSE: U128's are represented as \"high|low\" - the '|' is mandatory\r\n"));
     shared.update_u128_complex = createObject(REDIS_STRING,sdsnew(
         "-ERR PARSE: UPDATING U128 columns MUST be simple equality updates (e.g. SET u128col = 11111|2222222)\r\n"));
+    shared.uniq_simp_index_nums = createObject(REDIS_STRING,sdsnew(
+        "-ERR PROHIBITED: Unique indexes are only on [INT,LONG,U128] columns porinting to [INT,LONG,U128] Primary Keys\r\n"));
 }

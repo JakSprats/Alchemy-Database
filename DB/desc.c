@@ -348,10 +348,16 @@ void descCommand(redisClient *c) {
         s = sdscatprintf(s, "INFO: KEYS: [NUM: %d MIN: %f MAX: %f]",
                              btr->numkeys, mink.f, maxk.f);
     } else {
-        ulong min = C_IS_I(mink.type) ? mink.i : mink.l;
-        ulong max = C_IS_I(mink.type) ? maxk.i : maxk.l;
-        s = sdscatprintf(s, "INFO: KEYS: [NUM: %d MIN: %lu MAX: %lu]",
-                             btr->numkeys, min, max);
+        uchar   kt  = mink.type;
+        uint128 min = C_IS_I(kt) ? mink.i : C_IS_L(kt) ? mink.l : mink.x;
+        uint128 max = C_IS_I(kt) ? maxk.i : C_IS_L(kt) ? maxk.l : maxk.x;
+        if C_IS_X(kt) {
+            char c_xmin[64]; char c_xmax[64]; 
+            SPRINTF_128(c_xmin, 64, min) SPRINTF_128(c_xmax, 64, max)
+            s = sdscatprintf(s, "INFO: KEYS: [NUM: %d MIN: %s MAX: %s]",
+                               btr->numkeys, c_xmin, c_xmax);
+        } else s = sdscatprintf(s, "INFO: KEYS: [NUM: %d MIN: %lu MAX: %lu]",
+                               btr->numkeys, min, max);
     }
     s = sdscatprintf(s, " BYTES: [BT-TOTAL: %ld [BT-DATA: %ld] INDEX: %lld]]%s",
                         btr->msize, btr->dsize, index_size,

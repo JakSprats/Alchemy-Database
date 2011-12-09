@@ -60,11 +60,13 @@ extern uint32   Ind_HW; extern dict *IndD; extern list *DropI;
 int      Num_indx;
 r_ind_t *Index = NULL;
 
+// PROTOTYPES
+static void destroy_mci(bt *ibtr, bt_n *n, int imatch, int lvl);
+
 /* INDEX_MAINTENANCE INDEX_MAINTENANCE INDEX_MAINTENANCE INDEX_MAINTENANCE */
-#define DEBUG_IADDMCI_UNIQ \
-  aobj c_fcol   = getCol(btr, rrow, ri->bclist[final], apk, ri->table); \
-  printf("fcol: "); dumpAobj(printf, &c_fcol);                          \
-  printf("nbtr\n"); bt_dumptree(printf, nbtr, 0);
+#define DEBUG_IADDMCI_UNIQ                                               \
+  printf("fcol: "); dumpAobj(printf, &fcol);                             \
+  printf("bt_dumptree(nbtr): %p\n", nbtr); bt_dumptree(printf, nbtr, 0);
 
 static void replyUniqConstrViol(cli *c) {
     sds resp = sdscatprintf(sdsempty(),
@@ -85,47 +87,77 @@ static dp_t init_dp(bt *ibtr, aobj *acol, bt *nbtr) {
     return dp;
 }
 
-#define DEBUG_IADD                               \
+#define DEBUG_IADD                                \
   printf("iAdd: acol: "); dumpAobj(printf, acol); \
   printf("iAdd: apk:  "); dumpAobj(printf, apk);
 
-static bool iAdd(cli  *c,   bt    *ibtr, aobj *acol,
-                 aobj *apk, uchar  pktyp, aobj *ocol) {            //DEBUG_IADD
-    bt *nbtr = btIndFind(ibtr, acol);
-    if (!nbtr) {
-        uchar otype  = ocol ? ocol->type : COL_TYPE_NONE;
-        nbtr         = createIndexNode(pktyp, otype);
-        btIndAdd(ibtr, acol, nbtr);
-        ibtr->msize += nbtr->msize;       /* ibtr inherits nbtr */
+static xxk XX_iAdd; static lxk LX_iAdd; static xlk XL_iAdd;
+                    static uxk UX_iAdd; static xuk XU_iAdd;
+#define OBT_IADD_UNIQ(sptr, aobjpart) \
+  { sptr.val = apk->aobjpart; btAdd(ibtr, acol, &sptr); }
+
+void iAddUniq(bt *ibtr, uchar pktyp, aobj *apk, aobj *acol) { // OBYI uses also
+    if        C_IS_I(pktyp) {
+        if XU(ibtr) OBT_IADD_UNIQ(XU_iAdd, i)
+        else          btAdd(ibtr, acol, VOIDINT apk->i); // UU,LU
+    } else if C_IS_L(pktyp) {
+        if  XL(ibtr) OBT_IADD_UNIQ(XL_iAdd, l)
+        else         btAdd(ibtr, acol, (void *)apk->l);  // UL,LL
+    } else {//C_IS_X
+        if      UX(ibtr) OBT_IADD_UNIQ(UX_iAdd, x)
+        else if LX(ibtr) OBT_IADD_UNIQ(LX_iAdd, x)
+        else /* XX */    OBT_IADD_UNIQ(XX_iAdd, x)
     }
-    ulong size1  = nbtr->msize;
-    if (ocol) { if (!btIndNodeOBCAdd(c, nbtr, apk, ocol)) return 0; }
-    else      btIndNodeAdd   (nbtr, apk);
-    ibtr->msize += (nbtr->msize - size1); /* ibtr inherits nbtr */
+}
+static bool iAdd(cli  *c,   bt    *ibtr,  aobj *acol,
+                 aobj *apk, uchar  pktyp, aobj *ocol, int imatch) {//DEBUG_IADD
+    r_ind_t *ri   = &Index[imatch];
+    if (UNIQ(ri->cnstr)) { // SINGLE COLUMN UNIQUE INDEX
+        if (btFind(ibtr, acol)) { if (c) replyUniqConstrViol(c); return 0; }
+        iAddUniq(ibtr, pktyp, apk, acol);
+    } else {               // SINGLE COLUMN NORMAL INDEX
+        bt *nbtr = btIndFind(ibtr, acol);
+        if (!nbtr) {
+            uchar otype  = ocol ? ocol->type : COL_TYPE_NONE;
+            nbtr         = createIndexNode(pktyp, otype);
+            btIndAdd(ibtr, acol, nbtr);
+            ibtr->msize += nbtr->msize;       // ibtr inherits nbtr
+        }
+        ulong size1  = nbtr->msize;
+        if (ocol) { if (!btIndNodeOBCAdd(c, nbtr, apk, ocol)) return 0; }
+        else      btIndNodeAdd   (nbtr, apk);
+        ibtr->msize += (nbtr->msize - size1); // ibtr inherits nbtr
+    }
     return 1;
 }
-void destroy_index(bt *ibtr, bt_n *n) {
+static void destroy_index(bt *ibtr, bt_n *n, int imatch) {
+    r_ind_t *ri = &Index[imatch];
+    if (ri->clist)       { destroy_mci(ibtr, ibtr->root, imatch, 0); return; }
+    if (UNIQ(ri->cnstr)) { bt_destroy (ibtr);                        return; }
     for (int i = 0; i < n->n; i++) {
         void *be   = KEYS(ibtr, n, i);
         bt   *nbtr = (bt *)parseStream(be, ibtr); if (nbtr) bt_destroy(nbtr);
     }
     if (!n->leaf) {
         for (int i = 0; i <= n->n; i++) {
-            destroy_index(ibtr, NODES(ibtr, n)[i]);
+            destroy_index(ibtr, NODES(ibtr, n)[i], imatch);
         }
     }
 }
-static bool iRem(bt *ibtr, aobj *acol, aobj *apk, aobj *ocol) {
-    bt  *nbtr    = btIndFind(ibtr, acol);
-    ulong  size1 = nbtr->msize;
-    int  nkeys   = (ocol) ? btIndNodeOBCDelete(nbtr, ocol) :
-                            btIndNodeDelete   (nbtr, apk);
-    ibtr->msize -= (size1 - nbtr->msize);
-    if (!nkeys) {
-        btIndDelete(ibtr, acol); ibtr->msize -= nbtr->msize; bt_destroy(nbtr);
-        return 1;
+static void iRem(bt *ibtr, aobj *acol, aobj *apk, aobj *ocol, int imatch) {
+    r_ind_t *ri   = &Index[imatch];
+    if (UNIQ(ri->cnstr)) btDelete(ibtr, acol);
+    else {
+        bt  *nbtr    = btIndFind(ibtr, acol);
+        ulong  size1 = nbtr->msize;
+        int  nkeys   = (ocol) ? btIndNodeOBCDelete(nbtr, ocol) :
+                                btIndNodeDelete   (nbtr, apk);
+        ibtr->msize -= (size1 - nbtr->msize);
+        if (!nkeys) {
+            btIndDelete(ibtr, acol); ibtr->msize -= nbtr->msize;
+            bt_destroy(nbtr);
+        }
     }
-    return 0;
 }
 static bool _iAddMCI(cli  *c,      bt   *btr,  aobj *apk,     uchar  pktyp,
                      int   imatch, void *rrow, bool  destroy, int    rec_ret,
@@ -151,15 +183,8 @@ static bool _iAddMCI(cli  *c,      bt   *btr,  aobj *apk,     uchar  pktyp,
                 nbtr = createIndexNode(pktyp, otype);
             } else {                              /* middle MID -> MID */
                 uchar ntype = Tbl[ri->table].col[ri->bclist[i + 1]].type;
-                if (i == trgr) {
-                    if (C_IS_I(ntype)) {
-                        nbtr = C_IS_I(pktyp) ? createUUBT(imatch, BT_MCI_UNIQ) :
-                                               createULBT(imatch, BT_MCI_UNIQ);
-                    } else {
-                        nbtr = C_IS_I(pktyp) ? createLUBT(imatch, BT_MCI_UNIQ) :
-                                               createLLBT(imatch, BT_MCI_UNIQ);
-                    }
-                } else nbtr = createMCI_MIDBT(ntype, imatch);
+                if (i == trgr) nbtr = createU_IBT    (ntype, imatch, pktyp);
+                else           nbtr = createMCI_MIDBT(ntype, imatch);
             }
             ulong isize1 = ibtr->msize;
             btIndAdd(ibtr, &acol, nbtr);  /* add MID to ibtr */
@@ -167,20 +192,18 @@ static bool _iAddMCI(cli  *c,      bt   *btr,  aobj *apk,     uchar  pktyp,
             for (int j = i; j >= 0; j--) ibl[j]->msize += idiff; /*mem-bookeep*/
         }
         if (destroy) dpl[ndstr] = init_dp(ibtr, &acol, nbtr);
-        ndstr++;
-        ibtr = nbtr; /* releaseAobj(&acol); NOTE: MCI is [I,L] so NOT needed */
+        ndstr++; ibtr = nbtr; releaseAobj(&acol);
     }
     if (destroy)                                      goto iaddmci_err;
     ulong size1 = nbtr->msize;
-    if UNIQ(ri->cnstr) {                                   //DEBUG_IADDMCI_UNIQ
+    if UNIQ(ri->cnstr) {
         aobj fcol = getCol(btr, rrow, ri->bclist[final], apk, ri->table);
         if (fcol.empty)                               goto iaddmci_err;
         if (btFind(nbtr, &fcol)) {
             if (c) replyUniqConstrViol(c); { ret = 0; goto iaddmci_err; }
         } /* Next ADD (FinFK|PK) 2 UUBT */
-        if C_IS_I(pktyp) btAdd(nbtr, &fcol, VOIDINT apk->i);
-        else             btAdd(nbtr, &fcol, (void *)apk->l);
-        /* releaseAobj(&fcol); NOTE: MCI is [I,L] so NOT needed */
+        iAddUniq(nbtr, pktyp, apk, &fcol);                 //DEBUG_IADDMCI_UNIQ
+        releaseAobj(&fcol);
     } else {
         if (ocol) { // ADD [ocol->PK] to NODEBT
             if (!btIndNodeOBCAdd(c, nbtr, apk, ocol)) {
@@ -209,14 +232,14 @@ static inline bool iAddMCI(cli   *c,     bt  *btr,    aobj *apk,
                            uchar  pktyp, int  imatch, void *rrow, aobj *ocol) {
     return _iAddMCI(c, btr, apk, pktyp, imatch, rrow, 0, 0, ocol);
 }
-void destroy_mci(bt *ibtr, bt_n *n, int imatch, int lvl) {
+static void destroy_mci(bt *ibtr, bt_n *n, int imatch, int lvl) {
     r_ind_t *ri     = &Index[imatch];
     int      trgr   = UNIQ(ri->cnstr) ? ri->nclist - 2 : -1;
     int      final  = ri->nclist - 1;
     if (lvl == final) return;
     for (int i = 0; i < n->n; i++) {
-        void *be   = KEYS(ibtr, n, i);
-        bt   *nbtr = (bt *)parseStream(be, ibtr);
+        void *be    = KEYS(ibtr, n, i);
+        bt   *nbtr  = (bt *)parseStream(be, ibtr);
         if (lvl == final || lvl == trgr) bt_destroy(nbtr);
         else { /* INNER RECURSE -> LEVEL INCREASE */
             destroy_mci(nbtr, nbtr->root, imatch, lvl + 1);
@@ -227,6 +250,7 @@ void destroy_mci(bt *ibtr, bt_n *n, int imatch, int lvl) {
             destroy_mci(ibtr, NODES(ibtr, n)[i], imatch, lvl);
         }
     }
+    bt_destroy(ibtr);
 }
 static void iRemMCI(bt *btr, aobj *apk, int imatch, void *rrow, aobj *ocol) {
     bt      *nbtr  = NULL; /* compiler warning */
@@ -291,10 +315,10 @@ bool addToIndex(cli *c, bt *btr, aobj *apk, void *rrow, int imatch) {
         if (!acol.empty) {
             if (ri->obc == -1) { // NORMAL
                 if (ri->lfu) acol.l = (ulong)(floor(log2((dbl)acol.l))) + 1;
-                if (!iAdd(c, ibtr, &acol, apk, pktyp, NULL))         return 0;
+                if (!iAdd(c, ibtr, &acol, apk, pktyp, NULL, imatch)) return 0;
             } else {             // OBY
                 aobj ocol = getCol(btr, rrow, ri->obc, apk, ri->table);
-                bool ret  = iAdd(c, ibtr, &acol, apk, pktyp, &ocol);
+                bool ret  = iAdd(c, ibtr, &acol, apk, pktyp, &ocol, imatch);
                 releaseAobj(&ocol); if (!ret)                        return 0;
             }
         }
@@ -318,10 +342,10 @@ void delFromIndex(bt *btr, aobj *apk, void *rrow, int imatch) {
         if (!acol.empty) {
             if (ri->obc == -1) { // NORMAL
                 if (ri->lfu) acol.l = (ulong)(floor(log2((dbl)acol.l))) + 1;
-                iRem(ibtr, &acol, apk, NULL);
+                iRem(ibtr, &acol, apk, NULL, imatch);
             } else {             // OBY
                 aobj ocol = getCol(btr, rrow, ri->obc, apk, ri->table);
-                iRem(ibtr, &acol, apk, &ocol); releaseAobj(&ocol);
+                iRem(ibtr, &acol, apk, &ocol, imatch); releaseAobj(&ocol);
             }
        
         }
@@ -336,15 +360,15 @@ bool upIndex(cli *c, bt *ibtr, aobj *aopk,  aobj *ocol,
         ocol->l = (ulong)(floor(log2((dbl)ocol->l))) + 1;
         ncol->l = (ulong)(floor(log2((dbl)ncol->l))) + 1;
     }
-    if (aobjEQ(aopk, anpk) && aobjEQ(ncol, ocol)) return 1; // Equivalent entry
-    if (!iAdd(c, ibtr, ncol, anpk, pktyp, nocol)) return 0;// ADD 1st, mimic MCI
-    if (!ocol->empty) iRem(ibtr, ocol, aopk, oocol);
+    if (aobjEQ(aopk, anpk) && aobjEQ(ncol, ocol))         return 1;// EQ -> NOOP
+    if (!iAdd(c, ibtr, ncol, anpk, pktyp, nocol, imatch)) return 0;// ADD 1st
+    if (!ocol->empty) iRem(ibtr, ocol, aopk, oocol, imatch);
     return 1;
 }
 bool updateIndex(cli *c, bt *btr, aobj *aopk, void *orow, 
                                   aobj *anpk, void *nrow, int imatch) {
     r_ind_t *ri    = &Index[imatch];
-    if (ri->virt)                                         return 1;
+    if (ri->virt)   /* TODO: needed? */                   return 1;
     bt      *ibtr  = getIBtr(imatch);
     if (ri->luat) {
         luatAdd(btr, (luat_t *)ibtr, anpk, imatch, nrow); return 1;
@@ -392,8 +416,10 @@ long buildIndex(cli *c, bt *btr, int imatch, long limit) {
        aobj alow, ahigh;
        if       (C_IS_I(pktyp)) {
            initAobjInt(&alow,  0); initAobjInt(&ahigh, final);
-       } else /* C_IS_L */      {
+       } else if C_IS_L(pktyp) {
            initAobjLong(&alow, 0); initAobjLong(&ahigh, final);
+       } else /* C_IS_X */      {
+           initAobjU128(&alow, 0); initAobjU128(&ahigh, final);
        }
        bi = btGetXthIter(btr, &alow, &ahigh, ri->ofst, 1);
     } else bi = btGetFullRangeIter(btr, 1);
@@ -459,17 +485,20 @@ int newIndex(cli    *c,     sds   iname, int  tmatch, int   cmatch,
         int       i   = 0;
         listIter *li  = listGetIterator(ri->clist, AL_START_HEAD);
         while((ln = listNext(li))) { /* convert clist to bclist */
-           ri->bclist[i]                = (int)(long)ln->value;
-           rt->col[ri->bclist[i]].indxd = 1; /* used in updateRow OVRWR */
-           i++;
+            ri->bclist[i]                = (int)(long)ln->value;
+            rt->col[ri->bclist[i]].indxd = 1; /* used in updateRow OVRWR */
+            i++;
         } listReleaseIterator(li);
     } else if (!ri->luat) rt->col[ri->column].indxd = 1;
     if      (virt)                 rt->vimatch = imatch;
     else if (ri->luat) { //TODO btr should not point to luat, have ri->luat
         ri->btr      = (bt *)luat; luat->num   = imatch;
     } else {
-        ri->btr = (ri->clist) ? createMCIndexBT(ri->clist,          imatch) :
-        /* normal & lru/lfu */  createIndexBT(rt->col[cmatch].type, imatch);
+        uchar pktyp  = rt->col[0].type;
+        uchar ktype  = rt->col[cmatch].type;
+        ri->btr = ri->clist       ? createMCIndexBT(ri->clist, imatch) :
+                  UNIQ(ri->cnstr) ? createU_IBT    (ktype,     imatch, pktyp) :
+        /* normal & lru/lfu */        createIndexBT(ktype,     imatch);
     }
     ASSERT_OK(dictAdd(IndD, sdsdup(ri->name), VOIDINT(imatch + 1)));
     if (!virt && !lru && !lfu && !luat && !prtl) { //NOTE: failure -> emptyIndex
@@ -529,10 +558,10 @@ static bool ICommit(cli *c,      sds   iname,   sds   tname, char *cname,
                 break;
             }
         }
-        if UNIQ(cnstr) {/*NOTE: RESTRICTION: UNIQUE MCI final col must be INT */
+        if UNIQ(cnstr) {/*NOTE: RESTRICTION: UNIQUE MCI final col must be NUM */
             listNode *ln = listLast(clist);
             int       fcmatch = (int)(long)ln->value;
-            if (!C_IS_NUM(rt->col[fcmatch].type)) {/*INT & LONG */
+            if (!C_IS_NUM(rt->col[fcmatch].type)) {
                 addReply(c, shared.uniq_mci_notint);                return 0;
             }
         }
@@ -562,9 +591,13 @@ static bool ICommit(cli *c,      sds   iname,   sds   tname, char *cname,
         }
         cmatch = ocmatch;
     } else {
-        if UNIQ(cnstr) { addReply(c, shared.UI_SC);                 return 0; }
         cmatch = find_column(tmatch, cname);
         if (cmatch == -1) { addReply(c, shared.indextargetinvalid); return 0; }
+        if UNIQ(cnstr) {/*NOTE: RESTRICTION: UNIQUE MCI both cols -> NUM */
+            if (!C_IS_NUM(rt->col[cmatch].type) || !C_IS_NUM(rt->col[0].type)) {
+                addReply(c, shared.uniq_simp_index_nums); return 0;
+            }
+         }
         for (int i = 0; i < Num_indx; i++) { /* already indxd? */
             r_ind_t *ri = &Index[i];
             if (ri->name && ri->table == tmatch && ri->column == cmatch) {
@@ -664,7 +697,7 @@ void emptyIndex(int imatch) { //printf("emptyIndex: imatch: %d\n", imatch);
         free(ri->bclist);                                /* FREED 053 */
     }
     // ri->lru & ri->lfu can NOT be dropped, so no need to change rt
-    if (!ri->luat && ri->btr) destroy_index(ri->btr, ri->btr->root);
+    if (!ri->luat && ri->btr) destroy_index(ri->btr, ri->btr->root, imatch);
     bzero(ri, sizeof(r_ind_t));
     ri->table   = ri->column = ri->obc = ri->ofst = -1;
     ri->cnstr   =  CONSTRAINT_NONE;

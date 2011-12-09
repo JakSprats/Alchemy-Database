@@ -40,11 +40,11 @@ typedef struct r_col {
 } r_col_t;
 
 //TODO many of r_tbl's elements are optional -> bitmap + malloc(elements)
-typedef struct r_tbl { // 106 bytes -> 112B
+typedef struct r_tbl { // 114 bytes -> 120B
     sds      name;
     bt      *btr;
     int      vimatch;
-    ulong    ainc;       // PK AUTO INCREMEMNT VALUE TODO: make uint128
+    uint128  ainc;       // PK AUTO INCREMEMNT VALUE
     int      col_count;
     r_col_t *col;
     list    *ilist;      // USAGE: list of this table's imatch's

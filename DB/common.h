@@ -107,10 +107,11 @@ enum OP {NONE, EQ, NE, GT, GE, LT, LE, RQ, IN};
 
 #define FLOAT_FMT "%.10g"
 
-#define DEBUG_BT_TYPE(prn, btr) \
-  prn("INODE: %d UU: %d UL: %d LU: %d LL: %d UX: %d XU: %d LX: %d XL: %d XX: %d NORM: %d\n", \
-       INODE(btr), UU(btr), UL(btr), LU(btr), LL(btr), UX(btr), XU(btr), LX(btr), XL(btr), XX(btr), \
-       NORM_BT(btr));
+#define DEBUG_BT_TYPE(prn, btr)                             \
+  prn("btr: %p INODE: %d UU: %d UL: %d LU: %d LL: %d"       \
+      " UX: %d XU: %d LX: %d XL: %d XX: %d NORM: %d\n",     \
+       btr, INODE(btr), UU(btr), UL(btr), LU(btr), LL(btr), \
+       UX(btr), XU(btr), LX(btr), XL(btr), XX(btr), NORM_BT(btr));
 
 typedef struct twoint {
     int i; int j;
@@ -145,8 +146,8 @@ typedef struct twoint {
   SPLICE_128(num)                                       \
   snprintf(dest, dsize, "%llu|%llu", ubh, ubl); }
 
-#define DEBUG_128(prn, num)                             \
+#define DEBUG_U128(prn, num)                             \
   SPLICE_128(num)                                       \
-  (*prn)("DEBUG_128: high: %llu low: %llu", ubh, ubl); }
+  (*prn)("DEBUG_U128: high: %llu low: %llu", ubh, ubl); }
 
 #endif /* __ALSOSQL_COMMON__H */

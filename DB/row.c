@@ -895,14 +895,17 @@ static bool upEffctdInds(cli  *c,     bt   *btr,  aobj *apk,     void *orow,
     }
     return 1;
 }
-static uint32 getIorLKeyLen(aobj *a) {
+static uint32 getNumKeyLen(aobj *a) {
+    if C_IS_X(a->type) return 16;
     uchar sflag; ulong col, l = C_IS_I(a->type) ? a->i : a->l;
     return cIcol(l, &sflag, &col, C_IS_I(a->type));
 }
 static bool aobj_sflag(aobj *a, uchar *sflag) {
-    ulong col, l = C_IS_I(a->type) ? a->i : a->l;
-    cIcol(l, sflag, &col, C_IS_I(a->type));
-    return !a->empty;
+    if C_IS_X(a->type)                          return !a->empty;
+    else {
+        ulong col, l = C_IS_I(a->type) ? a->i : a->l;
+        cIcol(l, sflag, &col, C_IS_I(a->type)); return !a->empty;
+    }
 }
 #define DEBUG_UPDATE_ROW                                                     \
   if (i) { printf ("%d: oflag: %d cmiss: %d ", i, osflags[i], uc->cmiss[i]); \
@@ -1036,7 +1039,7 @@ int updateRow(cli *c, uc_t *uc, aobj *apk, void *orow) {
                                  nrow, uc->inds[i]))                    UP_ERR
             }
         }
-        ret = getIorLKeyLen(apk) + getRowMallocSize(orow);
+        ret = getNumKeyLen(apk) + getRowMallocSize(orow);
     } else {                                      //printf("NEW ROW UPDATE\n");
         int k; for (k = cr.ncols - 1; k >= 0; k--) { if (!crd[k].empty) break; }
         cr.ncols = k + 1; // starting from the right, only write FILLED columns
@@ -1080,6 +1083,7 @@ static bool evalLuaExpr(cli *c,    int   cmatch, uc_t *uc, aobj *apk,
         int  cm    = le->cmatchs[i];
         aobj acol  = getCol(uc->btr, orow, cm, apk, uc->tmatch);
         int  ctype = rt->col[cm].type;
+        //NOTE: C_IS_X() disallowed
         if        C_IS_I(ctype) {
             if (acol.empty) lua_pushnil    (server.lua);
             else            lua_pushinteger(server.lua, acol.i);
@@ -1105,6 +1109,7 @@ static bool evalLuaExpr(cli *c,    int   cmatch, uc_t *uc, aobj *apk,
         return 0;
     }
     int  ctype = rt->col[cmatch].type;
+    //NOTE: C_IS_X() disallowed
     if      (C_IS_I(ctype)) aval->i = (uint32)lua_tointeger(server.lua, -1);
     else if (C_IS_L(ctype)) aval->l = (ulong) lua_tointeger(server.lua, -1);
     else if (C_IS_F(ctype)) aval->f = (float) lua_tonumber (server.lua, -1);
@@ -1119,6 +1124,7 @@ static bool evalLuaExpr(cli *c,    int   cmatch, uc_t *uc, aobj *apk,
 }
 
 static bool evalExpr(cli *c, ue_t *ue, aobj *aval, uchar ctype) {
+    //NOTE: C_IS_X() disallowed
     if (C_IS_NUM(ctype)) { /* INT & LONG */
         ulong l      = 0; double f = 0.0;
         bool  is_f   = (ue->type == UETYPE_FLT);

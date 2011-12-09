@@ -39,6 +39,7 @@ bt   *createLUBT(int num, uchar btype);
 bt   *createULBT(int num, uchar btype);
 bt   *createLLBT(int num, uchar btype);
 
+bt   *createU_IBT    (uchar ktype, int imatch, uchar pktyp);
 bt   *createMCI_MIDBT(uchar ktype, int imatch);
 bt   *createIndexBT  (uchar ktype, int imatch);
 bt   *createMCIndexBT(list *clist, int imatch);
@@ -67,7 +68,7 @@ bt   *createDBT      (uchar ktype, int tmatch);
 #define INODE(btr) (INODE_I(btr) || INODE_L(btr) || INODE_X(btr))
 
 /* UU tables containing ONLY [PK=INT,col1=INT]  have been optimised */
-#define UU(btr) (btr->s.bflag == BTFLAG_UINT_UINT)
+#define UU(btr) (btr->s.bflag & BTFLAG_UINT_UINT)
 #define UU_SIZE 8
 
 /* UL tables containing ONLY [PK=INT,col1=LONG] have been optimised */

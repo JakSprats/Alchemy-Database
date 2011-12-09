@@ -143,24 +143,24 @@ static inline int _log2(unsigned int a, int nbits) {
                                                ll->key, ll->val); }            \
   else if UX(btr) { uxk *ux = (uxk *)v; printf("\t\tUX: KEY: %u ", ux->key);   \
                                         printf(" VAL: ");                      \
-                                   DEBUG_128(printf, ux->val); printf("\n"); } \
+                                   DEBUG_U128(printf, ux->val); printf("\n"); }\
   else if XU(btr) { xuk *xu = (xuk *)v; printf("\t\tXU: KEY: ");               \
-                                   DEBUG_128(printf, xu->key);                 \
+                                   DEBUG_U128(printf, xu->key);                \
                                         printf(" VAL: %u\n", xu->val); }       \
   else if LX(btr) { lxk *lx = (lxk *)v; printf("\t\tLX: KEY: %llu ", lx->key); \
                                         printf(" VAL: ");                      \
-                                   DEBUG_128(printf, lx->val); printf("\n"); } \
+                                   DEBUG_U128(printf, lx->val); printf("\n"); }\
   else if XL(btr) { xlk *xl = (xlk *)v; printf("\t\tXL: KEY: ");               \
-                                   DEBUG_128(printf, xl->key);                 \
+                                   DEBUG_U128(printf, xl->key);                \
                                    printf(" VAL: %lu\n", xl->val); }           \
   else if XX(btr) { xxk *xx = (xxk *)v; printf("\t\tXX: KEY: ");               \
-                                   DEBUG_128(printf, xx->key);                 \
+                                   DEBUG_U128(printf, xx->key);                \
                                    printf(" VAL: ");                           \
-                                   DEBUG_128(printf, xx->val); printf("\n"); } \
+                                   DEBUG_U128(printf, xx->val); printf("\n"); }\
   if ISVOID(btr) printf("\t\tVOID: p: %p lu: %lu\n", v, v);                    \
   if INODE_X(btr) {                                                            \
       uint128 *pbu = v; printf("\t\tINODE_X: ");                               \
-      DEBUG_128(printf, *pbu); printf("\n"); }
+      DEBUG_U128(printf, *pbu); printf("\n"); }
 
 #define DEBUG_SET_KEY \
   printf("setBTKey: ksize: %d btr: %p v: %p p: %p uint: %d void: %d uu: %d " \

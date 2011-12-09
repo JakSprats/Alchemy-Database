@@ -83,6 +83,7 @@ int xxCmp   (void *s1, void *s2);
 /* BT DATA cmp */
 int btIntCmp  (void *a, void *b);
 int btLongCmp (void *a, void *b);
+int btU128Cmp (void *a, void *b);
 int btFloatCmp(void *a, void *b);
 int btTextCmp (void *a, void *b);
 

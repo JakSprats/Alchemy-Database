@@ -443,7 +443,8 @@ static uint32 numRows4INL(f_t *flt) {
     while((ln = listNext(li))) {
         aobj *a  = ln->value;
         if      C_IS_I(ctype) afk.i = a->i;
-        else /* C_IS_L */     afk.l = a->l;
+        else if C_IS_L(ctype) afk.l = a->l;
+        else /* C_IS_X */     afk.x = a->x;
         bt *nbtr = btIndFind(ibtr, &afk);
         if (nbtr) cnt += nbtr->numkeys;
     } listReleaseIterator(li);
@@ -454,17 +455,23 @@ static uint32 numRows4Range(f_t *flt) {
     int ctype = Tbl[flt->tmatch].col[flt->cmatch].type;
     if (!C_IS_NUM(ctype))          return CNT_INDXD; /* only NUMs */
     int range = C_IS_I(ctype) ? flt->ahigh.i - flt->alow.i :
-             /* C_IS_L */       flt->ahigh.l - flt->alow.l;
+                C_IS_L(ctype) ? flt->ahigh.l - flt->alow.l :
+             /* C_IS_X */       flt->ahigh.x - flt->alow.x;
     if (Index[flt->imatch].virt)   return range;
     if (range > QOP_MAX_NUM_CHECK) return CNT_INDXD;
     aobj    afk; initAobjZeroNum(&afk, ctype);
     bt     *ibtr = getIBtr(flt->imatch);
     uint32  cnt  = 0;
-    ulong   low  = C_IS_I(ctype) ? flt->alow.i  : flt->alow.l;
-    ulong   high = C_IS_I(ctype) ? flt->ahigh.i : flt->ahigh.l;
-    for (ulong i = low; i <= high; i++) {
+    uint128  low  = C_IS_I(ctype) ? flt->alow.i  :
+                    C_IS_L(ctype) ? flt->alow.l  :
+                 /* C_IS_X */       flt->alow.x;
+    uint128  high = C_IS_I(ctype) ? flt->ahigh.i :
+                    C_IS_L(ctype) ? flt->ahigh.l :
+                 /* C_IS_X */       flt->ahigh.x;
+    for (uint128 i = low; i <= high; i++) {
         if      C_IS_I(ctype) afk.i = i;
-        else /* C_IS_L */     afk.l = i;
+        else if C_IS_L(ctype) afk.l = i;
+        else /* C_IS_X */     afk.x = i;
         bt *nbtr  = btIndFind(ibtr, &afk); /* blindly lookup - no Iter8r*/
         if (nbtr) cnt += nbtr->numkeys;
     }
@@ -472,7 +479,8 @@ static uint32 numRows4Range(f_t *flt) {
     return cnt;
 }
 static uint32 numRows4Key(f_t *flt) {
-    if (Index[flt->imatch].virt) return 1;
+    if (Index[flt->imatch].virt)      return 1;
+    if UNIQ(Index[flt->imatch].cnstr) return 1;
     bt *ibtr = getIBtr(flt->imatch);
     bt *nbtr = btIndFind(ibtr, &flt->akey);
     return nbtr ? nbtr->numkeys : 0;

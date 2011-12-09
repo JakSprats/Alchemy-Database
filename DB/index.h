@@ -35,6 +35,8 @@ ALL RIGHTS RESERVED
 #include "aobj.h"
 #include "common.h"
 
+void iAddUniq(bt *ibtr, uchar pktyp, aobj *apk, aobj *acol); // OBYI uses also
+
 sds  getMCIlist(list *clist, int tmatch);
 bool addC2MCI(cli *c, int cmatch, list *clist);
 int  newIndex(cli    *c,     sds   iname, int  tmatch, int   cmatch,
@@ -51,9 +53,6 @@ bool upIndex    (cli *c, bt *btr, aobj *aopk,  aobj *ocol,
                                   aobj *oocol, aobj *nocol, int imatch);
 bool updateIndex(cli *c, bt *btr, aobj *aopk, void *orow,
                                   aobj *anpk, void *nrow, int imatch);
-
-void destroy_index(bt *btr, bt_n *n);
-void destroy_mci  (bt *btr, bt_n *n, int imatch, int lvl);
 
 void emptyIndex(int inum);
 void dropIndex(redisClient *c);

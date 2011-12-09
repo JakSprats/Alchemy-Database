@@ -751,10 +751,7 @@ function all_tests() {
   long_limit_test
   $CLI DEBUG RELOAD
 
-  test_UU && test_LU && test_UL && test_LL
-  $CLI DEBUG RELOAD
-
-  test_uniq_UL && test_uniq_LU && test_uniq_LL
+  test_OBT
   $CLI DEBUG RELOAD
 
   mci_full_delete
@@ -2777,12 +2774,6 @@ function test_XX() {
   $CLI SELECT \* FROM XX WHERE "cu = 222|777"
 }
 
-function test_OBT() {
-  test_UU; test_LU; test_UL; test_LL
-  test_uniq_UL; test_uniq_LU; test_uniq_LL
-  test_XU; test_XL; test_UX; test_LX; test_XX
-}
-
 function test_XTBL() {
   $CLI DROP   TABLE XTBL >/dev/null
   $CLI CREATE TABLE XTBL "(pk U128, fk U128, col U128)"
@@ -2799,4 +2790,147 @@ function test_XTBL() {
   $CLI SELECT \* FROM XTBL WHERE "fk = 333000|44000"
   echo 2 rows
   $CLI SELECT \* FROM XTBL WHERE "col = 555|777"
+}
+
+function test_U_UX() { echo test_U_UX
+  $CLI DROP   TABLE uUX > /dev/null
+  $CLI CREATE TABLE uUX "(pk INT, cu U128)";
+  $CLI INSERT INTO  uUX VALUES "(111,888|9999)";
+  $CLI INSERT INTO  uUX VALUES "(333,222|777)";
+  $CLI CREATE UNIQUE INDEX iu_uUX ON uUX "(cu)"
+  echo "1 row"
+  $CLI SELECT \* FROM uUX WHERE "cu=888|9999"
+}
+function test_U_XU() { echo test_U_XU
+  $CLI DROP   TABLE uXU > /dev/null
+  $CLI CREATE TABLE uXU "(pk U128, cu INT)";
+  $CLI INSERT INTO  uXU VALUES "(111|888,9999)";
+  $CLI INSERT INTO  uXU VALUES "(333|222,777)";
+  $CLI CREATE UNIQUE INDEX iu_uXU ON uXU "(cu)"
+  echo "1 row"
+  $CLI SELECT \* FROM uXU WHERE "cu=777"
+}
+function test_U_LX() { echo test_U_LX
+  $CLI DROP   TABLE uLX > /dev/null
+  $CLI CREATE TABLE uLX "(pk LONG, cu U128)";
+  $CLI INSERT INTO  uLX VALUES "(111,888|9999)";
+  $CLI INSERT INTO  uLX VALUES "(333,222|777)";
+  $CLI CREATE UNIQUE INDEX iu_uLX ON uLX "(cu)"
+  echo "1 row"
+  $CLI SELECT \* FROM uLX WHERE "cu=888|9999"
+}
+function test_U_XL() { echo test_U_XL
+  $CLI DROP   TABLE uXL > /dev/null
+  $CLI CREATE TABLE uXL "(pk U128, cu LONG)";
+  $CLI INSERT INTO  uXL VALUES "(111|888,9999)";
+  $CLI INSERT INTO  uXL VALUES "(333|222,777)";
+  $CLI CREATE UNIQUE INDEX iu_uXL ON uXL "(cu)"
+  echo "1 row"
+  $CLI SELECT \* FROM uXL WHERE "cu=9999"
+}
+function test_U_XX() { echo test_U_XX
+  $CLI DROP   TABLE uXX > /dev/null
+  $CLI CREATE TABLE uXX "(pk U128, cu U128)";
+  $CLI INSERT INTO  uXX VALUES "(111|888,44444|9999)";
+  $CLI INSERT INTO  uXX VALUES "(333|222,55555|777)";
+  $CLI CREATE UNIQUE INDEX iu_uXX ON uXX "(cu)"
+  echo "1 row"
+  $CLI SELECT \* FROM uXX WHERE "cu=44444|9999"
+}
+
+function test_CI_ALL_U_UPK() {
+  echo test_CI_ALL_U_UPK
+  $CLI DROP TABLE ALL_U_UPK > /dev/null
+  $CLI CREATE TABLE ALL_U_UPK "(pk INT, u INT, l LONG, x U128)";
+  $CLI CREATE UNIQUE INDEX ci_ALL_U_UPK ON ALL_U_UPK "(l,x,u)";
+  $CLI INSERT INTO ALL_U_UPK VALUES "(,5,66,777|888)";
+  $CLI INSERT INTO ALL_U_UPK VALUES "(,5,66,777|999)";
+  $CLI SELECT \* FROM ALL_U_UPK WHERE "l = 66"
+}
+function test_CI_ALL_U_LPK() {
+  echo test_CI_ALL_U_LPK
+  $CLI DROP TABLE ALL_U_LPK > /dev/null
+  $CLI CREATE TABLE ALL_U_LPK "(pk LONG, u INT, l LONG, x U128)";
+  $CLI CREATE UNIQUE INDEX ci_ALL_U_LPK ON ALL_U_LPK "(l,x,u)";
+  $CLI INSERT INTO ALL_U_LPK VALUES "(,5,66,777|888)";
+  $CLI INSERT INTO ALL_U_LPK VALUES "(,5,66,777|999)";
+  $CLI SELECT \* FROM ALL_U_LPK WHERE "l = 66"
+}
+function test_CI_ALL_U_XPK() {
+  echo test_CI_ALL_U_XPK
+  $CLI DROP TABLE ALL_U_XPK > /dev/null
+  $CLI CREATE TABLE ALL_U_XPK "(pk U128, u INT, l LONG, x U128)";
+  $CLI CREATE UNIQUE INDEX ci_ALL_U_XPK ON ALL_U_XPK "(l,x,u)";
+  $CLI INSERT INTO ALL_U_XPK VALUES "(,5,66,777|888)";
+  $CLI INSERT INTO ALL_U_XPK VALUES "(,5,66,777|999)";
+  $CLI SELECT \* FROM ALL_U_XPK WHERE "l = 66"
+}
+function test_CI_ALL_L_UPK() {
+  echo test_CI_ALL_L_UPK
+  $CLI DROP TABLE ALL_L_UPK > /dev/null
+  $CLI CREATE TABLE ALL_L_UPK "(pk INT, u INT, l LONG, x U128)";
+  $CLI CREATE UNIQUE INDEX ci_ALL_L_UPK ON ALL_L_UPK "(u,x,l)";
+  $CLI INSERT INTO ALL_L_UPK VALUES "(,5,66,777|888)";
+  $CLI INSERT INTO ALL_L_UPK VALUES "(,5,66,777|999)";
+  $CLI SELECT \* FROM ALL_L_UPK WHERE "u = 5"
+}
+function test_CI_ALL_L_LPK() {
+  echo test_CI_ALL_L_LPK
+  $CLI DROP TABLE ALL_L_LPK > /dev/null
+  $CLI CREATE TABLE ALL_L_LPK "(pk LONG, u INT, l LONG, x U128)";
+  $CLI CREATE UNIQUE INDEX ci_ALL_L_LPK ON ALL_L_LPK "(u,x,l)";
+  $CLI INSERT INTO ALL_L_LPK VALUES "(,5,66,777|888)";
+  $CLI INSERT INTO ALL_L_LPK VALUES "(,5,66,777|999)";
+  $CLI SELECT \* FROM ALL_L_LPK WHERE "u = 5"
+}
+function test_CI_ALL_L_XPK() {
+  echo test_CI_ALL_L_XPK
+  $CLI DROP TABLE ALL_L_XPK > /dev/null
+  $CLI CREATE TABLE ALL_L_XPK "(pk U128, u INT, l LONG, x U128)";
+  $CLI CREATE UNIQUE INDEX ci_ALL_L_XPK ON ALL_L_XPK "(u,x,l)";
+  $CLI INSERT INTO ALL_L_XPK VALUES "(,5,66,777|888)";
+  $CLI INSERT INTO ALL_L_XPK VALUES "(,5,66,777|999)";
+  $CLI SELECT \* FROM ALL_L_XPK WHERE "u = 5"
+}
+function test_CI_ALL_X_UPK() {
+  echo test_CI_ALL_X_UPK
+  $CLI DROP TABLE ALL_X_UPK > /dev/null
+  $CLI CREATE TABLE ALL_X_UPK "(pk INT, u INT, l LONG, x U128)";
+  $CLI CREATE UNIQUE INDEX ci_ALL_X_UPK ON ALL_X_UPK "(u,l,x)";
+  $CLI INSERT INTO ALL_X_UPK VALUES "(,5,66,777|888)";
+  $CLI INSERT INTO ALL_X_UPK VALUES "(,5,66,777|999)";
+  $CLI SELECT \* FROM ALL_X_UPK WHERE "u = 5"
+}
+function test_CI_ALL_X_LPK() {
+  echo test_CI_ALL_X_LPK
+  $CLI DROP TABLE ALL_X_LPK > /dev/null
+  $CLI CREATE TABLE ALL_X_LPK "(pk LONG, u INT, l LONG, x U128)";
+  $CLI CREATE UNIQUE INDEX ci_ALL_X_LPK ON ALL_X_LPK "(u,l,x)";
+  $CLI INSERT INTO ALL_X_LPK VALUES "(,5,66,777|888)";
+  $CLI INSERT INTO ALL_X_LPK VALUES "(,5,66,777|999)";
+  $CLI SELECT \* FROM ALL_X_LPK WHERE "u = 5"
+}
+function test_CI_ALL_X_XPK() {
+  echo test_CI_ALL_X_XPK
+  $CLI DROP TABLE ALL_X_XPK > /dev/null
+  $CLI CREATE TABLE ALL_X_XPK "(pk U128, u INT, l LONG, x U128)";
+  $CLI CREATE UNIQUE INDEX ci_ALL_X_XPK ON ALL_X_XPK "(u,l,x)";
+  $CLI INSERT INTO ALL_X_XPK VALUES "(,5,66,777|888)";
+  $CLI INSERT INTO ALL_X_XPK VALUES "(,5,66,777|999)";
+  $CLI SELECT \* FROM ALL_X_XPK WHERE "u = 5"
+}
+function test_CI_ALL_ALL() {
+  echo test_CI_ALL_ALL
+  test_CI_ALL_U_UPK; test_CI_ALL_U_LPK; test_CI_ALL_U_XPK;
+  test_CI_ALL_L_UPK; test_CI_ALL_L_LPK; test_CI_ALL_L_XPK;
+  test_CI_ALL_X_UPK; test_CI_ALL_X_LPK; test_CI_ALL_X_XPK;
+}
+
+function test_OBT() {
+  test_UU; test_LU; test_UL; test_LL
+  test_uniq_UL; test_uniq_LU; test_uniq_LL
+  test_XU; test_XL; test_UX; test_LX; test_XX
+  test_XTBL
+  test_U_UX; test_U_XU; test_U_LX; test_U_XL; test_U_XX;
+  test_CI_ALL_ALL
 }

@@ -32,9 +32,10 @@ ALL RIGHTS RESERVED
 
 char *_strdup(char *s);
 char *_strnchr(char *s, int c, int len);
-bool is_int(char *s);
+bool is_int( char *s);
+bool is_u128 (char *s);
 bool is_float(char *s);
-bool is_text(char *beg, int len);
+bool is_text (char *beg, int len);
 
 char *extract_string_col(char *start, int *len);
 char *strcasestr_blockchar(char *haystack, char *needle, char blockchar);

@@ -131,26 +131,26 @@ static void dumpnode(printer *prn, bt *btr, bt_n *x,
             } else if UX(btr) { key_printed = 1;
                 uxk *ux = (uxk *)rrow;
                 (*prn)("\t\tUX[%d]: KEY: %u ", i, ux->key);
-                (*prn)(" VAL: "); DEBUG_128(prn, ux->val); (*prn)("\n");
+                (*prn)(" VAL: "); DEBUG_U128(prn, ux->val); (*prn)("\n");
             } else if XU(btr) { key_printed = 1;
                 xuk *xu = (xuk *)rrow;
-                (*prn)("\t\tXU[%d]: KEY: ", i); DEBUG_128(prn, xu->key);
+                (*prn)("\t\tXU[%d]: KEY: ", i); DEBUG_U128(prn, xu->key);
                 (*prn)(" VAL: %u\n", xu->val);
             } else if LX(btr) { key_printed = 1;
                 lxk *lx = (lxk *)rrow;
                 (*prn)("\t\tLX[%d]: KEY: %lu ", i, lx->key);
-                (*prn)(" VAL: "); DEBUG_128(prn, lx->val); (*prn)("\n");
+                (*prn)(" VAL: "); DEBUG_U128(prn, lx->val); (*prn)("\n");
             } else if XL(btr) { 
                 if XLP(btr) (*prn)("\t\tXL: PTR: %p\t", rrow);
                 else { key_printed = 1;
                     xlk *xl = (xlk *)rrow;
-                    (*prn)("\t\tXL[%d]: KEY: ", i); DEBUG_128(prn, xl->key);
+                    (*prn)("\t\tXL[%d]: KEY: ", i); DEBUG_U128(prn, xl->key);
                     (*prn)(" VAL: %lu\n", xl->val);
                 }
             } else if XX(btr) { key_printed = 1;
                 xxk *xx = (xxk *)rrow;
-                (*prn)("\t\tXX[%d]: KEY: ", i); DEBUG_128(prn, xx->key);
-                (*prn)(" VAL: "); DEBUG_128(prn, xx->val); (*prn)("\n");
+                (*prn)("\t\tXX[%d]: KEY: ", i); DEBUG_U128(prn, xx->key);
+                (*prn)(" VAL: "); DEBUG_U128(prn, xx->val); (*prn)("\n");
             } else {
                 (*prn)("\t\tROW[%d]: %p\t", i, rrow);
             }

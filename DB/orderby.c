@@ -67,43 +67,47 @@ static int ulongOrderByRevSort(const void *s1, const void *s2) {
     return ((ulong)s1 == (ulong)s2)  ? 0 : 
            (((ulong)s1 >  (ulong)s2) ? -1 : 1);
 }
+static int u128OrderBySort(const void *s1, const void *s2) {
+    uint128 x1 = *((uint128 *)s1); uint128 x2 = *((uint128 *)s2);
+    return x1 == x2 ? 0 : (x1 > x2) ? 1 : -1;
+}
+static int u128OrderByRevSort(const void *s1, const void *s2) {
+    uint128 x1 = *((uint128 *)s1); uint128 x2 = *((uint128 *)s2);
+    return x1 == x2 ? 0 : (x1 > x2) ? -1 : 1;
+}
 static int floatOrderBySort(const void *s1, const void *s2) {
     float f1, f2;
-    memcpy(&f1, &s1, FSIZE);
-    memcpy(&f2, &s2, FSIZE);
+    memcpy(&f1, &s1, FSIZE); memcpy(&f2, &s2, FSIZE);
     float   f  = f1 - f2;
     return (f == 0.0) ? 0 : ((f > 0.0) ? 1: -1);
 }
 static int floatOrderByRevSort(const void *s1, const void *s2) {
     float f1, f2;
-    memcpy(&f1, &s1, FSIZE);
-    memcpy(&f2, &s2, FSIZE);
+    memcpy(&f1, &s1, FSIZE); memcpy(&f2, &s2, FSIZE);
     float   f  = f2 - f1;
     return (f == 0.0) ? 0 : ((f > 0.0) ? 1: -1);
 }
 static int stringOrderBySort(const void *s1, const void *s2) {
-    char *c1 = (char *)s1;
-    char *c2 = (char *)s2;
+    char *c1 = (char *)s1; char *c2 = (char *)s2;
     return (c1 && c2) ? strcmp(c1, c2) : c1 - c2; /* strcmp() not ok w/ NULLs */
 }
 static int stringOrderByRevSort(const void *s1, const void *s2) {
-    char *c1 = (char *)s1;
-    char *c2 = (char *)s2;
+    char *c1 = (char *)s1; char *c2 = (char *)s2;
     return (c1 && c2) ? strcmp(c2, c1) : c2 - c1; /* strcmp() not ok w/ NULLs */
 }
 
 typedef int ob_cmp(const void *, const void *);
 /* slot = OB_ctype[j] * 2 + OB_asc[j] */
-ob_cmp (*OB_cmp[10]) = { NULL,                 NULL,               // CTYPE: 0
+ob_cmp (*OB_cmp[12]) = { NULL,                 NULL,               // CTYPE: 0
                          intOrderByRevSort,    intOrderBySort,     // CTYPE: 1
                          ulongOrderByRevSort,  ulongOrderBySort,   // CTYPE: 2
                          stringOrderByRevSort, stringOrderBySort,  // CTYPE: 3
-                         floatOrderByRevSort,  floatOrderBySort }; // CTYPE: 4
+                         floatOrderByRevSort,  floatOrderBySort,   // CTYPE: 4
+                         u128OrderByRevSort,   u128OrderBySort  }; // CTYPE: 4
 
 int genOBsort(const void *s1, const void *s2) {
     int     ret = 0;
-    obsl_t *o1  = *(obsl_t **)s1;
-    obsl_t *o2  = *(obsl_t **)s2;
+    obsl_t *o1  = *(obsl_t **)s1; obsl_t *o2  = *(obsl_t **)s2;
     for (uint32 j = 0; j < OB_nob; j++) {
         ob_cmp *compar = OB_cmp[OB_ctype[j] * 2 + OB_asc[j]];
         ret            = (*compar)(o1->keys[j], o2->keys[j]);
@@ -118,8 +122,7 @@ list *initOBsort(bool qed, wob_t *wb, bool rcrud) {
         for (uint32 i = 0; i < OB_nob; i++) {
             OB_asc[i]   = wb->asc[i];
             OB_ctype[i] = Tbl[wb->obt[i]].col[wb->obc[i]].type;
-        }
-    }                                                         // \/ DESTROY 009
+        }}                                                    // \/ DESTROY 009
     if (qed) {                                           return listCreate();
     } else if (rcrud) {
         list *ll = listCreate(); ll->free = destroyAobj; return ll;
@@ -138,8 +141,8 @@ obsl_t *create_obsl(void *row, uint32 nob) {
     return ob;
 }
 static void free_obsl_key(obsl_t *ob, int i) {
-    if (C_IS_S(OB_ctype[i])) {
-        if (ob->keys[i]) free(ob->keys[i]); ob->keys[i] = NULL; /* FREED 003 */
+    if (C_IS_S(OB_ctype[i]) || C_IS_X(OB_ctype[i])) {
+        if (ob->keys[i]) { free(ob->keys[i]); ob->keys[i] = NULL; } //FREED 003
     }
 }
 void destroy_obsl(obsl_t *ob, bool ofree) {
@@ -156,8 +159,10 @@ obsl_t * cloneOb(obsl_t *ob, uint32 nob) { /* JOIN's API */
     obsl_t *ob2  = create_obsl(NULL, nob);               /* FREE ME 001 */
     for (uint32 i = 0; i < nob; i++) {
         if (!ob->keys[i]) continue;
-        if (C_IS_S(OB_ctype[i])) ob2->keys[i] = _strdup(ob->keys[i]);
-        else                     ob2->keys[i] = ob->keys[i];
+        if        C_IS_S(OB_ctype[i]) ob2->keys[i] = _strdup(ob->keys[i]);
+          else if C_IS_X(OB_ctype[i]) {
+            ob2->keys[i] = malloc(16); memcpy(ob2->keys[i], ob->keys[i], 16);
+        } else                        ob2->keys[i] = ob->keys[i];
     }
     if (ob->apk) ob2->apk = cloneAobj(ob->apk);          /* DESTROY ME 071 */
     ob2->lruc = ob->lruc; ob2->lrud = ob->lrud;
@@ -166,18 +171,20 @@ obsl_t * cloneOb(obsl_t *ob, uint32 nob) { /* JOIN's API */
 }
 
 void assignObEmptyKey(obsl_t *ob, uchar ctype, int i) {
-    if      (C_IS_NUM(ctype)) ob->keys[i] = 0;
-    else if (C_IS_F  (ctype)) memcpy(&ob->keys[i], &Fmin, FSIZE);
-    else /*  C_IS_S()   */    ob->keys[i] = NULL;
+    if      C_IS_X  (ctype) ob->keys[i] = NULL;
+    if      C_IS_NUM(ctype) ob->keys[i] = 0; // I or L
+    else if C_IS_F  (ctype) memcpy(&ob->keys[i], &Fmin, FSIZE);
+    else /* C_IS_S()   */   ob->keys[i] = NULL;
 }
 void assignObKey(wob_t *wb, bt *btr, void *rrow, aobj *apk, int i, obsl_t *ob) {
     void  *key;
     uchar  ctype = Tbl[wb->obt[i]].col[wb->obc[i]].type;
     aobj   ao    = getCol(btr, rrow, wb->obc[i], apk, wb->obt[i]);
-    if      (C_IS_I(ctype)) key = VOIDINT ao.i;
-    else if (C_IS_L(ctype)) key = (void *)ao.l;
-    else if (C_IS_F(ctype)) memcpy(&(key), &ao.f, FSIZE);
-    else {// C_IS_S()
+    if      C_IS_I(ctype) key = VOIDINT ao.i;
+    else if C_IS_L(ctype) key = (void *)ao.l;
+    else if C_IS_X(ctype) { uint128 *x = malloc(16); *x = ao.x; key = x; }
+    else if C_IS_F(ctype) memcpy(&(key), &ao.f, FSIZE);
+    else {//C_IS_S
         char *s   = malloc(ao.len + 1);                  /* FREE ME 003 */
         memcpy(s, ao.s, ao.len); /* memcpy needed ao.s maybe decoded(freeme) */
         s[ao.len] = '\0';   key       = s;
@@ -219,16 +226,14 @@ void sortOBCleanup(obsl_t **vector, int vlen, bool ofree) {
 
 // DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
 void dumpObKey(printer *prn, int i, void *key, uchar ctype) {
-    if        (C_IS_I(ctype)) {
-        (*prn)("\t\t%d: i: %d\n", i, (int)(long)key);
-    } else if (C_IS_L(ctype)) {
-        (*prn)("\t\t%d: i: %ld\n", i, (long)key);
-    } else if (C_IS_S(ctype)) {
-        (*prn)("\t\t%d: s: %s\n", i, (char *)key);
-    } else {/* COL_TYPE_FLOAT */ 
-        float f;
-        memcpy(&f, &key, FSIZE);
-        (*prn)("\t\t%d: f: %f\n", i, f);
+    if        C_IS_I(ctype) (*prn)("\t\t%d: i: %d\n", i, (int)(long)key);
+      else if C_IS_L(ctype) (*prn)("\t\t%d: i: %ld\n", i, (long)key);
+      else if C_IS_S(ctype) (*prn)("\t\t%d: s: %s\n", i, (char *)key);
+      else if C_IS_X(ctype) {
+        (*prn)("\t\t%d: x: ", i); DEBUG_U128(prn, *((uint128 *)key))
+        (*prn)("\n");
+    } else {//C_IS_F
+        float f; memcpy(&f, &key, FSIZE); (*prn)("\t\t%d: f: %f\n", i, f);
     }
 }
 void dumpOb(printer *prn, obsl_t *ob) {

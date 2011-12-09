@@ -28,6 +28,7 @@ ALL RIGHTS RESERVED
 #include <string.h>
 #include <strings.h>
 #include <unistd.h>
+#include <assert.h>
 
 #include "adlist.h"
 #include "redis.h"
@@ -64,12 +65,19 @@ static bool Bdum; /* dummy variable */
 #define DEBUG_RANGE_PK                                        \
   printf("rangeOpPK: imatch: %d\n", g->co.w->wf.imatch);
 #define DEBUG_UBT_OP                                                       \
-  printf("uBT_Op: UniqueIndexVal: "); dumpAobj(printf, &UniqueIndexVal);
+  printf("uBT_Op: btr: %p UniqueIndexVal: ", d->g->co.btr);                \
+  dumpAobj(printf, &UniqueIndexVal);
 #define DEBUG_NODE_BT                                                      \
   printf("nodeBT_Op: nbtr->numkeys: %d\n", d->nbtr->numkeys);
-#define DEBUG_NODE_BT_OBC                                                  \
-  printf("nodeBT_Op: obc: %d val: %p key: ", d->obc, nbe->val);            \
-  dumpAobj(printf, &akey); printf("nbe_key: "); dumpAobj(printf, nbe->key);
+#define DEBUG_NODE_BT_OBC_1                                                \
+  printf("nodeBT_Op OBYI_1: key: ");                                       \
+  printf("nbe_key: "); dumpAobj(printf, nbe->key);                         \
+  DEBUG_BT_TYPE(printf, nbtr)
+#define DEBUG_NODE_BT_OBC_2                                                \
+  printf("nodeBT_Op OBYI_2: nbtr: %p ctype: %d obc: %d val: %p key: ",     \
+         nbtr, ctype, d->obc, nbe->val); dumpAobj(printf, &akey);          \
+  printf("nbe_key: "); dumpAobj(printf, nbe->key);
+
 #define DEBUG_MCI_FIND                                                     \
   printf("in btMCIFindVal: trgr: %d\n", trgr);
 #define DEBUG_MCI_FIND_MID                                                 \
@@ -231,7 +239,7 @@ static long rangeOpPK(range_t *g, row_op *p) {                 //DEBUG_RANGE_PK
     return card;
 }
 
-static aobj  UniqueIndexVal;
+static aobj UniqueIndexVal;
 void initX_DB_Range() { /* NOTE: called on server startup */
     initAobj(&UniqueIndexVal);
 }
@@ -250,13 +258,17 @@ static bool uBT_Op(ibtd_t *d) {                                  //DEBUG_UBT_OP
     if (!(*d->p)(d->g, &UniqueIndexVal, rrow, d->g->q->qed, d->card)) return 0;
     return 1;
 }
+#define OBT_NODE_BT_OP(vcast, aobjpart, vtype)                              \
+  { vcast *vvar = nbe->val; akey.aobjpart = vvar->val; akey.type = vtype; }
+
 static bool nodeBT_Op(ibtd_t *d) {                              //DEBUG_NODE_BT
+    bt *nbtr = d->nbtr;
     if (d->g->se.cstar && !d->g->co.w->flist) { /* FK cstar w/o filters */
-        INCRBY(*d->card, d->nbtr->numkeys) return 1;
+        INCRBY(*d->card, nbtr->numkeys) return 1;
     }
     if (d->q->fk_lo && FK_RQ(d->g->co.w->wtype) &&
-        d->nbtr->numkeys <= *d->ofst) { /* skip IndexNode */
-            DECRBY(*d->ofst,  d->nbtr->numkeys); return 1;
+        nbtr->numkeys <= *d->ofst) { /* skip IndexNode */
+            DECRBY(*d->ofst,  nbtr->numkeys); return 1;
     }
     btEntry *nbe;
     bool     ret      = 1; /* presume success */
@@ -265,8 +277,8 @@ static bool nodeBT_Op(ibtd_t *d) {                              //DEBUG_NODE_BT
     *d->brkr          = 0;
     bool     gox      = (q->fk_lo && *d->ofst > 0);
     bool     inr_asc  = !q->inr_desc;
-    btSIter *nbi      = gox ? btGetFullXthIter  (d->nbtr, *d->ofst, inr_asc) :
-                              btGetFullRangeIter(d->nbtr,           inr_asc);
+    btSIter *nbi      = gox ? btGetFullXthIter  (nbtr, *d->ofst, inr_asc) :
+                              btGetFullRangeIter(nbtr,           inr_asc);
     while ((nbe = btRangeNext(nbi, inr_asc)) != NULL) {
         INCR(*d->loops)
         if (q->fk_lim) {
@@ -275,11 +287,20 @@ static bool nodeBT_Op(ibtd_t *d) {                              //DEBUG_NODE_BT
         }
         void *key; aobj akey; initAobj(&akey);
         if (d->obc == -1) key = nbe->key;
-        else {  /* ORDER BY INDEX query */                  //DEBUG_NODE_BT_OBC
+        else {  /* ORDER BY INDEX query */                //DEBUG_NODE_BT_OBC_1
             uchar ctype = Tbl[d->g->co.btr->s.num].col[0].type; // PK_CTYPE
-            if      C_IS_I(ctype) initAobjInt (&akey, (uint32)(ulong)nbe->val);
-            else /* C_IS_L */     initAobjLong(&akey, (ulong)        nbe->val);
-            key = &akey;
+            if      C_IS_I(ctype) {
+                if XU(nbtr) OBT_NODE_BT_OP(xuk, i, COL_TYPE_INT)
+                else        initAobjInt   (&akey, (uint32)(ulong)nbe->val);
+            } else if C_IS_L(ctype) {
+                if XL(nbtr) OBT_NODE_BT_OP(xlk, l, COL_TYPE_LONG)
+                else        initAobjLong  (&akey, (ulong)        nbe->val);
+            } else { // C_IS_X
+                if      UX(nbtr) initAobjU128(&akey, (uint128)      nbe->val);
+                else if LX(nbtr) OBT_NODE_BT_OP(lxk, x, COL_TYPE_U128)
+                else /* XX */    OBT_NODE_BT_OP(xxk, x, COL_TYPE_U128)
+            }
+            key = &akey;                                  //DEBUG_NODE_BT_OBC_2
         }
         void *rrow = btFind(d->g->co.btr, key);
         releaseAobj(&akey);
@@ -288,6 +309,27 @@ static bool nodeBT_Op(ibtd_t *d) {                              //DEBUG_NODE_BT
     if (q->fk_lo)                         *d->ofst = 0; /* OFFSET fulfilled */
     if (q->fk_lim && wb->lim == *d->card) *d->brkr = 1; /* ORDERBY FK LIM*/
     return ret;
+}
+#define SETUNIQIVAL(vt, vcast, aobjpart)                     \
+  { uv->enc      = uv->type = vt;                            \
+    vcast *vvar  = btFind(nbtr, akey); if (!vvar)  return 0; \
+    uv->aobjpart = vvar->val; }
+
+static bool setUniqIndexVal(bt *nbtr, aobj *akey) {
+    aobj *uv       = &UniqueIndexVal;
+    if        UU(nbtr) {
+        uv->enc = uv->type = COL_TYPE_INT;
+        if (!(uv->i = (long)btFind(nbtr, akey))) return 0;
+    } else if UL(nbtr) SETUNIQIVAL(COL_TYPE_LONG, ulk, l)
+      else if LU(nbtr) SETUNIQIVAL(COL_TYPE_INT,  luk, i)
+      else if LL(nbtr) SETUNIQIVAL(COL_TYPE_LONG, llk, l)
+      else if UX(nbtr) SETUNIQIVAL(COL_TYPE_U128, uxk, x)
+      else if XU(nbtr) SETUNIQIVAL(COL_TYPE_INT,  xuk, i)
+      else if LX(nbtr) SETUNIQIVAL(COL_TYPE_U128, lxk, x)
+      else if XL(nbtr) SETUNIQIVAL(COL_TYPE_LONG, xlk, l)
+      else if XX(nbtr) SETUNIQIVAL(COL_TYPE_U128, xxk, x)
+      else assert(!"setUniqIndexVal ERROR");
+    return 1;
 }
 bt *btMCIFindVal(cswc_t *w, bt *nbtr, uint32 *nmatch, r_ind_t *ri) {
     if (nbtr && w->wf.klist) {
@@ -299,36 +341,22 @@ bt *btMCIFindVal(cswc_t *w, bt *nbtr, uint32 *nmatch, r_ind_t *ri) {
             f_t *flt  = ln->value;                          //DEBUG_MCI_FIND_MID
             if (flt->op == NONE) break; /* MCI Joins can have empty flt's */
             if (i == trgr) {
-                ln             = listNext(li);
-                aobj *uv       = &UniqueIndexVal;
-                if        UU(nbtr) { //TODO refactor this w/ 099
-                    uv->enc = uv->type = COL_TYPE_INT;
-                    if (!(uv->i = (long)btFind(nbtr, &flt->akey))) NBRK
-                } else if UL(nbtr) {
-                    uv->enc = uv->type = COL_TYPE_LONG;
-                    ulk *ul  = btFind(nbtr, &flt->akey); if (!ul)  NBRK
-                    uv->l    = ul->val;
-                } else if LU(nbtr) {
-                    uv->enc = uv->type = COL_TYPE_INT;
-                    luk *lu  = btFind(nbtr, &flt->akey); if (!lu)  NBRK
-                    uv->i    = lu->val;
-                } else if LL(nbtr) {
-                    uv->enc = uv->type = COL_TYPE_LONG;
-                    llk *ll  = btFind(nbtr, &flt->akey); if (!ll)  NBRK
-                    uv->l    = ll->val;
-                }
-                INCR(*nmatch)
-                break;
+                ln = listNext(li); //TODO needed ???
+                if (!setUniqIndexVal(nbtr, &flt->akey)) NBRK
+                INCR(*nmatch) break;
             }
             bt  *xbtr = btIndFind(nbtr, &flt->akey);
-            if (!xbtr)                                             NBRK/* MISS*/
-            INCR(*nmatch)
-            nbtr      = xbtr;
-            i++;
+            if (!xbtr)                                  NBRK /* MISS*/
+            INCR(*nmatch) nbtr = xbtr; i++;
         } listReleaseIterator(li);
     }
     return nbtr;
 }
+#define OBT_RUNONNODE(vt, vcast, aobjpart) \
+  {  uv->enc      = uv->type = vt;         \
+     vcast *vvar  = nbe->val;              \
+     uv->aobjpart = vvar->val; }
+
 static bool runOnNode(bt      *ibtr, uint32  still,
                       node_op *nop,  ibtd_t *d,     r_ind_t *ri) {
     btEntry *nbe;                                           //DEBUG_RUN_ON_NODE
@@ -343,25 +371,21 @@ static bool runOnNode(bt      *ibtr, uint32  still,
             if (!runOnNode(d->nbtr, still, nop, d, ri)) { ret = 0; break; }
         } else {
             if UNIQ(ri->cnstr) {
-                d->nbtr        = ibtr;/* Unique 1 step shorter*/
+                d->nbtr        = ibtr; // Unique 1 step shorter
                 aobj *uv       = &UniqueIndexVal;
-                if        UU(d->nbtr) { //TODO refactor this w/ 099
+                if        UU(d->nbtr) {
                     uv->enc = uv->type = COL_TYPE_INT;
-                    uv->i = (int)(long)nbe->val;
-                } else if UL(d->nbtr) {
-                    uv->enc = uv->type = COL_TYPE_LONG;
-                    ulk *ul  = nbe->val;
-                    uv->l    = ul->val;
-                } else if LU(d->nbtr) {
-                    uv->enc = uv->type = COL_TYPE_INT;
-                    luk *lu  = nbe->val;
-                    uv->i    = lu->val;
-                } else if LL(d->nbtr) {
-                    uv->enc = uv->type = COL_TYPE_LONG;
-                    llk *ll  = nbe->val;
-                    uv->l    = ll->val;
-                }
-            }  /* NEXT LINE: When we get to NODE -> run xBT_Op */
+                    uv->i   = (uint32)(ulong)nbe->val;
+                } else if UL(d->nbtr) OBT_RUNONNODE(COL_TYPE_LONG, ulk, l)
+                  else if LU(d->nbtr) OBT_RUNONNODE(COL_TYPE_INT,  luk, i)
+                  else if LL(d->nbtr) OBT_RUNONNODE(COL_TYPE_LONG, llk, l)
+                  else if UX(d->nbtr) OBT_RUNONNODE(COL_TYPE_U128, uxk, x)
+                  else if XU(d->nbtr) OBT_RUNONNODE(COL_TYPE_INT,  xuk, i)
+                  else if LX(d->nbtr) OBT_RUNONNODE(COL_TYPE_U128, lxk, x)
+                  else if XL(d->nbtr) OBT_RUNONNODE(COL_TYPE_LONG, xlk, l)
+                  else if XX(d->nbtr) OBT_RUNONNODE(COL_TYPE_U128, xxk, x)
+                  else assert(!"runOnNode ERROR");
+            }  // NEXT LINE: When we get to NODE -> run [uBT_Op|nodeBT_Op]
             if (!(*nop)(d)) { ret = 0; break; }
         }
         if (*d->brkr) break;
@@ -379,6 +403,7 @@ static long rangeOpFK(range_t *g, row_op *p) {                 //DEBUG_RANGE_FK
     r_ind_t *ri    = &Index[w->wf.imatch];
     node_op *nop   = UNIQ(ri->cnstr) ? uBT_Op : nodeBT_Op;
     uint32   nexpc = ri->clist ? (ri->clist->len - 1) : 0;
+    bool     singu = (!ri->clist && UNIQ(ri->cnstr)); // SINGLE COL UNIQ
     long     ofst  = wb->ofst;
     bool     asc   = !q->fk_desc;
     long     loops = -1;
@@ -386,12 +411,15 @@ static long rangeOpFK(range_t *g, row_op *p) {                 //DEBUG_RANGE_FK
     btSIter *bi    = btGetRangeIter(ibtr, &w->wf.alow, &w->wf.ahigh, asc);
     init_ibtd(&d, p, g, q, NULL, &ofst, &card, &loops, &brkr, ri->obc);
     while ((be = btRangeNext(bi, asc)) != NULL) {
-        uint32 nmatch = 0;
-        d.nbtr        = btMCIFindVal(w, be->val, &nmatch, ri);
+        uint32  nmatch = 0;
+        d.nbtr         = singu ? ibtr : btMCIFindVal(w, be->val, &nmatch, ri);
         if (d.nbtr) {
             uint32 diff = nexpc - nmatch;
             if      (diff) { if (!runOnNode(d.nbtr, diff, nop, &d, ri)) CBRK }
-            else if (!(*nop)(&d))                                       CBRK
+            else {
+                if (singu && !setUniqIndexVal(d.nbtr, be->key))         CBRK
+                if (!(*nop)(&d))                                        CBRK
+            }
         }
         if (brkr) break;
     } btReleaseRangeIterator(bi);
@@ -409,7 +437,9 @@ static long singleOpFK(range_t *g, row_op *p) {               //DEBUG_SINGLE_FK
     r_ind_t  *ri     = &Index[w->wf.imatch];
     node_op  *nop    = UNIQ(ri->cnstr) ? uBT_Op : nodeBT_Op;
     uint32    nexpc  = ri->clist ? (ri->clist->len - 1) : 0;
-    bt       *nbtr   = btMCIFindVal(w, btIndFind(ibtr, afk), &nmatch, ri);
+    bool      singu  = (!ri->clist && UNIQ(ri->cnstr)); // SINGLE COL UNIQ
+    bt       *fibtr  = singu ? NULL : btIndFind(ibtr, afk);
+    bt       *nbtr   = singu ? ibtr : btMCIFindVal(w, fibtr, &nmatch, ri);
     long      ofst   = wb->ofst;
     long      loops  = -1;
     long      card   =  0;
@@ -417,7 +447,10 @@ static long singleOpFK(range_t *g, row_op *p) {               //DEBUG_SINGLE_FK
     if (d.nbtr) {
         uint32 diff = nexpc - nmatch;
         if      (diff) { if (!runOnNode(d.nbtr, diff, nop, &d, ri)) return -1; }
-        else if (!(*nop)(&d))                                       return -1;
+        else {
+            if (singu && !setUniqIndexVal(nbtr, afk)) return -1;
+            if (!(*nop)(&d))                                       return -1;
+        }
     }
     return card;
 }

@@ -306,26 +306,31 @@ static void cr8BTKU128(aobj *akey, uint32 *ksize, uchar *btkey) {
 static void cr8BTKFloat(aobj *akey, uint32 *ksize, uchar *btkey) {
     writeFloatCol(&btkey, 1, akey->f); *ksize = 4;
 }
-int btIntCmp(void *a, void *b) {
+int btIntCmp(void *a, void *b) {                        //printf("btIntCmp\n");
     uint32 key1 = streamIntToUInt(a, NULL);
     uint32 key2 = streamIntToUInt(b, NULL);
     return key1 == key2 ? 0 : (key1 > key2) ? 1 : -1;
 }
-int btLongCmp(void *a, void *b) {
+int btLongCmp(void *a, void *b) {                      //printf("btLongCmp\n");
     ulong key1 = streamLongToULong(a, NULL);
     ulong key2 = streamLongToULong(b, NULL);
     return key1 == key2 ? 0 : (key1 > key2) ? 1 : -1;
 }
-int btFloatCmp(void *a, void *b) {
+int btU128Cmp(void *a, void *b) {                      //printf("btU128Cmp\n");
+    uint128  x1 = *((uint128 *)a);
+    uint128  x2 = *((uint128 *)b);
+    return x1 == x2 ? 0 : (x1 > x2) ? 1 : -1;
+}
+int btFloatCmp(void *a, void *b) {                    //printf("btFloatCmp\n");
     float key1 = streamFloatToFloat(a, NULL);
     float key2 = streamFloatToFloat(b, NULL);
     float f    = key1 - key2;
     return (f == 0.0) ? 0 : ((f > 0.0) ? 1: -1);
 }
-int btTextCmp(void *a, void *b) {
+int btTextCmp(void *a, void *b) {                      //printf("btTextCmp\n");
     uint32 slen1, slen2;
-    uchar *s1     = (uchar *)a;
-    uchar *s2     = (uchar *)b;
+    uchar  *s1     = (uchar *)a;
+    uchar  *s2     = (uchar *)b;
     s1 = (getSflag(*s1)) ? getTString(s1, &slen1) : getString( s1, &slen1);
     s2 = (getSflag(*s2)) ? getTString(s2, &slen2) : getString( s2, &slen2);
     if (slen1 == slen2) return strncmp((char *)s1, (char *)s2, slen1);
@@ -516,7 +521,7 @@ static void *OBT_createStream(bt *btr, void *val, char *btkey) {
     else if UL(btr) OBT_CR8_STRM (ulk, UL_StreamPtr, ulong)
     else if LU(btr) OBT_CR8_STRM (luk, LU_StreamPtr, uint32)
     else if LL(btr) OBT_CR8_STRM (llk, LL_StreamPtr, ulong)
-    else if UX(btr) XOBT_CR8_STRM (uxk, UX_StreamPtr)
+    else if UX(btr) XOBT_CR8_STRM(uxk, UX_StreamPtr)
     else if XU(btr) XOBT_CR8_STRM(xuk, XU_StreamPtr)
     else if LX(btr) XOBT_CR8_STRM(lxk, LX_StreamPtr)
     else if XX(btr) XOBT_CR8_STRM(xxk, XX_StreamPtr)

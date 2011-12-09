@@ -334,7 +334,7 @@ void dumpAobj(printer *prn, aobj *a) {
             (*prn)("\tLONG(S) aobj: mt: %d val: %s\n", a->empty, DumpBuf);
         }
     } else if (C_IS_X(a->type)) {
-        (*prn)("\tU128 aobj: mt: %d val: ", a->empty); DEBUG_128(prn, a->x);
+        (*prn)("\tU128 aobj: mt: %d val: ", a->empty); DEBUG_U128(prn, a->x);
         (*prn)("\n");
     } else if (C_IS_F(a->type)) {
         if (a->enc == COL_TYPE_INT) (*prn)("\tFLOAT aobj: mt: %d val: %f\n",

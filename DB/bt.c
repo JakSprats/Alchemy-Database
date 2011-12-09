@@ -89,10 +89,11 @@ static bt *createOBT(uchar ktype, uchar vtype, int tmatch, uchar btype) {
     }
     return NULL;
 }
-#define ASSIGN_CMP(ktype)   C_IS_I(ktype) ? btIntCmp   : \
-                          ( C_IS_L(ktype) ? btLongCmp  : \
-                          ( C_IS_F(ktype) ? btFloatCmp : \
-                          /* STRING */      btTextCmp))
+#define ASSIGN_CMP(ktype) C_IS_I(ktype) ? btIntCmp   : \
+                          C_IS_L(ktype) ? btLongCmp  : \
+                          C_IS_X(ktype) ? btU128Cmp  : \
+                          C_IS_F(ktype) ? btFloatCmp : \
+                          /* TEXT */      btTextCmp
 
 bt *createDBT(uchar ktype, int tmatch) {
     r_tbl_t *rt = &Tbl[tmatch];
@@ -123,6 +124,22 @@ bt *createIBT(uchar ktype, int imatch, uchar btype) {
     }
     return bt_create(cmp, TRANS_ONE, &bts);
 }
+bt *createU_IBT(uchar ktype, int imatch, uchar pktyp) {
+    if (C_IS_I(ktype)) {
+        return  C_IS_I(pktyp) ? createUUBT(imatch, BT_MCI_UNIQ) :
+               (C_IS_L(pktyp) ? createULBT(imatch, BT_MCI_UNIQ) :
+             /* C_IS_X */       createUXBT(imatch, BT_MCI_UNIQ));
+    } else if (C_IS_L(ktype)) {
+        return  C_IS_I(pktyp) ? createLUBT(imatch, BT_MCI_UNIQ) :
+               (C_IS_L(pktyp) ? createLLBT(imatch, BT_MCI_UNIQ) :
+             /* C_IS_X */       createLXBT(imatch, BT_MCI_UNIQ));
+    } else if (C_IS_X(ktype)) {
+        return  C_IS_I(pktyp) ? createXUBT(imatch, BT_MCI_UNIQ) :
+               (C_IS_L(pktyp) ? createXLBT(imatch, BT_MCI_UNIQ) :
+             /* C_IS_X */       createXXBT(imatch, BT_MCI_UNIQ));
+    } else { assert(!"createU_IBT ERROR"); return NULL; }
+}
+
 bt *createMCI_MIDBT(uchar ktype, int imatch) {
     return createIBT(ktype, imatch, BTREE_MCI_MID);
 }
@@ -139,9 +156,9 @@ bt *createIndexNode(uchar ktype, uchar obctype) {                /* INODE_BT */
         // NOTE: BTFLAG_*_INDEX used as the RAW [VALUE] is pulled out in
         //       parseStream() and passed to nodeBT_Op()
         //       [UU,UL,LU,LL] are passed as [KEY,VALUE] to getRawCol()
-        btr->s.bflag |= (C_IS_I(obctype)  ? BTFLAG_UINT_INDEX  :
-                        (C_IS_L(ktype)    ? BTFLAG_ULONG_INDEX :
-                      /* C_IS_X(ktype) */   BTFLAG_U128_INDEX));
+        btr->s.bflag |= C_IS_I(obctype)  ? BTFLAG_UINT_INDEX  :
+                        C_IS_L(obctype)  ? BTFLAG_ULONG_INDEX :
+                     /* C_IS_X(obctype) */ BTFLAG_U128_INDEX;
         return btr;
     }
     bt_cmp_t cmp; bts_t bts;
@@ -253,7 +270,8 @@ int btIndDelete(bt *ibtr, aobj *akey) {
 }
 
 /* INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE */
-#define DEBUG_IADD_OBC                                       \
+#define DEBUG_IADD_OBC                                         \
+    printf("btIndNodeOBCAdd: nbtr: %p\n", nbtr);               \
     printf("btIndNodeOBCAdd: apk : "); dumpAobj(printf, apk);  \
     printf("btIndNodeOBCAdd: ocol: "); dumpAobj(printf, ocol);
 
@@ -266,9 +284,7 @@ bool  btIndNodeOBCAdd(cli *c, bt *nbtr, aobj *apk, aobj *ocol) {//DEBUG_IADD_OBC
     if (abt_find(nbtr, ocol)) {
         if (c) addReply(c, shared.obindexviol); return 0;
     }
-    if      C_IS_I(apk->type) abt_insert(nbtr, ocol, VOIDINT apk->i);
-    else /* C_IS_L */         abt_insert(nbtr, ocol, (void *)apk->l);
-    return 1;
+    iAddUniq(nbtr, apk->type, apk, ocol);       return 1;
 }
 int   btIndNodeOBCDelete(bt *nbtr, aobj *ocol) {
     abt_del(nbtr, ocol); return nbtr->numkeys;

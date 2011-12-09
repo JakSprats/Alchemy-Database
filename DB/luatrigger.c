@@ -111,10 +111,13 @@ static bool parseLuatCmd(cli *c, sds cmd, ltc_t *ltc, int tmatch) {
     if (ok) {
         ltc->cmatchs = malloc(sizeof(int) * ltc->ncols); // FREE ME 083
         listNode *ln;
+        r_tbl_t  *rt = &Tbl[tmatch];
         int       i  = 0;
         listIter *li = listGetIterator(cmatchl, AL_START_HEAD);
         while((ln = listNext(li))) {
-            ltc->cmatchs[i] = (int)(long)ln->value; i++;
+            int cmatch      = (int)(long)ln->value;
+            if C_IS_X(rt->col[cmatch].type) { ok = 0; break; }
+            ltc->cmatchs[i] = cmatch; i++;
         } listReleaseIterator(li);
     }
     listRelease(cmatchl);
@@ -187,6 +190,7 @@ static void luatDo(bt  *btr,    luat_t *luat, aobj *apk,
     for (int i = 0; i < ltc->ncols; i++) {
         aobj acol = getCol(btr, rrow, ltc->cmatchs[i], apk, ri->table);
         int ctype = rt->col[ltc->cmatchs[i]].type;
+        //NOTE: C_IS_X is prohibited (need lua 128 bit num lib)
         if        C_IS_I(ctype) {
             if (acol.empty) lua_pushnil    (server.lua);
             else            lua_pushinteger(server.lua, acol.i);
