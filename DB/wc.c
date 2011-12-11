@@ -387,6 +387,7 @@ static bool parseInumCol(cli *c, char *token, int tlen, f_t *flt) {
     else                   flt->imatch = find_index(flt->tmatch, flt->cmatch);
     return 1;
 }
+
 static uchar parseWCTokRelation(cli *c,   cswc_t *w,   char  *token, char **fin,
                                 f_t *flt, bool    isj, uchar  ttype) {
     uchar ctype; int two_toklen;
@@ -402,7 +403,7 @@ static uchar parseWCTokRelation(cli *c,   cswc_t *w,   char  *token, char **fin,
         char *end     = spot - OP_len[flt->op];;
         REV_SKIP_SPACES(end)
         if (!(*pif)(c, token, end - token + 1, flt)) return PARSE_NEST_ERR;
-        ctype         = Tbl[flt->tmatch].col[flt->cmatch].type;
+        ctype         = CTYPE_FROM_FLT(flt)
         char *start   = spot + 1;
         SKIP_SPACES(start)
         if (!*start)                                 return PARSE_GEN_ERR;
@@ -418,7 +419,7 @@ static uchar parseWCTokRelation(cli *c,   cswc_t *w,   char  *token, char **fin,
         char *nextp   = strchr(token, ' ');
         if (!nextp)                                  return PARSE_GEN_ERR;
         if (!(*pif)(c, token, nextp - token, flt))   return PARSE_NEST_ERR;
-        ctype         = Tbl[flt->tmatch].col[flt->cmatch].type;
+        ctype         = CTYPE_FROM_FLT(flt)
         SKIP_SPACES(nextp)
         if (!strncasecmp(nextp, "IN ", 3)) {
             nextp     = next_token(nextp);
@@ -443,8 +444,8 @@ static bool addIndexes2Join(redisClient *c, f_t *flt, jb_t *jb, list *ijl) {
         if (flt->op != EQ) { addReply(c, shared.join_noteq);      return 0; }
         f_t f2; initFilter(&f2); /* NOTE f2 does not need to be released */
         if (!parseInumTblCol(c, flt->key, sdslen(flt->key), &f2)) return 0;
-        if (Tbl[flt->tmatch].col[flt->cmatch].type !=
-            Tbl[f2.tmatch  ].col[f2.cmatch  ].type    ) {
+        uchar ctype1 = CTYPE_FROM_FLT(flt) uchar ctype2 = CTYPE_FROM_FLT(flt)
+        if (ctype1 != ctype2) {
             addReply(c, shared.join_coltypediff);                 return 0;
         }
         memcpy(&ij->rhs, &f2, sizeof(f_t)); // NOTE: NOW: must return 1
@@ -523,9 +524,9 @@ p_wd_err:
 /* RANGE_QUERY RANGE_QUERY RANGE_QUERY RANGE_QUERY RANGE_QUERY RANGE_QUERY */
 void parseWCReply(cli *c, cswc_t *w, wob_t *wb, uchar sop) {
     uchar prs = parseWC(c, w, wb, NULL, NULL);
-    if (prs == PARSE_GEN_ERR)          genericParseError(c, sop);
-    if (prs != PARSE_OK)               return;
-    if (!optimiseRangeQueryPlan(c, w)) return;
+    if (prs == PARSE_GEN_ERR)              genericParseError(c, sop);
+    if (prs != PARSE_OK)                   return;
+    if (!optimiseRangeQueryPlan(c, w, wb)) return;
 }
 
 /* JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN */

@@ -72,13 +72,12 @@ typedef struct btIterator { // 5*ptr(40) int(4) 2*char(2) long(8) float(4)
     bt_ll_n      nodes[MAX_BTREE_DEPTH];
 } btIterator;
 
-typedef struct btSIter { // btIterator(?500?) 1*char(1) int(1)
-                         // btEntry(16) 2*aobj(23) i.e. dont malloc
+typedef struct btSIter { // btIterator(?500 bytes?) i.e. dont malloc
     btIterator x;
     uchar      ktype;
     int        which;
     btEntry    be;
-    aobj       key; /* static AOBJ for be.key */
+    aobj       key;    // static AOBJ for be.key
 } btSIter;
 
 #define RET_LEAF_EXIT  1

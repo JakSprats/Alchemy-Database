@@ -345,7 +345,6 @@ function test_XTBL_u_ALL() {
   test_XTBL_uXXL; test_XTBL_uXXX;
 }
 
-
 # MCI MCI MCI MCI MCI MCI MCI MCI MCI MCI MCI MCI MCI MCI MCI
 function test_XTBL_mci_XXXX() {
   $CLI DROP   TABLE XTBL_mci_XXXX >/dev/null
@@ -356,4 +355,8 @@ function test_XTBL_mci_XXXX() {
   $CLI INSERT INTO XTBL_mci_XXXX VALUES "(,333|44,11|888,222|222)"
   $CLI CREATE INDEX iob_XTBL_mci_XXXX ON XTBL_mci_XXXX "(fk,col)"
   $CLI SELECT \* FROM XTBL_mci_XXXX WHERE "fk = 333|44 AND col = 55|777"
+}
+
+function test_OBY_ALL() {
+  test_XTBL_OBYI_ALL; test_XTBL_u_ALL; test_XTBL_mci_XXXX
 }

@@ -70,22 +70,25 @@ typedef struct r_tbl { // 114 bytes -> 120B
     int      lfui;       /* LFU: index containing LFU */
 } r_tbl_t;
 
-typedef struct r_ind { // 59 bytes -> 64B
-    bt    *btr;     /* Btree of index                                     */
-    sds    name;    /* Name of index                                      */
-    int    table;   /* table index is ON                                  */
-    int    column;  /* single column OR 1st MCI column                    */
-    list  *clist;   /* MultipleColumnIndex(mci) list                      */
-    int    nclist;  /* MCI: num columns                                   */
-    int   *bclist;  /* MCI: array representation (for speed)              */
-    bool   virt;    /* virtual                      - i.e. on primary key */
-    uchar  cnstr;   /* CONSTRAINTS: [UNIQUE,,,]                           */
-    bool   lru;     /* LRUINDEX                                           */
-    bool   luat;    /* LUATRIGGER - call lua function per CRUD            */
-    int    obc;     /* ORDER BY col                                       */
-    bool   done;    /* CREATE INDEX OFFSET -> not done until finished     */
-    long   ofst;    /* CREATE INDEX OFFSET partial indexes current offset */
-    bool   lfu;     /* LFUINDEX                                           */
+//TODO bool's can all be in a bitmap
+typedef struct r_ind { // 67 bytes -> 72B
+    bt     *btr;     /* Btree of index                                     */
+    sds     name;    /* Name of index                                      */
+    int     table;   /* table index is ON                                  */
+    int     column;  /* single column OR 1st MCI column                    */
+    list   *clist;   /* MultipleColumnIndex(mci) list                      */
+    int     nclist;  /* MCI: num columns                                   */
+    int    *bclist;  /* MCI: array representation (for speed)              */
+    bool    virt;    /* virtual                      - i.e. on primary key */
+    uchar   cnstr;   /* CONSTRAINTS: [UNIQUE,,,]                           */
+    bool    lru;     /* LRUINDEX                                           */
+    bool    luat;    /* LUATRIGGER - call lua function per CRUD            */
+    int     obc;     /* ORDER BY col                                       */
+    bool    done;    /* CREATE INDEX OFFSET -> not done until finished     */
+    long    ofst;    /* CREATE INDEX OFFSET partial indexes current offset */
+    bool    lfu;     /* LFUINDEX                                           */
+    bool    iposon;  /* Index Position On (i.e. SELECT "index.pos()"       */
+    uint32  cipos;   /* Current Index position, when iposon                */
 } r_ind_t;
 
 typedef struct update_expression {

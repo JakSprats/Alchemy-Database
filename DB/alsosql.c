@@ -386,6 +386,7 @@ void sqlSelectCommand(redisClient *c) {
     }
 
 sel_e:
+    if (!cstar) resetIndexPosOn(qcols, cmatchs);
     destroy_wob(&wb); destroy_check_sql_where_clause(&w);
 }
 

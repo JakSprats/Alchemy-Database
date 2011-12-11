@@ -32,6 +32,10 @@ ALL RIGHTS RESERVED
 
 #include "common.h"
 
+int  setOCmatchFromImatch(int imatch);
+int  getImatchFromOCmatch(int cmatch);
+void resetIndexPosOn(int qcols, int *cmatchs);
+
 int find_index      (int tmatch, int cmatch);
 int match_index     (int tmatch, list *indl);
 int match_index_name(sds iname);

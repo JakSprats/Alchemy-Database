@@ -48,6 +48,7 @@ typedef int printer(const char *format, ...);
 #define COL_TYPE_STRING       3
 #define COL_TYPE_FLOAT        4
 #define COL_TYPE_U128         5
+#define COL_TYPE_FUNC         6
 
 #define PTR_SIZE    sizeof(char *)
 #define USHORT_SIZE sizeof(unsigned short)
@@ -76,12 +77,13 @@ typedef int printer(const char *format, ...);
 #define DECR(x)     {x = x - 1;}
 #define DECRBY(x,y) {x = x - y;}
 
-#define C_IS_N(ctype) (ctype == COL_TYPE_NONE)
-#define C_IS_I(ctype) (ctype == COL_TYPE_INT)
-#define C_IS_L(ctype) (ctype == COL_TYPE_LONG)
-#define C_IS_S(ctype) (ctype == COL_TYPE_STRING)
-#define C_IS_F(ctype) (ctype == COL_TYPE_FLOAT)
-#define C_IS_X(ctype) (ctype == COL_TYPE_U128)
+#define C_IS_N(ctype)    (ctype == COL_TYPE_NONE)
+#define C_IS_I(ctype)    (ctype == COL_TYPE_INT)
+#define C_IS_L(ctype)    (ctype == COL_TYPE_LONG)
+#define C_IS_S(ctype)    (ctype == COL_TYPE_STRING)
+#define C_IS_F(ctype)    (ctype == COL_TYPE_FLOAT)
+#define C_IS_X(ctype)    (ctype == COL_TYPE_U128)
+#define C_IS_P(ctype)    (ctype == COL_TYPE_FUNC)
 #define C_IS_NUM(ctype) (C_IS_I(ctype) || C_IS_L(ctype) || C_IS_X(ctype))
 
 #define NOP 9
@@ -107,11 +109,13 @@ enum OP {NONE, EQ, NE, GT, GE, LT, LE, RQ, IN};
 
 #define FLOAT_FMT "%.10g"
 
-#define DEBUG_BT_TYPE(prn, btr)                             \
-  prn("btr: %p INODE: %d UU: %d UL: %d LU: %d LL: %d"       \
-      " UX: %d XU: %d LX: %d XL: %d XX: %d NORM: %d\n",     \
-       btr, INODE(btr), UU(btr), UL(btr), LU(btr), LL(btr), \
-       UX(btr), XU(btr), LX(btr), XL(btr), XX(btr), NORM_BT(btr));
+#define DEBUG_BT_TYPE(prn, btr)                                               \
+  prn("btr: %p INODE: %d UU: %d UL: %d LU: %d LL: %d"                         \
+      " UX: %d XU: %d LX: %d XL: %d XX: %d NORM: %d"                          \
+      " [UP: %d LUP: %d LLP: %d XUP: %d XLP: %d XXP: %d] OBYI: %d\n",         \
+       btr, INODE(btr), UU(btr), UL(btr), LU(btr), LL(btr),                   \
+       UX(btr), XU(btr), LX(btr), XL(btr), XX(btr), NORM_BT(btr),             \
+       UP(btr), LUP(btr), LLP(btr), XUP(btr), XLP(btr), XXP(btr), OBYI(btr));
 
 typedef struct twoint {
     int i; int j;

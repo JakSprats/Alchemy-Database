@@ -48,6 +48,7 @@ ALL RIGHTS RESERVED
 #include "alsosql.h"
 
 extern r_tbl_t *Tbl; // used in getBtr()
+extern r_ind_t *Index;
 extern uchar    OutputMode;
 
 static void scanJoin(cli *c) {
@@ -173,5 +174,6 @@ void tscanCommand(redisClient *c) { //printf("tscanCommand\n");
     }
 
 tscan_end:
+    if (!cstar) resetIndexPosOn(qcols, cmatchs);
     listRelease(cmatchl); destroy_wob(&wb); destroy_check_sql_where_clause(&w);
 }

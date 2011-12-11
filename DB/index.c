@@ -91,18 +91,20 @@ static dp_t init_dp(bt *ibtr, aobj *acol, bt *nbtr) {
   printf("iAdd: acol: "); dumpAobj(printf, acol); \
   printf("iAdd: apk:  "); dumpAobj(printf, apk);
 
-static xxk XX_iAdd; static lxk LX_iAdd; static xlk XL_iAdd;
-                    static uxk UX_iAdd; static xuk XU_iAdd;
+static lxk LX_iAdd; static xlk XL_iAdd; static uxk UX_iAdd; static xuk XU_iAdd;
+static xxk XX_iAdd; static ulk UL_iAdd; static luk LU_iAdd; static llk LL_iAdd;
 #define OBT_IADD_UNIQ(sptr, aobjpart) \
   { sptr.val = apk->aobjpart; btAdd(ibtr, acol, &sptr); }
 
 void iAddUniq(bt *ibtr, uchar pktyp, aobj *apk, aobj *acol) { // OBYI uses also
     if        C_IS_I(pktyp) {
-        if XU(ibtr) OBT_IADD_UNIQ(XU_iAdd, i)
-        else          btAdd(ibtr, acol, VOIDINT apk->i); // UU,LU
+        if      UU(ibtr) btAdd(ibtr, acol, VOIDINT apk->i); 
+        else if LU(ibtr) OBT_IADD_UNIQ(LU_iAdd, i)
+        else /* XU */    OBT_IADD_UNIQ(XU_iAdd, i)
     } else if C_IS_L(pktyp) {
-        if  XL(ibtr) OBT_IADD_UNIQ(XL_iAdd, l)
-        else         btAdd(ibtr, acol, (void *)apk->l);  // UL,LL
+        if      UL(ibtr) OBT_IADD_UNIQ(UL_iAdd, l)
+        else if LL(ibtr) OBT_IADD_UNIQ(LL_iAdd, l)
+        else /* XL */    OBT_IADD_UNIQ(XL_iAdd, l)
     } else {//C_IS_X
         if      UX(ibtr) OBT_IADD_UNIQ(UX_iAdd, x)
         else if LX(ibtr) OBT_IADD_UNIQ(LX_iAdd, x)
@@ -183,7 +185,7 @@ static bool _iAddMCI(cli  *c,      bt   *btr,  aobj *apk,     uchar  pktyp,
                 nbtr = createIndexNode(pktyp, otype);
             } else {                              /* middle MID -> MID */
                 uchar ntype = Tbl[ri->table].col[ri->bclist[i + 1]].type;
-                if (i == trgr) nbtr = createU_IBT    (ntype, imatch, pktyp);
+                if (i == trgr) nbtr = createU_MCI_IBT(ntype, imatch, pktyp);
                 else           nbtr = createMCI_MIDBT(ntype, imatch);
             }
             ulong isize1 = ibtr->msize;
@@ -290,7 +292,7 @@ static void iRemMCI(bt *btr, aobj *apk, int imatch, void *rrow, aobj *ocol) {
     }
 }
 static bool iAddStream(cli *c, bt *btr, uchar *stream, int imatch) {
-    aobj apk; convertStream2Key(stream, &apk, btr);
+    aobj apk;    convertStream2Key(stream, &apk, btr);
     void *rrow = parseStream(stream, btr);
     bool  ret  = addToIndex(c, btr, &apk, rrow, imatch); releaseAobj(&apk);
     return ret;
@@ -497,8 +499,8 @@ int newIndex(cli    *c,     sds   iname, int  tmatch, int   cmatch,
         uchar pktyp  = rt->col[0].type;
         uchar ktype  = rt->col[cmatch].type;
         ri->btr = ri->clist       ? createMCIndexBT(ri->clist, imatch) :
-                  UNIQ(ri->cnstr) ? createU_IBT    (ktype,     imatch, pktyp) :
-        /* normal & lru/lfu */        createIndexBT(ktype,     imatch);
+                  UNIQ(ri->cnstr) ? createU_S_IBT  (ktype,     imatch, pktyp) :
+        /* normal & lru/lfu */      createIndexBT  (ktype,     imatch);
     }
     ASSERT_OK(dictAdd(IndD, sdsdup(ri->name), VOIDINT(imatch + 1)));
     if (!virt && !lru && !lfu && !luat && !prtl) { //NOTE: failure -> emptyIndex

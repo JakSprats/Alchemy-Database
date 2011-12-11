@@ -43,6 +43,9 @@ void *vcloneFilter(void *oflt);
 
 void convertFilterListToAobj(list *flist);
 
+#define CTYPE_FROM_FLT(flt) \
+  (flt->cmatch < -1) ? COL_TYPE_FUNC : Tbl[flt->tmatch].col[flt->cmatch].type;
+
 /* DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG */
 void dumpFilter(printer *prn, f_t *flt, char *prfx);
 

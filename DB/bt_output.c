@@ -100,7 +100,7 @@ static void dumpnode(printer *prn, bt *btr, bt_n *x,
         void *rrow = parseStream(be, btr);
         if (is_index) {
             (*prn)("\tINDEX-KEY: "); dumpAobj(prn, &key);
-            bt_dumptree(prn, (bt *)rrow, 0);
+            if (!SIMP_UNIQ(btr)) bt_dumptree(prn, (bt *)rrow, 0);
         } else {
             bool key_printed = 0;
             if        UU(btr) {  key_printed = 1;

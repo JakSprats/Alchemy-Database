@@ -193,35 +193,31 @@ int rdbSaveBT(FILE *fp, bt *btr) { //printf("rdbSaveBT\n");
     return 0;
 }
 
-ulk UL_RDBPointer; luk LU_RDBPointer; llk LL_RDBPointer;
+void *UUbuf;         ulk UL_RDBPointer; luk LU_RDBPointer; llk LL_RDBPointer;
+uxk   UX_RDBPointer; xuk XU_RDBPointer; lxk LX_RDBPointer; xlk XL_RDBPointer;
+xxk   XX_RDBPointer;
 static int rdbLoadRow(FILE *fp, bt *btr, int tmatch) {
-    void   *UUbuf;
     uint32  ssize;
     if ((ssize = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)     return -1;
-    void *stream = UU(btr) ? &UUbuf : row_malloc(btr, ssize);
+    void *stream = UU(btr) ? &UUbuf :         UL(btr) ? &UL_RDBPointer :
+                   LU(btr) ? &LU_RDBPointer : LL(btr) ? &LL_RDBPointer :
+                   UX(btr) ? &UX_RDBPointer : XU(btr) ? &XU_RDBPointer :
+                   LX(btr) ? &LX_RDBPointer : XL(btr) ? &XL_RDBPointer :
+                   XX(btr) ? &XX_RDBPointer : row_malloc(btr, ssize);
     if (fread(stream, ssize, 1, fp) == 0)                       return -1;
     if (btr->numkeys == TRANS_ONE_MAX) btr = abt_resize(btr, TRANS_TWO);
-    if      UU(btr) {
-        bt_insert(btr, UUbuf);
-    } else if LU(btr) {
-        luk *lu           = (luk *)stream;
-        LU_RDBPointer.key = lu->key; LU_RDBPointer.val = lu->val;
-        bt_insert(btr, &LU_RDBPointer);
-    } else if UL(btr) {
-        ulk *ul           = (ulk *)stream;
-        UL_RDBPointer.key = ul->key; UL_RDBPointer.val = ul->val;
-        bt_insert(btr, &UL_RDBPointer);
-    } else if LL(btr) {
-        llk *ll           = (llk *)stream;
-        LL_RDBPointer.key = ll->key; LL_RDBPointer.val = ll->val;
-        bt_insert(btr, &LL_RDBPointer);
-    } else {
-        bt_insert(btr, stream);
-    }
-    aobj apk;
-    convertStream2Key(stream, &apk, btr);
-    r_tbl_t *rt = &Tbl[tmatch];
-    UPDATE_AUTO_INC(rt->col[0].type, apk);
+    if      UU(btr) bt_insert(btr, UUbuf);
+    else if UL(btr) bt_insert(btr, &UL_RDBPointer);
+    else if LU(btr) bt_insert(btr, &LU_RDBPointer);
+    else if LL(btr) bt_insert(btr, &LL_RDBPointer);
+    else if UX(btr) bt_insert(btr, &UX_RDBPointer);
+    else if XU(btr) bt_insert(btr, &XU_RDBPointer);
+    else if LX(btr) bt_insert(btr, &LX_RDBPointer);
+    else if XL(btr) bt_insert(btr, &XL_RDBPointer);
+    else if XX(btr) bt_insert(btr, &XX_RDBPointer);
+    else            bt_insert(btr, stream); // ROW
+    aobj apk;                   convertStream2Key(stream, &apk, btr);
+    r_tbl_t *rt = &Tbl[tmatch]; UPDATE_AUTO_INC(rt->col[0].type, apk);
     releaseAobj(&apk);
     return 0;
 }
@@ -347,8 +343,10 @@ bool rdbLoadBT(FILE *fp) { //printf("rdbLoadBT\n");
         listAddNodeTail(rt->ilist, VOIDINT imatch);
         uchar ktype;
         if (fread(&ktype,    1, 1, fp) == 0)                        return 0;
-        ri->btr = (ri->clist) ?  createMCIndexBT(ri->clist, imatch) :
-                                 createIndexBT  (ktype,     imatch);
+        uchar pktyp = rt->col[0].type;
+        ri->btr = ri->clist       ? createMCIndexBT(ri->clist, imatch)        :
+                  UNIQ(ri->cnstr) ? createU_S_IBT  (ktype,     imatch, pktyp) :
+                                    createIndexBT  (ktype,     imatch);
         ASSERT_OK(dictAdd(IndD, sdsdup(ri->name), VOIDINT(imatch + 1)));
 
         if (Num_indx < (imatch + 1)) Num_indx = imatch + 1;
@@ -359,10 +357,10 @@ bool rdbLoadBT(FILE *fp) { //printf("rdbLoadBT\n");
  // NOTE: Indexes are NEVER STORED, they are BUILT AFTER data is loaded
 void rdbLoadFinished() { //printf("rdbLoadFinished\n");
     for (int imatch = 0; imatch < Num_indx; imatch++) {
-        r_ind_t *ri = &Index[imatch];
+        r_ind_t *ri  = &Index[imatch];
         if (!ri->name) continue; // previously deleted
-        if (ri->virt) continue;
-        bt   *btr  = getBtr(ri->table);
+        if (ri->virt)  continue;
+        bt      *btr = getBtr(ri->table);
         buildIndex(NULL, btr, imatch, -1);
     }
 }

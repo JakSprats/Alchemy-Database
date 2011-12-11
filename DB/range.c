@@ -290,21 +290,23 @@ static bool nodeBT_Op(ibtd_t *d) {                              //DEBUG_NODE_BT
         else {  /* ORDER BY INDEX query */                //DEBUG_NODE_BT_OBC_1
             uchar ctype = Tbl[d->g->co.btr->s.num].col[0].type; // PK_CTYPE
             if      C_IS_I(ctype) {
-                if XU(nbtr) OBT_NODE_BT_OP(xuk, i, COL_TYPE_INT)
-                else        initAobjInt   (&akey, (uint32)(ulong)nbe->val);
+                if      UU(nbtr) initAobjInt(&akey, (uint32)(ulong)nbe->val);
+                else if LU(nbtr) OBT_NODE_BT_OP(luk, i, COL_TYPE_INT)
+                else /* XU */    OBT_NODE_BT_OP(xuk, i, COL_TYPE_INT)
             } else if C_IS_L(ctype) {
-                if XL(nbtr) OBT_NODE_BT_OP(xlk, l, COL_TYPE_LONG)
-                else        initAobjLong  (&akey, (ulong)        nbe->val);
+                if      UL(nbtr) OBT_NODE_BT_OP(ulk, l, COL_TYPE_LONG)
+                else if LL(nbtr) OBT_NODE_BT_OP(llk, l, COL_TYPE_LONG)
+                else /* XL */    OBT_NODE_BT_OP(xlk, l, COL_TYPE_LONG)
             } else { // C_IS_X
-                if      UX(nbtr) initAobjU128(&akey, (uint128)      nbe->val);
+                if      UX(nbtr) OBT_NODE_BT_OP(uxk, x, COL_TYPE_U128)
                 else if LX(nbtr) OBT_NODE_BT_OP(lxk, x, COL_TYPE_U128)
                 else /* XX */    OBT_NODE_BT_OP(xxk, x, COL_TYPE_U128)
             }
-            key = &akey;                                  //DEBUG_NODE_BT_OBC_2
+            key = &akey;                                //DEBUG_NODE_BT_OBC_2
         }
         void *rrow = btFind(d->g->co.btr, key);
-        releaseAobj(&akey);
         if (!(*d->p)(d->g, key, rrow, q->qed, d->card)) { ret = 0; break; }
+        releaseAobj(&akey);
     } btReleaseRangeIterator(nbi);
     if (q->fk_lo)                         *d->ofst = 0; /* OFFSET fulfilled */
     if (q->fk_lim && wb->lim == *d->card) *d->brkr = 1; /* ORDERBY FK LIM*/
@@ -316,6 +318,7 @@ static bool nodeBT_Op(ibtd_t *d) {                              //DEBUG_NODE_BT
     uv->aobjpart = vvar->val; }
 
 static bool setUniqIndexVal(bt *nbtr, aobj *akey) {
+    //printf("setUniqIndexVal: akey: "); dumpAobj(printf, akey);
     aobj *uv       = &UniqueIndexVal;
     if        UU(nbtr) {
         uv->enc = uv->type = COL_TYPE_INT;
@@ -371,6 +374,7 @@ static bool runOnNode(bt      *ibtr, uint32  still,
             if (!runOnNode(d->nbtr, still, nop, d, ri)) { ret = 0; break; }
         } else {
             if UNIQ(ri->cnstr) {
+                //printf("runOnNode: UNIQ: "); DEBUG_BT_TYPE(printf, ibtr)
                 d->nbtr        = ibtr; // Unique 1 step shorter
                 aobj *uv       = &UniqueIndexVal;
                 if        UU(d->nbtr) {
@@ -385,6 +389,7 @@ static bool runOnNode(bt      *ibtr, uint32  still,
                   else if XL(d->nbtr) OBT_RUNONNODE(COL_TYPE_LONG, xlk, l)
                   else if XX(d->nbtr) OBT_RUNONNODE(COL_TYPE_U128, xxk, x)
                   else assert(!"runOnNode ERROR");
+                  //printf("runOnNode: uv: "); dumpAobj(printf, uv);
             }  // NEXT LINE: When we get to NODE -> run [uBT_Op|nodeBT_Op]
             if (!(*nop)(d)) { ret = 0; break; }
         }
@@ -393,7 +398,7 @@ static bool runOnNode(bt      *ibtr, uint32  still,
     return ret;
 }
 static long rangeOpFK(range_t *g, row_op *p) {                 //DEBUG_RANGE_FK
-    ibtd_t   d; btEntry *be;
+    ibtd_t   d; btEntry *be; btSIter *bi;
     bool     brkr  = 0;
     cswc_t  *w     = g->co.w;  /* code compaction */
     wob_t   *wb    = g->co.wb; /* code compaction */
@@ -408,7 +413,12 @@ static long rangeOpFK(range_t *g, row_op *p) {                 //DEBUG_RANGE_FK
     bool     asc   = !q->fk_desc;
     long     loops = -1;
     long     card  =  0;
-    btSIter *bi    = btGetRangeIter(ibtr, &w->wf.alow, &w->wf.ahigh, asc);
+    bool     smplo = SIMP_UNIQ(ibtr) && q->fk_lo;
+    if (!smplo) bi  = btGetRangeIter(ibtr, &w->wf.alow, &w->wf.ahigh, asc);
+    else { // SIMPLE UNIQUE + OFFSET -> use SCION iter8trs
+        bi   = btGetXthIter(ibtr, &w->wf.alow, &w->wf.ahigh, wb->ofst, asc);
+        ofst = wb->ofst = -1; // OFFSET handled by btGetXthIter()
+    }
     init_ibtd(&d, p, g, q, NULL, &ofst, &card, &loops, &brkr, ri->obc);
     while ((be = btRangeNext(bi, asc)) != NULL) {
         uint32  nmatch = 0;

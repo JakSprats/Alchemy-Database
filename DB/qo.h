@@ -38,6 +38,6 @@ bool sortJoinPlan(          cli *c, jb_t *jb);
 bool optimiseJoinPlan(      cli *c, jb_t *jb);
 bool validateChain(         cli *c, jb_t *jb);
 
-bool optimiseRangeQueryPlan(cli *c, cswc_t *w);
+bool optimiseRangeQueryPlan(cli *c, cswc_t *w, wob_t *wb);
 
 #endif /* __ALCHEMY_QUERY_OPTIMISER__H */ 

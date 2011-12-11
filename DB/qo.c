@@ -31,6 +31,7 @@ ALL RIGHTS RESERVED
 #include "redis.h"
 
 #include "debug.h"
+#include "bt_iterator.h"
 #include "join.h"
 #include "bt.h"
 #include "filter.h"
@@ -721,7 +722,32 @@ bool promoteKLorFLtoW(cswc_t *w, list **klist, list **flist, bool freeme) {
 static void rangeQuerySortFLCheap(list **flist, list **klist) {
     sortFLCheap(flist, klist, &Idum, -1);
 }
-bool optimiseRangeQueryPlan(cli *c, cswc_t *w) {
+static bool rewriteFuncToLimOfstQuery(cswc_t *w, wob_t *wb) {
+    //printf("REWRITE FUNC TO OFFSET\n"); dumpW(printf, w); dumpWB(printf, wb);
+    // -> WHERE icol BETWEEN min & max ORDER BY icol LIMIT range OFFSET pos
+    w->wf.cmatch     = Index[w->wf.imatch].column;
+    w->wtype         = SQL_RANGE_LKP; w->wf.op         = RQ;
+    wb->nob          = 0;             wb->asc[wb->nob] = 1;
+    wb->obt[wb->nob] = w->wf.tmatch;  wb->obc[wb->nob] = w->wf.cmatch;
+    wb->nob++;
+    if (w->wf.key) { // SINGLE
+        wb->ofst = w->wf.akey.i; wb->lim = 1;
+        if (w->wf.key) { sdsfree(w->wf.key); w->wf.key = NULL; }
+        releaseAobj(&w->wf.akey);
+    } else {         // RANGE
+        wb->ofst = w->wf.alow.i; wb->lim = w->wf.ahigh.i - w->wf.alow.i;
+        if (w->wf.low)  { sdsfree(w->wf.low);  w->wf.low  = NULL; }
+        if (w->wf.high) { sdsfree(w->wf.high); w->wf.high = NULL; }
+        releaseAobj(&w->wf.alow); releaseAobj(&w->wf.ahigh);
+    }
+    bt *ibtr         = getIBtr(w->wf.imatch);
+    if (!assignMinKey(ibtr, &w->wf.alow) ||
+        !assignMaxKey(ibtr, &w->wf.ahigh)) return 0;
+    //printf("REWRITTEN\n"); dumpW(printf, w); dumpWB(printf, wb);
+    return 1;
+}
+
+bool optimiseRangeQueryPlan(cli *c, cswc_t *w, wob_t *wb) {
     if (!w->flist) return 0;
     list     *kl  = NULL;
     rangeQuerySortFLCheap(&w->flist, &kl);
@@ -731,6 +757,11 @@ bool optimiseRangeQueryPlan(cli *c, cswc_t *w) {
     }
     if (w->wf.op != EQ && w->wf.op != RQ && w->wf.op != IN) {
         addReply(c, shared.key_query_mustbe_eq);       return 0;
+    } //dumpW(printf, w);
+    if (C_IS_P(w->wf.akey.type) || C_IS_P(w->wf.alow.type)) {
+        if (!rewriteFuncToLimOfstQuery(w, wb)) {
+            addReply(c, shared.nullbulk);              return 0;
+        }
     }
     return 1;
 }

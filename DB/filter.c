@@ -113,7 +113,7 @@ void convertFilterListToAobj(list *flist) {
     while((ln = listNext(li))) {
         f_t *flt = ln->value;
         if (flt->inl) continue;
-        int ctype = Tbl[flt->tmatch].col[flt->cmatch].type;
+        int ctype = CTYPE_FROM_FLT(flt)
         if (flt->key) {
             initAobjFromStr(&flt->akey,  flt->key,  sdslen(flt->key),  ctype);
         }
@@ -129,8 +129,11 @@ void dumpFilter(printer *prn, f_t *flt, char *prfx) {
     (*prn)("\t%sSTART dumpFilter: (%p) iss: %d\n", prfx, (void *)flt, flt->iss);
     (*prn)("\t%s\tjan:    %d (%s)\n", prfx, flt->jan, getJoinAlias(flt->jan));
     (*prn)("\t%s\ttmatch: %d (%s)\n", prfx, t, (t == -1) ? "" : Tbl[t].name);
-    (*prn)("\t%s\tcmatch: %d (%s)\n", prfx, c, (c == -1) ? "" :
-                                         Tbl[t].col[c].name);
+    if (c < -1) (*prn)("\t%s\tcmatch: %d (%s.pos())\n", prfx, c, 
+                                           Index[getImatchFromOCmatch(c)].name);
+                                                          
+    else (*prn)("\t%s\tcmatch: %d (%s)\n", prfx, c, (c == -1) ? "" :
+                                                            Tbl[t].col[c].name);
     (*prn)("\t%s\timatch: %d (%s)\n", prfx, i, (i == -1) ? "" : Index[i].name);
     (*prn)("\t%s\top:     %d (%s)\n", prfx, flt->op, OP_Desc[flt->op]);
     if (flt->key) {

@@ -357,7 +357,7 @@ void descCommand(redisClient *c) {
             s = sdscatprintf(s, "INFO: KEYS: [NUM: %d MIN: %s MAX: %s]",
                                btr->numkeys, c_xmin, c_xmax);
         } else s = sdscatprintf(s, "INFO: KEYS: [NUM: %d MIN: %lu MAX: %lu]",
-                               btr->numkeys, min, max);
+                               btr->numkeys, (ulong)min, (ulong)max);
     }
     s = sdscatprintf(s, " BYTES: [BT-TOTAL: %ld [BT-DATA: %ld] INDEX: %lld]]%s",
                         btr->msize, btr->dsize, index_size,

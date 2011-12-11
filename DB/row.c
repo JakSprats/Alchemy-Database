@@ -41,6 +41,7 @@ ALL RIGHTS RESERVED
 #include "lzf.h"
 
 #include "hash.h"
+#include "find.h"
 #include "sixbit.h"
 #include "lru.h"
 #include "lfu.h"
@@ -422,11 +423,12 @@ static void *OBT_createRow(bt *btr, int tmatch, char *vals, twoint cofsts[]) {
         uint128 *pbu = (XX(btr) ? &XX_CRR.val :
                        (LX(btr) ? &LX_CRR.val : /* UX */  &UX_CRR.val));
         bool     r   = parseU128(uubuf, pbu);
-        return r ? (XX(btr) ? &XX_CRR : (LX(btr) ? &LX_CRR : &UX_CRR)) : NULL;
+        return r ? (XX(btr) ? (void *)&XX_CRR :
+                   (LX(btr) ? (void *)&LX_CRR : (void *)&UX_CRR)) : NULL;
     } else if (C_IS_X(rt->col[0].type)) { // XU, XL
         ulong l = strtoul(uubuf, NULL, 10); /* OK: DELIM: \0 */
         if XU(btr) XU_CRR.val = l; else /* XL */ XL_CRR.val = l;
-        return XU(btr) ? &XU_CRR : /* XL */ &XL_CRR;
+        return XU(btr) ? (void *)&XU_CRR : /* XL */ (void *)&XL_CRR;
     } else return (void *)strtoul(uubuf, NULL, 10); /* OK: DELIM: \0 */
 }
 void *createRow(cli    *c,    bt     *btr,      int tmatch, int  ncols,
@@ -498,17 +500,19 @@ void *createRow(cli    *c,    bt     *btr,      int tmatch, int  ncols,
 printf("getRawCol: orow: %p tmatch: %d cmatch: %d force_s: %d apk: ", \
         orow, tmatch, cmatch, force_s); dumpAobj(printf, apk);
 
-#define OBT_RAWC(kt, kcast, aobjpart, cf_func)            \
+#define OBT_RAWC(kt, kcast, aobjpart, cf_func)              \
   { kt key = cmatch ? ((kcast *)orow)->val : apk->aobjpart; \
     return cf_func(key, force_s, cmatch); }
-#define OBTXY_RAWC(vt, vcast, v_cf_func, kt, kaobjpart, k_cf_func)        \
-        if (cmatch) {                                                        \
-            vt key = ((vcast *)orow)->val;                                   \
-            return v_cf_func(key, force_s, cmatch);                          \
-        } else {                                                             \
-            kt key = apk->kaobjpart; return k_cf_func(key, force_s, cmatch); \
-        }
 
+#define OBTXY_RAWC(vt, vcast, v_cf_func, kt, kaobjpart, k_cf_func)       \
+  { if (cmatch) {                                                        \
+        vt key = ((vcast *)orow)->val;                                   \
+        return v_cf_func(key, force_s, cmatch);                          \
+    } else {                                                             \
+        kt key = apk->kaobjpart; return k_cf_func(key, force_s, cmatch); \
+    }}
+
+//TODO aobj *
 static aobj OBT_getRawCol(bt   *btr, void *orow, int cmatch,
                           aobj *apk, bool  force_s) {
     if        UU(btr) { /* OTHER_BT values are either in PK or BT -> no ROW */
@@ -518,17 +522,24 @@ static aobj OBT_getRawCol(bt   *btr, void *orow, int cmatch,
       else if LU(btr) OBT_RAWC(ulong,   luk, l, colFromLU)
       else if LL(btr) OBT_RAWC(ulong,   llk, l, colFromLL)
       else if XX(btr) OBT_RAWC(uint128, xxk, x, colFromXX)
+      // NEXT 4 have different ksize,vsize
       else if UX(btr) OBTXY_RAWC(uint128, uxk, colFromXX, ulong,   i, colFromUU)
       else if XU(btr) OBTXY_RAWC(ulong,   xuk, colFromUU, uint128, x, colFromXX)
       else if LX(btr) OBTXY_RAWC(uint128, lxk, colFromXX, ulong,   l, colFromLL)
       else if XL(btr) OBTXY_RAWC(ulong,   xlk, colFromLL, uint128, x, colFromXX)
+      else { assert(!"OBT_getRawCol: ERROR"); aobj a; return a; }
+}
+//TODO aobj *
+static aobj getRawCol_OCol(int cmatch, bool force_s) {
+    int imatch = getImatchFromOCmatch(cmatch);
+    aobj a; initIntAobjFromVal(&a, Index[imatch].cipos, force_s, cmatch);
+    return a;
 }
 
 //TODO RawCols[] is not worth the complexity, use malloc()
 #define RAW_COL_BUF_SIZE 256
 static uchar *getHashFromRow(uchar *row) {
-    uint32_t clen;
-                                 row++;       // SKIP rflag
+    uint32_t clen;               row++;       // SKIP rflag
     streamIntToUInt(row, &clen); row += clen; // SKIP rlen
     streamIntToUInt(row, &clen); row += clen; // SKIP ncols
     return row;
@@ -609,9 +620,10 @@ uchar *getColData(uchar *orow, int cmatch, uint32 *clen, uchar *rflag) {
 }
 aobj getRawCol(bt  *btr,    uchar *orow, int cmatch, aobj *apk,
                int  tmatch, bool  force_s) {
+    if (cmatch < -1)   return getRawCol_OCol(cmatch, force_s);
     if (OTHER_BT(btr)) return OBT_getRawCol(btr, orow, cmatch, apk, force_s);
     aobj a; initAobj(&a); //DEBUG_GET_RAW_COL
-    if (cmatch == -1) return a; // NOTE: used for HASHABILITY miss
+    if (cmatch == -1)  return a; // NOTE: used for HASHABILITY miss
     r_tbl_t *rt    = &Tbl[tmatch];
     uchar    ctype = rt->col[cmatch].type;
     if (!cmatch) { /* PK stored ONLY in KEY not in ROW, echo it */
@@ -622,26 +634,24 @@ aobj getRawCol(bt  *btr,    uchar *orow, int cmatch, aobj *apk,
     uchar *data  = getColData(orow, cmatch, &clen, &rflag);
     if (!clen) a.empty = 1;
     else {
-        if        (C_IS_I(ctype)) {
+        if        C_IS_I(ctype) {
             uint32  i    = streamIntToUInt(data, &clen);
             initIntAobjFromVal(&a, i, force_s, cmatch);
-        } else if (C_IS_L(ctype)) {
+        } else if C_IS_L(ctype) {
             ulong   l    = streamLongToULong(data, &clen);
             initLongAobjFromVal(&a, l, force_s, cmatch);
-        } else if (C_IS_X(ctype)) {
+        } else if C_IS_X(ctype) {
             uint128 x    = streamToU128(data, &clen);
             initU128AobjFromVal(&a, x, force_s, cmatch);
-        } else if (C_IS_F(ctype)) {
+        } else if C_IS_F(ctype) {
             float   f    = streamFloatToFloat(data, &clen);
             initFloatAobjFromVal(&a, f, force_s, cmatch);
-        } else {/* COL_TYPE_STRING */
+        } else {//COL_TYPE_STRING
             a.type       = a.enc = COL_TYPE_STRING;
             if       (rflag & RFLAG_6BIT_ZIP) {
-                a.s      = (char *)unpackSixBit(data, &clen);
-                a.freeme = 1;
-            } else if (rflag & RFLAG_LZF_ZIP) {
-                a.s      = streamLZFTextToString(data, &clen);
-                a.freeme = 1;                                /* FREED 035 */
+                a.s      = (char *)unpackSixBit(data, &clen);  a.freeme = 1;
+            } else if (rflag & RFLAG_LZF_ZIP) {            // \/FREED 035
+                a.s      = streamLZFTextToString(data, &clen); a.freeme = 1;
             } else a.s   = (char *)data; /* NO ZIP -> uncompressed text */
             a.len  = clen;
         }
@@ -659,8 +669,8 @@ static char RawCols[RAW_COL_BUF_SIZE][64]; /* NOTE: avoid malloc's */
 static void initAobjCol2S(aobj *a, ulong l, uint128 x, float f, int cmatch,
                           int   ktype) {
     char *dest; char *fmt = C_IS_F(ktype) ? FLOAT_FMT : "%lu";
-    if (cmatch < RAW_COL_BUF_SIZE) dest = RawCols[cmatch];
-    else                           { dest = malloc(64); a->freeme = 1; }
+    if (cmatch >= 0 && cmatch < RAW_COL_BUF_SIZE) dest = RawCols[cmatch];
+    else                                   { dest = malloc(64); a->freeme = 1; }
     if      C_IS_X(ktype) SPRINTF_128(dest, 64,      x)
     else if C_IS_F(ktype) snprintf   (dest, 64, fmt, f);
     else    /* [I,L] */   snprintf   (dest, 64, fmt, l);
@@ -1046,7 +1056,7 @@ int updateRow(cli *c, uc_t *uc, aobj *apk, void *orow) {
         if (rt->lrud && rt->lruc >= cr.ncols) cr.ncols = rt->lruc + 1; // 2 LRUC
         if (rt->lfu  && rt->lfuc >= cr.ncols) cr.ncols = rt->lfuc + 1; // 2 LFUC
 
-        if (XKEY(uc->btr)) { XX_CRR.val = avs[1].x; nrow = &XX_CRR; }
+        if (XKEY(uc->btr)) { XX_CRR.val = avs[1].x; nrow = (void *)&XX_CRR; }
         else {
             nrow = UKEY(uc->btr) ? VOIDINT  avs[1].i :
                    LKEY(uc->btr) ? (uchar *)avs[1].l : writeRow(&cr, crd);

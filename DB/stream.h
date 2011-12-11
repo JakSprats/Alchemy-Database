@@ -45,10 +45,11 @@ void  overwriteLFUcol(uchar *row, ulong icol);
 ulong streamLFUToULong(uchar *data);
 
 // NORMAL NORMAL NORMAL NORMAL NORMAL NORMAL NORMAL NORMAL NORMAL NORMAL NORMAL
-int     getCSize(ulong l, bool isi);
-int     cIcol   (ulong l, uchar *sflag, ulong *col, bool isi);//NOTE: protected 
-int     cr8Icol (ulong l, uchar *sflag, ulong *col);
-int     cr8Lcol (ulong l, uchar *sflag, ulong *col);
+int     getCSize(ulong l,   bool isi);
+int     cIcol   (ulong l,   uchar *sflag, ulong   *col, bool isi);
+int     cr8Icol (ulong l,   uchar *sflag, ulong   *col);
+int     cr8Lcol (ulong l,   uchar *sflag, ulong   *col);
+int     cr8Xcol (uint128 x,               uint128 *col);
 int     cr8IcolFromStr(cli *c, char *strt, uint32 len, uchar *sflg, ulong *col);
 int     cr8LcolFromStr(cli *c, char *strt, uint32 len, uchar *sflg, ulong *col);
 int     cr8XcolFromStr(cli *c, char *strt, uint32 len, uint128 *col);

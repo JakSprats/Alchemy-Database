@@ -46,6 +46,9 @@ ALL RIGHTS RESERVED
 #include "redis.h"
 #include "common.h"
 
+// GLOBALS
+extern r_ind_t *Index;
+
 /* PROTOYPES */
 static bt_data_t findminnode(bt *btr, bt_n *x);
 static bt_data_t findmaxnode(bt *btr, bt_n *x);
@@ -285,6 +288,20 @@ bt *bt_create(bt_cmp_t cmp, uchar trans, bts_t *s) {
     return btr;
 }
 
+#define DEBUG_ADD_TO_CIPOS \
+  if (x->leaf) printf("LEAF: i: %d CurrPos: %d\n", i, Index[btr->s.num].cipos);\
+  else printf("NODE: i: %d CurrPos: %d\n", i, Index[btr->s.num].cipos);
+
+static inline void add_to_cipos(bt *btr, bt_n *x, int i) {
+    if (i == -1) return;
+    if (!x->leaf) {
+        for (int j = 0; j <= i; j++) {
+            bt_n *xp = NODES(btr, x)[j]; Index[btr->s.num].cipos += xp->scion;
+        }
+    }
+    Index[btr->s.num].cipos += i + 1;                     //DEBUG_ADD_TO_CIPOS
+}
+
 static int findkindex(bt *btr, bt_n *x, bt_data_t k, int *r, btIterator *iter) {
     if (x->n == 0) return -1;
     int b, tr;
@@ -303,6 +320,7 @@ static int findkindex(bt *btr, bt_n *x, bt_data_t k, int *r, btIterator *iter) {
         }
     }
     if ((*rr = btr->cmp(k, KEYS(btr, x, i))) < 0)  i--;
+    if (SIMP_UNIQ(btr) && Index[btr->s.num].iposon) add_to_cipos(btr, x, i);
     if (iter) {
         iter->bln->in = (i > 0) ? i : 0;
         iter->bln->ik = (i > 0) ? i : 0;
@@ -655,7 +673,8 @@ bt_data_t bt_max(bt *btr) {
 }
 
 static bt_data_t findnodekey(bt *btr, bt_n *x, bt_data_t k) {
-    int i, r;
+    int i, r; 
+    if (SIMP_UNIQ(btr) && Index[btr->s.num].iposon) Index[btr->s.num].cipos = 0;
     while (x != NULL) {
         i = findkindex(btr, x, k, &r, NULL);
         if (i >= 0 && r == 0) return KEYS(btr, x, i);

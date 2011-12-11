@@ -3,7 +3,7 @@
 CLI="./alchemy-cli"
 
 function init_external() {
-  $CLI CREATE TABLE external "(id int primary key, division int, health int, salary FLOAT, name TEXT)"
+  $CLI CREATE TABLE external "(id LONG primary key, division int, health LONG, salary FLOAT, name TEXT)"
   $CLI CREATE INDEX external_division_index ON external "(division)"
   $CLI CREATE INDEX external_health_index   ON external "(health)"
 }
@@ -15,7 +15,7 @@ function init_division() {
   $CLI CREATE INDEX division_name_index ON division "(name)"
 }
 function init_subdivision() {
-  $CLI CREATE TABLE subdivision "(id int primary key, division int, name TEXT)"
+  $CLI CREATE TABLE subdivision "(id LONG primary key, division int, name TEXT)"
   $CLI CREATE INDEX subdivision_division_index ON subdivision "(division)"
 }
 function init_employee() {
@@ -2933,4 +2933,26 @@ function test_OBT() {
   test_XTBL
   test_U_UX; test_U_XU; test_U_LX; test_U_XL; test_U_XX;
   test_CI_ALL_ALL
+}
+
+function benchmark_SB() {
+  $CLI DROP   TABLE SB > /dev/null;
+  $CLI CREATE TABLE SB "(userid U128, cu U128)";
+  $CLI CREATE UNIQUE INDEX i_SB ON SB "(cu)";
+  $CLI DESC SB
+  echo populate
+  taskset -c 1 ./alchemy-gen-benchmark -n 1000000 -c 200 -s 1 -A OK -Q INSERT INTO SB VALUES "(00000000000001|444444,00000000000001|777)"
+  $CLI DESC SB
+
+  echo Get Currency Using Userid
+  taskset -c 1 ./alchemy-gen-benchmark -n 1000000 -c 200 -s 1 -A MULTI -Q SELECT \* FROM SB WHERE "userid=00000000000001|444444"
+
+  echo Update currency Using Userid
+  taskset -c 1 ./alchemy-gen-benchmark -n 1000000 -c 200 -s 1 -A INT -Q UPDATE SB SET "cu=00000000000001|888" WHERE "userid=00000000000001|444444"
+
+  echo Get Rank From Currency
+  taskset -c 1 ./alchemy-gen-benchmark -n 1000000 -c 200 -s 1 -A MULTI -Q SELECT "i_SB.pos()" FROM SB WHERE "cu=00000000000001|777"
+
+  echo Get Nearby Ranks Using rank
+  taskset -c 1 ./alchemy-gen-benchmark -n 900000 -c 200 -s 1 -A MULTI -Q SELECT "i_SB.pos()" FROM SB WHERE "i_SB.pos()=00000000000001"
 }

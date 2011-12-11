@@ -109,13 +109,13 @@ bt *createDBT(uchar ktype, int tmatch) {
 bt *createIBT(uchar ktype, int imatch, uchar btype) {
     bt_cmp_t cmp; bts_t bts;
     bts.ktype = ktype; bts.btype = btype; bts.num = imatch;
-    if        C_IS_I(ktype) { /* NOTE: under the covers: ULBT */
+    if        C_IS_I(ktype) { /* NOTE: under the covers: UL */
         bts.ksize = UL_SIZE; cmp = ulCmp;
         bts.bflag = BTFLAG_UINT_ULONG  + BTFLAG_UINT_INDEX;
-    } else if C_IS_L(ktype) { /* NOTE: under the covers: LLBT */
+    } else if C_IS_L(ktype) { /* NOTE: under the covers: LL */
         bts.ksize = LL_SIZE; cmp = llCmp;
         bts.bflag = BTFLAG_ULONG_ULONG + BTFLAG_ULONG_INDEX;
-    } else if C_IS_X(ktype) { /* NOTE: under the covers: XLBT */
+    } else if C_IS_X(ktype) { /* NOTE: under the covers: XL */
         bts.ksize = XL_SIZE; cmp = xlCmp;
         bts.bflag = BTFLAG_U128_ULONG  + BTFLAG_U128_INDEX;
     } else {                  /* STRING or FLOAT */
@@ -124,20 +124,26 @@ bt *createIBT(uchar ktype, int imatch, uchar btype) {
     }
     return bt_create(cmp, TRANS_ONE, &bts);
 }
-bt *createU_IBT(uchar ktype, int imatch, uchar pktyp) {
+static bt *_createUIBT(uchar ktype, int imatch, uchar pktyp, uchar bflag) {
     if (C_IS_I(ktype)) {
-        return  C_IS_I(pktyp) ? createUUBT(imatch, BT_MCI_UNIQ) :
-               (C_IS_L(pktyp) ? createULBT(imatch, BT_MCI_UNIQ) :
-             /* C_IS_X */       createUXBT(imatch, BT_MCI_UNIQ));
+        return  C_IS_I(pktyp) ? createUUBT(imatch, bflag) :
+               (C_IS_L(pktyp) ? createULBT(imatch, bflag) :
+             /* C_IS_X */       createUXBT(imatch, bflag));
     } else if (C_IS_L(ktype)) {
-        return  C_IS_I(pktyp) ? createLUBT(imatch, BT_MCI_UNIQ) :
-               (C_IS_L(pktyp) ? createLLBT(imatch, BT_MCI_UNIQ) :
-             /* C_IS_X */       createLXBT(imatch, BT_MCI_UNIQ));
+        return  C_IS_I(pktyp) ? createLUBT(imatch, bflag) :
+               (C_IS_L(pktyp) ? createLLBT(imatch, bflag) :
+             /* C_IS_X */       createLXBT(imatch, bflag));
     } else if (C_IS_X(ktype)) {
-        return  C_IS_I(pktyp) ? createXUBT(imatch, BT_MCI_UNIQ) :
-               (C_IS_L(pktyp) ? createXLBT(imatch, BT_MCI_UNIQ) :
-             /* C_IS_X */       createXXBT(imatch, BT_MCI_UNIQ));
-    } else { assert(!"createU_IBT ERROR"); return NULL; }
+        return  C_IS_I(pktyp) ? createXUBT(imatch, bflag) :
+               (C_IS_L(pktyp) ? createXLBT(imatch, bflag) :
+             /* C_IS_X */       createXXBT(imatch, bflag));
+    } else { assert(!"_createUIBT ERROR"); return NULL; }
+}
+bt *createU_S_IBT(uchar ktype, int imatch, uchar pktyp) { // UNIQ SIMPLE
+    return _createUIBT(ktype, imatch, pktyp, BT_SIMP_UNIQ);
+}
+bt *createU_MCI_IBT(uchar ktype, int imatch, uchar pktyp) {  // UNIQ MCI
+    return _createUIBT(ktype, imatch, pktyp, BT_MCI_UNIQ);
 }
 
 bt *createMCI_MIDBT(uchar ktype, int imatch) {
@@ -152,13 +158,7 @@ bt *createMCIndexBT(list *clist, int imatch) {
 bt *createIndexNode(uchar ktype, uchar obctype) {                /* INODE_BT */
     if (obctype != COL_TYPE_NONE) {
         bt *btr       =  createOBT(obctype, ktype, -1, BTREE_INODE);
-        btr->s.bflag |= BTFLAG_OBC; // will fail INODE(btr) -> OBC is different
-        // NOTE: BTFLAG_*_INDEX used as the RAW [VALUE] is pulled out in
-        //       parseStream() and passed to nodeBT_Op()
-        //       [UU,UL,LU,LL] are passed as [KEY,VALUE] to getRawCol()
-        btr->s.bflag |= C_IS_I(obctype)  ? BTFLAG_UINT_INDEX  :
-                        C_IS_L(obctype)  ? BTFLAG_ULONG_INDEX :
-                     /* C_IS_X(obctype) */ BTFLAG_U128_INDEX;
+        btr->s.bflag |= BTFLAG_OBC; //NOTE: will fail INODE(btr)
         return btr;
     }
     bt_cmp_t cmp; bts_t bts;

@@ -60,13 +60,13 @@ int inet_aton(const char *cp, struct in_addr *inp);
 extern int       Num_tbls; extern r_tbl_t *Tbl;
 extern int       Num_indx; extern r_ind_t *Index;
 
-extern ulong    CurrCard; // TODO remove - after no update on MCI cols FIX
+extern ulong     CurrCard; // TODO remove - after no update on MCI cols FIX
 
-extern char    *LuaCronFunc;
-extern ulong    Operations;
+extern char     *LuaCronFunc;
+extern ulong     Operations;
 
-extern uchar    OutputMode;
-extern dictType sdsDictType;
+extern uchar     OutputMode;
+extern dictType  sdsDictType;
 
 // GLOBALS
 cli            *CurrClient         = NULL;
@@ -431,7 +431,7 @@ int   DXDB_processCommand(redisClient *c) { //printf("DXDB_processCommand\n");
     if (c->http.mode == HTTP_MODE_ON) return continue_http_session(c);
     Operations++;
     CurrClient = c;
-    CurrCard   =  0;
+    CurrCard   = 0;
     initClient(c);
     sds arg0       = c->argv[0]->ptr;
     sds arg2       = c->argc > 2 ? c->argv[2]->ptr : NULL;

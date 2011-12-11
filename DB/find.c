@@ -47,8 +47,23 @@ extern r_ind_t *Index; extern dict *IndD;
 extern cli  *CurrClient;
 extern ja_t  JTAlias[MAX_JOIN_COLS];
 
+#define SPECIAL_COL_IMATCH_ADD_NUM 100
+inline int setOCmatchFromImatch(int imatch) {
+    Index[imatch].iposon = 1; Index[imatch].cipos = 1; 
+    return (imatch * -1) - 2 - SPECIAL_COL_IMATCH_ADD_NUM;
+}
+inline int getImatchFromOCmatch(int cmatch) {
+    return (cmatch * -1) - 2 - SPECIAL_COL_IMATCH_ADD_NUM;
+}
+inline void resetIndexPosOn(int qcols, int *cmatchs) {
+    for (int i = 0; i < qcols; i++) { // Turn Index[].iposon -> OFF
+        if (cmatchs[i] < -1) Index[getImatchFromOCmatch(cmatchs[i])].iposon = 0;
+    }   
+}   
+
 // INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX
 static int _find_index(int tmatch, int cmatch, bool prtl) {
+    if (cmatch < -1) return getImatchFromOCmatch(cmatch);
     int imatch = Tbl[tmatch].col[cmatch].imatch;
     if      (imatch == -1) return -1;
     else if (!prtl)        return Index[imatch].done ? imatch : - 1;
@@ -120,19 +135,33 @@ sds getJoinAlias(int jan) {
 }
 
 // COL COL COL COL COL COL COL COL COL COL COL COL COL COL COL COL COL COL COL
+static int check_special_column(sds cname) {
+    char *sd = strchr(cname, '.');
+    if (sd) {
+         if (!strcmp(sd, ".pos()")) {
+             sds iname = sdsnewlen(cname, sd - cname); // FREE ME 109
+             int imatch = match_index_name(iname);
+             sdsfree(iname);                           // FREED   109
+             if (imatch != -1) return setOCmatchFromImatch(imatch);
+        }
+    }
+    return -1; // MISS on special also
+}
 int find_column(int tmatch, char *c) {
     r_tbl_t *rt    = &Tbl[tmatch];
     sds      cname = sdsnew(c); //DEST 091
     void    *ptr   = dictFetchValue(rt->cdict, cname);
-    sdsfree(cname); // DESTD 091
-    return ptr ? ((int)(long)ptr) - 1 : -1;
+    int      ret   = ptr ? ((int)(long)ptr) - 1: check_special_column(cname);
+    sdsfree(cname); // DESTD 092
+    return ret;
 }
 int find_column_n(int tmatch, char *c, int len) {
     r_tbl_t *rt    = &Tbl[tmatch];
     sds      cname = sdsnewlen(c, len); //DEST 092
     void    *ptr   = dictFetchValue(rt->cdict, cname);
+    int      ret   = ptr ? ((int)(long)ptr) - 1: check_special_column(cname);
     sdsfree(cname); // DESTD 092
-    return ptr ? ((int)(long)ptr) - 1 : -1;
+    return ret;
 }
 int get_all_cols(int tmatch, list *cs, bool lru2, bool lfu2) {
     r_tbl_t *rt = &Tbl[tmatch];

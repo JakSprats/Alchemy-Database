@@ -37,6 +37,7 @@ ALL RIGHTS RESERVED
 #include "redis.h"
 
 #include "colparse.h"
+#include "filter.h"
 #include "row.h"
 #include "parser.h"
 #include "query.h"
@@ -51,9 +52,8 @@ void initAobj(aobj *a) {
 }
 void releaseAobj(void *v) {
     aobj *a = (aobj *)v;
-    if (a->freeme) {
-        free(a->s); a->s = NULL; a->freeme = 0;
-    }
+    a->type = COL_TYPE_NONE;
+    if (a->freeme) { free(a->s); a->s = NULL; a->freeme = 0; }
 }
 void destroyAobj(void *v) {
     releaseAobj(v); free(v);
@@ -100,6 +100,9 @@ void initAobjFromStr(aobj *a, char *s, int len, uchar ctype) {
     } else if (C_IS_X(ctype)) {
         a->enc  = COL_TYPE_U128;     a->type = COL_TYPE_U128;
         parseU128(s, &a->x); //TODO check for error
+    } else if (C_IS_P(ctype)) {
+        a->enc  = COL_TYPE_FUNC;      a->type = COL_TYPE_FUNC;
+        a->i    = (uint32)strtoul(s, NULL, 10);   /* OK: DELIM: \0 */
     }
 }
 aobj *createAobjFromString(char *s, int len, uchar ctype) {
@@ -141,6 +144,9 @@ void convertSdsToAobj(sds s, aobj *a, uchar ctype) {
     } else if (C_IS_X(ctype)) {
         a->enc    = COL_TYPE_U128;   a->type   = COL_TYPE_U128; 
         parseU128(s, &a->x); //TODO check for error
+    } else if (C_IS_P(ctype)) {
+        a->enc    = COL_TYPE_FUNC;    a->type   = COL_TYPE_FUNC;
+        a->i      = (uint32)strtoul(s, NULL, 10); /* OK: DELIM: \0 */
     } 
 }
 static aobj *cloneSDSToAobj(sds s, uchar ctype) {
@@ -166,7 +172,7 @@ void convertINLtoAobj(list **inl, uchar ctype) { /* walk INL & cloneSDSToAobj */
     *inl         = nl;
 }
 void convertFilterSDStoAobj(f_t *flt) {
-    uchar ctype = Tbl[flt->tmatch].col[flt->cmatch].type;
+    uchar ctype = CTYPE_FROM_FLT(flt)
     if      (flt->key) convertSdsToAobj(flt->key, &flt->akey, ctype);
     else if (flt->low) {
         convertSdsToAobj(flt->low,  &flt->alow,  ctype);
@@ -195,6 +201,7 @@ static char *strFromAobj(aobj *a, int *len) {
         *len      = a->len;
         return s;
     } else if (C_IS_I(a->type)) snprintf   (SFA_buf, 64, "%u",      a->i);
+      else if (C_IS_P(a->type)) snprintf   (SFA_buf, 64, "%u",      a->i);
       else if (C_IS_L(a->type)) snprintf   (SFA_buf, 64, "%lu",     a->l);
       else if (C_IS_F(a->type)) snprintf   (SFA_buf, 64, FLOAT_FMT, a->f);
       else if (C_IS_X(a->type)) SPRINTF_128(SFA_buf, 64,            a->x);
@@ -217,6 +224,7 @@ sds createSDSFromAobj(aobj *a) {
         if      (C_IS_F(a->type)) snprintf   (buf, 64, FLOAT_FMT, a->f);
         else if (C_IS_L(a->type)) snprintf   (buf, 64, "%lu",     a->l);
         else if (C_IS_I(a->type)) snprintf   (buf, 64, "%u",      a->i);     
+        else if (C_IS_P(a->type)) snprintf   (buf, 64, "%u",      a->i);     
         else if (C_IS_X(a->type)) SPRINTF_128(buf, 64,            a->x);
         return sdsnewlen(buf, strlen(buf));
     }
@@ -262,6 +270,7 @@ static char *outputS(char *s, int len, int *rlen) {
 }
 static char *outputAobj(aobj *a, int *rlen) {
     if      (C_IS_I(a->type))   return outputInt  (a->i,         rlen);
+    else if (C_IS_P(a->type))   return outputInt  (a->i,         rlen);
     else if (C_IS_L(a->type))   return outputLong (a->l,         rlen);
     else if (C_IS_F(a->type))   return outputFloat(a->f,         rlen);
     else if (C_IS_S(a->type))   return outputS    (a->s, a->len, rlen);
@@ -273,7 +282,8 @@ sl_t outputReformat(aobj *a) { //NOTE: used by orow_redis()
     return sl;
 }
 sl_t outputSL(uchar ct, sl_t sl) { /* NOTE: in redis: FLOATs are strings */
-    sl_t sl2; sl2.s = outputAobj(sl.s, &sl2.len); sl2.freeme = 1; sl2.type = ct;
+    aobj a; initAobjFromStr(&a, sl.s, sl.len, COL_TYPE_STRING);
+    sl_t sl2; sl2.s = outputAobj(&a, &sl2.len); sl2.freeme = 1; sl2.type = ct;
     return sl2;
 }
 void release_sl(sl_t sl) { if (sl.freeme) free(sl.s); }
@@ -295,7 +305,9 @@ static int aobjCmp(aobj *a, aobj *b) {
         return (f == 0.0)     ? 0 : ((f > 0.0)     ? 1 : -1);
     } else if (C_IS_L(a->type)) {
         return (a->l == b->l) ? 0 : ((a->l > b->l) ? 1 : -1);
-    } else { /* COL_TYPE_INT */
+    } else if (C_IS_X(a->type)) {
+        return (a->x == b->x) ? 0 : ((a->x > b->x) ? 1 : -1);
+    } else { /* COL_TYPE_INT || COL_TYPE_FUNC */
         return (long)(a->i - b->i);
     }
 }
@@ -319,12 +331,13 @@ void dumpAobj(printer *prn, aobj *a) {
         memcpyAobjStoDumpBuf(a);
         (*prn)("\tSTRING aobj: mt: %d len: %d -> (%s)\n",
                 a->empty, a->len, DumpBuf);
-    } else if (C_IS_I(a->type)) {
-        if (a->enc == COL_TYPE_INT) (*prn)("\tINT aobj: mt: %d val: %u\n",
-                                            a->empty, a->i);
-        else {
+    } else if (C_IS_I(a->type) || C_IS_P(a->type)) {
+        char *name = C_IS_I(a->type) ? "INT" : "FUNC";
+        if (a->enc == COL_TYPE_INT || a->enc == COL_TYPE_FUNC) {
+            (*prn)("\t%s aobj: mt: %d val: %u\n", name, a->empty, a->i);
+        } else {
             memcpyAobjStoDumpBuf(a);
-            (*prn)("\tINT(S) aobj: mt: %d val: %s\n", a->empty, DumpBuf);
+            (*prn)("\t%s(S) aobj: mt: %d val: %s\n", name, a->empty, DumpBuf);
         }
     } else if (C_IS_L(a->type)) {
         if (a->enc == COL_TYPE_LONG) (*prn)("\tLONG aobj: mt: %d val: %lu\n",

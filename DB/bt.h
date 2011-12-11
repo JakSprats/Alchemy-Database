@@ -39,7 +39,8 @@ bt   *createLUBT(int num, uchar btype);
 bt   *createULBT(int num, uchar btype);
 bt   *createLLBT(int num, uchar btype);
 
-bt   *createU_IBT    (uchar ktype, int imatch, uchar pktyp);
+bt   *createU_MCI_IBT(uchar ktype, int imatch, uchar pktyp);
+bt   *createU_S_IBT  (uchar ktype, int imatch, uchar pktyp);
 bt   *createMCI_MIDBT(uchar ktype, int imatch);
 bt   *createIndexBT  (uchar ktype, int imatch);
 bt   *createMCIndexBT(list *clist, int imatch);
@@ -52,6 +53,7 @@ bt   *createDBT      (uchar ktype, int tmatch);
 #define BTREE_MCI      3
 #define BTREE_MCI_MID  4
 #define BT_MCI_UNIQ    5
+#define BT_SIMP_UNIQ   6
 
 /* INT Inodes have been optimised */
 #define INODE_I(btr) \
@@ -66,6 +68,11 @@ bt   *createDBT      (uchar ktype, int tmatch);
   (btr->s.btype == BTREE_INODE && C_IS_X(btr->s.ktype) && \
    !(btr->s.bflag & BTFLAG_OBC)) 
 #define INODE(btr) (INODE_I(btr) || INODE_L(btr) || INODE_X(btr))
+
+#define SIMP_UNIQ(btr) (btr->s.btype == BT_SIMP_UNIQ)
+#define MCI_UNIQ(btr)  (btr->s.btype == BT_MCI_UNIQ)
+
+#define OBYI(btr) (btr->s.bflag & BTFLAG_OBC)
 
 /* UU tables containing ONLY [PK=INT,col1=INT]  have been optimised */
 #define UU(btr) (btr->s.bflag & BTFLAG_UINT_UINT)

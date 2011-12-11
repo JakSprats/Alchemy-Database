@@ -405,10 +405,8 @@ static uint32 skipToVal(uchar **stream, uchar ktype) { //printf("skipToVal\n");
 }
 
 #define DEBUG_PARSE_STREAM                                                    \
-printf("parseStream: "                                                        \
-       "INODE: %d UU: %d UP: %d LUP: %d LLP: %d XLP: %d XXP: %d OTHER: %d\n", \
-        INODE(btr), UU(btr), UP(btr), LUP(btr), LLP(btr),                     \
-                       XLP(btr), XXP(btr), OTHER_BT(btr));
+if (!server.loading)                                                          \
+printf("parseStream: %p btr: %p ", stream, btr); DEBUG_BT_TYPE(printf, btr);
 
 uchar *parseStream(uchar *stream, bt *btr) {               //DEBUG_PARSE_STREAM
     if     (!stream || INODE(btr)) return NULL;
@@ -416,9 +414,9 @@ uchar *parseStream(uchar *stream, bt *btr) {               //DEBUG_PARSE_STREAM
     else if UP      (btr)          return (uchar *)(*(ulk *)(stream)).val; 
     else if LUP     (btr)          return (uchar *)(long)(*(luk *)(stream)).val;
     else if LLP     (btr)          return (uchar *)(*(llk *)(stream)).val; 
-    else if XUP     (btr)          return (uchar *)(*(xuk *)(stream)).val; 
+    else if XUP     (btr)          return (uchar *)(long)(*(xuk *)(stream)).val;
     else if XLP     (btr)          return (uchar *)(*(xlk *)(stream)).val; 
-    else if XXP     (btr)          return (uchar *)(*(xxk *)(stream)).val; 
+    else if XXP     (btr)          return (uchar *)(long)(*(xxk *)(stream)).val; 
     else if OTHER_BT(btr)          return stream;
     skipToVal(&stream, btr->s.ktype);
     if      (btr->s.btype == BTREE_TABLE)   return stream;
@@ -517,6 +515,18 @@ static uxk UX_StreamPtr; static xuk XU_StreamPtr;
     return &sptr; }
 
 static void *OBT_createStream(bt *btr, void *val, char *btkey) {
+    if (OBYI(btr) || MCI_UNIQ(btr)) {
+        if      UU(btr) return (void *)((long)btkey + (long)val); /* merge */
+        else if UL(btr) XOBT_CR8_STRM(ulk, UL_StreamPtr)
+        else if UX(btr) XOBT_CR8_STRM(uxk, UX_StreamPtr)
+        else if LU(btr) XOBT_CR8_STRM(luk, LU_StreamPtr)
+        else if LL(btr) XOBT_CR8_STRM(llk, LL_StreamPtr)
+        else if LX(btr) XOBT_CR8_STRM(lxk, LX_StreamPtr)
+        else if XU(btr) XOBT_CR8_STRM(xuk, XU_StreamPtr)
+        else if XL(btr) XOBT_CR8_STRM(xlk, XL_StreamPtr)
+        else if XX(btr) XOBT_CR8_STRM(xxk, XX_StreamPtr)
+        assert(!"OBT_createStream OBYI error"); return NULL;
+    }
     if      UU(btr) return (void *)((long)btkey + (long)val); /* merge */
     else if UL(btr) OBT_CR8_STRM (ulk, UL_StreamPtr, ulong)
     else if LU(btr) OBT_CR8_STRM (luk, LU_StreamPtr, uint32)
@@ -530,8 +540,7 @@ static void *OBT_createStream(bt *btr, void *val, char *btkey) {
         XL_StreamPtr.key = xl->key;
         XL_StreamPtr.val = XXP(btr) ? (ulong)val : ((xlk *)val)->val;
         return &XL_StreamPtr;
-    }
-    assert(!"OBT_createStream ERROR"); return NULL;
+    } else { assert(!"OBT_createStream ERROR"); return NULL; }
 }
 // btkey from createBTKey() - bit-packed-num or string-w-length
 // row from writeRow() - [normal|hash]_row of [bit-packed-num|string-w-length]
