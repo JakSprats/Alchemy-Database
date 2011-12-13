@@ -326,4 +326,6 @@ void DXDB_createSharedObjects() {
         "-ERR PARSE: UPDATING U128 columns MUST be simple equality updates (e.g. SET u128col = 11111|2222222)\r\n"));
     shared.uniq_simp_index_nums = createObject(REDIS_STRING,sdsnew(
         "-ERR PROHIBITED: Unique indexes are only on [INT,LONG,U128] columns porinting to [INT,LONG,U128] Primary Keys\r\n"));
+    shared.updateipos           = createObject(REDIS_STRING,sdsnew(
+        "-ERR PROHIBITED: UPDATING index.pos()\r\n"));
 }

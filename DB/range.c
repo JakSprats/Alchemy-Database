@@ -447,7 +447,7 @@ static long singleOpFK(range_t *g, row_op *p) {               //DEBUG_SINGLE_FK
     r_ind_t  *ri     = &Index[w->wf.imatch];
     node_op  *nop    = UNIQ(ri->cnstr) ? uBT_Op : nodeBT_Op;
     uint32    nexpc  = ri->clist ? (ri->clist->len - 1) : 0;
-    bool      singu  = (!ri->clist && UNIQ(ri->cnstr)); // SINGLE COL UNIQ
+    bool      singu  = SIMP_UNIQ(ibtr);
     bt       *fibtr  = singu ? NULL : btIndFind(ibtr, afk);
     bt       *nbtr   = singu ? ibtr : btMCIFindVal(w, fibtr, &nmatch, ri);
     long      ofst   = wb->ofst;

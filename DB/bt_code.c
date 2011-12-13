@@ -299,7 +299,7 @@ static inline void add_to_cipos(bt *btr, bt_n *x, int i) {
             bt_n *xp = NODES(btr, x)[j]; Index[btr->s.num].cipos += xp->scion;
         }
     }
-    Index[btr->s.num].cipos += i + 1;                     //DEBUG_ADD_TO_CIPOS
+    Index[btr->s.num].cipos += i;                         //DEBUG_ADD_TO_CIPOS
 }
 
 static int findkindex(bt *btr, bt_n *x, bt_data_t k, int *r, btIterator *iter) {

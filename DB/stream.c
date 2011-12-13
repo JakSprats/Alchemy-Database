@@ -515,22 +515,27 @@ static uxk UX_StreamPtr; static xuk XU_StreamPtr;
     return &sptr; }
 
 static void *OBT_createStream(bt *btr, void *val, char *btkey) {
+    //printf("OBT_createStream\n"); DEBUG_BT_TYPE(printf, btr);
     if (OBYI(btr) || MCI_UNIQ(btr)) {
         if      UU(btr) return (void *)((long)btkey + (long)val); /* merge */
         else if UL(btr) XOBT_CR8_STRM(ulk, UL_StreamPtr)
-        else if UX(btr) XOBT_CR8_STRM(uxk, UX_StreamPtr)
         else if LU(btr) XOBT_CR8_STRM(luk, LU_StreamPtr)
         else if LL(btr) XOBT_CR8_STRM(llk, LL_StreamPtr)
-        else if LX(btr) XOBT_CR8_STRM(lxk, LX_StreamPtr)
+        else if UX(btr) XOBT_CR8_STRM(uxk, UX_StreamPtr)
         else if XU(btr) XOBT_CR8_STRM(xuk, XU_StreamPtr)
+        else if LX(btr) XOBT_CR8_STRM(lxk, LX_StreamPtr)
         else if XL(btr) XOBT_CR8_STRM(xlk, XL_StreamPtr)
         else if XX(btr) XOBT_CR8_STRM(xxk, XX_StreamPtr)
         assert(!"OBT_createStream OBYI error"); return NULL;
     }
-    if      UU(btr) return (void *)((long)btkey + (long)val); /* merge */
-    else if UL(btr) OBT_CR8_STRM (ulk, UL_StreamPtr, ulong)
-    else if LU(btr) OBT_CR8_STRM (luk, LU_StreamPtr, uint32)
-    else if LL(btr) OBT_CR8_STRM (llk, LL_StreamPtr, ulong)
+    if       UP(btr) OBT_CR8_STRM (ulk, UL_StreamPtr, ulong)
+    else if LUP(btr) OBT_CR8_STRM (luk, LU_StreamPtr, uint32)
+    else if LLP(btr) OBT_CR8_STRM (llk, LL_StreamPtr, ulong)
+
+    else if UU(btr) return (void *)((long)btkey + (long)val); /* merge */
+    else if UL(btr) XOBT_CR8_STRM(ulk, UL_StreamPtr)
+    else if LU(btr) XOBT_CR8_STRM(luk, LU_StreamPtr)
+    else if LL(btr) XOBT_CR8_STRM(llk, LL_StreamPtr)
     else if UX(btr) XOBT_CR8_STRM(uxk, UX_StreamPtr)
     else if XU(btr) XOBT_CR8_STRM(xuk, XU_StreamPtr)
     else if LX(btr) XOBT_CR8_STRM(lxk, LX_StreamPtr)

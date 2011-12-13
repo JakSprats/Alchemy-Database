@@ -510,7 +510,7 @@ int newIndex(cli    *c,     sds   iname, int  tmatch, int   cmatch,
 }
 
 bool addC2MCI(cli *c, int cmatch, list *clist) {
-    if (cmatch == -1) {
+    if (cmatch <= -1) {
         listRelease(clist);
         if (c) addReply(c, shared.indextargetinvalid); return 0;
     }
@@ -594,7 +594,7 @@ static bool ICommit(cli *c,      sds   iname,   sds   tname, char *cname,
         cmatch = ocmatch;
     } else {
         cmatch = find_column(tmatch, cname);
-        if (cmatch == -1) { addReply(c, shared.indextargetinvalid); return 0; }
+        if (cmatch <= -1) { addReply(c, shared.indextargetinvalid); return 0; }
         if UNIQ(cnstr) {/*NOTE: RESTRICTION: UNIQUE MCI both cols -> NUM */
             if (!C_IS_NUM(rt->col[cmatch].type) || !C_IS_NUM(rt->col[0].type)) {
                 addReply(c, shared.uniq_simp_index_nums); return 0;

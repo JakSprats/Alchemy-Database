@@ -411,25 +411,32 @@ static void insert_LFU(cr_t *cr, crd_t *crd, int i) {
     cr->rlen       += nclen;
     crd[i].mcofsts  = (int)cr->rlen;
 }
-static xxk XX_CRR; static lxk LX_CRR; static xlk XL_CRR;
-                   static uxk UX_CRR; static xuk XU_CRR;
+static ulk UL_CRR; static luk LU_CRR; static llk LL_CRR; static xxk XX_CRR; 
+static lxk LX_CRR; static xlk XL_CRR; static uxk UX_CRR; static xuk XU_CRR;
 /*NOTE: OTHER_BT rows no malloc, 'void *' of 1st COL */
 static void *OBT_createRow(bt *btr, int tmatch, char *vals, twoint cofsts[]) {
     char uubuf[64];
     r_tbl_t *rt    = &Tbl[tmatch];
     int      c1len = (cofsts[1].j - cofsts[1].i);
     memcpy(uubuf, vals + cofsts[1].i, c1len); uubuf[c1len] = '\0';
-    if        (C_IS_X(rt->col[1].type)) { // UX,LX,XX
+    //printf("OBT_createRow:\n"); DEBUG_BT_TYPE(printf, btr)
+    if        (C_IS_I(rt->col[0].type) && C_IS_I(rt->col[1].type)) {      // UU
+        return (void *)strtoul(uubuf, NULL, 10); /* OK: DELIM: \0 */
+    } else if (C_IS_X(rt->col[1].type)) {                           // UX,LX,XX
         uint128 *pbu = (XX(btr) ? &XX_CRR.val :
                        (LX(btr) ? &LX_CRR.val : /* UX */  &UX_CRR.val));
         bool     r   = parseU128(uubuf, pbu);
         return r ? (XX(btr) ? (void *)&XX_CRR :
                    (LX(btr) ? (void *)&LX_CRR : (void *)&UX_CRR)) : NULL;
-    } else if (C_IS_X(rt->col[0].type)) { // XU, XL
+    } else {                                                  // UL,LU,LL,XU,XL
         ulong l = strtoul(uubuf, NULL, 10); /* OK: DELIM: \0 */
-        if XU(btr) XU_CRR.val = l; else /* XL */ XL_CRR.val = l;
-        return XU(btr) ? (void *)&XU_CRR : /* XL */ (void *)&XL_CRR;
-    } else return (void *)strtoul(uubuf, NULL, 10); /* OK: DELIM: \0 */
+        if      UL(btr) UL_CRR.val = l;
+        else if LU(btr) LU_CRR.val = l; else if LL(btr) LL_CRR.val = l;
+        else if XU(btr) XU_CRR.val = l; else /* XL */   XL_CRR.val = l;
+        return UL(btr) ? (void *)&UL_CRR :
+               LU(btr) ? (void *)&LU_CRR :    LL(btr) ? (void *)&LL_CRR :
+               XU(btr) ? (void *)&XU_CRR : /* XL */    (void *)&XL_CRR;
+    }
 }
 void *createRow(cli    *c,    bt     *btr,      int tmatch, int  ncols,
                 char   *vals, twoint  cofsts[])                         {
@@ -440,7 +447,6 @@ void *createRow(cli    *c,    bt     *btr,      int tmatch, int  ncols,
     if (rt->lrud && rt->lruc >= ncols) ncols = rt->lruc + 1; // up to LRUC
     if (rt->lfu  && rt->lfuc >= ncols) ncols = rt->lfuc + 1; // up to LFUC
     INIT_CR(tmatch, ncols)
-
     int modi = 0;
     for (int i = 1; i < cr.ncols; i++) { /* MOD cofsts (no PK,no commas,PACK) */
         if        (rt->lrud && rt->lruc == i) { //printf("insert_LRU\n");
@@ -833,6 +839,7 @@ static robj *orow_normal(bt   *btr,       void *rrow, int   qcols,
         outs[i].len     = col.len;
         outs[i].freeme  = col.freeme;
         outs[i].type    = (cmatchs[i] == -1) ? COL_TYPE_NONE :
+                          (cmatchs[i]  < -1) ? COL_TYPE_FUNC :
                                                Tbl[tmatch].col[cmatchs[i]].type;
         totlen         += col.len;
         if (C_IS_S(outs[i].type) && outs[i].len) totlen += 2;/* 2 \'s per col */

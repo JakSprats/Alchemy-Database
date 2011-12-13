@@ -155,6 +155,7 @@ char *parseRowVals(sds vals,  char   **pk,        int    *pklen,
     while (1) {
         cmatch = pcols ? cmatchs[numc] : numc;
         if (cmatch >= ncols) return NULL;
+        if (cmatch  < -1)    return NULL;
         uchar ctype = (cmatch == -1) ? COL_TYPE_NONE : rt->col[cmatch].type;
         if (C_IS_N(ctype)) { // HASHABILITY -> determine ctype
             if (!determineColType(nextc, &ctype, tmatch)) return NULL;

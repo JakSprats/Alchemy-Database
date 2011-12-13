@@ -483,10 +483,10 @@ static int updateAction(cli *c, char *u_vallist, aobj *u_apk, int u_tmatch) {
     if (!u_vallist) {
         TABLE_CHECK_OR_REPLY(c->argv[1]->ptr, -1)
         if (strcasecmp(c->argv[2]->ptr, "SET")) {
-            addReply(c, shared.updatesyntax);         return -1;
+            addReply(c, shared.updatesyntax);                  return -1;
         }
         if (strcasecmp(c->argv[4]->ptr, "WHERE")) {
-            addReply(c, shared.updatesyntax_nowhere); return -1;
+            addReply(c, shared.updatesyntax_nowhere);          return -1;
         }
         u_tmatch = tmatch;
     }
@@ -498,9 +498,12 @@ static int updateAction(cli *c, char *u_vallist, aobj *u_apk, int u_tmatch) {
     int     qcols   = parseUpdateColListReply(c,      tmatch, vallist, cmatchl,
                                               mvalsl, mvlensl);
     UPDATES_FROM_UPDATEL
-    if (!qcols)                                       return -1;
+    if (!qcols)                                                return -1;
+    for (int i = 0; i < qcols; i++) {
+        if (cmatchs[i] < -1) { addReply(c, shared.updateipos); return -1; }
+    }
     if (initLRUCS(tmatch, cmatchs, qcols)) {
-        addReply(c, shared.update_lru);               return -1;
+        addReply(c, shared.update_lru);                        return -1;
     }
     int pkupc = getPkUpdateCol(qcols, cmatchs);
     MATCH_INDICES(tmatch)
@@ -511,7 +514,7 @@ static int updateAction(cli *c, char *u_vallist, aobj *u_apk, int u_tmatch) {
     uchar    cmiss[ncols]; ue_t    ue   [ncols]; lue_t le[ncols];
     char    *vals [ncols]; uint32  vlens[ncols];
     if (!assignMisses(c, tmatch, ncols, qcols, cmatchs, cmiss, vals, vlens, ue,
-                      mvals, mvlens, le))             return -1;
+                      mvals, mvlens, le))                      return -1;
     int nsize = -1; /* B4 GOTO */
     cswc_t w; wob_t wb; init_wob(&wb);
     if (u_vallist) { /* comes from "INSERT ON DUPLICATE KEY UPDATE" */

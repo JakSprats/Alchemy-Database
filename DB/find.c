@@ -37,6 +37,7 @@ ALL RIGHTS RESERVED
 #include "redis.h"
 
 #include "query.h"
+#include "bt.h"
 #include "common.h"
 #include "find.h"
 
@@ -49,6 +50,7 @@ extern ja_t  JTAlias[MAX_JOIN_COLS];
 
 #define SPECIAL_COL_IMATCH_ADD_NUM 100
 inline int setOCmatchFromImatch(int imatch) {
+    if (!SIMP_UNIQ(Index[imatch].btr)) return -1;
     Index[imatch].iposon = 1; Index[imatch].cipos = 1; 
     return (imatch * -1) - 2 - SPECIAL_COL_IMATCH_ADD_NUM;
 }
@@ -135,13 +137,14 @@ sds getJoinAlias(int jan) {
 }
 
 // COL COL COL COL COL COL COL COL COL COL COL COL COL COL COL COL COL COL COL
-static int check_special_column(sds cname) {
+static int check_special_column(int tmatch, sds cname) {
     char *sd = strchr(cname, '.');
     if (sd) {
          if (!strcmp(sd, ".pos()")) {
              sds iname = sdsnewlen(cname, sd - cname); // FREE ME 109
              int imatch = match_index_name(iname);
              sdsfree(iname);                           // FREED   109
+             if (Index[imatch].table != tmatch) return -1;
              if (imatch != -1) return setOCmatchFromImatch(imatch);
         }
     }
@@ -151,7 +154,8 @@ int find_column(int tmatch, char *c) {
     r_tbl_t *rt    = &Tbl[tmatch];
     sds      cname = sdsnew(c); //DEST 091
     void    *ptr   = dictFetchValue(rt->cdict, cname);
-    int      ret   = ptr ? ((int)(long)ptr) - 1: check_special_column(cname);
+    int      ret   = ptr ? ((int)(long)ptr) - 1 : 
+                           check_special_column(tmatch, cname);
     sdsfree(cname); // DESTD 092
     return ret;
 }
@@ -159,7 +163,8 @@ int find_column_n(int tmatch, char *c, int len) {
     r_tbl_t *rt    = &Tbl[tmatch];
     sds      cname = sdsnewlen(c, len); //DEST 092
     void    *ptr   = dictFetchValue(rt->cdict, cname);
-    int      ret   = ptr ? ((int)(long)ptr) - 1: check_special_column(cname);
+    int      ret   = ptr ? ((int)(long)ptr) - 1 : 
+                           check_special_column(tmatch, cname);
     sdsfree(cname); // DESTD 092
     return ret;
 }
