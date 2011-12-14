@@ -33,7 +33,7 @@ ALL RIGHTS RESERVED
 #include "range.h"
 #include "common.h"
 
-void joinGeneric        (cli *c, jb_t *jb);
+bool joinGeneric        (cli *c, jb_t *jb);
 bool validateJoinOrderBy(cli *c, jb_t *jb);
 
 void setupFirstJoinStep(cswc_t *w, jb_t *jb, qr_t *q);

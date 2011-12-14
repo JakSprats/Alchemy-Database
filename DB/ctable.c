@@ -153,7 +153,7 @@ ovrd_sel_end:
             cswc_t w; wob_t wb;
             init_check_sql_where_clause(&w, tmatch, argv[5]->ptr);
             init_wob(&wb);
-            parseWCReply(c, &w, &wb, SQL_SELECT);
+            parseWCplusQO(c, &w, &wb, SQL_SELECT);
             if (w.wtype == SQL_ERR_LKP)   return NULL;
             if (w.wtype == SQL_RANGE_LKP) return NULL;
             if (w.wtype == SQL_IN_LKP   ) return NULL; //TODO evaluate each key

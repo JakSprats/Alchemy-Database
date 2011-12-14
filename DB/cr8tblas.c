@@ -162,7 +162,7 @@ void createTableSelect(redisClient *c) {
     if (join) { /* CREATE TABLE AS SELECT JOIN */
         jb_t jb;
         init_join_block(&jb);
-        parseJoinReply(rfc, &jb, clist, tlist, wc);
+        parseJoin(rfc, &jb, clist, tlist, wc);
         qcols = jb.qcols;
         if (replyIfNestedErr(c, rfc, msg)) {
             ok = createTableFromJoin(c, rfc, qcols, jb.js);
@@ -170,9 +170,8 @@ void createTableSelect(redisClient *c) {
         destroy_join_block(c, &jb);
     } else  {   /* CREATE TABLE AS SELECT RANGE QUERY */
         cswc_t w; wob_t wb;
-        init_check_sql_where_clause(&w, tmatch, wc);
-        init_wob(&wb);
-        parseWCReply(rfc, &w, &wb, SQL_SELECT);
+        init_check_sql_where_clause(&w, tmatch, wc); init_wob(&wb);
+        parseWCplusQO(rfc, &w, &wb, SQL_SELECT);
         if (replyIfNestedErr(c, rfc, msg)) {
             ok = internalCr8Tbl(c, rfc, qcols, cmatchs, w.wf.tmatch,
                                 AJdum, ABdum);

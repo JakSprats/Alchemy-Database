@@ -100,6 +100,7 @@ void initEmbeddedAlchemy() {
     }
     NumSelectedCols   = 0; SelectedCols      = NULL;
     CurrEresp->ncols  = 0; CurrEresp->cnames = NULL;
+    initClient(EmbeddedCli);
 }
 
 static uint32 numElementsReply(redisReply *r) {
@@ -268,7 +269,6 @@ eresp_t *e_alchemy_fast(ereq_t *ereq) {
     cli *c   = EmbeddedCli; c->argc = 0; c->argv = NULL;
     c->scb   = ereq->scb;
     if (ereq->op == INSERT) {
-        //printf("e_alchemy_fast: INSERT\n");
         sds      uset   = NULL; uint32 upd = 0; bool repl = 0;
         int      pcols  = 0; list *cmatchl = listCreate();
         int      tmatch = find_table(ereq->tablelist);
@@ -281,7 +281,6 @@ eresp_t *e_alchemy_fast(ereq_t *ereq) {
                            NULL, 0, NULL);
         listRelease(cmatchl);
     } else if (ereq->op == SELECT) {
-        //printf("e_alchemy_fast: SELECT\n");
         ret = sqlSelectInnards(c, ereq->select_column_list, NULL,
                                ereq->tablelist, NULL, ereq->where_clause, 0);
     }

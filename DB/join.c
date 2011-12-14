@@ -154,8 +154,10 @@ static robj *join_reply_embedded(range_t *g) {
     er->ncols  = g->se.qcols;
     er->cols   = malloc(sizeof(aobj *) * g->se.qcols);
     for (int i = 0; i < g->se.qcols; i++) {
-        er->cols[i] = createAobjFromString(Jcols[i].s, Jcols[i].len,
-                                           Jcols[i].type);
+        //TODO the sdsnewlen() is overhead -> factor it out
+        sds s       = sdsnewlen(Jcols[i].s, Jcols[i].len); // FREE ME 110
+        er->cols[i] = createAobjFromString(s, Jcols[i].len, Jcols[i].type);
+        sdsfree(s);                                        // FREED 110
     }
     EmbeddedJoinRobj->ptr = er;
     return EmbeddedJoinRobj;
@@ -360,10 +362,11 @@ void setupFirstJoinStep(cswc_t *w, jb_t *jb, qr_t *q) {
     JoinLim   = jb->wb.lim;
     JoinOfst  = jb->wb.ofst;                                   //DEBUG_JOIN_QED
 }
-void joinGeneric(redisClient *c, jb_t *jb) {
+bool joinGeneric(redisClient *c, jb_t *jb) {
     qr_t q; bzero(&q, sizeof(qr_t)); //TODO make GLOBAL
     cswc_t w; setupFirstJoinStep(&w, jb, &q);
-    if (w.wf.imatch == -1) { addReply(c, shared.join_qo_err); return; }
+    if (w.wf.imatch == -1) { addReply(c, shared.join_qo_err); return 0; }
+    bool ret          = 0;
     c->LruColInSelect = initLRUCS_J(jb);
     c->LfuColInSelect = initLFUCS_J(jb);
     list *ll          = initOBsort(JoinQed, &jb->wb, 0);
@@ -387,9 +390,10 @@ void joinGeneric(redisClient *c, jb_t *jb) {
     if (jb->cstar) setDeferredMultiBulkLong(c, rlen, card);
     else           setDeferredMultiBulkLength(c, rlen, card);
     if (jb->wb.ovar) { incrOffsetVar(c, &jb->wb, card); } //TODO done use w
+    ret = 1;
 
 join_gen_err:
     releaseOBsort(ll);
     releaseAobj(&w.wf.akey); releaseAobj(&w.wf.alow); releaseAobj(&w.wf.ahigh);
-    return;
+    return ret;
 }

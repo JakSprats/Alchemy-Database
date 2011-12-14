@@ -285,7 +285,7 @@ static void addSelectToINL(void *v, lolo val, char *x, lolo xlen, long *card) {
     list **inl = (list **)v;
     if (x) listAddNodeTail(*inl, sdsnewlen(x, xlen));
     else   {
-        sds s = sdscatprintf(sdsempty(), "%lld", val); // DESTROT ME ???
+        sds s = sdscatprintf(sdsempty(), "%lld", val); // DESTROY ME ???
         listAddNodeTail(*inl, s);
     }
     INCR(*card);
@@ -522,7 +522,7 @@ p_wd_err:
 }
 
 /* RANGE_QUERY RANGE_QUERY RANGE_QUERY RANGE_QUERY RANGE_QUERY RANGE_QUERY */
-void parseWCReply(cli *c, cswc_t *w, wob_t *wb, uchar sop) {
+void parseWCplusQO(cli *c, cswc_t *w, wob_t *wb, uchar sop) {
     uchar prs = parseWC(c, w, wb, NULL, NULL);
     if (prs == PARSE_GEN_ERR)              genericParseError(c, sop);
     if (prs != PARSE_OK)                   return;
@@ -535,24 +535,24 @@ void init_join_block(jb_t *jb) {
     init_wob(&jb->wb);                                   /* DESTROY ME 066 */
     jb->hw = jb->fkimatch = -1;
 }
-static void releaseIJ(void *v) {
-    ijp_t *ij = (ijp_t *)v;
+static void releaseIJ(ijp_t *ij) {
     releaseFilterR_KL(&ij->lhs); releaseFilterR_KL(&ij->rhs);
-    releaseFlist( &ij->flist); /* flist is referential, dont destroy */
+    releaseFlist(&ij->flist); /* flist is referential, dont destroy */
 }
 void destroy_join_block(cli *c, jb_t *jb) {
-    if (jb->lvr) sdsfree(jb->lvr);                       /* DESTROYED 050 */
+    if (jb->lvr) { sdsfree(jb->lvr); jb->lvr = NULL; }   /* DESTROYED 050 */
     destroyFlist(&jb->mciflist);                         /* DESTROYED 069 */
     destroy_wob (&jb->wb);                               /* DESTROYED 066 */
     for (uint32 i = 0; i < jb->n_jind; i++) releaseIJ(&jb->ij[i]);
-    if (jb->js) free(jb->js); if (jb->ij) free(jb->ij);
+    if (jb->js) { free(jb->js); jb->js = NULL; }
+    if (jb->ij) { free(jb->ij); jb->ij = NULL; }
     releaseFlist(&jb->fflist); /* flist is referential, dont destroy */
     releaseFlist(&jb->fklist); /* klist is referential, dont destroy */
     if (jb->ob) destroy_obsl(jb->ob, OBY_FREE_ROBJ);     /* DESTROYED 057 */
     for (int i = 0; i < c->NumJTAlias; i++) sdsfree(JTAlias[i].alias);//DEST 049
 }
 
-static bool joinParseWCReply(redisClient *c, jb_t *jb, char *wc) {
+static bool joinParseWC(redisClient *c, jb_t *jb, char *wc) {
     bool   ret = 0; /* presume failure */
     cswc_t w;
     init_check_sql_where_clause(&w, -1, wc);
@@ -581,7 +581,7 @@ j_p_wc_end:
     return ret;
 }
 
-bool parseJoinReply(cli *c, jb_t *jb, char *clist, char *tlist, char *wc) {
+bool parseJoin(cli *c, jb_t *jb, char *clist, char *tlist, char *wc) {
     bool  ret  = 0;
     list *tl   = listCreate(); //TODO combine: [tl & janl]
     list *janl = listCreate();
@@ -598,13 +598,13 @@ bool parseJoinReply(cli *c, jb_t *jb, char *clist, char *tlist, char *wc) {
     while((lnjs = listNext(lijs))) {
         memcpy(&jb->js[ijs], lnjs->value, sizeof(jc_t)); ijs++;
     } listReleaseIterator(lijs);
-    ret = joinParseWCReply(c, jb, wc);
+    ret = joinParseWC(c, jb, wc);
     if (!leftoverParsingReply(c, jb->lvr))                goto prs_join_end;
     if (EREDIS) embeddedSaveJoinedColumnNames(jb);
 
 prs_join_end:
     listRelease(tl); listRelease(janl); listRelease(jl);
-    //printf("parseJoinReply: ret: %d\n", ret); dumpJB(c, printf, jb);
+    //printf("parseJoin: ret: %d\n", ret); dumpJB(c, printf, jb);
     return ret;
 }
 static void addQcol(jb_t *jb, int tmatch) {
@@ -626,16 +626,14 @@ bool executeJoin(cli *c, jb_t *jb) {
     joinGeneric(c, jb);
     return 1;
 }
-void joinReply(redisClient *c) {
-    jb_t jb;
-    init_join_block(&jb);
-    bool ok = 
-    parseJoinReply(c, &jb, c->argv[1]->ptr, c->argv[3]->ptr, c->argv[5]->ptr) &&
-    optimiseJoinPlan(c, &jb) && validateChain(c, &jb);
+bool doJoin(redisClient *c, sds clist, sds tlist, sds wclause) {
+    jb_t jb; init_join_block(&jb);
+    bool ok = parseJoin(c, &jb, clist, tlist, wclause) &&
+              optimiseJoinPlan(c, &jb) && validateChain(c, &jb);
     if (ok) {
         if (c->Explain) explainJoin(c, &jb);
-        else            executeJoin(c, &jb);
+        else            ok = executeJoin(c, &jb);
     }
     destroy_join_block(c, &jb);
-    return;
+    return ok;
 }

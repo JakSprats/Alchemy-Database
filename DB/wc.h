@@ -41,11 +41,11 @@ ALL RIGHTS RESERVED
 
 bool  parseWCEnd(cli *c, char *token, cswc_t *w, wob_t *wb);
   
-uchar parseWC(cli *c, cswc_t *w, wob_t *wb, jb_t *jb, list *ijl);
-void  parseWCReply(cli *c, cswc_t *w, wob_t *wb, uchar sop);
+uchar parseWC      (cli *c, cswc_t *w, wob_t *wb, jb_t *jb, list *ijl);
+void  parseWCplusQO(cli *c, cswc_t *w, wob_t *wb, uchar sop);
 
-bool  parseJoinReply(cli *c, jb_t *jb, char *clist, char *tlist, char *wc);
+bool  doJoin     (cli *c, sds clist, sds tlist, sds wclause);
+bool  parseJoin  (cli *c, jb_t *jb, char *clist, char *tlist, char *wc);
 bool  executeJoin(cli *c, jb_t *jb);
-void  joinReply(cli *c);
 
 #endif /* __REDISQL_WHERECLAUSE__H */

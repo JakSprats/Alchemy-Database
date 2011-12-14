@@ -409,17 +409,18 @@ int DXDB_loadServerConfig(int argc, sds *argv) {
     return 1;
 }
 
-static void initClient(redisClient *c) {       //printf("initClient\n");
+void initClient(redisClient *c) {       //printf("initClient\n");
     c->Explain         =  0;
     c->LruColInSelect  =  0;
     c->LfuColInSelect  =  0;
     c->InternalRequest =  0;
     bzero(&c->http, sizeof(alchemy_http_info));
-    c->http.retcode    = 200; // DEFAULT to "HTTP 200 OK"
+    c->http.retcode    =  200; // DEFAULT to "HTTP 200 OK"
     c->LastJTAmatch    = -1;
     c->NumJTAlias      =  0;
     c->bindaddr        =  NULL;
     c->bindport        =  0;
+    CurrCard           =  0;
 }
 void DXDB_createClient(int fd, redisClient *c) {//printf("DXDB_createClient\n");
     initClient(c);
@@ -431,7 +432,6 @@ int   DXDB_processCommand(redisClient *c) { //printf("DXDB_processCommand\n");
     if (c->http.mode == HTTP_MODE_ON) return continue_http_session(c);
     Operations++;
     CurrClient = c;
-    CurrCard   = 0;
     initClient(c);
     sds arg0       = c->argv[0]->ptr;
     sds arg2       = c->argc > 2 ? c->argv[2]->ptr : NULL;

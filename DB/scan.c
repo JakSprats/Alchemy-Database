@@ -52,10 +52,8 @@ extern r_ind_t *Index;
 extern uchar    OutputMode;
 
 static void scanJoin(cli *c) {
-    aobj aL, aH;
-    jb_t jb;
-    init_join_block(&jb);
-    if (!parseJoinReply(c, &jb, c->argv[1]->ptr, c->argv[3]->ptr,
+    jb_t jb; init_join_block(&jb);
+    if (!parseJoin(c, &jb, c->argv[1]->ptr, c->argv[3]->ptr,
                         c->argv[5]->ptr))                          goto sj_end;
     int  least_cnt = -1; f_t *lflt = NULL;
     for (int k = 0; k < (int)jb.n_jind; k++) {
@@ -70,14 +68,19 @@ static void scanJoin(cli *c) {
             }
         }
     }
-    bt  *btr       = getBtr(lflt->tmatch);
-    if (!assignMinKey(btr, &aL))                                   goto sj_end;
-    if (!assignMaxKey(btr, &aH))                                   goto sj_end;
-    ijp_t *ij = &jb.ij[jb.n_jind];
-    init_ijp(ij);
-    ij->lhs.jan    = lflt->jan;
-    ij->lhs.imatch = find_index(lflt->tmatch, 0); /* PK RQ */
-    ij->lhs.tmatch = lflt->tmatch;
+    aobj aL, aH;
+    int ltmatch = lflt->tmatch; int ljan = lflt->jan;
+    bt  *btr       = getBtr(ltmatch);
+    if (!assignMinKey(btr, &aL) || !assignMaxKey(btr, &aH))        goto sj_end;
+
+    ijp_t *ij2  = malloc(sizeof(ijp_t) * (jb.n_jind + 1)); // GROW ij by 1
+    memcpy(ij2, jb.ij, sizeof(ijp_t) * jb.n_jind);         // lflt is invalid
+    free(jb.ij); jb.ij = ij2;
+
+    ijp_t *ij = &jb.ij[jb.n_jind]; init_ijp(ij);
+    ij->lhs.jan    = ljan;
+    ij->lhs.imatch = find_index(ltmatch, 0);      /* PK RQ */
+    ij->lhs.tmatch = ltmatch;
     ij->lhs.cmatch = 0;                           /* PK RQ */
     ij->lhs.op     = RQ;                          /* PK RQ */
     ij->lhs.low    = createSDSFromAobj(&aL);
@@ -103,13 +106,10 @@ sj_end:
    3.) SCAN * FROM tbl WHERE clause [ORDER_BY_CLAUSE]
 */
 void tscanCommand(redisClient *c) { //printf("tscanCommand\n");
-    aobj aL, aH;
     list *cmatchl = listCreate();
     bool  nowc    =  0; /* NO WHERE CLAUSE */
-    bool  cstar   =  0;
-    int   qcols   =  0;
-    int   tmatch  = -1;
-    bool  join    =  0;
+    bool  cstar   =  0; int   qcols   =  0;
+    bool  join    =  0; int   tmatch  = -1;
     sds   where   = (c->argc > 4) ? c->argv[4]->ptr : NULL;
     sds   wc      = (c->argc > 5) ? c->argv[5]->ptr : NULL;
     if ((where && !*where) || (wc && !*wc)) {
@@ -160,11 +160,11 @@ void tscanCommand(redisClient *c) { //printf("tscanCommand\n");
     if (cstar && nowc) { /* SCAN COUNT(*) FROM tbl */
         addReplyLongLong(c, (long long)btr->numkeys);          goto tscan_end;
     }
+    aobj aL, aH;
     if (!assignMinKey(btr, &aL) || !assignMaxKey(btr, &aH)) {
         addReply(c, shared.nullbulk);                          goto tscan_end;
     }
-    w.wf.alow   = aL;
-    w.wf.ahigh  = aH;
+    w.wf.alow   = aL; w.wf.ahigh  = aH;
     w.wf.imatch = find_index(w.wf.tmatch, 0);
     w.wf.cmatch = 0; /* PK RangeQuery */
     w.wtype     = SQL_RANGE_LKP; //dumpW(printf, &w);

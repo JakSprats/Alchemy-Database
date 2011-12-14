@@ -370,8 +370,9 @@ bool sqlSelectInnards(cli *c,       sds  clist, sds from, sds tlist, sds where,
                      clist, from, tlist, where, chk)) {
                                                listRelease(cmatchl); return 0;
     }
-//TODO joinReply needs to take sds's & add failure code
-    if (join) { joinReply(c);                  listRelease(cmatchl); return 1; }
+    if (join) { listRelease(cmatchl);
+        return doJoin(c, clist, tlist, wclause);
+    }
     CMATCHS_FROM_CMATCHL listRelease(cmatchl);
 
     c->LruColInSelect = initLRUCS(tmatch, cmatchs, qcols);
@@ -379,7 +380,7 @@ bool sqlSelectInnards(cli *c,       sds  clist, sds from, sds tlist, sds where,
     cswc_t w; wob_t wb;
     init_check_sql_where_clause(&w, tmatch, wclause);
     init_wob(&wb);
-    parseWCReply(c, &w, &wb, SQL_SELECT);
+    parseWCplusQO(c, &w, &wb, SQL_SELECT);
     if (w.wtype == SQL_ERR_LKP)                                     goto sel_e;
     if (!leftoverParsingReply(c, w.lvr))                            goto sel_e;
     ret = sqlSelectBinary(c, tmatch, cstar, cmatchs, qcols, &w, &wb);
@@ -412,7 +413,7 @@ void deleteCommand(redisClient *c) {
     cswc_t w; wob_t wb;
     init_check_sql_where_clause(&w, tmatch, c->argv[4]->ptr);
     init_wob(&wb);
-    parseWCReply(c, &w, &wb, SQL_DELETE);
+    parseWCplusQO(c, &w, &wb, SQL_DELETE);
     if (w.wtype == SQL_ERR_LKP)                             goto delete_cmd_end;
     if (!leftoverParsingReply(c, w.lvr))                    goto delete_cmd_end;
     //dumpW(printf, &w); dumpWB(printf, &wb);
@@ -535,7 +536,7 @@ static int updateAction(cli *c, char *u_vallist, aobj *u_apk, int u_tmatch) {
         w.wf.akey   = *u_apk;         /* PK from INSERT UPDATE */
     } else {        /* normal UPDATE -> parse WhereClause */
         init_check_sql_where_clause(&w, tmatch, c->argv[5]->ptr);/* ERR->GOTO */
-        parseWCReply(c, &w, &wb, SQL_UPDATE);
+        parseWCplusQO(c, &w, &wb, SQL_UPDATE);
         if (w.wtype == SQL_ERR_LKP)                            goto upc_end;
         if (!leftoverParsingReply(c, w.lvr))                   goto upc_end;
     } //dumpW(printf, &w); dumpWB(printf, &wb);
