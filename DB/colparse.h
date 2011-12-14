@@ -71,9 +71,9 @@ bool parseCommaSpaceList(cli  *c,         char  *tkn,
     listRelease(cmatchl); listRelease(mvalsl); listRelease(mvlensl);
 
 
-bool parseSelect(cli  *c,     bool  is_scan, bool *no_wc, int  *tmatch,
-                 list *cs,    int  *qcols,   bool *join,  bool *cstar,
-                 char *clist, char *from,    char *tlist, char *where);
+bool parseSelect(cli  *c,  bool  is_scan, bool *no_wc, int  *tmatch,
+                 list *cs, int  *qcols,   bool *join,  bool *cstar,
+                 char *cl, char *from,    char *tlist, char *where, bool chk);
 
 int parseUpdateColListReply(cli  *c,  int   tmatch, char *vallist,
                             list *cs, list *vals,   list *vlens);

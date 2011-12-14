@@ -31,12 +31,6 @@ ALL RIGHTS RESERVED
 #include "query.h"
 #include "common.h"
 
-#define SQL_ERR_LKP         0 
-#define SQL_SINGLE_LKP      1
-#define SQL_RANGE_LKP       2
-#define SQL_IN_LKP          3
-#define SQL_SINGLE_FK_LKP   4
-
 #define SQL_SELECT     0
 #define SQL_DELETE     1
 #define SQL_UPDATE     2

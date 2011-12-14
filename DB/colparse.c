@@ -211,7 +211,7 @@ static bool parseSelCol(int  tmatch, char *cname, int  clen,  list *cs,
     if (cmatch == -1) {
         r_tbl_t *rt = &Tbl[tmatch];
         if (rt->hashy) {
-            if      (isi)    { // remember cname to later addColumn(cname)
+            if (isi)    { // remember cname to later addColumn(cname)
                 sds *tcnames = malloc(sizeof(sds) * (rt->tcols + 1));//FREEME106
                 if (rt->tcnames) {
                     memmove(tcnames, rt->tcnames, sizeof(sds) * rt->tcols);
@@ -346,21 +346,23 @@ bool parseCommaSpaceList(cli  *c,         char  *tkn,
     return 1;
 }
 
-bool parseSelect(cli  *c,     bool  is_scan, bool *no_wc, int  *tmatch,
-                 list *cs,    int  *qcols,   bool *join,  bool *cstar,
-                 char *clist, char *from,    char *tlist, char *where) {
-    if (strcasecmp(from, "FROM")) {
-        addReply(c, shared.selectsyntax_nofrom); return 0;
-    }
-    if (!where || strcasecmp(where, "WHERE")) {
-        if (is_scan) *no_wc = 1;
-        else         { addReply(c, shared.selectsyntax_nowhere); return 0; }
+bool parseSelect(cli  *c,  bool  is_scan, bool *no_wc, int  *tmatch,
+                 list *cs, int  *qcols,   bool *join,  bool *cstar,
+                 char *cl, char *from,    char *tlist, char *where, bool chk) {
+    if (chk) {
+        if (strcasecmp(from, "FROM")) {
+            addReply(c, shared.selectsyntax_nofrom); return 0;
+        }
+        if (!where || strcasecmp(where, "WHERE")) {
+            if (is_scan) *no_wc = 1;
+            else         { addReply(c, shared.selectsyntax_nowhere); return 0; }
+        }
     }
     if (strchr(tlist, ',')) { *join = 1; return 1; }
     *join = 0;
     *tmatch = find_table_n(tlist, get_token_len(tlist));
     if (*tmatch == -1) { addReply(c, shared.nonexistenttable); return 0; }
-    return parseCommaSpaceList(c, clist, 1, 0, 0, 0, 0, *tmatch, cs,
+    return parseCommaSpaceList(c, cl, 1, 0, 0, 0, 0, *tmatch, cs,
                                NULL, NULL, NULL, qcols, cstar);
 }
 

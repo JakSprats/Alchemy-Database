@@ -146,7 +146,8 @@ typedef bool select_callback(erow_t* erow);
     *drop_lfu,               *col_lfu,                    \
     *insert_lfu,             *kw_cname,                   \
     *u128_parse,             *update_u128_complex,        \
-    *uniq_simp_index_nums,   *updateipos;
+    *uniq_simp_index_nums,   *updateipos,                 \
+    *join_type_err;
 
 #define DEBUG_C_ARGV(c) \
   for (int i = 0; i < c->argc; i++) \

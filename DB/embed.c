@@ -31,11 +31,14 @@ ALL RIGHTS RESERVED
 
 #include "xdb_client_hooks.h"
 #include "query.h"
+#include "find.h"
+#include "alsosql.h"
 #include "aobj.h"
 #include "common.h"
 #include "embed.h"
 
 #include "hiredis.h"
+#include "sds.h"
 #include "redis.h"
 
 extern r_tbl_t *Tbl;
@@ -239,15 +242,94 @@ eresp_t *e_alchemy_no_free(int argc, robj **rargv, select_callback *scb) {
 
 eresp_t *e_alchemy_raw(char *sql, select_callback *scb) {
     initEmbeddedAlchemy();
-    int  argc;
-    sds *argv = sdssplitargs(sql, &argc);
+    int    argc;
+    sds   *argv  = sdssplitargs(sql, &argc);
     DXDB_cliSendCommand(&argc, argv);
-
     robj **rargv = zmalloc(sizeof(robj*) * argc);
     for (int j = 0; j < argc; j++) {
         rargv[j] = createObject(REDIS_STRING, argv[j]);
     }
     zfree(argv);
-
     return e_alchemy(argc, rargv, scb);
+}
+
+#define CREATE_RESPONSE_ERROR                                   \
+    CurrEresp->retcode = REDIS_ERR;                             \
+    CurrEresp->nobj    = 1;                                     \
+    CurrEresp->objs    = malloc(sizeof(aobj *));                \
+    CurrEresp->objs[0] = createAobjFromString(err, sdslen(err), \
+                                              COL_TYPE_STRING); \
+    return CurrEresp;
+
+eresp_t *e_alchemy_fast(ereq_t *ereq) {
+    bool ret = 0;
+    initEmbeddedAlchemy();
+    sds  err = NULL;
+    cli *c   = EmbeddedCli; c->argc = 0; c->argv = NULL;
+    c->scb   = ereq->scb;
+    if (ereq->op == INSERT) {
+        //printf("e_alchemy_fast: INSERT\n");
+        sds      uset   = NULL; uint32 upd = 0; bool repl = 0;
+        int      pcols  = 0; list *cmatchl = listCreate();
+        int      tmatch = find_table(ereq->tablelist);
+        if (tmatch == -1) { err = shared.nonexistenttable->ptr; goto efasterr; }
+        r_tbl_t *rt     = &Tbl[tmatch];
+        int      ncols  = rt->col_count;
+        MATCH_INDICES(tmatch)
+        ret = insertCommit(c, uset, ereq->insert_value_string, ncols, tmatch,
+                           matches, inds, pcols, cmatchl, repl, upd,
+                           NULL, 0, NULL);
+        listRelease(cmatchl);
+    } else if (ereq->op == SELECT) {
+        //printf("e_alchemy_fast: SELECT\n");
+        ret = sqlSelectInnards(c, ereq->select_column_list, NULL,
+                               ereq->tablelist, NULL, ereq->where_clause, 0);
+    }
+    if (!ret) { assert(c->bufpos); //NOTE: all -ERRs < REDIS_REPLY_CHUNK_BYTES
+        err = sdsnewlen(c->buf, c->bufpos); c->bufpos = 0; goto efasterr;
+    }
+    CurrEresp->retcode = REDIS_OK;
+    return CurrEresp;
+
+efasterr:
+    CREATE_RESPONSE_ERROR
+}
+
+eresp_t *e_alchemy_thin_select(uchar qtype,  int tmatch, int cmatch, int imatch,
+                               enum OP op,   int qcols, 
+                               uint128 keyx, long keyl,  int keyi,
+                               int *cmatchs, bool cstar, select_callback *scb) {
+    initEmbeddedAlchemy();
+    sds  err = NULL;
+    cli *c      = EmbeddedCli; c->argc = 0; c->argv = NULL;
+    c->scb      = scb;
+    cswc_t w; wob_t wb;
+    init_check_sql_where_clause(&w, tmatch, NULL); init_wob(&wb);
+    w.wtype     = qtype;
+    w.wf.tmatch = tmatch; w.wf.cmatch = cmatch; w.wf.imatch = imatch;
+    w.wf.op     = op;
+    if      (keyi) initAobjInt (&w.wf.akey, keyi);
+    else if (keyl) initAobjLong(&w.wf.akey, keyl);
+    else if (keyx) initAobjU128(&w.wf.akey, keyx);
+    else assert(!"e_alchemy_thin_select needs [keyi|keyl|keyx]");
+    bool ret    = sqlSelectBinary(c, tmatch, cstar, cmatchs, qcols, &w, &wb);
+    CurrEresp->retcode = REDIS_OK; //TODO handle ERRORs
+    if (!ret) { assert(c->bufpos); //NOTE: all -ERRs < REDIS_REPLY_CHUNK_BYTES
+        err = sdsnewlen(c->buf, c->bufpos); c->bufpos = 0; goto ethinserr;
+    }
+    return CurrEresp;
+
+ethinserr:
+    CREATE_RESPONSE_ERROR
+}
+
+void init_ereq(ereq_t *ereq) {
+    bzero(ereq, sizeof(ereq_t));
+}
+void release_ereq(ereq_t *ereq) {
+    if (ereq->tablelist)           sdsfree(ereq->tablelist);
+    if (ereq->insert_value_string) sdsfree(ereq->insert_value_string);
+    if (ereq->select_column_list)  sdsfree(ereq->select_column_list);
+    if (ereq->where_clause)        sdsfree(ereq->where_clause);
+
 }

@@ -56,6 +56,13 @@ typedef int printer(const char *format, ...);
 #define ULONG_SIZE  sizeof(unsigned long)
 #define U128_SIZE   sizeof(__uint128_t)
 
+// Relational Lookup Types
+#define SQL_ERR_LKP         0 
+#define SQL_SINGLE_LKP      1
+#define SQL_RANGE_LKP       2
+#define SQL_IN_LKP          3
+#define SQL_SINGLE_FK_LKP   4
+
 #define NUM_ACCESS_TYPES 2 /* CREATE TABLE AS [SELECT,SCAN] */
 
 #define INIT_MAX_NUM_TABLES         64

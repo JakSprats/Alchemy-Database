@@ -614,7 +614,7 @@ void iselectAction(cli *c,         cswc_t *w,     wob_t *wb,
     g.se.cstar   = cstar;
     g.se.qcols   = qcols;
     g.se.cmatchs = cmatchs;
-    void *rlen   = cstar ? NULL : addDeferredMultiBulkLength(c);
+    void *rlen   = cstar || EREDIS ? NULL : addDeferredMultiBulkLength(c);
     long card    = Op(&g, select_op);
     long sent    = 0;
     if (card) {
@@ -624,9 +624,8 @@ void iselectAction(cli *c,         cswc_t *w,     wob_t *wb,
         } else sent = card;
     }
     if (wb->lim != -1 && sent < card) card = sent;
-    if      (cstar)  addReplyLongLong(c, card);
-    else if (EREDIS) setDeferredMultiBulkLength(c, rlen, 0);
-    else             setDeferredMultiBulkLength(c, rlen, card);
+    if      (cstar)   addReplyLongLong(c, card);
+    else if (!EREDIS) setDeferredMultiBulkLength(c, rlen, card);
 
 isel_end:
     if (wb->ovar) incrOffsetVar(c, wb, card);

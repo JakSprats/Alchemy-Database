@@ -75,6 +75,7 @@ OBJ2 = sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o zipmap.o sha1.o ziplist.o releas
 SERVEROBJ =  $(OBJ1) redis.o $(OBJ2)
 EMBEDDEDTESTOBJ = $(OBJ1) embedded_redis.o embedded_test.o $(OBJ2)
 EMBEDDEDBENCHOBJ = $(OBJ1) embedded_redis.o embedded_benchmark.o $(OBJ2)
+EMBED2OBJ = $(OBJ1) embedded_redis.o embed2.o $(OBJ2)
 BENCHOBJ = ae.o anet.o redis-benchmark.o sds.o adlist.o zmalloc.o
 CLIOBJ = anet.o sds.o adlist.o redis-cli.o zmalloc.o release.o
 CHECKDUMPOBJ = redis-check-dump.o lzf_c.o lzf_d.o
@@ -89,8 +90,9 @@ CHECKAOFPRGNAME = alchemy-check-aof
 GENBENCHPRGNAME = alchemy-gen-benchmark
 EMBEDDEDTESTPRGNAME = embedded_test
 EMBEDDEDBENCHPRGNAME = embedded_benchmark
+EMBED2PRGNAME = embed2
 
-all: alchemy-lib alchemy-benchmark alchemy-cli alchemy-check-dump alchemy-check-aof alchemy-server alchemy-gen-benchmark embedded_test embedded_benchmark
+all: alchemy-lib alchemy-benchmark alchemy-cli alchemy-check-dump alchemy-check-aof alchemy-server alchemy-gen-benchmark embedded_test embedded_benchmark embed2
 	@echo ""
 	@echo "Hint: To run 'make test' is a good idea ;)"
 	@echo ""
@@ -224,6 +226,9 @@ embedded_test: $(EMBEDDEDTESTOBJ)
 embedded_benchmark: $(EMBEDDEDBENCHOBJ)
 	$(QUIET_CC)$(CC) -o $(EMBEDDEDBENCHPRGNAME) $(CCOPT) $(DEBUG) $(EMBEDDEDBENCHOBJ) $(CCLINK) $(ALLOC_LINK) -L../../DB/ -lx_db $(LUALIB) ../deps/hiredis/libhiredis.a ../deps/linenoise/linenoise.o
 
+embed2: $(EMBED2OBJ)
+	$(QUIET_CC)$(CC) -o $(EMBED2PRGNAME) $(CCOPT) $(DEBUG) $(EMBED2OBJ) $(CCLINK) $(ALLOC_LINK) -L../../DB/ -lx_db $(LUALIB) ../deps/hiredis/libhiredis.a ../deps/linenoise/linenoise.o
+
 # Because the jemalloc.h header is generated as a part of the jemalloc build
 # process, building it should complete before building any other object.
 %.o: %.c $(ALLOC_DEP)
@@ -231,7 +236,7 @@ embedded_benchmark: $(EMBEDDEDBENCHOBJ)
 
 clean:
 	(cd ../../DB; make clean)
-	rm -rf $(PRGNAME) $(BENCHPRGNAME) $(CLIPRGNAME) $(CHECKDUMPPRGNAME) $(CHECKAOFPRGNAME) $(GENBENCHPRGNAME) *.o *.gcda *.gcno *.gcov
+	rm -rf $(PRGNAME) $(BENCHPRGNAME) $(CLIPRGNAME) $(CHECKDUMPPRGNAME) $(CHECKAOFPRGNAME) $(GENBENCHPRGNAME) $(EMBEDDEDTESTPRGNAME) $(EMBEDDEDBENCHPRGNAME) $(EMBED2PRGNAME) *.o *.gcda *.gcno *.gcov
 
 dep:
 	$(CC) -MM *.c -I ../deps/hiredis -I ../deps/linenoise

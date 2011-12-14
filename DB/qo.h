@@ -32,11 +32,11 @@ ALL RIGHTS RESERVED
 #include "alsosql.h"
 #include "common.h"
 
-bool promoteKLorFLtoW(cswc_t *w, list **klist, list **flist, bool freem);
+//NOTE: used in join.c for MCI joins
+bool promoteKLorFLtoW(cswc_t *w, list **klist, list **flist, bool freeme);
 
-bool sortJoinPlan(          cli *c, jb_t *jb);
-bool optimiseJoinPlan(      cli *c, jb_t *jb);
-bool validateChain(         cli *c, jb_t *jb);
+bool optimiseJoinPlan      (cli *c, jb_t *jb);
+bool validateChain         (cli *c, jb_t *jb);
 
 bool optimiseRangeQueryPlan(cli *c, cswc_t *w, wob_t *wb);
 

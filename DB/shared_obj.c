@@ -250,6 +250,8 @@ void DXDB_createSharedObjects() {
         "-ERR SELECT: JOIN: joined column IS not indexed - USE \"SCAN\"\r\n"));
     shared.join_qo_err = createObject(REDIS_STRING,sdsnew(
         "-ERR SELECT: JOIN: query optimiser could not find a join plan\r\n"));
+    shared.join_type_err = createObject(REDIS_STRING,sdsnew(
+        "-ERR SELECT: JOIN: joined column's types do not match\r\n"));
 
     shared.create_table_err = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: CREATE TABLE tablename (col INT,,,,,,) [SELECT ....]\r\n"));

@@ -99,14 +99,11 @@ static void addRowSizeReply(cli *c, int tmatch, bt *btr, int len) {
   { listNode  *ln; listIter  *li = listGetIterator(c->reply, AL_START_HEAD); \
    while((ln = listNext(li))) { robj *r = ln->value; printf("REPLY: %s\n", r->ptr); } listReleaseIterator(li); }
 
-#define INS_ERR 0
-#define INS_INS 1
-#define INS_UP  2
-static uchar insertCommit(cli  *c,      robj **argv,   sds     vals,
-                          int   ncols,  int    tmatch, int     matches,
-                          int   inds[], int    pcols,  list   *cmatchl,
-                          bool  repl,   bool   upd,    uint32 *tsize,
-                          bool  parse,  sds   *key) {
+uchar insertCommit(cli  *c,      sds     uset,   sds     vals,
+                   int   ncols,  int     tmatch, int     matches,
+                   int   inds[], int     pcols,  list   *cmatchl,
+                   bool  repl,   uint32  upd,    uint32 *tsize,
+                   bool  parse,  sds    *key) {
     CMATCHS_FROM_CMATCHL
     twoint cofsts[ncols];
     for (int i = 0; i < ncols; i++) cofsts[i].i = cofsts[i].j = -1;
@@ -149,7 +146,7 @@ static uchar insertCommit(cli  *c,      robj **argv,   sds     vals,
     if (rrow && !upd && !repl) {
          addReply(c, shared.insert_ovrwrt);                    goto insc_end;
     } else if (rrow && upd) {                              //DEBUG_INSERT_DEBUG
-        len = updateAction(c, argv[upd]->ptr, &apk, tmatch);
+        len = updateAction(c, uset, &apk, tmatch);
         if (len == -1)                                         goto insc_end;
         ret = INS_UP;             /* negate presumed failure */
     } else {
@@ -258,10 +255,11 @@ void insertParse(cli *c, robj **argv, bool repl, int tmatch,
     if (upd && repl) {
         addReply(c, shared.insert_replace_update);             goto insprserr;
     }
-    uchar ret  = INS_ERR; uint32 tsize = 0;
-    ncols     += rt->tcols; // ADD in HASHABILITY columns
+    uchar ret    = INS_ERR; uint32 tsize = 0;
+    ncols       += rt->tcols; // ADD in HASHABILITY columns
+    sds   uset   = upd ? argv[upd]->ptr : NULL;
     for (int i = valc + 1; i < largc; i++) {
-        ret = insertCommit(c, argv, argv[i]->ptr, ncols, tmatch, matches, inds,
+        ret = insertCommit(c, uset, argv[i]->ptr, ncols, tmatch, matches, inds,
                            pcols, cmatchl, repl, upd, print ? &tsize : NULL,
                            parse, key);
         if (ret == INS_ERR)                                    goto insprserr;
@@ -332,62 +330,74 @@ bool leftoverParsingReply(redisClient *c, char *x) {
 }
 
 // SELECT SELECT SELECT SELECT SELECT SELECT SELECT SELECT SELECT SELECT
+bool sqlSelectBinary(cli   *c, int tmatch, bool cstar, int *cmatchs, int qcols,
+                    cswc_t *w, wob_t *wb) {
+    if (cstar && wb->nob) { /* SELECT COUNT(*) ORDER BY -> stupid */
+        addReply(c, shared.orderby_count);                          return 0;
+    }
+    if (c->Explain) { explainRQ(c, w, wb);                          return 0; }
+    //dumpW(printf, &w); dumpWB(printf, &wb);
+
+    if (EREDIS) embeddedSaveSelectedColumnNames(tmatch, cmatchs, qcols);
+    if (w->wtype != SQL_SINGLE_LKP) { /* FK, RQ, IN */
+        if (w->wf.imatch == -1) {
+            addReply(c, shared.rangequery_index_not_found);         return 0;
+        }
+        if (w->wf.imatch == Tbl[tmatch].lrui) c->LruColInSelect = 1;
+        if (w->wf.imatch == Tbl[tmatch].lfui) c->LfuColInSelect = 1;
+        iselectAction(c, w, wb, cmatchs, qcols, cstar);
+    } else {                         /* SQL_SINGLE_LKP */
+        bt   *btr  = getBtr(w->wf.tmatch);
+        aobj *apk  = &w->wf.akey;
+        void *rrow = btFind(btr, apk);
+        if (!rrow) { addReply(c, shared.nullbulk);                  return 0; }
+        if (cstar) { addReply(c, shared.cone);                      return 0; }
+        robj  *r   = outputRow(btr, rrow, qcols, cmatchs, apk, tmatch);
+        addReply(c, shared.singlerow);
+        GET_LRUC GET_LFUC
+        if (!addReplyRow(c, r, tmatch, apk, lruc, lrud, lfuc, lfu)) return 0;
+        decrRefCount(r);
+        if (wb->ovar) incrOffsetVar(c, wb, 1);
+    }
+    return 1;
+}
+bool sqlSelectInnards(cli *c,       sds  clist, sds from, sds tlist, sds where,
+                      sds  wclause, bool chk) {
+    list *cmatchl = listCreate();
+    bool  cstar   =  0; bool  join    =  0; bool ret = 0;
+    int   qcols   =  0; int   tmatch  = -1;
+    if (!parseSelect(c, 0, NULL, &tmatch, cmatchl, &qcols, &join, &cstar,
+                     clist, from, tlist, where, chk)) {
+                                               listRelease(cmatchl); return 0;
+    }
+//TODO joinReply needs to take sds's & add failure code
+    if (join) { joinReply(c);                  listRelease(cmatchl); return 1; }
+    CMATCHS_FROM_CMATCHL listRelease(cmatchl);
+
+    c->LruColInSelect = initLRUCS(tmatch, cmatchs, qcols);
+    c->LfuColInSelect = initLFUCS(tmatch, cmatchs, qcols);
+    cswc_t w; wob_t wb;
+    init_check_sql_where_clause(&w, tmatch, wclause);
+    init_wob(&wb);
+    parseWCReply(c, &w, &wb, SQL_SELECT);
+    if (w.wtype == SQL_ERR_LKP)                                     goto sel_e;
+    if (!leftoverParsingReply(c, w.lvr))                            goto sel_e;
+    ret = sqlSelectBinary(c, tmatch, cstar, cmatchs, qcols, &w, &wb);
+
+sel_e:
+    if (!cstar) resetIndexPosOn(qcols, cmatchs);
+    destroy_wob(&wb); destroy_check_sql_where_clause(&w);
+    return ret;
+}
+
+
 void sqlSelectCommand(redisClient *c) {
     if (c->argc == 2) { /* this is a REDIS "select DB" command" */
         selectCommand(c); return;
     }
     if (c->argc != 6) { addReply(c, shared.selectsyntax); return; }
-    list *cmatchl = listCreate();
-    bool  cstar   =  0;
-    int   qcols   =  0;
-    int   tmatch  = -1;
-    bool  join    =  0;
-    sds   tlist   = c->argv[3]->ptr;
-    if (!parseSelect(c, 0, NULL, &tmatch, cmatchl, &qcols, &join,
-                     &cstar, c->argv[1]->ptr, c->argv[2]->ptr,
-                     tlist, c->argv[4]->ptr)) { listRelease(cmatchl); return; }
-    if (join) { joinReply(c);                   listRelease(cmatchl); return; }
-    CMATCHS_FROM_CMATCHL listRelease(cmatchl); 
-
-    c->LruColInSelect = initLRUCS(tmatch, cmatchs, qcols);
-    c->LfuColInSelect = initLFUCS(tmatch, cmatchs, qcols);
-    cswc_t w; wob_t wb;
-    init_check_sql_where_clause(&w, tmatch, c->argv[5]->ptr);
-    init_wob(&wb);
-    parseWCReply(c, &w, &wb, SQL_SELECT);
-    if (w.wtype == SQL_ERR_LKP)                                     goto sel_e;
-    if (!leftoverParsingReply(c, w.lvr))                            goto sel_e;
-    if (cstar && wb.nob) { /* SELECT COUNT(*) ORDER BY -> stupid */
-        addReply(c, shared.orderby_count);                          goto sel_e;
-    }
-    if (c->Explain) { explainRQ(c, &w, &wb);                        goto sel_e;}
-    //dumpW(printf, &w); dumpWB(printf, &wb);
-
-    if (EREDIS) embeddedSaveSelectedColumnNames(tmatch, cmatchs, qcols);
-    if (w.wtype != SQL_SINGLE_LKP) { /* FK, RQ, IN */
-        if (w.wf.imatch == -1) {
-            addReply(c, shared.rangequery_index_not_found);         goto sel_e;
-        }
-        if (w.wf.imatch == Tbl[tmatch].lrui) c->LruColInSelect = 1;
-        if (w.wf.imatch == Tbl[tmatch].lfui) c->LfuColInSelect = 1;
-        iselectAction(c, &w, &wb, cmatchs, qcols, cstar);
-    } else {                         /* SQL_SINGLE_LKP */
-        bt    *btr   = getBtr(w.wf.tmatch);
-        aobj  *apk   = &w.wf.akey;
-        void *rrow = btFind(btr, apk);
-        if (!rrow) { addReply(c, shared.nullbulk);                  goto sel_e;}
-        if (cstar) { addReply(c, shared.cone);                      goto sel_e;}
-        robj *r = outputRow(btr, rrow, qcols, cmatchs, apk, tmatch);
-        addReply(c, shared.singlerow);
-        GET_LRUC GET_LFUC
-        if (!addReplyRow(c, r, tmatch, apk, lruc, lrud, lfuc, lfu)) goto sel_e;
-        decrRefCount(r);
-        if (wb.ovar) incrOffsetVar(c, &wb, 1);
-    }
-
-sel_e:
-    if (!cstar) resetIndexPosOn(qcols, cmatchs);
-    destroy_wob(&wb); destroy_check_sql_where_clause(&w);
+    sqlSelectInnards(c, c->argv[1]->ptr, c->argv[2]->ptr,
+                        c->argv[3]->ptr, c->argv[4]->ptr, c->argv[5]->ptr, 1);
 }
 
 /* DELETE DELETE DELETE DELETE DELETE DELETE DELETE DELETE DELETE DELETE */

@@ -604,7 +604,7 @@ static void smallestSelfJoin(jb_t *jb) {
     }
 }
 
-bool sortJoinPlan(cli *c, jb_t *jb) {                     //DEBUG_START_SORT_JP
+static bool sortJoinPlan(cli *c, jb_t *jb) {              //DEBUG_START_SORT_JP
     for (uint32 i = 0; i < jb->n_jind; i++) { /* LHS gets lower [index,jan] */
         ijp_t *ij = &jb->ij[i];
         if (ij->rhs.tmatch != -1) {
@@ -621,7 +621,18 @@ bool sortJoinPlan(cli *c, jb_t *jb) {                     //DEBUG_START_SORT_JP
     if (jb->hw < 1) { addReply(c, shared.fulltablejoin); return 0; }
     return 1;
 }
+static bool checkJoinTypes(cli *c, jb_t *jb) {
+    for (uint32 i = 0; i < jb->n_jind; i++) {
+        ijp_t *ij = &jb->ij[i];
+        if (ij->rhs.tmatch == -1 || ij->lhs.tmatch == -1) continue;
+        uchar ctype1 = Tbl[ij->rhs.tmatch].col[ij->rhs.cmatch].type;
+        uchar ctype2 = Tbl[ij->lhs.tmatch].col[ij->lhs.cmatch].type;
+        if (ctype1 != ctype2) { addReply(c, shared.join_type_err); return 0; }
+    }
+    return 1;
+}
 bool optimiseJoinPlan(cli *c, jb_t *jb) {
+    if (!checkJoinTypes(c, jb))             return 0;
     if (!sortJoinPlan(c, jb))               return 0;
     bool oed = buildJoinChain(jb);                       //DEBUG_BUILD_JCHAIN
     if (!assignFiltersToJoinPairs(c, jb))   return 0;    //DEBUG_ASSIGN_FILTERS

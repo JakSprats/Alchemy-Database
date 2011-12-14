@@ -54,6 +54,8 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "row.h"
 
+bool GlobalZipSwitch = 1; // can GLOBALLY turn off [lzf] compression of rows
+
 extern r_tbl_t *Tbl;
 extern r_ind_t *Index;
 
@@ -359,6 +361,7 @@ static uchar *createHashRow(cr_t *cr, crd_t *crd, uchar *rflag, uint32 *mlen) {
 static uchar *writeRow(cr_t *cr, crd_t *crd) {          //printf("writeRow\n");
     cz_t cz; czd_t czd[cr->ncols]; init_cz(&cz, cr);
     uchar *row; uint32 mlen = 0; // compiler warning
+    if (!GlobalZipSwitch) cz.zip = 0;
     if (cz.zip) zipCol(cr, crd, &cz, czd);
     uchar  rflag = assign_rflag(cr->rlen, cz.type);
     uchar *orow  = createHashRow(cr, crd, &rflag, &mlen);

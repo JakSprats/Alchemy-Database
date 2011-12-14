@@ -143,7 +143,7 @@ void createTableSelect(redisClient *c) {
     }
     if (!parseSelect(c, 0, NULL, &tmatch, cmatchl, &qcols, &join,
                      &cstar,  rargv[1]->ptr, rargv[2]->ptr,
-                     rargv[3]->ptr, rargv[4]->ptr)) {
+                     rargv[3]->ptr, rargv[4]->ptr, 1)) {
         listRelease(cmatchl); zfree(rargv); return;
     }
     if (cstar) {

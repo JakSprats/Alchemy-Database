@@ -50,6 +50,27 @@ eresp_t *e_alchemy_raw    (char *sql,             select_callback *scb);
 eresp_t *e_alchemy        (int argc, robj **argv, select_callback *scb);
 eresp_t *e_alchemy_no_free(int argc, robj **argv, select_callback *scb);
 
+// VERSION_2 VERSION_2 VERSION_2 VERSION_2 VERSION_2 VERSION_2 VERSION_2
+enum E_OP {INSERT, UPDATE, DELETE, SELECT, SCAN};
+
+typedef struct ereq_t {
+    enum            E_OP op;
+    sds             tablelist;
+    sds             insert_value_string;
+    sds             select_column_list;
+    sds             where_clause;
+    select_callback *scb;
+} ereq_t;
+void init_ereq   (ereq_t *ereq);
+void release_ereq(ereq_t *ereq);
+
+eresp_t *e_alchemy_fast(ereq_t *ereq);
+
+eresp_t *e_alchemy_thin_select(uchar qtype,  int tmatch, int cmatch, int imatch,
+                               enum OP op,   int qcols,
+                               uint128 keyx, long keyl,  int keyi,
+                               int *cmatchs, bool cstar, select_callback *scb);
+
 // DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
 void printEmbedResp(eresp_t *ersp);
 

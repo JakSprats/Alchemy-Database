@@ -63,6 +63,21 @@ void sqlSelectCommand(redisClient *c);
 void updateCommand   (redisClient *c);
 void deleteCommand   (redisClient *c);
 
+// FAST_EMBEDDED FAST_EMBEDDED FAST_EMBEDDED FAST_EMBEDDED FAST_EMBEDDED
+bool sqlSelectBinary(cli   *c, int tmatch, bool cstar, int *cmatchs, int qcols,
+                    cswc_t *w, wob_t *wb);
+bool sqlSelectInnards(cli *c, sds clist, sds from, sds tbl_list, sds where,
+                      sds  wclause, bool chk);
+
+#define INS_ERR 0
+#define INS_INS 1
+#define INS_UP  2
+uchar insertCommit(cli  *c,      sds     uset,   sds     vals,  
+                   int   ncols,  int     tmatch, int     matches,
+                   int   inds[], int     pcols,  list   *cmatchl,
+                   bool  repl,   uint32  upd,    uint32 *tsize,
+                   bool  parse,  sds    *key);
+
 /* FILLERS FILLERS FILLERS FILLERS FILLERS FILLERS FILLERS */
 void tscanCommand(redisClient *c);  /* scan.h does not exist */
 

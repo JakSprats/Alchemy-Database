@@ -44,8 +44,8 @@ void initAobjFromStr(aobj *a, char *s, int len, uchar ctype);
 void releaseAobj(void *a);
 void destroyAobj(void *a);
 
-void  aobjClone( aobj *dest, aobj *src);
-aobj *cloneAobj( aobj *a);
+void  aobjClone (aobj *dest, aobj *src);
+aobj *cloneAobj (aobj *a);
 void *vcloneAobj(void *a);
 void  convertSdsToAobj(sds s, aobj *a, uchar ctype);
 aobj *createAobjFromString(char *s, int len, uchar ctype);

@@ -117,11 +117,13 @@ void tscanCommand(redisClient *c) { //printf("tscanCommand\n");
     }
     if (!parseSelect(c, 1, &nowc, &tmatch, cmatchl, &qcols, &join,
                      &cstar, c->argv[1]->ptr, c->argv[2]->ptr,
-                     c->argv[3]->ptr, where)) { listRelease(cmatchl); return; }
-    if (!nowc && !wc) {
-        addReply(c, shared.scansyntax); listRelease(cmatchl); return;
+                     c->argv[3]->ptr, where, 1)) {
+                         listRelease(cmatchl);                 return;
     }
-    if (join) { scanJoin(c); listRelease(cmatchl); return; }
+    if (!nowc && !wc) {
+        addReply(c, shared.scansyntax); listRelease(cmatchl);  return;
+    }
+    if (join) { scanJoin(c); listRelease(cmatchl);             return; }
     CMATCHS_FROM_CMATCHL
 
     c->LruColInSelect = initLRUCS(tmatch, cmatchs, qcols);
