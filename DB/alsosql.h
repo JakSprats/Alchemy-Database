@@ -74,9 +74,9 @@ uchar insertCommit(cli  *c,      sds     uset,   sds     vals,
                    bool  parse,  sds    *key);
 
 bool sqlSelectBinary (cli   *c, int tmatch, bool cstar, int *cmatchs, int qcols,
-                      cswc_t *w, wob_t *wb);
+                      cswc_t *w, wob_t *wb, bool need_cn);
 bool sqlSelectInnards(cli *c, sds clist, sds from, sds tbl_list, sds where,
-                      sds  wclause, bool chk);
+                      sds  wclause, bool chk, bool need_cn);
 
 bool deleteInnards   (cli *c, sds tlist, sds wclause);
 int  updateInnards   (cli *c, int tmatch, sds vallist, sds wclause,

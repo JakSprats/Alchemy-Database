@@ -331,14 +331,16 @@ bool leftoverParsingReply(redisClient *c, char *x) {
 
 // SELECT SELECT SELECT SELECT SELECT SELECT SELECT SELECT SELECT SELECT
 bool sqlSelectBinary(cli   *c, int tmatch, bool cstar, int *cmatchs, int qcols,
-                    cswc_t *w, wob_t *wb) {
+                    cswc_t *w, wob_t *wb,  bool need_cn) {
     if (cstar && wb->nob) { /* SELECT COUNT(*) ORDER BY -> stupid */
         addReply(c, shared.orderby_count);                          return 0;
     }
     if (c->Explain) { explainRQ(c, w, wb);                          return 0; }
     //dumpW(printf, &w); dumpWB(printf, &wb);
 
-    if (EREDIS) embeddedSaveSelectedColumnNames(tmatch, cmatchs, qcols);
+    if (EREDIS && need_cn) {
+        embeddedSaveSelectedColumnNames(tmatch, cmatchs, qcols);
+    }
     if (w->wtype != SQL_SINGLE_LKP) { /* FK, RQ, IN */
         if (w->wf.imatch == -1) {
             addReply(c, shared.rangequery_index_not_found);         return 0;
@@ -352,7 +354,7 @@ bool sqlSelectBinary(cli   *c, int tmatch, bool cstar, int *cmatchs, int qcols,
         void *rrow = btFind(btr, apk);
         if (!rrow) { addReply(c, shared.nullbulk);                  return 0; }
         if (cstar) { addReply(c, shared.cone);                      return 0; }
-        robj  *r   = outputRow(btr, rrow, qcols, cmatchs, apk, tmatch);
+        robj *r    = outputRow(btr, rrow, qcols, cmatchs, apk, tmatch);
         addReply(c, shared.singlerow);
         GET_LRUC GET_LFUC
         if (!addReplyRow(c, r, tmatch, apk, lruc, lrud, lfuc, lfu)) return 0;
@@ -362,7 +364,7 @@ bool sqlSelectBinary(cli   *c, int tmatch, bool cstar, int *cmatchs, int qcols,
     return 1;
 }
 bool sqlSelectInnards(cli *c,       sds  clist, sds from, sds tlist, sds where,
-                      sds  wclause, bool chk) {
+                      sds  wclause, bool chk,   bool need_cn) {
     list *cmatchl = listCreate();
     bool  cstar   =  0; bool  join    =  0; bool ret = 0;
     int   qcols   =  0; int   tmatch  = -1;
@@ -383,7 +385,7 @@ bool sqlSelectInnards(cli *c,       sds  clist, sds from, sds tlist, sds where,
     parseWCplusQO(c, &w, &wb, SQL_SELECT);
     if (w.wtype == SQL_ERR_LKP)                                     goto sel_e;
     if (!leftoverParsingReply(c, w.lvr))                            goto sel_e;
-    ret = sqlSelectBinary(c, tmatch, cstar, cmatchs, qcols, &w, &wb);
+    ret = sqlSelectBinary(c, tmatch, cstar, cmatchs, qcols, &w, &wb, need_cn);
 
 sel_e:
     if (!cstar) resetIndexPosOn(qcols, cmatchs);
@@ -396,8 +398,8 @@ void sqlSelectCommand(redisClient *c) {
         selectCommand(c); return;
     }
     if (c->argc != 6) { addReply(c, shared.selectsyntax); return; }
-    sqlSelectInnards(c, c->argv[1]->ptr, c->argv[2]->ptr,
-                        c->argv[3]->ptr, c->argv[4]->ptr, c->argv[5]->ptr, 1);
+    sqlSelectInnards(c, c->argv[1]->ptr, c->argv[2]->ptr, c->argv[3]->ptr,
+                        c->argv[4]->ptr, c->argv[5]->ptr, 1, 0);
 }
 
 /* DELETE DELETE DELETE DELETE DELETE DELETE DELETE DELETE DELETE DELETE */

@@ -124,6 +124,11 @@ void aobjClone(aobj *dest, aobj *src) {
 aobj *cloneAobj(aobj *a) {
     aobj *na = (aobj *)malloc(sizeof(aobj)); aobjClone(na, a); return na;
 }
+aobj *copyAobj (aobj *a) {
+    aobj *na = (aobj *)malloc(sizeof(aobj));
+    memcpy(na, a, sizeof(aobj)); return na;
+}
+
 inline void *vcloneAobj(void *v) { return cloneAobj((aobj *)v); }
 
 void convertSdsToAobj(sds s, aobj *a, uchar ctype) {

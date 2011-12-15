@@ -60,6 +60,7 @@ typedef struct ereq_t {
     sds             select_column_list;
     sds             update_set_list;
     sds             where_clause;
+    bool            save_queried_column_names;
     select_callback *scb;
 } ereq_t;
 void init_ereq   (ereq_t *ereq);
@@ -70,7 +71,8 @@ eresp_t *e_alchemy_fast(ereq_t *ereq);
 eresp_t *e_alchemy_thin_select(uchar qtype,  int tmatch, int cmatch, int imatch,
                                enum OP op,   int qcols,
                                uint128 keyx, long keyl,  int keyi,
-                               int *cmatchs, bool cstar, select_callback *scb);
+                               int *cmatchs, bool cstar, select_callback *scb,
+                               bool save_cnames);
 
 // DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
 void printEmbedResp(eresp_t *ersp);

@@ -30,6 +30,7 @@ ALL RIGHTS RESERVED
 #include <strings.h>
 
 #include "xdb_client_hooks.h"
+#include "xdb_hooks.h"
 #include "query.h"
 #include "find.h"
 #include "alsosql.h"
@@ -282,7 +283,8 @@ eresp_t *e_alchemy_fast(ereq_t *ereq) {
         listRelease(cmatchl);
     } else if (ereq->op == SELECT) {
         ret = sqlSelectInnards(c, ereq->select_column_list, NULL,
-                               ereq->tablelist, NULL, ereq->where_clause, 0);
+                               ereq->tablelist, NULL, ereq->where_clause, 0,
+                               ereq->save_queried_column_names);
     } else if (ereq->op == DELETE) {
         ret = deleteInnards(c, ereq->tablelist, ereq->where_clause);
     } else if (ereq->op == UPDATE) {
@@ -304,7 +306,8 @@ efasterr:
 eresp_t *e_alchemy_thin_select(uchar qtype,  int tmatch, int cmatch, int imatch,
                                enum OP op,   int qcols, 
                                uint128 keyx, long keyl,  int keyi,
-                               int *cmatchs, bool cstar, select_callback *scb) {
+                               int *cmatchs, bool cstar, select_callback *scb,
+                               bool save_cnames) {
     initEmbeddedAlchemy();
     sds  err = NULL;
     cli *c      = EmbeddedCli; c->argc = 0; c->argv = NULL;
@@ -318,7 +321,8 @@ eresp_t *e_alchemy_thin_select(uchar qtype,  int tmatch, int cmatch, int imatch,
     else if (keyl) initAobjLong(&w.wf.akey, keyl);
     else if (keyx) initAobjU128(&w.wf.akey, keyx);
     else assert(!"e_alchemy_thin_select needs [keyi|keyl|keyx]");
-    bool ret    = sqlSelectBinary(c, tmatch, cstar, cmatchs, qcols, &w, &wb);
+    bool ret    = sqlSelectBinary(c, tmatch, cstar, cmatchs, qcols, &w, &wb,
+                                  save_cnames);
     CurrEresp->retcode = REDIS_OK; //TODO handle ERRORs
     if (!ret) { assert(c->bufpos); //NOTE: all -ERRs < REDIS_REPLY_CHUNK_BYTES
         err = sdsnewlen(c->buf, c->bufpos); c->bufpos = 0; goto ethinserr;

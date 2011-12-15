@@ -644,24 +644,24 @@ aobj getRawCol(bt  *btr,    uchar *orow, int cmatch, aobj *apk,
     if (!clen) a.empty = 1;
     else {
         if        C_IS_I(ctype) {
-            uint32  i    = streamIntToUInt(data, &clen);
+            uint32  i  = streamIntToUInt(data, &clen);
             initIntAobjFromVal(&a, i, force_s, cmatch);
         } else if C_IS_L(ctype) {
-            ulong   l    = streamLongToULong(data, &clen);
+            ulong   l  = streamLongToULong(data, &clen);
             initLongAobjFromVal(&a, l, force_s, cmatch);
         } else if C_IS_X(ctype) {
-            uint128 x    = streamToU128(data, &clen);
+            uint128 x  = streamToU128(data, &clen);
             initU128AobjFromVal(&a, x, force_s, cmatch);
         } else if C_IS_F(ctype) {
-            float   f    = streamFloatToFloat(data, &clen);
+            float   f  = streamFloatToFloat(data, &clen);
             initFloatAobjFromVal(&a, f, force_s, cmatch);
-        } else {//COL_TYPE_STRING
-            a.type       = a.enc = COL_TYPE_STRING;
-            if       (rflag & RFLAG_6BIT_ZIP) {
-                a.s      = (char *)unpackSixBit(data, &clen);  a.freeme = 1;
+        } else {//C_IS_S
+            a.type     = a.enc = COL_TYPE_STRING;
+            if        (rflag & RFLAG_6BIT_ZIP) {
+                a.s    = (char *)unpackSixBit(data, &clen);  a.freeme = 1;
             } else if (rflag & RFLAG_LZF_ZIP) {            // \/FREED 035
-                a.s      = streamLZFTextToString(data, &clen); a.freeme = 1;
-            } else a.s   = (char *)data; /* NO ZIP -> uncompressed text */
+                a.s    = streamLZFTextToString(data, &clen); a.freeme = 1;
+            } else a.s = (char *)data; /* NO ZIP -> uncompressed text */
             a.len  = clen;
         }
     }
@@ -782,7 +782,7 @@ static robj *orow_embedded(bt   *btr,       void *rrow, int   qcols,
     er->cols   = malloc(sizeof(aobj *) * er->ncols);
     for (int i = 0; i < er->ncols; i++) {
         aobj  acol  = getCol(btr, rrow, cmatchs[i], apk, tmatch);
-        er->cols[i] = cloneAobj(&acol); releaseAobj(&acol);
+        er->cols[i] = copyAobj(&acol); //NOTE: do NOT releaseAobj()
     }
     r->ptr = er; return r;
 }
