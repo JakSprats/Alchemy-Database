@@ -42,7 +42,7 @@ ALL RIGHTS RESERVED
 #include "sds.h"
 #include "redis.h"
 
-extern r_tbl_t *Tbl;
+extern r_tbl_t *Tbl; extern r_ind_t *Index;
 extern uchar    OutputMode;
 
 // PROTOTYPES
@@ -73,7 +73,6 @@ static inline void initEmbeddedResponse() {
         CurrEresp     =  ersp;
     }
 }
-
 static inline void resetEmbeddedResponse() {
     eresp_t *ersp = CurrEresp;
     if (ersp->objs) {
@@ -81,6 +80,17 @@ static inline void resetEmbeddedResponse() {
         free(ersp->objs); ersp->objs = NULL;
     }
     ersp->nobj = 0;
+}
+
+static void resetEmbeddedAlchemy() {
+    resetEmbeddedResponse();
+    cli *c          = EmbeddedCli;
+    if (c->reply->len) { listRelease(c->reply); c->reply = listCreate(); }
+    c->bufpos       = 0;
+    if (SelectedCols) {
+        for (int i = 0; i < NumSelectedCols; i++) sdsfree(SelectedCols[i]);
+        free(SelectedCols);
+    }
 }
 
 static bool embeddedInited = 0;
@@ -92,12 +102,7 @@ void initEmbeddedAlchemy() {
         initEmbeddedResponse();
         embeddedInited  = 1;
     } else {
-        resetEmbeddedResponse();
-        cli *c          = EmbeddedCli;
-        if (c->reply->len) { listRelease(c->reply); c->reply = listCreate(); }
-        c->bufpos       = 0;
-        for (int i = 0; i < NumSelectedCols; i++) sdsfree(SelectedCols[i]);
-        free(SelectedCols);
+        resetEmbeddedAlchemy();
     }
     NumSelectedCols   = 0; SelectedCols      = NULL;
     CurrEresp->ncols  = 0; CurrEresp->cnames = NULL;
@@ -261,6 +266,7 @@ eresp_t *e_alchemy_raw(char *sql, select_callback *scb) {
     CurrEresp->objs    = malloc(sizeof(aobj *));                \
     CurrEresp->objs[0] = createAobjFromString(err, sdslen(err), \
                                               COL_TYPE_STRING); \
+    sdsfree(err);                                               \
     return CurrEresp;
 
 eresp_t *e_alchemy_fast(ereq_t *ereq) {
@@ -323,23 +329,31 @@ eresp_t *e_alchemy_thin_select(uchar qtype,  int tmatch, int cmatch, int imatch,
     else assert(!"e_alchemy_thin_select needs [keyi|keyl|keyx]");
     bool ret    = sqlSelectBinary(c, tmatch, cstar, cmatchs, qcols, &w, &wb,
                                   save_cnames);
-    CurrEresp->retcode = REDIS_OK; //TODO handle ERRORs
+    if (!cstar) resetIndexPosOn(qcols, cmatchs);
+    destroy_wob(&wb); destroy_check_sql_where_clause(&w);
     if (!ret) { assert(c->bufpos); //NOTE: all -ERRs < REDIS_REPLY_CHUNK_BYTES
         err = sdsnewlen(c->buf, c->bufpos); c->bufpos = 0; goto ethinserr;
     }
+    CurrEresp->retcode = REDIS_OK;
     return CurrEresp;
 
 ethinserr:
     CREATE_RESPONSE_ERROR
 }
 
-void init_ereq(ereq_t *ereq) {
-    bzero(ereq, sizeof(ereq_t));
-}
+void init_ereq(ereq_t *ereq) { bzero(ereq, sizeof(ereq_t)); }
 void release_ereq(ereq_t *ereq) {
     if (ereq->tablelist)           sdsfree(ereq->tablelist);
     if (ereq->insert_value_string) sdsfree(ereq->insert_value_string);
     if (ereq->select_column_list)  sdsfree(ereq->select_column_list);
     if (ereq->where_clause)        sdsfree(ereq->where_clause);
 
+}
+
+void embedded_exit() { //NOTE: good idea to use for valgrind debugging
+    resetEmbeddedAlchemy();
+    free(CurrEresp); freeClient(EmbeddedCli);
+    lua_close(server.lua);
+    DXDB_flushdbCommand();
+    free(Index); free(Tbl);
 }

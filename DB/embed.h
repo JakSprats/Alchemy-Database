@@ -41,6 +41,7 @@ typedef struct embedded_response_t {
 } eresp_t;
 
 void initEmbeddedAlchemy(); // NOTE: used for UNSAFE access
+void embedded_exit();
 
 void embeddedSaveSelectedColumnNames(int tmatch, int cmatchs[], int qcols);
 struct jb_t;

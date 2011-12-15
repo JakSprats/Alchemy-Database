@@ -733,8 +733,7 @@ static aobj colFromXX(uint128 key, bool force_s, int cmatch) {
 /* OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT */
 static void destroy_erow(erow_t *er) { //printf("destroy_embedded_row\n");
     for (int i = 0; i < er->ncols; i++) destroyAobj(er->cols[i]);
-    free(er->cols);
-    free(er);
+    free(er->cols); free(er);
 }
 robj *cloneRobjErow(robj *r) { // NOTE Used in cloneRobj()
     if (!r) return NULL;
@@ -771,12 +770,9 @@ bool addReplyRow(cli   *c,    robj *r,    int    tmatch, aobj *apk,
     return 1;
 }
 
-robj *EmbeddedRobj = NULL;
 static robj *orow_embedded(bt   *btr,       void *rrow, int   qcols,
                            int   cmatchs[], aobj *apk,  int   tmatch) {
-    robj *r = EmbeddedRobj;
-    if      (!r)           r           = createObject(REDIS_STRING, NULL);
-    else if (!r->refcount) r->refcount = 1;
+    robj   *r  = createObject(REDIS_STRING, NULL);
     erow_t *er = malloc(sizeof(erow_t));
     er->ncols  = qcols;
     er->cols   = malloc(sizeof(aobj *) * er->ncols);
