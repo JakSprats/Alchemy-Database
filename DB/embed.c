@@ -93,7 +93,7 @@ void initEmbeddedAlchemy() {
     } else {
         resetEmbeddedResponse();
         cli *c          = EmbeddedCli;
-        listRelease(c->reply); c->reply = listCreate();
+        if (c->reply->len) { listRelease(c->reply); c->reply = listCreate(); }
         c->bufpos       = 0;
         for (int i = 0; i < NumSelectedCols; i++) sdsfree(SelectedCols[i]);
         free(SelectedCols);
@@ -283,6 +283,13 @@ eresp_t *e_alchemy_fast(ereq_t *ereq) {
     } else if (ereq->op == SELECT) {
         ret = sqlSelectInnards(c, ereq->select_column_list, NULL,
                                ereq->tablelist, NULL, ereq->where_clause, 0);
+    } else if (ereq->op == DELETE) {
+        ret = deleteInnards(c, ereq->tablelist, ereq->where_clause);
+    } else if (ereq->op == UPDATE) {
+        int      tmatch = find_table(ereq->tablelist);
+        if (tmatch == -1) { err = shared.nonexistenttable->ptr; goto efasterr; }
+        ret = updateInnards(c, tmatch,
+                            ereq->update_set_list, ereq->where_clause, 0, NULL);
     }
     if (!ret) { assert(c->bufpos); //NOTE: all -ERRs < REDIS_REPLY_CHUNK_BYTES
         err = sdsnewlen(c->buf, c->bufpos); c->bufpos = 0; goto efasterr;

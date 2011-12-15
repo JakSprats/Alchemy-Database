@@ -391,7 +391,6 @@ sel_e:
     return ret;
 }
 
-
 void sqlSelectCommand(redisClient *c) {
     if (c->argc == 2) { /* this is a REDIS "select DB" command" */
         selectCommand(c); return;
@@ -402,17 +401,10 @@ void sqlSelectCommand(redisClient *c) {
 }
 
 /* DELETE DELETE DELETE DELETE DELETE DELETE DELETE DELETE DELETE DELETE */
-void deleteCommand(redisClient *c) {
-    if (strcasecmp(c->argv[1]->ptr, "FROM")) {
-        addReply(c, shared.deletesyntax); return;
-    }
-    TABLE_CHECK_OR_REPLY(c->argv[2]->ptr,)
-    if (strcasecmp(c->argv[3]->ptr, "WHERE")) {
-        addReply(c, shared.deletesyntax_nowhere); return;
-    }
-    cswc_t w; wob_t wb;
-    init_check_sql_where_clause(&w, tmatch, c->argv[4]->ptr);
-    init_wob(&wb);
+bool deleteInnards(cli *c, sds tlist, sds wclause) {
+    TABLE_CHECK_OR_REPLY(tlist,0)
+    cswc_t w; wob_t wb; bool ret = 0;
+    init_check_sql_where_clause(&w, tmatch, wclause); init_wob(&wb);
     parseWCplusQO(c, &w, &wb, SQL_DELETE);
     if (w.wtype == SQL_ERR_LKP)                             goto delete_cmd_end;
     if (!leftoverParsingReply(c, w.lvr))                    goto delete_cmd_end;
@@ -429,10 +421,19 @@ void deleteCommand(redisClient *c) {
         addReply(c, del ? shared.cone :shared.czero);
         if (wb.ovar) incrOffsetVar(c, &wb, 1);
     }
+    ret = 1;
 
 delete_cmd_end:
-    destroy_wob(&wb);
-    destroy_check_sql_where_clause(&w);
+    destroy_wob(&wb); destroy_check_sql_where_clause(&w); return ret;
+}
+void deleteCommand(redisClient *c) {
+    if (strcasecmp(c->argv[1]->ptr, "FROM")) {
+        addReply(c, shared.deletesyntax); return;
+    }
+    if (strcasecmp(c->argv[3]->ptr, "WHERE")) {
+        addReply(c, shared.deletesyntax_nowhere); return;
+    }
+    deleteInnards(c, c->argv[2]->ptr, c->argv[4]->ptr);
 }
 
 /* UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE */
@@ -490,22 +491,10 @@ static int getPkUpdateCol(int qcols, int cmatchs[]) {
     }
     return pkupc;
 }
-static int updateAction(cli *c, char *u_vallist, aobj *u_apk, int u_tmatch) {
-    if (!u_vallist) {
-        TABLE_CHECK_OR_REPLY(c->argv[1]->ptr, -1)
-        if (strcasecmp(c->argv[2]->ptr, "SET")) {
-            addReply(c, shared.updatesyntax);                  return -1;
-        }
-        if (strcasecmp(c->argv[4]->ptr, "WHERE")) {
-            addReply(c, shared.updatesyntax_nowhere);          return -1;
-        }
-        u_tmatch = tmatch;
-    }
-    int     tmatch  = u_tmatch;
+int updateInnards(cli *c, int tmatch, sds vallist, sds wclause,
+                  bool fromup, aobj *u_apk) {
     list   *cmatchl = listCreate();
-    list   *mvalsl  = listCreate();
-    list   *mvlensl = listCreate();
-    char   *vallist = u_vallist ? u_vallist : c->argv[3]->ptr;
+    list   *mvalsl  = listCreate(); list *mvlensl = listCreate();
     int     qcols   = parseUpdateColListReply(c,      tmatch, vallist, cmatchl,
                                               mvalsl, mvlensl);
     UPDATES_FROM_UPDATEL
@@ -528,14 +517,14 @@ static int updateAction(cli *c, char *u_vallist, aobj *u_apk, int u_tmatch) {
                       mvals, mvlens, le))                      return -1;
     int nsize = -1; /* B4 GOTO */
     cswc_t w; wob_t wb; init_wob(&wb);
-    if (u_vallist) { /* comes from "INSERT ON DUPLICATE KEY UPDATE" */
+    if (fromup) { /* comes from "INSERT ON DUPLICATE KEY UPDATE" */
         init_check_sql_where_clause(&w, tmatch, NULL);           /* ERR->GOTO */
         w.wtype     = SQL_SINGLE_LKP; /* JerryRig WhereClause to "pk = X" */
         w.wf.imatch = rt->vimatch;    /* pk index */
-        w.wf.tmatch = u_tmatch;       /* table from INSERT UPDATE */
+        w.wf.tmatch = tmatch;         /* table from INSERT UPDATE */
         w.wf.akey   = *u_apk;         /* PK from INSERT UPDATE */
-    } else {        /* normal UPDATE -> parse WhereClause */
-        init_check_sql_where_clause(&w, tmatch, c->argv[5]->ptr);/* ERR->GOTO */
+    } else {      /* normal UPDATE -> parse WhereClause */
+        init_check_sql_where_clause(&w, tmatch, wclause);/* ERR->GOTO */
         parseWCplusQO(c, &w, &wb, SQL_UPDATE);
         if (w.wtype == SQL_ERR_LKP)                            goto upc_end;
         if (!leftoverParsingReply(c, w.lvr))                   goto upc_end;
@@ -565,14 +554,30 @@ static int updateAction(cli *c, char *u_vallist, aobj *u_apk, int u_tmatch) {
         nsize        = updateRow(c, &uc, apk, rrow); release_uc(&uc);
         //NOTE: rrow is no longer valid, updateRow() can change it
         if (nsize == -1)                                       goto upc_end;
-        if (!u_vallist) addReply(c, shared.cone);
-        if (wb.ovar)    incrOffsetVar(c, &wb, 1);
+        if (!fromup) addReply(c, shared.cone);
+        if (wb.ovar) incrOffsetVar(c, &wb, 1);
     }
 
 upc_end:
     destroy_wob(&wb);
     destroy_check_sql_where_clause(&w);
     return nsize;
+}
+static int updateAction(cli *c, sds u_vallist, aobj *u_apk, int u_tmatch) {
+    if (!u_vallist) {
+        TABLE_CHECK_OR_REPLY(c->argv[1]->ptr, -1)
+        if (strcasecmp(c->argv[2]->ptr, "SET")) {
+            addReply(c, shared.updatesyntax);                  return -1;
+        }
+        if (strcasecmp(c->argv[4]->ptr, "WHERE")) {
+            addReply(c, shared.updatesyntax_nowhere);          return -1;
+        }
+        u_tmatch = tmatch;
+    }
+    bool fromup  = u_vallist ? 1         : 0;
+    sds  vallist = fromup    ? u_vallist : c->argv[3]->ptr;
+    sds  wclause = fromup    ? NULL      : c->argv[5]->ptr;
+    return updateInnards(c, u_tmatch, vallist, wclause, fromup, u_apk);
 }
 void updateCommand(redisClient *c) {
     updateAction(c, NULL, NULL, -1);

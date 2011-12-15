@@ -58,6 +58,7 @@ typedef struct ereq_t {
     sds             tablelist;
     sds             insert_value_string;
     sds             select_column_list;
+    sds             update_set_list;
     sds             where_clause;
     select_callback *scb;
 } ereq_t;
