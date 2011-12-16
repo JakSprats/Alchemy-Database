@@ -373,6 +373,7 @@ bool sqlSelectInnards(cli *c,       sds  clist, sds from, sds tlist, sds where,
                                                listRelease(cmatchl); return 0;
     }
     if (join) { listRelease(cmatchl);
+        //TODO joinBinary() w/ need_cn
         return doJoin(c, clist, tlist, wclause);
     }
     CMATCHS_FROM_CMATCHL listRelease(cmatchl);

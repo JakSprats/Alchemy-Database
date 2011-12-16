@@ -68,8 +68,7 @@ static inline void initEmbeddedClient() {
 }
 static inline void initEmbeddedResponse() {
     if (!CurrEresp) {
-        eresp_t *ersp = malloc(sizeof(eresp_t));
-        bzero(ersp, sizeof(eresp_t));
+        eresp_t *ersp = malloc(sizeof(eresp_t)); bzero(ersp, sizeof(eresp_t));
         CurrEresp     =  ersp;
     }
 }
@@ -81,7 +80,6 @@ static inline void resetEmbeddedResponse() {
     }
     ersp->nobj = 0;
 }
-
 static void resetEmbeddedAlchemy() {
     resetEmbeddedResponse();
     cli *c          = EmbeddedCli;
@@ -98,9 +96,7 @@ void initEmbeddedAlchemy() {
     OutputMode = OUTPUT_EMBEDDED;
     if (!embeddedInited) {
         initEmbedded(); // defined in redis.c -DNO_MAIN
-        initEmbeddedClient();
-        initEmbeddedResponse();
-        embeddedInited  = 1;
+        initEmbeddedClient(); initEmbeddedResponse(); embeddedInited  = 1;
     } else {
         resetEmbeddedAlchemy();
     }
@@ -109,24 +105,28 @@ void initEmbeddedAlchemy() {
     initClient(EmbeddedCli);
 }
 
+void init_ereq(ereq_t *ereq) { bzero(ereq, sizeof(ereq_t)); }
+void release_ereq(ereq_t *ereq) {
+    if (ereq->tablelist)           sdsfree(ereq->tablelist);
+    if (ereq->insert_value_string) sdsfree(ereq->insert_value_string);
+    if (ereq->select_column_list)  sdsfree(ereq->select_column_list);
+    if (ereq->where_clause)        sdsfree(ereq->where_clause);
+
+}
+
 static uint32 numElementsReply(redisReply *r) {
     uint32 count = 0;
     switch (r->type) {
-      case REDIS_REPLY_NIL:
-        return 0;
-      case REDIS_REPLY_ERROR:
-      case REDIS_REPLY_STATUS:
-      case REDIS_REPLY_STRING:
-      case REDIS_REPLY_INTEGER:
-        return 1;
+      case REDIS_REPLY_NIL:                              return 0;
+      case REDIS_REPLY_ERROR:  case REDIS_REPLY_STATUS:
+      case REDIS_REPLY_STRING: case REDIS_REPLY_INTEGER: return 1;
       case REDIS_REPLY_ARRAY:
         for (size_t i = 0; i < r->elements; i++) {
             count += numElementsReply(r->element[i]);
         }
         return count;
       default:
-        fprintf(stderr, "Unknown reply type: %d\n", r->type);
-        exit(1);
+        fprintf(stderr, "Unknown reply type: %d\n", r->type); exit(1);
     }
 }
 static void createEmbedRespFromReply(eresp_t *ersp, redisReply *r, int *cnt) {
@@ -140,12 +140,10 @@ static void createEmbedRespFromReply(eresp_t *ersp, redisReply *r, int *cnt) {
       case REDIS_REPLY_STRING:
         ersp->objs[*cnt] = createAobjFromString(r->str, r->len,
                                                 COL_TYPE_STRING);
-        *cnt = *cnt + 1;
-        break;
+        *cnt = *cnt + 1; break;
       case REDIS_REPLY_INTEGER:
         ersp->objs[*cnt] = createAobjFromLong(r->integer);
-        *cnt = *cnt + 1;
-        break;
+        *cnt = *cnt + 1; break;
       case REDIS_REPLY_ARRAY:
         for (size_t i = 0; i < r->elements; i++) {
             createEmbedRespFromReply(ersp, r->element[i], cnt);
@@ -227,10 +225,8 @@ void embeddedSaveJoinedColumnNames(jb_t *jb) {
 static eresp_t *__e_alchemy(int argc, robj **rargv, select_callback *scb,
                             unsigned char freer) {
     initEmbeddedAlchemy();
-    cli *c   = EmbeddedCli;
-    c->scb   = scb;
-    c->argc  = argc;
-    c->argv  = rargv;
+    cli *c   = EmbeddedCli; c->scb   = scb;
+    c->argc  = argc;        c->argv  = rargv;
     processCommand(c);
     redisReplyToEmbedResp(c, CurrEresp);
 
@@ -287,7 +283,7 @@ eresp_t *e_alchemy_fast(ereq_t *ereq) {
                            matches, inds, pcols, cmatchl, repl, upd,
                            NULL, 0, NULL);
         listRelease(cmatchl);
-    } else if (ereq->op == SELECT) {
+    } else if (ereq->op == SELECT) { //TODO SCAN
         ret = sqlSelectInnards(c, ereq->select_column_list, NULL,
                                ereq->tablelist, NULL, ereq->where_clause, 0,
                                ereq->save_queried_column_names);
@@ -298,7 +294,7 @@ eresp_t *e_alchemy_fast(ereq_t *ereq) {
         if (tmatch == -1) { err = shared.nonexistenttable->ptr; goto efasterr; }
         ret = updateInnards(c, tmatch,
                             ereq->update_set_list, ereq->where_clause, 0, NULL);
-    }
+    } else assert(!"e_alchemy_fast() ereq->op must be set");
     if (!ret) { assert(c->bufpos); //NOTE: all -ERRs < REDIS_REPLY_CHUNK_BYTES
         err = sdsnewlen(c->buf, c->bufpos); c->bufpos = 0; goto efasterr;
     }
@@ -341,13 +337,36 @@ ethinserr:
     CREATE_RESPONSE_ERROR
 }
 
-void init_ereq(ereq_t *ereq) { bzero(ereq, sizeof(ereq_t)); }
-void release_ereq(ereq_t *ereq) {
-    if (ereq->tablelist)           sdsfree(ereq->tablelist);
-    if (ereq->insert_value_string) sdsfree(ereq->insert_value_string);
-    if (ereq->select_column_list)  sdsfree(ereq->select_column_list);
-    if (ereq->where_clause)        sdsfree(ereq->where_clause);
+#define CREATE_ARGV_SIMPLE_COMMAND                            \
+    c->argc    = 2;                                           \
+    c->argv    = &TwoRobj;                                    \
+    c->argv[1] = createObject(REDIS_STRING, ereq->redis_key);
+robj *TwoRobj  [2];
+robj *ThreeRobj[3];
 
+eresp_t *e_alchemy_redis(ereq_t *ereq) {
+    int  cret = 0;
+    initEmbeddedAlchemy();
+    sds  err  = NULL;
+    cli *c    = EmbeddedCli;
+    c->scb    = ereq->scb;
+    if        (ereq->rop == SET) {
+        c->argc    = 3; c->argv = &ThreeRobj;
+        c->argv[1] = createObject(REDIS_STRING, ereq->redis_key);
+        c->argv[2] = createObject(REDIS_STRING, ereq->redis_value);
+        setCommand(c);
+        cret = strcmp(c->buf, shared.ok->ptr) ? REDIS_ERR : REDIS_OK;
+    } else if (ereq->rop == GET) {
+        CREATE_ARGV_SIMPLE_COMMAND
+        cret = getGenericCommand(c);
+    } else if (ereq->rop == DEL) {
+        CREATE_ARGV_SIMPLE_COMMAND
+        delCommand(c);
+        cret = strcmp(c->buf, shared.cone->ptr) ? REDIS_ERR : REDIS_OK;
+    }
+    c->argc = 0; c->argv = NULL;
+    CurrEresp->retcode = ret;
+    return CurrEresp;
 }
 
 void embedded_exit() { //NOTE: good idea to use for valgrind debugging
@@ -356,4 +375,19 @@ void embedded_exit() { //NOTE: good idea to use for valgrind debugging
     lua_close(server.lua);
     DXDB_flushdbCommand();
     free(Index); free(Tbl);
+}
+
+void e_alc_got_obj(cli *c, robj *obj) {
+    if (!c->scb) return; //TODO assert this
+    erow_t er;
+    er.ncols   = 1;
+    er.cols    = malloc(sizeof(aobj *) * er.ncols);
+    bool decme  = 0;
+    if (obj->encoding != REDIS_ENCODING_RAW) {
+        decme   = 1; obj = getDecodedObject(obj);
+    }
+    er.cols[0] = createAobjFromString(obj->ptr, sdslen(obj->ptr), COL_TYPE_STRING);
+    (*c->scb)(&er);
+    destroyAobj(er.cols[0]); free(er.cols);
+    if (decme) decrRefCount(obj);
 }

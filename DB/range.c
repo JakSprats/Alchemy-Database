@@ -580,7 +580,7 @@ static bool select_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
                 ret = 0;
             }
         }
-        if (!(EREDIS)) decrRefCount(r);
+        if (!(EREDIS)) decrRefCount(r); //TODO MEMLEAK??? for EREDIS
     }
     INCR(*card) CurrCard = *card; return ret;
 }

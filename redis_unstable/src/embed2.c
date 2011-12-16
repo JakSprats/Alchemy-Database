@@ -13,8 +13,11 @@
 
 #define TEST_KV
 #define TEST_SB
+#define TEST_REDIS
 
 //#define DEBUG_DESC_TABLE
+//#define DEBUG_INFO
+//#define DEBUG_KEYS
 //#define DEBUG_PRINT
 //#define DEBUG_FEW_ROWS
 //#define DEBUG_HIT_ENTER
@@ -47,6 +50,9 @@ static bool print_cb_w_cnames(erow_t* er) {
     }
     return 1;
 }
+static bool print_cb_key(erow_t* er) {
+    printf("\tVAL: "); dumpAobj(printf, er->cols[0]);
+}
 
 // DEBUG
 static void hit_return_to_continue() {
@@ -78,6 +84,20 @@ static void desc_table(char *tname) {
     char buf[32];
     snprintf(buf, 31, "DESC %s", tname); buf[31] = '\0';
     eresp_t *eresp = e_alchemy_raw(buf, NULL);
+    printEmbedResp(eresp); printf("\n");
+#endif
+}
+static void info() {
+#ifdef  DEBUG_INFO
+    printf("\n");
+    eresp_t *eresp = e_alchemy_raw("INFO", NULL);
+    printEmbedResp(eresp); printf("\n");
+#endif
+}
+static void keys() {
+#ifdef  DEBUG_KEYS
+    printf("KEYS: \n");
+    eresp_t *eresp = e_alchemy_raw("KEYS *", NULL);
     printEmbedResp(eresp); printf("\n");
 #endif
 }
@@ -344,6 +364,55 @@ static void test_sb_zip_thinselect(ulong prows, ulong qrows) {
     hit_return_to_continue();
     release_ereq(&ereq);
 }
+
+static void test_redis(ulong prows, ulong qrows) {
+    char buf[1024];
+#ifndef SHORT_INSERT_STRING
+    char  *insert_string = "00000000000001 XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX')";
+#else
+    char  *insert_string = "00000000000001 not much text')";
+#endif
+
+    ereq_t ereq; init_ereq(&ereq);
+    ereq.rop = SET;
+#ifdef DEBUG_PRINT
+    ereq.scb                = print_cb_key;
+#endif
+
+    memcpy(buf, insert_string, strlen(insert_string) + 1);
+
+    long long beg = mstime(), fin, tps;
+    for (ulong i = 1; i < prows; i++) {
+        char lbuf[32];
+        sprintf(lbuf, "KEY_%lu", i);   ereq.redis_key   = sdsnew(lbuf);
+        sprintf(lbuf, "%014lu", i); memcpy(buf, lbuf, 14);
+        ereq.redis_value = sdsnew(buf);
+        e_alchemy_redis(&ereq);
+    }
+    fin = mstime(); tps = (fin == beg) ? 0 : prows / (fin - beg);
+    printf("SET:\t\t\t%lu rows, duration: %lld ms, %lldK TPS\n\n",
+           prows, (fin - beg), tps);
+    info(); keys();
+    hit_return_to_continue();
+
+    ereq.rop = GET;
+    beg      = mstime(), fin, tps;
+    for (ulong i = 1; i < qrows; i++) {
+        char lbuf[32];
+        ulong index = (ulong)rand() % prows + 1;
+        sprintf(lbuf, "KEY_%lu", index); ereq.redis_key = sdsnew(lbuf);
+        e_alchemy_redis(&ereq);
+        sdsfree(ereq.redis_key);   ereq.redis_key   = NULL;
+    }
+    fin = mstime(); tps = (fin == beg) ? 0 : qrows / (fin - beg);
+    printf("GET:\t\t\t%lu rows, duration: %lld ms, %lldK TPS\n\n",
+           qrows, (fin - beg), tps);
+    info(); keys();
+    hit_return_to_continue();
+
+    release_ereq(&ereq);
+}
+
 int main(int argc, char **argv) {
     argc = 0; argv = NULL; /* compiler warning */
     ulong  prows = 1000000;
@@ -363,6 +432,11 @@ int main(int argc, char **argv) {
     test_kv_delete                  (prows, qrows);
     test_kv_update                  (prows, qrows);
 #endif
+
+#ifdef TEST_REDIS
+    test_redis                      (prows, qrows);
+#endif
+
     embedded_exit();
     printf("Exiting...\n");
     return 0;

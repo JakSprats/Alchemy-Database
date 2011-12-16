@@ -54,7 +54,7 @@ aobj *createAobjFromLong  (ulong l);
 
 void convertFilterSDStoAobj(f_t *flt);
 
-void convertINLtoAobj(list **inl, uchar ctype);
+void  convertINLtoAobj(list **inl, uchar ctype);
 list *cloneAobjList(list *ll);
 
 void initStringAobjFromAobj(aobj *na, aobj *a);

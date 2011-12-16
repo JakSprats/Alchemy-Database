@@ -1,4 +1,8 @@
 #include "redis.h"
+#ifdef ALCHEMY_DATABASE
+  extern unsigned char OutputMode;
+  #include "common.h"
+#endif
 
 /*-----------------------------------------------------------------------------
  * String Commands
@@ -59,6 +63,9 @@ int getGenericCommand(redisClient *c) {
         addReply(c,shared.wrongtypeerr);
         return REDIS_ERR;
     } else {
+#ifdef ALCHEMY_DATABASE
+        if (EREDIS) { e_alc_got_obj(c, o); return REDIS_OK; }
+#endif
         addReplyBulk(c,o);
         return REDIS_OK;
     }
