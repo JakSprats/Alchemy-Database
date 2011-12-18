@@ -12,7 +12,7 @@
 #include "embed.h"
 
 #define TEST_KV
-#define TEST_SB
+//#define TEST_SB
 #define TEST_REDIS
 
 //#define DEBUG_DESC_TABLE
@@ -24,7 +24,7 @@
 //#define SHORT_INSERT_STRING
 
 //GLOBALS
-extern eresp_t *CurrEresp; // USED in callbacks to get "CurrEresp->cnames[]"
+extern eresp_t *CurrEresp;   // USED in callbacks to get "CurrEresp->cnames[]"
 extern bool GlobalZipSwitch; // can GLOBALLY turn off [lzf] compression of rows
 
 extern int Num_tbls; // USED in thin_select
@@ -32,7 +32,10 @@ extern int Num_indx; // USED in thin_select
 
 // PROTOTYPES
 struct aobj;
-void dumpAobj(printer *prn, struct aobj *a);
+void dumpAobj(printer *prn, struct aobj *a);      // from aobj.h
+void bytesToHuman(char *s, unsigned long long n); // from redis.c
+void print_mem_usage(int tmatch);                 // from desc.h
+
 static void init_kv_table();
 static void populate_kv_table(ulong prows);
 
@@ -52,6 +55,7 @@ static bool print_cb_w_cnames(erow_t* er) {
 }
 static bool print_cb_key(erow_t* er) {
     printf("\tVAL: "); dumpAobj(printf, er->cols[0]);
+    return 1;
 }
 
 // DEBUG
@@ -101,6 +105,13 @@ static void keys() {
     printEmbedResp(eresp); printf("\n");
 #endif
 }
+static void print_redis_mem_info() {
+    char hmem[64]; bytesToHuman(hmem, zmalloc_used_memory());
+    printf("used_memory: %zu used_memory_human: %s used_memory_rss: %zu "
+           "mem_fragmentation_ratio: %.2f\n",
+            zmalloc_used_memory(), hmem,
+            zmalloc_get_rss(), zmalloc_get_fragmentation_ratio());
+}
 
 // POPULATE_KV
 static void init_kv_table() {
@@ -134,9 +145,10 @@ static void populate_kv_table(ulong prows) {
         sdsfree(ereq.insert_value_string); ereq.insert_value_string = NULL;
     }
     fin = mstime(); tps = (fin == beg) ? 0 : prows / (fin - beg);
-    printf("INSERT%s%lu rows, duration: %lld ms, %lldK TPS\n",
-           GlobalZipSwitch ? ":\t\t\t" : ": [NO ZIP]:\t",
+    printf("KV: INSERT%s%lu rows, duration: %lld ms, %lldK TPS\n",
+           GlobalZipSwitch ? ":\t\t\t" : ": [NO ZIP]:\t\t",
            prows, (fin - beg), tps);
+    print_mem_usage(Num_tbls - 1);
     desc_table("kv"); hit_return_to_continue();
     release_ereq(&ereq);
 }
@@ -163,7 +175,7 @@ static void test_kv_zip_select(ulong prows, ulong qrows) {
         sdsfree(ereq.where_clause); ereq.where_clause = NULL;
     }
     fin = mstime(); tps = (fin == beg) ? 0 : qrows / (fin - beg);
-    printf("SELECT:\t\t\t%lu rows, duration: %lld ms, %lldK TPS\n\n",
+    printf("KV: SELECT:\t\t\t%lu rows, duration: %lld ms, %lldK TPS\n\n",
            qrows, (fin - beg), tps);
     hit_return_to_continue();
     release_ereq(&ereq);
@@ -198,7 +210,7 @@ static void test_kv_zip_thinselect(ulong prows, ulong qrows) {
                               0, index, 0, cmatchs, cstar, scb, save_cnames);
     }
     fin = mstime(); tps = (fin == beg) ? 0 : qrows / (fin - beg);
-    printf("THIN SELECT:\t\t%lu rows, duration: %lld ms, %lldK TPS\n\n",
+    printf("KV: THIN SELECT:\t\t%lu rows, duration: %lld ms, %lldK TPS\n\n",
            qrows, (fin - beg), tps);
     hit_return_to_continue();
     release_ereq(&ereq);
@@ -224,7 +236,8 @@ static void test_kv_nocompression_thinselect(ulong prows, ulong qrows) {
     }
     fin = mstime();
     tps = (fin == beg) ? 0 : qrows / (fin - beg);
-    printf("THIN SELECT [NO ZIP]:\t%lu rows, duration: %lld ms, %lldK TPS\n\n",
+    printf("KV: THIN SELECT [NO ZIP]:\t%lu rows, duration: %lld ms,"\
+           " %lldK TPS\n\n",
            qrows, (fin - beg), tps);
     hit_return_to_continue();
     release_ereq(&ereq);
@@ -251,8 +264,8 @@ static void test_kv_delete(ulong prows, ulong qrows) {
         sdsfree(ereq.where_clause); ereq.where_clause = NULL;
     }
     fin = mstime(); tps = (fin == beg) ? 0 : qrows / (fin - beg);
-    printf("DELETE:\t\t\t%lu rows, duration: %lld ms, %lldK TPS\n\n",
-           qrows, (fin - beg), tps);
+    printf("KV: DELETE:\t\t\t%lu rows, duration: %lld ms, %lldK TPS\n\n",
+           iters, (fin - beg), tps);
     hit_return_to_continue();
 #ifdef  DEBUG_DESC_TABLE
     printf("AFTER DELETION\n"); desc_table("kv");
@@ -282,8 +295,8 @@ static void test_kv_update(ulong prows, ulong qrows) {
         sdsfree(ereq.where_clause); ereq.where_clause = NULL;
     }
     fin = mstime(); tps = (fin == beg) ? 0 : qrows / (fin - beg);
-    printf("UPDATE:\t\t\t%lu rows, duration: %lld ms, %lldK TPS\n\n",
-           qrows, (fin - beg), tps);
+    printf("KV: UPDATE:\t\t\t%lu rows, duration: %lld ms, %lldK TPS\n\n",
+           iters, (fin - beg), tps);
     hit_return_to_continue();
 #ifdef  DEBUG_DESC_TABLE
     printf("AFTER UPDATE\n"); desc_table("kv");
@@ -322,9 +335,10 @@ static void populate_sb_table(ulong prows) {
         sdsfree(ereq.insert_value_string); ereq.insert_value_string = NULL;
     }
     fin = mstime(); tps = (fin == beg) ? 0 : prows / (fin - beg);
-    printf("INSERT%s%lu rows, duration: %lld ms, %lldK TPS\n",
+    printf("SB: INSERT%s%lu rows, duration: %lld ms, %lldK TPS\n",
            GlobalZipSwitch ? ":\t\t\t" : ": [NO ZIP]:\t",
            prows, (fin - beg), tps);
+    print_mem_usage(Num_tbls - 1);
     desc_table("SB"); hit_return_to_continue();
     release_ereq(&ereq);
 }
@@ -359,7 +373,7 @@ static void test_sb_zip_thinselect(ulong prows, ulong qrows) {
                               index, 0, 0, cmatchs, cstar, scb, save_cnames);
     }
     fin = mstime(); tps = (fin == beg) ? 0 : qrows / (fin - beg);
-    printf("THIN SELECT:\t\t%lu rows, duration: %lld ms, %lldK TPS\n\n",
+    printf("SB: THIN SELECT:\t\t%lu rows, duration: %lld ms, %lldK TPS\n\n",
            qrows, (fin - beg), tps);
     hit_return_to_continue();
     release_ereq(&ereq);
@@ -390,10 +404,9 @@ static void test_redis(ulong prows, ulong qrows) {
         e_alchemy_redis(&ereq);
     }
     fin = mstime(); tps = (fin == beg) ? 0 : prows / (fin - beg);
-    printf("SET:\t\t\t%lu rows, duration: %lld ms, %lldK TPS\n\n",
+    printf("SET:\t\t\t\t%lu rows, duration: %lld ms, %lldK TPS\n",
            prows, (fin - beg), tps);
-    info(); keys();
-    hit_return_to_continue();
+    print_redis_mem_info(); printf("\n");
 
     ereq.rop = GET;
     beg      = mstime(), fin, tps;
@@ -405,10 +418,23 @@ static void test_redis(ulong prows, ulong qrows) {
         sdsfree(ereq.redis_key);   ereq.redis_key   = NULL;
     }
     fin = mstime(); tps = (fin == beg) ? 0 : qrows / (fin - beg);
-    printf("GET:\t\t\t%lu rows, duration: %lld ms, %lldK TPS\n\n",
+    printf("GET:\t\t\t\t%lu rows, duration: %lld ms, %lldK TPS\n\n",
            qrows, (fin - beg), tps);
-    info(); keys();
-    hit_return_to_continue();
+    info(); keys(); hit_return_to_continue();
+
+    ereq.rop    = DEL;
+    ulong iters = (prows / 2); // DEL first HALF of keys
+    beg         = mstime(), fin, tps;
+    for (ulong i = 1; i < iters; i++) {
+        char lbuf[32];
+        sprintf(lbuf, "KEY_%lu", i); ereq.redis_key = sdsnew(lbuf);
+        e_alchemy_redis(&ereq);
+        sdsfree(ereq.redis_key);   ereq.redis_key   = NULL;
+    }
+    fin = mstime(); tps = (fin == beg) ? 0 : qrows / (fin - beg);
+    printf("DEL:\t\t\t\t%lu rows, duration: %lld ms, %lldK TPS\n\n",
+           iters, (fin - beg), tps);
+    info(); keys(); hit_return_to_continue();
 
     release_ereq(&ereq);
 }

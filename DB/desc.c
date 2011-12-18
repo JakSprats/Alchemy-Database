@@ -318,7 +318,7 @@ void descCommand(redisClient *c) {
                 if (ri->lfu) r->ptr = sdscatprintf(r->ptr, " - LFUINDEX");
                 if (ri->obc != -1) {
                     r->ptr = sdscatprintf(r->ptr, " - ORDER BY %s",
-                                            rt->col[ri->obc].name);
+                                          rt->col[ri->obc].name);
                 }
                 if (!ri->done) outputPartialIndex(tmatch, imatch, r);
                 loops++;
@@ -368,6 +368,19 @@ void descCommand(redisClient *c) {
 
     setDeferredMultiBulkLength(c, rlen, card);
     dump_bt_mem_profile(btr);
+}
+
+void print_mem_usage(int tmatch) {
+    ull  index_size = get_sum_all_index_size_for_table(tmatch);
+    bt  *btr        = getBtr(tmatch);
+    ull  tot_data   = btr->msize;
+    ull  pure_data  = btr->dsize;
+    ull  bt_ovrhd   = tot_data - pure_data;
+    ull  tot_mem    = btr->msize + index_size;
+    sds  tname      = Tbl[tmatch].name;
+    printf("Table: %s TotMem: %llu Components: " \
+           "[RowData: %llu BtreeOverhead: %llu Indexes: %llu]\n",
+           tname, tot_mem, pure_data, bt_ovrhd, index_size);
 }
 
 void showCommand(redisClient *c) {

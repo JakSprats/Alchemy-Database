@@ -1642,7 +1642,9 @@ sds genRedisInfoString(char *section) {
     }
 
 #ifdef ALCHEMY_DATABASE
-    DBXD_genRedisInfoString(info);
+    if (allsections || defsections || !strcasecmp(section, "alchemy")) {
+        DBXD_genRedisInfoString(info);
+    }
 #endif
     /* Key space */
     if (allsections || defsections || !strcasecmp(section,"keyspace")) {

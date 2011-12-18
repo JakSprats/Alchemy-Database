@@ -37,6 +37,7 @@ sds dumpSQL_Index(char *mtname, r_tbl_t *rt, r_ind_t *ri, int tmatch, bool nl);
 void sqlDumpCommand(redisClient *c);
 
 ull get_sum_all_index_size_for_table(int tmatch);
+void print_mem_usage(int tmatch);
 
 void descCommand(redisClient *c);
 

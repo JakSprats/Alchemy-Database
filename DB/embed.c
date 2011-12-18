@@ -365,7 +365,7 @@ eresp_t *e_alchemy_redis(ereq_t *ereq) {
         cret = strcmp(c->buf, shared.cone->ptr) ? REDIS_ERR : REDIS_OK;
     }
     c->argc = 0; c->argv = NULL;
-    CurrEresp->retcode = ret;
+    CurrEresp->retcode = cret;
     return CurrEresp;
 }
 
