@@ -62,7 +62,8 @@ extern int      Num_indx;
 extern r_ind_t *Index;
 
 // GLOBALS
-uchar  OutputMode = OUTPUT_NORMAL;
+uchar  OutputMode   = OUTPUT_NORMAL;
+bool   GlobalNeedCn = 0;
 
 // CONSTANT GLOBALS
 char *EMPTY_STRING = "";
@@ -381,7 +382,7 @@ bool sqlSelectBinary(cli   *c, int tmatch, bool cstar, int *cmatchs, int qcols,
                                      qcols, cmatchs); return 0; }
     //dumpW(printf, w); dumpWB(printf, wb);
 
-    if (EREDIS && need_cn) {
+    if (EREDIS && (need_cn || GlobalNeedCn)) {
         embeddedSaveSelectedColumnNames(tmatch, cmatchs, qcols);
     }
     if (w->wtype != SQL_SINGLE_LKP) { /* FK, RQ, IN */

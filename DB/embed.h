@@ -52,26 +52,34 @@ eresp_t *e_alchemy        (int argc, robj **argv, select_callback *scb);
 eresp_t *e_alchemy_no_free(int argc, robj **argv, select_callback *scb);
 
 // VERSION_2 VERSION_2 VERSION_2 VERSION_2 VERSION_2 VERSION_2 VERSION_2
-enum E_OP {INSERT, UPDATE, DELETE, SELECT, SCAN};
-enum R_OP {SET, GET, DEL};
+enum E_OP {INSERT, UPDATE, DELETE, SELECT, SCAN, EXECUTE, EXEC_BIN}; // SQL
+enum R_OP {SET, GET, DEL};                                           // REDIS
 
 typedef struct ereq_t {
-    enum            E_OP op;
-    enum            R_OP rop;
+    enum            E_OP op;                   // SQL
+    enum            R_OP rop;                  // REDIS
+    // SQL
     sds             tablelist;
     sds             insert_value_string;
     sds             select_column_list;
     sds             update_set_list;
     sds             where_clause;
     bool            save_queried_column_names;
-    sds             redis_key;
-    sds             redis_value;
+    // REDIS
+    sds             redis_key;                 // REDIS GET/DET/DEL
+    sds             redis_value;               // REDIS SET
+    // EXECUTE
+    sds             plan_name;                 // EXECUTE
+    int             eargc;                     // EXECUTE
+    sds            *eargv;                     // EXECUTE
+    uchar          *exec_bin;                  // EXECUTE
+    // SELECT/SCAN CALLBACK
     select_callback *scb;
 } ereq_t;
 void init_ereq   (ereq_t *ereq);
 void release_ereq(ereq_t *ereq);
 
-eresp_t *e_alchemy_fast(ereq_t *ereq);
+eresp_t *e_alchemy_sql_fast(ereq_t *ereq);
 
 eresp_t *e_alchemy_thin_select(uchar qtype,  int tmatch, int cmatch, int imatch,
                                enum OP op,   int qcols,

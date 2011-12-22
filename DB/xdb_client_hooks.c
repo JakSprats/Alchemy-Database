@@ -125,7 +125,7 @@ static void select_mod_where(int *argc, char **argv) {
     merge_vals(argc, argv, 5, (*argc - 1), 1); /* WHERE */
 }
 static void select_mod(int *argc, char **argv) {
-    select_mod_from(argc, argv);
+    select_mod_from (argc, argv);
     select_mod_where(argc, argv);
 }
 static void scan_mod_orderby(int *argc, char **argv) {
@@ -140,17 +140,24 @@ static void scan_mod(int *argc, char **argv) {
         scan_mod_orderby(argc, argv);
     }
 }
+static void prepare_mod(int *argc, char **argv) {
+    int    pargc = *argc - 3;
+    char **pargv = &(argv[3]);
+    select_mod(&pargc, pargv);
+    *argc        = 9;
+}
 void DXDB_cliSendCommand(int *argc, char **argv) {
     //printf("DXDB_cliSendCommand\n");
-    if      (!strcasecmp(argv[0], "INSERT") || !strcasecmp(argv[0], "INSERT"))
-                                             insert_vals_mod (argc, argv);
-    else if (!strcasecmp(argv[0], "UPDATE")) update_vals_mod (argc, argv);
+    if      (!strcasecmp(argv[0], "INSERT") || !strcasecmp(argv[0], "REPLACE"))
+                                              insert_vals_mod (argc, argv);
+    else if (!strcasecmp(argv[0], "UPDATE"))  update_vals_mod (argc, argv);
     else if (!strcasecmp(argv[0], "CREATE") &&
-             !strcasecmp(argv[1], "TABLE"))  create_table_mod(argc, argv);
+             !strcasecmp(argv[1], "TABLE"))   create_table_mod(argc, argv);
 
-    if      (!strcasecmp(argv[0], "UPDATE")) update_where_mod(argc, argv);
-    else if (!strcasecmp(argv[0], "DELETE")) delete_where_mod(argc, argv);
-    else if (!strcasecmp(argv[0], "SELECT")) select_mod      (argc, argv);
-    else if (!strcasecmp(argv[0], "SCAN"))   scan_mod        (argc, argv);
+    if      (!strcasecmp(argv[0], "UPDATE"))  update_where_mod(argc, argv);
+    else if (!strcasecmp(argv[0], "DELETE"))  delete_where_mod(argc, argv);
+    else if (!strcasecmp(argv[0], "SELECT"))  select_mod      (argc, argv);
+    else if (!strcasecmp(argv[0], "SCAN"))    scan_mod        (argc, argv);
+    else if (!strcasecmp(argv[0], "PREPARE")) prepare_mod     (argc, argv);
 
 }

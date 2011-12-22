@@ -2,6 +2,7 @@
 #ifdef ALCHEMY_DATABASE
   extern unsigned char OutputMode;
   #include "common.h"
+  void e_alc_got_obj(cli *c, robj *obj);
 #endif
 
 /*-----------------------------------------------------------------------------

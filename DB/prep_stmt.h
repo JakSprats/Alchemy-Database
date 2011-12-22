@@ -37,4 +37,8 @@ void prepareRQ     (cli *c,     cswc_t *w, wob_t *wb, bool cstar,
 bool prepareJoin   (cli *c, jb_t *jb);
 void prepareCommand(cli *c);
 
+bool executeCommandBinary (cli *c, uchar *x); // EMBEDDED
+bool executeCommandInnards(cli *c);           // EMBEDDED
+void executeCommand       (cli *c);
+
 #endif /* __ALCHEMYDB_PREP_STMT__H */ 

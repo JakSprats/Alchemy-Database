@@ -48,7 +48,6 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "prep_stmt.h"
 
-//extern r_tbl_t *Tbl; extern r_ind_t *Index;
 extern dict    *StmtD;
 
 extern long JoinLim; extern long JoinOfst; extern bool JoinQed;
@@ -57,8 +56,6 @@ extern long JoinLim; extern long JoinOfst; extern bool JoinQed;
 //TODO "SHOW  STATEMENTS"
 //TODO "PRINT STATEMENT stmt_name"
 //TODO "DROP  STATEMENT stmt_name"
-
-#define COMP_FUNC_FMT "__PLAN_%s"
 
 static bool has_prepare_arg(sds arg) {
     if (*arg == '$') {
@@ -69,7 +66,7 @@ static bool has_prepare_arg(sds arg) {
     return 0;
 }
 static void storePreparedStatement(cli *c, uchar *blob, int size) {
-    sds   pname = sdscatprintf(sdsempty(), COMP_FUNC_FMT, c->Prepare);
+    sds   pname = sdsdup(c->Prepare);
     sds   s     = sdsnewlen(blob, size); free(blob);     // FREED 111
     robj *val   = createObject(REDIS_STRING, s);
     robj  *o    = dictFetchValue(StmtD, pname);
@@ -244,16 +241,20 @@ static void executeCommand_RQ(cli *c, uchar *x) {
     if (!cstar) resetIndexPosOn(qcols, cmatchs);
     destroy_wob(&wb); destroy_check_sql_where_clause(&w);
 }
-void executeCommand(cli *c) {
-    sds    pname = sdscatprintf(sdsempty(), COMP_FUNC_FMT, 
-                                            (char *)c->argv[1]->ptr);
-    robj  *o     = dictFetchValue(StmtD, pname);
-    sdsfree(pname);
-    if (!o) { addReply(c, shared.execute_miss); return; }
-    uchar *x     = o->ptr;
-    bool   isj   = *x;                              x++;
+bool executeCommandBinary(cli *c, uchar *x) {
+    bool   isj = *x;                                x++;
     if (isj) executeCommand_Join(c, x);
     else     executeCommand_RQ  (c, x);
+    return 1;
+}
+bool executeCommandInnards(cli *c) {
+    robj  *o   = dictFetchValue(StmtD, (sds)c->argv[1]->ptr);
+    if (!o) { addReply(c, shared.execute_miss); return 0; }
+    uchar *x   = o->ptr;
+    return executeCommandBinary(c, x);
+}
+void executeCommand(cli *c) {
+    executeCommandInnards(c);
 }
 void prepareCommand(redisClient *c) {
     if (strcasecmp(c->argv[2]->ptr, "AS")) {

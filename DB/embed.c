@@ -92,12 +92,17 @@ static void resetEmbeddedAlchemy() {
     }
 }
 
+#define NUM_MANY_ROBJ 1000
+robj *ManyRobj[NUM_MANY_ROBJ];
 static bool embeddedInited = 0;
 void initEmbeddedAlchemy() {
     OutputMode = OUTPUT_EMBEDDED;
     if (!embeddedInited) {
         initEmbedded(); // defined in redis.c -DNO_MAIN
         initEmbeddedClient(); initEmbeddedResponse(); embeddedInited  = 1;
+        for (int i = 0; i < NUM_MANY_ROBJ; i++) {
+            ManyRobj[i] = createObject(REDIS_STRING, NULL);
+        }
     } else {
         resetEmbeddedAlchemy();
     }
@@ -112,6 +117,13 @@ void release_ereq(ereq_t *ereq) {
     if (ereq->insert_value_string) sdsfree(ereq->insert_value_string);
     if (ereq->select_column_list)  sdsfree(ereq->select_column_list);
     if (ereq->where_clause)        sdsfree(ereq->where_clause);
+    if (ereq->plan_name)           sdsfree(ereq->plan_name);
+    if (ereq->eargc) {
+        for (int i = 0; i < ereq->eargc; i++) {
+            sdsfree(ereq->eargv[i]);                     // FREED 116
+        }
+        zfree(ereq->eargv);                              // FREED 115
+    }
 
 }
 
@@ -237,6 +249,8 @@ static eresp_t *__e_alchemy(int argc, robj **rargv, select_callback *scb,
     }
     return CurrEresp;
 }
+
+// PUBLIC_API PUBLIC_API PUBLIC_API PUBLIC_API PUBLIC_API PUBLIC_API
 eresp_t *e_alchemy(int argc, robj **rargv, select_callback *scb) {
     return __e_alchemy(argc, rargv, scb, 1);
 }
@@ -257,7 +271,9 @@ eresp_t *e_alchemy_raw(char *sql, select_callback *scb) {
     return e_alchemy(argc, rargv, scb);
 }
 
+// VERSION2_PUBLIC_API VERSION2_PUBLIC_API VERSION2_PUBLIC_API
 #define CREATE_RESPONSE_ERROR                                   \
+    c->argc = 0; c->argv = NULL;                                \
     CurrEresp->retcode = REDIS_ERR;                             \
     CurrEresp->nobj    = 1;                                     \
     CurrEresp->objs    = malloc(sizeof(aobj *));                \
@@ -266,7 +282,8 @@ eresp_t *e_alchemy_raw(char *sql, select_callback *scb) {
     sdsfree(err);                                               \
     return CurrEresp;
 
-eresp_t *e_alchemy_fast(ereq_t *ereq) {
+
+eresp_t *e_alchemy_sql_fast(ereq_t *ereq) {
     bool ret = 0;
     initEmbeddedAlchemy();
     sds  err = NULL;
@@ -295,7 +312,18 @@ eresp_t *e_alchemy_fast(ereq_t *ereq) {
         if (tmatch == -1) { err = shared.nonexistenttable->ptr; goto efasterr; }
         ret = updateInnards(c, tmatch,
                             ereq->update_set_list, ereq->where_clause, 0, NULL);
-    } else assert(!"e_alchemy_fast() ereq->op must be set");
+    } else if (ereq->op == EXECUTE || ereq->op == EXEC_BIN) {
+        c->argc         = ereq->eargc + 2;
+        assert(c->argc < NUM_MANY_ROBJ);
+        c->argv         = (robj **)&ManyRobj;
+        c->argv[1]->ptr = ereq->plan_name;
+        for (int i = 0; i < ereq->eargc; i++) {
+            c->argv[i + 2]->ptr = ereq->eargv[i];
+        }
+        ret = (ereq->op == EXECUTE ) ? executeCommandInnards(c) :
+                                       executeCommandBinary (c, ereq->exec_bin);
+    } else assert(!"e_alchemy_sql_fast() ereq->op must be set");
+    c->argc = 0; c->argv = NULL;
     if (!ret) { assert(c->bufpos); //NOTE: all -ERRs < REDIS_REPLY_CHUNK_BYTES
         err = sdsnewlen(c->buf, c->bufpos); c->bufpos = 0; goto efasterr;
     }
@@ -306,6 +334,7 @@ efasterr:
     CREATE_RESPONSE_ERROR
 }
 
+//TODO PREPARE/EXECUTE deprecates ???
 eresp_t *e_alchemy_thin_select(uchar qtype,  int tmatch, int cmatch, int imatch,
                                enum OP op,   int qcols, 
                                uint128 keyx, long keyl,  int keyi,
@@ -369,25 +398,31 @@ eresp_t *e_alchemy_redis(ereq_t *ereq) {
     return CurrEresp;
 }
 
-void embedded_exit() { //NOTE: good idea to use for valgrind debugging
-    resetEmbeddedAlchemy();
-    free(CurrEresp); freeClient(EmbeddedCli);
-    lua_close(server.lua);
-    DXDB_flushdbCommand();
-    free(Index); free(Tbl);
-}
-
+// INTERNAL_CALL_FOR_REDIS_GET INTERNAL_CALL_FOR_REDIS_GET
 void e_alc_got_obj(cli *c, robj *obj) { // USED in getCommand()
     if (!c->scb) return; //TODO assert this
     erow_t er;
     er.ncols   = 1;
     er.cols    = malloc(sizeof(aobj *) * er.ncols);
-    bool decme  = 0;
+    bool decme = 0;
     if (obj->encoding != REDIS_ENCODING_RAW) {
-        decme   = 1; obj = getDecodedObject(obj);
+        decme  = 1; obj = getDecodedObject(obj);
     }
-    er.cols[0] = createAobjFromString(obj->ptr, sdslen(obj->ptr), COL_TYPE_STRING);
+    er.cols[0] = createAobjFromString(obj->ptr, sdslen(obj->ptr), 
+                                      COL_TYPE_STRING);
     (*c->scb)(&er);
     destroyAobj(er.cols[0]); free(er.cols);
     if (decme) decrRefCount(obj);
+}
+
+// EXIT/CLEANUP EXIT/CLEANUP EXIT/CLEANUP EXIT/CLEANUP EXIT/CLEANUP
+void embedded_exit() { //NOTE: good idea to use for valgrind debugging
+    for (int i = 0; i < NUM_MANY_ROBJ; i++) {
+        ManyRobj[i]->ptr = NULL; decrRefCount(ManyRobj[i]);
+    }
+    resetEmbeddedAlchemy();
+    free(CurrEresp); freeClient(EmbeddedCli);
+    lua_close(server.lua);
+    DXDB_flushdbCommand();
+    free(Index); free(Tbl);
 }
