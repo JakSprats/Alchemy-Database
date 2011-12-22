@@ -36,6 +36,7 @@ ALL RIGHTS RESERVED
 #include "zmalloc.h"
 
 #include "debug.h"
+#include "prep_stmt.h"
 #include "embed.h"
 #include "lru.h"
 #include "lfu.h"

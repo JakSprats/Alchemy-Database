@@ -35,6 +35,7 @@ char *strcasestr(const char *haystack, const char *needle); /*compiler warning*/
 #include "redis.h"
 
 #include "debug.h"
+#include "prep_stmt.h"
 #include "embed.h"
 #include "internal_commands.h"
 #include "join.h"

@@ -1,5 +1,5 @@
 /*
- * Implements ALCHEMY_DATABASE EXPLAIN & debugs
+ * Implements ALCHEMY_DATABASE EXPLAIN & debug object dump functions
  *
 
 AGPL License
@@ -37,21 +37,17 @@ void explainRQ     (cli *c,     cswc_t *w, wob_t *wb, bool cstar,
 void explainJoin   (cli *c, jb_t *jb);
 void explainCommand(cli *c);
 
-void prepareRQ     (cli *c,     cswc_t *w, wob_t *wb, bool cstar,
-                    int  qcols, int    *cmatchs);
-bool prepareJoin   (cli *c, jb_t *jb);
-void prepareCommand(cli *c);
-
-/* DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG */
 void setDeferredMultiBulkLong (cli *c, void *node, long card);
 void setDeferredMultiBulkError(cli *c, void *node, sds error);
 
-void dumpIJ(cli *c, printer *prn, int i, ijp_t *ij, ijp_t *nij);
-void dumpJB(cli *c, printer *prn, jb_t *jb);
-
+// QUEUE_PRINTF_TO_CLIENT QUEUE_PRINTF_TO_CLIENT QUEUE_PRINTF_TO_CLIENT
 void initQueueOutput();
 int  queueOutput(const char *format, ...);
 void dumpQueueOutput(cli *c);
+
+// DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
+void dumpIJ(cli *c, printer *prn, int i, ijp_t *ij, ijp_t *nij);
+void dumpJB(cli *c, printer *prn, jb_t *jb);
 
 void dumpQcols(printer *prn, int tmatch, bool cstar, int qcols, int *cmatchs);
 void dumpWB   (printer *prn, wob_t *wb);
