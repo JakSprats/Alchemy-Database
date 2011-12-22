@@ -50,6 +50,7 @@ redisClient *createClient(int fd);              // from networking.c
 int initEmbedded();                             // from redis.c (-DNO_MAIN)
 redisContext *redisContextInit();               // from hiredis.c
 void __redisCreateReplyReader(redisContext *c); // from hiredis.c
+int getGenericCommand(redisClient *c);          // from redis.c
 
 // GLOBALS
 char        *ConfigFile      = NULL;
@@ -339,7 +340,7 @@ ethinserr:
 
 #define CREATE_ARGV_SIMPLE_COMMAND                            \
     c->argc    = 2;                                           \
-    c->argv    = &TwoRobj;                                    \
+    c->argv    = (robj **)&TwoRobj;                           \
     c->argv[1] = createObject(REDIS_STRING, ereq->redis_key);
 robj *TwoRobj  [2];
 robj *ThreeRobj[3];
@@ -347,11 +348,10 @@ robj *ThreeRobj[3];
 eresp_t *e_alchemy_redis(ereq_t *ereq) {
     int  cret = 0;
     initEmbeddedAlchemy();
-    sds  err  = NULL;
     cli *c    = EmbeddedCli;
     c->scb    = ereq->scb;
     if        (ereq->rop == SET) {
-        c->argc    = 3; c->argv = &ThreeRobj;
+        c->argc    = 3; c->argv = (robj **)&ThreeRobj;
         c->argv[1] = createObject(REDIS_STRING, ereq->redis_key);
         c->argv[2] = createObject(REDIS_STRING, ereq->redis_value);
         setCommand(c);
@@ -377,7 +377,7 @@ void embedded_exit() { //NOTE: good idea to use for valgrind debugging
     free(Index); free(Tbl);
 }
 
-void e_alc_got_obj(cli *c, robj *obj) {
+void e_alc_got_obj(cli *c, robj *obj) { // USED in getCommand()
     if (!c->scb) return; //TODO assert this
     erow_t er;
     er.ncols   = 1;

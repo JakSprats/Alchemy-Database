@@ -288,14 +288,53 @@ static void insertAction(cli *c, bool repl) {           //DEBUG_INSERT_ACTION_1
 void insertCommand (cli *c) { insertAction(c, 0); }
 void replaceCommand(cli *c) { insertAction(c, 1); }
 
-//TODO move to wc.c
+//TODO move to orderby.c
 void init_wob(wob_t *wb) {
-    bzero(wb, sizeof(wob_t));
-    wb->lim = wb->ofst = -1;
+    bzero(wb, sizeof(wob_t)); wb->lim = wb->ofst = -1;
 }
 void destroy_wob(wob_t *wb) {
     if (wb->ovar) sdsfree(wb->ovar);
 }
+
+// SERIALISE_WB SERIALISE_WB SERIALISE_WB SERIALISE_WB SERIALISE_WB
+#define WB_CTA_SIZE 9 /* (sizeof(int) * 2 + sizeof(bool)) */
+#define WB_LIM_OFST_SIZE 16 /* sizeof(long) *2 */
+
+int getSizeWB(wob_t *wb) {
+    if (!wb->nob) return sizeof(int); // nob
+    //        nob      +      [obc,obt,asc]      + [lim + ofst]
+    return sizeof(int) + (WB_CTA_SIZE * wb->nob) + WB_LIM_OFST_SIZE;
+}
+#define SERIAL_WB_SIZE MAX_ORDER_BY_COLS * WB_CTA_SIZE + WB_LIM_OFST_SIZE
+static uchar SerialiseWB_Buf[SERIAL_WB_SIZE];
+uchar *serialiseWB(wob_t *wb) {
+    uchar *x = (uchar *)&SerialiseWB_Buf;
+    memcpy(x, &wb->nob, sizeof(int));         x += sizeof(int);
+    if (!wb->nob) return (uchar *)&SerialiseWB_Buf;
+    for (uint32 i = 0; i < wb->nob; i++) {
+        memcpy(x, &wb->obt[i], sizeof(int));  x += sizeof(int);
+        memcpy(x, &wb->obc[i], sizeof(int));  x += sizeof(int);
+        memcpy(x, &wb->asc[i], sizeof(bool)); x += sizeof(bool);
+    }
+    memcpy(x, &wb->lim,  sizeof(long));       x += sizeof(long);
+    memcpy(x, &wb->ofst, sizeof(long));       x += sizeof(long);
+    return (uchar *)&SerialiseWB_Buf;
+}
+int deserialiseWB(uchar *x, wob_t *wb) {
+    uchar *ox = x;
+    memcpy(&wb->nob, x, sizeof(int));         x += sizeof(int);
+    if (!wb->nob) return (int)(x - ox);
+    for (uint32 i = 0; i < wb->nob; i++) {
+        memcpy(&wb->obt[i], x, sizeof(int));  x += sizeof(int);
+        memcpy(&wb->obc[i], x, sizeof(int));  x += sizeof(int);
+        memcpy(&wb->asc[i], x, sizeof(bool)); x += sizeof(bool);
+    }
+    memcpy(&wb->lim,  x, sizeof(long));       x += sizeof(long);
+    memcpy(&wb->ofst, x, sizeof(long));       x += sizeof(long);
+    return (int)(x - ox);
+}
+
+//TODO move to wc.c
 void init_check_sql_where_clause(cswc_t *w, int tmatch, sds token) {
     bzero(w, sizeof(cswc_t));
     w->wtype     = SQL_ERR_LKP;
@@ -316,7 +355,7 @@ void destroyFlist(list **flist) {
 }
 void destroy_check_sql_where_clause(cswc_t *w) {
     releaseFilterD_KL(&w->wf);                           /* DESTROYED 065 */
-    destroyFlist( &w->flist);
+    destroyFlist     (&w->flist);
     if (w->lvr) sdsfree(w->lvr);
 }
 
@@ -333,10 +372,13 @@ bool leftoverParsingReply(redisClient *c, char *x) {
 bool sqlSelectBinary(cli   *c, int tmatch, bool cstar, int *cmatchs, int qcols,
                     cswc_t *w, wob_t *wb,  bool need_cn) {
     if (cstar && wb->nob) { /* SELECT COUNT(*) ORDER BY -> stupid */
-        addReply(c, shared.orderby_count);                          return 0;
+        addReply(c, shared.orderby_count);            return 0;
     }
-    if (c->Explain) { explainRQ(c, w, wb);                          return 0; }
-    //dumpW(printf, &w); dumpWB(printf, &wb);
+    if      (c->Prepare) { prepareRQ(c, w, wb, cstar,
+                                     qcols, cmatchs); return 0; }
+    else if (c->Explain) { explainRQ(c, w, wb, cstar,
+                                     qcols, cmatchs); return 0; }
+    //dumpW(printf, w); dumpWB(printf, wb);
 
     if (EREDIS && need_cn) {
         embeddedSaveSelectedColumnNames(tmatch, cmatchs, qcols);
@@ -381,8 +423,7 @@ bool sqlSelectInnards(cli *c,       sds  clist, sds from, sds tlist, sds where,
     c->LruColInSelect = initLRUCS(tmatch, cmatchs, qcols);
     c->LfuColInSelect = initLFUCS(tmatch, cmatchs, qcols);
     cswc_t w; wob_t wb;
-    init_check_sql_where_clause(&w, tmatch, wclause);
-    init_wob(&wb);
+    init_check_sql_where_clause(&w, tmatch, wclause); init_wob(&wb);
     parseWCplusQO(c, &w, &wb, SQL_SELECT);
     if (w.wtype == SQL_ERR_LKP)                                     goto sel_e;
     if (!leftoverParsingReply(c, w.lvr))                            goto sel_e;
@@ -395,9 +436,7 @@ sel_e:
 }
 
 void sqlSelectCommand(redisClient *c) {
-    if (c->argc == 2) { /* this is a REDIS "select DB" command" */
-        selectCommand(c); return;
-    }
+    if (c->argc == 2) { selectCommand(c); return; } // REDIS SELECT command
     if (c->argc != 6) { addReply(c, shared.selectsyntax); return; }
     sqlSelectInnards(c, c->argv[1]->ptr, c->argv[2]->ptr, c->argv[3]->ptr,
                         c->argv[4]->ptr, c->argv[5]->ptr, 1, 0);
@@ -562,8 +601,7 @@ int updateInnards(cli *c, int tmatch, sds vallist, sds wclause,
     }
 
 upc_end:
-    destroy_wob(&wb);
-    destroy_check_sql_where_clause(&w);
+    destroy_wob(&wb); destroy_check_sql_where_clause(&w);
     return nsize;
 }
 static int updateAction(cli *c, sds u_vallist, aobj *u_apk, int u_tmatch) {

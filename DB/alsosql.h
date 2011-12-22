@@ -36,6 +36,11 @@ ALL RIGHTS RESERVED
 #define getBtr(tmatch) Tbl[tmatch].btr
 #define getIBtr(imatch) Index[imatch].btr;
 
+//USED for PREPARE/EXECUTE
+int    getSizeWB    (          wob_t *wb);
+uchar *serialiseWB  (          wob_t *wb);
+int    deserialiseWB(uchar *x, wob_t *wb);
+
 #define EMPTY_LEN_OBJ    \
     long  card   = 0;    \
     robj *lenobj = NULL;

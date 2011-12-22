@@ -47,7 +47,6 @@ void destroyAobj(void *a);
 void  aobjClone (aobj *dest, aobj *src);
 aobj *cloneAobj (aobj *a);
 aobj *copyAobj  (aobj *a); //WARNING: do NOT double free
-void *vcloneAobj(void *a);
 void  convertSdsToAobj(sds s, aobj *a, uchar ctype);
 aobj *createAobjFromString(char *s, int len, uchar ctype);
 aobj *createAobjFromLong  (ulong l);
@@ -71,8 +70,10 @@ bool aobjLE(aobj *a, aobj *b);
 bool aobjGT(aobj *a, aobj *b);
 bool aobjGE(aobj *a, aobj *b);
 
-void dumpAobj(printer *prn, aobj *a);
+//USED for PREPARE/EXECUTE
+int getSizeAobj(aobj *a);
 
-void vsdsfree(void *v); //TODO this should be somewhere else
+// DEBUG
+void dumpAobj(printer *prn, aobj *a);
 
 #endif /* __ALSOSQL_AOBJ__H */

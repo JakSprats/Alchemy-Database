@@ -44,7 +44,14 @@ void *vcloneFilter(void *oflt);
 void convertFilterListToAobj(list *flist);
 
 #define CTYPE_FROM_FLT(flt) \
-  (flt->cmatch < -1) ? COL_TYPE_FUNC : Tbl[flt->tmatch].col[flt->cmatch].type;
+  ((flt->cmatch  < -1) ? COL_TYPE_FUNC : \
+   (flt->cmatch == -1) ? COL_TYPE_NONE : \
+                        Tbl[flt->tmatch].col[flt->cmatch].type);
+
+//USED for PREPARE/EXECUTE
+int    getSizeFLT    (          f_t *flt);
+uchar *serialiseFLT  (          f_t *flt);
+int    deserialiseFLT(uchar *x, f_t *flt);
 
 /* DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG */
 void dumpFilter(printer *prn, f_t *flt, char *prfx);

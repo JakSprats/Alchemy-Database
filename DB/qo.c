@@ -27,6 +27,7 @@ ALL RIGHTS RESERVED
 #include <string.h>
 #include <strings.h>
 #include <unistd.h>
+#include <assert.h>
 
 #include "redis.h"
 
@@ -487,9 +488,10 @@ static uint32 numRows4Key(f_t *flt) {
     return nbtr ? nbtr->numkeys : 0;
 }
 static uint32 getNumRow4Filter(f_t *flt) {
-    if      (flt->key)   return numRows4Key(  flt);
-    else if (flt->low)   return numRows4Range(flt);
-    else /*  flt->inl */ return numRows4INL(  flt);
+    if      (flt->key) return numRows4Key(  flt);
+    else if (flt->low) return numRows4Range(flt);
+    else if (flt->inl) return numRows4INL(  flt);
+    else               { assert(!"getNumRow4Filter ERROR"); return 0; }
 }
 static uint32 sortFLCheap(list **flist,   list **klist, 
                           int   *kimatch, int    jcmatch) {
@@ -730,6 +732,8 @@ bool promoteKLorFLtoW(cswc_t *w, list **klist, list **flist, bool freeme) {
     convertFilterSDStoAobj(&w->wf);
     return 0;
 }
+
+// RANGE_QUERY RANGE_QUERY RANGE_QUERY RANGE_QUERY RANGE_QUERY RANGE_QUERY
 static void rangeQuerySortFLCheap(list **flist, list **klist) {
     sortFLCheap(flist, klist, &Idum, -1);
 }
@@ -762,7 +766,7 @@ bool optimiseRangeQueryPlan(cli *c, cswc_t *w, wob_t *wb) {
     if (!w->flist) return 0;
     list     *kl  = NULL;
     rangeQuerySortFLCheap(&w->flist, &kl);
-    promoteKLorFLtoW(w, &kl, &w->flist, 1);
+    promoteKLorFLtoW     (w, &kl, &w->flist, 1);
     if (w->wf.imatch == -1) {
         addReply(c, shared.whereclause_col_not_indxd); return 0;
     }

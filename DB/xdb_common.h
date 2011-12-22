@@ -3,8 +3,8 @@
 
 #define ALCHEMY_VERSION "0.2.1"
 
-#define REDIS_BTREE           5
-#define REDIS_LUA_TRIGGER     6
+#define REDIS_BTREE       5
+#define REDIS_LUA_TRIGGER 6
 
 #define OUTPUT_NONE       0 # this is an error state
 #define OUTPUT_NORMAL     1
@@ -70,6 +70,7 @@ typedef bool select_callback(erow_t* erow);
 #define ALCHEMY_CLIENT_EXTENSIONS           \
     struct sockaddr_in  sa;                 \
     bool                Explain;            \
+    sds                 Prepare;            \
     bool                LruColInSelect;     \
     bool                LfuColInSelect;     \
     bool                InternalRequest;    \
@@ -147,7 +148,9 @@ typedef bool select_callback(erow_t* erow);
     *insert_lfu,             *kw_cname,                   \
     *u128_parse,             *update_u128_complex,        \
     *uniq_simp_index_nums,   *updateipos,                 \
-    *join_type_err;
+    *join_type_err,          *supported_prepare,          \
+    *prepare_syntax,         *execute_argc,               \
+    *execute_miss;
 
 #define DEBUG_C_ARGV(c) \
   for (int i = 0; i < c->argc; i++) \

@@ -21,7 +21,6 @@ ALL RIGHTS RESERVED
 
     You should have received a copy of the GNU Affero General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
  */
 
 #include <stdio.h>
@@ -47,8 +46,7 @@ ALL RIGHTS RESERVED
 extern r_tbl_t *Tbl;
 
 void initAobj(aobj *a) {
-    bzero(a, sizeof(aobj));
-    a->type = COL_TYPE_NONE;
+    bzero(a, sizeof(aobj)); a->type = COL_TYPE_NONE; a->empty = 1;
 }
 void releaseAobj(void *v) {
     aobj *a = (aobj *)v;
@@ -60,26 +58,26 @@ void destroyAobj(void *v) {
 }
 void initAobjZeroNum(aobj *a, uchar ctype) {
     initAobj(a);
-    a->i    = 0;     a->l    = 0; a->x    = 0;
-    a->type = ctype; a->enc  = ctype;
+    a->i     = 0;     a->l    = 0;     a->x     = 0;
+    a->type  = ctype; a->enc  = ctype; a->empty = 0;
 }
 bool initAobjInt(aobj *a, ulong l) {
     initAobjZeroNum(a, COL_TYPE_INT); a->i = l; return 1;
 }
 void initAobjLong(aobj *a, ulong l) {
-    initAobj(a); a->l = l; a->type = COL_TYPE_LONG; a->enc  = COL_TYPE_LONG;
+    initAobj(a); a->l = l; a->type = a->enc = COL_TYPE_LONG; a->empty = 0;
 }
 void initAobjString(aobj *a, char *s, int len) {
     initAobj(a);
-    a->s    = s;               a->len  = len;
-    a->type = COL_TYPE_STRING; a->enc  = COL_TYPE_STRING;
+    a->s     = s;               a->len  = len;
+    a->type  = COL_TYPE_STRING; a->enc  = COL_TYPE_STRING;   a->empty = 0;
 }
 void initAobjU128(aobj *a, uint128 x) {
-    a->enc  = COL_TYPE_U128;   a->type = COL_TYPE_U128; a->x = x;
+    a->enc  = COL_TYPE_U128;   a->type = COL_TYPE_U128; a->x = x; a->empty = 0;
 }
 void initAobjFloat(aobj *a, float f) {
     initAobj(a);
-    a->f    = f; a->type = COL_TYPE_FLOAT; a->enc  = COL_TYPE_FLOAT;
+    a->f = f; a->type = COL_TYPE_FLOAT; a->enc  = COL_TYPE_FLOAT; a->empty = 0;
 }
 void initAobjFromStr(aobj *a, char *s, int len, uchar ctype) {
     initAobj(a);
@@ -103,7 +101,8 @@ void initAobjFromStr(aobj *a, char *s, int len, uchar ctype) {
     } else if (C_IS_P(ctype)) {
         a->enc  = COL_TYPE_FUNC;      a->type = COL_TYPE_FUNC;
         a->i    = (uint32)strtoul(s, NULL, 10);   /* OK: DELIM: \0 */
-    }
+    } else assert(!"initAobjFromStr ERROR\n");
+    a->empty = 0;
 }
 aobj *createAobjFromString(char *s, int len, uchar ctype) {
     aobj *a = (aobj *)malloc(sizeof(aobj));
@@ -113,6 +112,7 @@ aobj *createAobjFromLong(ulong l) {
     aobj *a = (aobj *)malloc(sizeof(aobj)); initAobjLong(a, l); return a;
 }
 
+// COPY/CLONE COPY/CLONE COPY/CLONE COPY/CLONE COPY/CLONE COPY/CLONE
 void aobjClone(aobj *dest, aobj *src) {
     memcpy(dest, src, sizeof(aobj));
     if (C_IS_S(src->type)) {
@@ -124,20 +124,19 @@ void aobjClone(aobj *dest, aobj *src) {
 aobj *cloneAobj(aobj *a) {
     aobj *na = (aobj *)malloc(sizeof(aobj)); aobjClone(na, a); return na;
 }
-aobj *copyAobj (aobj *a) {
+aobj *copyAobj (aobj *a) { //WARNING: do not double-free a->s
     aobj *na = (aobj *)malloc(sizeof(aobj));
     memcpy(na, a, sizeof(aobj)); return na;
 }
 
-inline void *vcloneAobj(void *v) { return cloneAobj((aobj *)v); }
-
-void convertSdsToAobj(sds s, aobj *a, uchar ctype) {
+// CONVERSION CONVERSION CONVERSION CONVERSION CONVERSION CONVERSION
+void convertSdsToAobj(sds s, aobj *a, uchar ctype) {//NOTE: NO thrown errors
     initAobj(a);
     if (       C_IS_S(ctype)) {
         a->enc    = COL_TYPE_STRING; a->type   = COL_TYPE_STRING;
         a->freeme = 1;
         a->s      = _strdup(s);      a->len    = sdslen(s);
-    } else if (C_IS_I(ctype)) { //TODO > UINT_MAX -> ERR
+    } else if (C_IS_I(ctype)) {
         a->enc    = COL_TYPE_INT;    a->type   = COL_TYPE_INT;
         a->i      = (uint32)strtoul(s, NULL, 10); /* OK: DELIM: \0 */
     } else if (C_IS_L(ctype)) {
@@ -148,43 +147,41 @@ void convertSdsToAobj(sds s, aobj *a, uchar ctype) {
         a->f      = atof(s);                      /* OK: DELIM: \0 */
     } else if (C_IS_X(ctype)) {
         a->enc    = COL_TYPE_U128;   a->type   = COL_TYPE_U128; 
-        parseU128(s, &a->x); //TODO check for error
+        parseU128(s, &a->x);
     } else if (C_IS_P(ctype)) {
         a->enc    = COL_TYPE_FUNC;    a->type   = COL_TYPE_FUNC;
         a->i      = (uint32)strtoul(s, NULL, 10); /* OK: DELIM: \0 */
     } 
+    a->empty = 0;
 }
 static aobj *cloneSDSToAobj(sds s, uchar ctype) {
     aobj *a = (aobj *)malloc(sizeof(aobj));
-    convertSdsToAobj(s, a, ctype);
-    return a;
-}
-
-void vsdsfree(void *v) { sdsfree((sds)v); }
-
-void convertINLtoAobj(list **inl, uchar ctype) { /* walk INL & cloneSDSToAobj */
-    listNode *ln;
-    list     *nl = listCreate();
-    list     *ol = *inl;
-    listIter *li = listGetIterator(ol, AL_START_HEAD);
-    while((ln = listNext(li)) != NULL) {
-        sds   ink = ln->value;
-        aobj *a   = cloneSDSToAobj(ink, ctype);
-        listAddNodeTail(nl, a);
-    } listReleaseIterator(li);
-    ol->free     = vsdsfree;
-    listRelease(ol);
-    *inl         = nl;
+    convertSdsToAobj(s, a, ctype); return a;
 }
 void convertFilterSDStoAobj(f_t *flt) {
-    uchar ctype = CTYPE_FROM_FLT(flt)
-    if      (flt->key) convertSdsToAobj(flt->key, &flt->akey, ctype);
-    else if (flt->low) {
+    uchar ctype    = CTYPE_FROM_FLT(flt)
+    flt->akey.type = ctype;
+    if         (flt->key && flt->akey.empty) {
+        convertSdsToAobj(flt->key, &flt->akey, ctype);
+     } else if (flt->low && flt->alow.empty) {
         convertSdsToAobj(flt->low,  &flt->alow,  ctype);
         convertSdsToAobj(flt->high, &flt->ahigh, ctype);
     }
 }
 
+static void vsdsfree(void *v) { sdsfree((sds)v); }
+void convertINLtoAobj(list **inl, uchar ctype) { /* walk INL & cloneSDSToAobj */
+    listNode *ln;
+    list     *nl  = listCreate();
+    list     *ol  = *inl;
+    listIter *li  = listGetIterator(ol, AL_START_HEAD);
+    while((ln = listNext(li)) != NULL) {
+        sds   ink = ln->value;
+        aobj *a   = cloneSDSToAobj(ink, ctype);
+        listAddNodeTail(nl, a);
+    } listReleaseIterator(li);
+    ol->free      = vsdsfree; listRelease(ol); *inl = nl;
+}
 list *cloneAobjList(list *ll) {
     listNode *ln;
     list *l2     = listCreate();
@@ -219,6 +216,7 @@ void initStringAobjFromAobj(aobj *a, aobj *a2) {
     a->enc    = COL_TYPE_STRING; a->type   = COL_TYPE_STRING;
     a->freeme = 1;
     a->s      = strFromAobj(a2, (int *)&a->len);
+    a->empty  = 0;
 }
 
 sds createSDSFromAobj(aobj *a) {
@@ -322,6 +320,14 @@ bool aobjLT(aobj *a, aobj *b) { return (aobjCmp(a, b) <  0); }
 bool aobjLE(aobj *a, aobj *b) { return (aobjCmp(a, b) <= 0); }
 bool aobjGT(aobj *a, aobj *b) { return (aobjCmp(a, b) >  0); }
 bool aobjGE(aobj *a, aobj *b) { return (aobjCmp(a, b) >= 0); }
+
+int getSizeAobj(aobj *a) { //TODO support FLOAT,STRING
+    if (!C_IS_NUM(a->type)) return -1; // ONLY NUM()s supported
+    if (C_IS_I(a->type))    return sizeof(int);
+    if (C_IS_L(a->type))    return sizeof(long);
+    if (C_IS_X(a->type))    return sizeof(uint128);
+    assert(!"getSizeAobj ERROR");
+}
 
 /* DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG */
 static char DumpBuf[1024];

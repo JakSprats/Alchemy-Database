@@ -86,4 +86,9 @@ bool parseColType(cli *c, sds type, uchar *col_type);
 bool parseCreateTable(cli  *c,      list *ctypes, list  *cnames,
                       int  *ccount, sds   as_line);
 
+// PREPARE_EXECUTE PREPARE_EXECUTE PREPARE_EXECUTE PREPARE_EXECUTE
+int    getJTASize();
+uchar *serialiseJTA  (int jtsize);
+int    deserialiseJTA(uchar *x);
+
 #endif /*__ALSOSQL_COLPARSE__H */ 

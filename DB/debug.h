@@ -32,9 +32,15 @@ ALL RIGHTS RESERVED
 #include "query.h"
 #include "common.h"
 
-void explainRQ     (cli *c, cswc_t *w, wob_t *wb);
+void explainRQ     (cli *c,     cswc_t *w, wob_t *wb, bool cstar,
+                    int  qcols, int    *cmatchs);
 void explainJoin   (cli *c, jb_t *jb);
 void explainCommand(cli *c);
+
+void prepareRQ     (cli *c,     cswc_t *w, wob_t *wb, bool cstar,
+                    int  qcols, int    *cmatchs);
+bool prepareJoin   (cli *c, jb_t *jb);
+void prepareCommand(cli *c);
 
 /* DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG */
 void setDeferredMultiBulkLong (cli *c, void *node, long card);
@@ -47,11 +53,12 @@ void initQueueOutput();
 int  queueOutput(const char *format, ...);
 void dumpQueueOutput(cli *c);
 
-void dumpWB(printer *prn,   wob_t *wb);
-void dumpW(printer *prn,    cswc_t *w);
-void dumpSds(printer *prn,  sds s, char *smsg);
-void dumpRobj(printer *prn, robj *r, char *smsg, char *dmsg);
-void dumpFL(printer *prn,   char *prfx, char *title, list *flist);
-void dumpSL(sl_t sl);
+void dumpQcols(printer *prn, int tmatch, bool cstar, int qcols, int *cmatchs);
+void dumpWB   (printer *prn, wob_t *wb);
+void dumpW    (printer *prn, cswc_t *w);
+void dumpSds  (printer *prn, sds s, char *smsg);
+void dumpRobj (printer *prn, robj *r, char *smsg, char *dmsg);
+void dumpFL   (printer *prn, char *prfx, char *title, list *flist);
+void dumpSL   (sl_t sl);
 
 #endif /* __ALCHEMYDB_DEBUG__H */ 

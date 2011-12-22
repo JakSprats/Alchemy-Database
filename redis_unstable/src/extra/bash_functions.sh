@@ -787,6 +787,9 @@ function all_tests() {
   create_1000_columns > /dev/null
   $CLI DESC foo_999
   $CLI DEBUG RELOAD
+
+  test_prepare_execute
+  $CLI DEBUG RELOAD
 }
 function all_tests_plus_benchmarks() {
   all_tests
@@ -2955,4 +2958,15 @@ function benchmark_SB() {
 
   echo Get Nearby Ranks Using rank
   taskset -c 1 ./alchemy-gen-benchmark -n 900000 -c 200 -s 1 -A MULTI -Q SELECT "i_SB.pos()" FROM SB WHERE "i_SB.pos()=00000000000001"
+}
+
+function test_prepare_execute() {
+  echo "test_prepare_execute"
+  dropper; initer; inserter;
+  $CLI PREPARE P_RQ AS SELECT id,name,salary,division FROM employee WHERE "division = \$1 ORDER BY name";
+  echo "3 rows RQ (name sort)"
+  $CLI EXECUTE P_RQ 22
+  $CLI PREPARE P_JOIN AS SELECT "s.name, d.name, d.location,e.name,e.salary" FROM "division d,external e,subdivision s" WHERE "s.division = d.id AND s.division=e.division AND d.id = \$1 ORDER BY s.name DESC"; 
+  echo "2 rows JOIN (name[0] sort DESC)"
+  $CLI EXECUTE P_JOIN 11
 }

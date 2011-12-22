@@ -87,12 +87,15 @@ static void scanJoin(cli *c) {
     ij->lhs.high   = createSDSFromAobj(&aH);
     jb.n_jind++;
 
-    bool ok = optimiseJoinPlan(c, &jb) && validateChain(c, &jb);
-    if (ok) {
-        if (c->Explain) explainJoin(c, &jb); 
-        else {
-            if (EREDIS) embeddedSaveJoinedColumnNames(&jb);
-            executeJoin(c, &jb);
+    if (c->Prepare) prepareJoin(c, &jb);
+    else {
+        bool ok = optimiseJoinPlan(c, &jb) && validateChain(c, &jb);
+        if (ok) {
+            if (c->Explain) explainJoin(c, &jb); 
+            else {
+                if (EREDIS) embeddedSaveJoinedColumnNames(&jb);
+                executeJoin(c, &jb);
+            }
         }
     }
 
@@ -169,7 +172,8 @@ void tscanCommand(redisClient *c) { //printf("tscanCommand\n");
     w.wf.cmatch = 0; /* PK RangeQuery */
     w.wtype     = SQL_RANGE_LKP; //dumpW(printf, &w);
     convertFilterListToAobj(w.flist);
-    if (c->Explain) explainRQ(c, &w, &wb);
+    if      (c->Prepare) prepareRQ(c, &w, &wb, cstar, qcols, cmatchs);
+    else if (c->Explain) explainRQ(c, &w, &wb, cstar, qcols, cmatchs);
     else {
         if (EREDIS) embeddedSaveSelectedColumnNames(tmatch, cmatchs, qcols);
         iselectAction(c, &w, &wb, cmatchs, qcols, cstar);

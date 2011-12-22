@@ -74,7 +74,7 @@ static char *memclone(char *s, int len) {
 void init_ijp(ijp_t *ij) {
     bzero(ij, sizeof(ijp_t));
     initFilter(&ij->lhs); initFilter(&ij->rhs);
-    ij->nrows   = UINT_MAX; ij->kimatch = -1;
+    ij->nrows   = UINT_MAX; ij->kimatch = -1; ij->op = NONE;
 }
 void switchIJ(ijp_t *ij) {
     f_t temp;
@@ -359,8 +359,7 @@ void setupFirstJoinStep(cswc_t *w, jb_t *jb, qr_t *q) {
             if (jb->wb.obt[i] != ri->table) { JoinQed = 1; break; }
         }
     }
-    JoinLim   = jb->wb.lim;
-    JoinOfst  = jb->wb.ofst;                                   //DEBUG_JOIN_QED
+    JoinLim   = jb->wb.lim; JoinOfst = jb->wb.ofst;            //DEBUG_JOIN_QED
 }
 bool joinGeneric(redisClient *c, jb_t *jb) {
     qr_t q; bzero(&q, sizeof(qr_t)); //TODO make GLOBAL
@@ -370,8 +369,7 @@ bool joinGeneric(redisClient *c, jb_t *jb) {
     c->LruColInSelect = initLRUCS_J(jb);
     c->LfuColInSelect = initLFUCS_J(jb);
     list *ll          = initOBsort(JoinQed, &jb->wb, 0);
-    range_t g;
-    init_range(&g, c, &w, &jb->wb, &q, ll, OBY_FREE_ROBJ, jb);
+    range_t g; init_range(&g, c, &w, &jb->wb, &q, ll, OBY_FREE_ROBJ, jb);
     g.se.qcols        = jb->qcols;
     JoinLoops         = -1; JoinCard = 0; JoinErr = 0;
     void *rlen        = addDeferredMultiBulkLength(c);
@@ -390,10 +388,12 @@ bool joinGeneric(redisClient *c, jb_t *jb) {
     if (jb->cstar) setDeferredMultiBulkLong(c, rlen, card);
     else           setDeferredMultiBulkLength(c, rlen, card);
     if (jb->wb.ovar) { incrOffsetVar(c, &jb->wb, card); } //TODO done use w
-    ret = 1;
+    ret               = 1;
 
 join_gen_err:
     releaseOBsort(ll);
-    releaseAobj(&w.wf.akey); releaseAobj(&w.wf.alow); releaseAobj(&w.wf.ahigh);
+    //TODO check that the next commented out line is not a mem-leak
+    //TODO TEST is using TEXT pk joins
+    //releaseAobj(&w.wf.akey);releaseAobj(&w.wf.alow); releaseAobj(&w.wf.ahigh);
     return ret;
 }

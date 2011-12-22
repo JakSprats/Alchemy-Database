@@ -330,4 +330,13 @@ void DXDB_createSharedObjects() {
         "-ERR PROHIBITED: Unique indexes are only on [INT,LONG,U128] columns porinting to [INT,LONG,U128] Primary Keys\r\n"));
     shared.updateipos           = createObject(REDIS_STRING,sdsnew(
         "-ERR PROHIBITED: UPDATING index.pos()\r\n"));
+
+    shared.prepare_syntax       = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: PREPARE planname AS SELECT cols FROM tbls WHERE clause\r\n"));
+    shared.supported_prepare    = createObject(REDIS_STRING,sdsnew(
+        "-ERR SUPPORTED: PREPARE does not yet support [IN() clause, RangeQueries]\r\n"));
+    shared.execute_argc         = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: EXECUTE number-of-args does NOT match PREPARE number-of-args\r\n"));
+    shared.execute_miss         = createObject(REDIS_STRING,sdsnew(
+        "-ERR NOT-FOUND: EXECUTE prepared statement not found\r\n"));
 }

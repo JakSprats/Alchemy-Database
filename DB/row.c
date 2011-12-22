@@ -687,23 +687,23 @@ static void initAobjCol2S(aobj *a, ulong l, uint128 x, float f, int cmatch,
     //printf("initAobjCol2S: a: "); dumpAobj(printf, a);
 }
 static void initIntAobjFromVal(aobj *a, uint32 i, bool force_s, int cmatch) {
-    initAobj(a); a->type = COL_TYPE_INT;
+    initAobj(a); a->type = COL_TYPE_INT; a->empty = 0;
     ulong l = (ulong)i;
     if (force_s) initAobjCol2S(a, l, 0, 0.0, cmatch, COL_TYPE_INT);
     else         { a->i = i; a->enc = COL_TYPE_INT; }
 }
 static void initLongAobjFromVal(aobj *a, ulong l, bool force_s, int cmatch) {
-    initAobj(a); a->type = COL_TYPE_LONG;
+    initAobj(a); a->type = COL_TYPE_LONG; a->empty = 0;
     if (force_s) initAobjCol2S(a, l, 0, 0.0, cmatch, COL_TYPE_LONG);
     else         { a->l = l; a->enc = COL_TYPE_LONG; }
 }
 static void initU128AobjFromVal(aobj *a, uint128 x, bool force_s, int cmatch) {
-    initAobj(a); a->type = COL_TYPE_U128;
+    initAobj(a); a->type = COL_TYPE_U128; a->empty = 0;
     if (force_s) initAobjCol2S(a, 0, x, 0.0, cmatch, COL_TYPE_U128);
     else         { a->x = x; a->enc = COL_TYPE_U128; }
 }
 static void initFloatAobjFromVal(aobj *a, float f, bool force_s, int cmatch) {
-    initAobj(a); a->type = COL_TYPE_FLOAT;
+    initAobj(a); a->type = COL_TYPE_FLOAT; a->empty = 0;
     if (force_s) initAobjCol2S(a, 0, 0, f,   cmatch, COL_TYPE_FLOAT);
     else         { a->f = f; a->enc = COL_TYPE_FLOAT; }
 }

@@ -62,6 +62,7 @@ uint32   Num_Ignore_KW    = 5;
 // from ddl.h
 void addColumn(int tmatch, char *cname, int ctype);
 
+// CURSORS CURSORS CURSORS CURSORS CURSORS CURSORS CURSORS CURSORS
 /* set "OFFSET var" for next cursor iteration */
 void incrOffsetVar(redisClient *c, wob_t *wb, long incr) {
     robj *ovar = createStringObject(wb->ovar, sdslen(wb->ovar));
@@ -198,6 +199,39 @@ char *parseRowVals(sds vals,  char   **pk,        int    *pklen,
     return mvals;
 }
 
+// JTA_SERIALISATION JTA_SERIALISATION JTA_SERIALISATION JTA_SERIALISATION
+int getJTASize() {
+    int size = sizeof(int); // NumJTAlias
+    for (int i = 0; i < CurrClient->NumJTAlias; i++) {
+        size += sizeof(int) + sdslen(JTAlias[i].alias);
+    }
+    return size;
+}
+uchar *serialiseJTA(int jtsize) {
+    uchar *ox = (uchar *)malloc(jtsize);                 // FREE ME 112
+    uchar *x  = ox;
+    memcpy(x, &CurrClient->NumJTAlias, sizeof(int)); x += sizeof(int);
+    for (int i = 0; i < CurrClient->NumJTAlias; i++) {
+        int len = sdslen(JTAlias[i].alias);
+        memcpy(x, &len,                sizeof(int)); x += sizeof(int);
+        memcpy(x, JTAlias[i].alias,    len);         x += len;
+    }
+    return ox;
+}
+int deserialiseJTA(uchar *x) {
+    uchar *ox = x;
+    memcpy(&CurrClient->NumJTAlias, x, sizeof(int)); x += sizeof(int);
+    for (int i = 0; i < CurrClient->NumJTAlias; i++) {
+        int len;
+        memcpy(&len, x,                sizeof(int)); x += sizeof(int);
+        char *s = malloc(len);                           // FREE ME 114
+        memcpy(s,    x,                len);         x += len;
+        JTAlias[i].alias = sdsnewlen(s, len);
+        free(s);                                         // FREED 114
+    }
+    return (int)(x - ox);
+}
+
 // SELECT SELECT SELECT SELECT SELECT SELECT SELECT SELECT SELECT SELECT
 #define DEBUG_PARSE_SEL_COL_ISI                         \
   printf("parseSelCol MISS -> ADD COL: %s tcols: %d\n", \
@@ -293,6 +327,8 @@ static bool parseJCols(cli   *c,    char *y,    int   len,
     INCR(*qcols);
     return 1;
 }
+
+// PARSE_JOIN PARSE_JOIN PARSE_JOIN PARSE_JOIN PARSE_JOIN PARSE_JOIN
 static bool addJoinAlias(redisClient *c, char *tkn, char *space, int len) {
     if (CurrClient->NumJTAlias == MAX_JOIN_COLS) {
         addReply(c, shared.toomanyindicesinjoin); return 0;
@@ -398,7 +434,7 @@ int parseUpdateColListReply(cli  *c,  int   tmatch, char *vallist,
     return qcols;
 }
 
-/* UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR */
+// UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR 
 char PLUS   = '+'; char MINUS  = '-';
 char MULT   = '*'; char DIVIDE = '/';
 char MODULO = '%'; char POWER  = '^';
@@ -443,6 +479,7 @@ int parseExpr(cli *c, int tmatch, int cmatch, char *val, uint32 vlen, ue_t *ue){
     return 1;
 }
 
+// LUA_UPDATE LUA_UPDATE LUA_UPDATE LUA_UPDATE LUA_UPDATE LUA_UPDATE
 // LuaDelims[] defines characters that CAN border column-names
 static bool Inited_LuaDelims = 0;
 static bool LuaDelims[256];
@@ -519,7 +556,7 @@ prs_lua_expr_end:
     return le->yes;
 }
 
-/* CREATE_TABLE_HELPERS CREATE_TABLE_HELPERS CREATE_TABLE_HELPERS */
+// CREATE_TABLE CREATE_TABLE CREATE_TABLE CREATE_TABLE CREATE_TABLE
 bool ignore_cname(char *tkn, int tlen) {
     for (uint32 i = 0; i < Num_Ignore_KW; i++) {
         int len = MAX(tlen, Ignore_KW_lens[i]);

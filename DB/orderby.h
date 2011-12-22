@@ -32,14 +32,12 @@ ALL RIGHTS RESERVED
 #include "query.h"
 #include "common.h"
 
-list *initOBsort(bool qed, wob_t *wb, bool rcrud);
-void releaseOBsort(list *ll);
+list *initOBsort   (bool qed, wob_t *wb, bool rcrud);
+void  releaseOBsort(list *ll);
 
-obsl_t *create_obsl(void *row, uint32 nob);
-void destroy_obsl(obsl_t *ob, bool ofree);
-obsl_t * cloneOb(obsl_t *ob, uint32 nob);
-void dumpObKey(printer *prn, int i, void *key, uchar ctype);
-void dumpOb(printer *prn, obsl_t *ob);
+obsl_t *create_obsl  (void *row, uint32 nob);
+void    destroy_obsl(obsl_t *ob, bool ofree);
+obsl_t *cloneOb     (obsl_t *ob, uint32 nob);
 
 void assignObEmptyKey(obsl_t *ob, uchar ctype, int i);
 void assignObKey(wob_t *wb, bt *btr, void *rrow, aobj *apk, int i, obsl_t *ob);
@@ -47,7 +45,10 @@ void addRow2OBList(list *ll,      wob_t *wb,   bt   *btr, void *r,
                    bool  is_robj, void  *rrow, aobj *apk);
 
 obsl_t **sortOB2Vector(list *ll);
+void     sortOBCleanup(obsl_t **vector, int vlen, bool decr_row);
 
-void sortOBCleanup(obsl_t **vector, int vlen, bool decr_row);
+//DEBUG
+void    dumpObKey(printer *prn, int i, void *key, uchar ctype);
+void    dumpOb(printer *prn, obsl_t *ob);
 
 #endif /* __ORDER_BY__H */ 

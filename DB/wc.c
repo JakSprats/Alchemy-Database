@@ -535,8 +535,9 @@ void init_join_block(jb_t *jb) {
     init_wob(&jb->wb);                                   /* DESTROY ME 066 */
     jb->hw = jb->fkimatch = -1;
 }
-static void releaseIJ(ijp_t *ij) {
-    releaseFilterR_KL(&ij->lhs); releaseFilterR_KL(&ij->rhs);
+static void releaseIJ(ijp_t *ij) {                     //printf("releaseIJ\n");
+    releaseFilterR_KL(&ij->lhs);
+    releaseFilterR_KL(&ij->rhs);
     releaseFlist(&ij->flist); /* flist is referential, dont destroy */
 }
 void destroy_join_block(cli *c, jb_t *jb) {
@@ -628,11 +629,13 @@ bool executeJoin(cli *c, jb_t *jb) {
 }
 bool doJoin(redisClient *c, sds clist, sds tlist, sds wclause) {
     jb_t jb; init_join_block(&jb);
-    bool ok = parseJoin(c, &jb, clist, tlist, wclause) &&
-              optimiseJoinPlan(c, &jb) && validateChain(c, &jb);
+    bool ok = parseJoin(c, &jb, clist, tlist, wclause);
     if (ok) {
-        if (c->Explain) explainJoin(c, &jb);
-        else            ok = executeJoin(c, &jb);
+        if      (c->Prepare) ok = prepareJoin(c, &jb);
+        else if (optimiseJoinPlan(c, &jb) && validateChain(c, &jb)) {
+            if (c->Explain) explainJoin(c, &jb);
+            else            ok = executeJoin(c, &jb);
+        }
     }
     destroy_join_block(c, &jb);
     return ok;

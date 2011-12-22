@@ -67,6 +67,7 @@ extern ulong     Operations;
 
 extern uchar     OutputMode;
 extern dictType  sdsDictType;
+extern dictType  dbDictType;
 
 // GLOBALS
 cli            *CurrClient         = NULL;
@@ -94,7 +95,7 @@ bool SQL_AOF_MYSQL = 0;
 // RDB Load Table & Index Highwaters
 uint32  Tbl_HW = 0; list   *DropT = NULL; dict   *TblD;
 uint32  Ind_HW = 0; list   *DropI = NULL; dict   *IndD;
-
+                                          dict   *StmtD;
 
 /* PROTOTYPES */
 int  yesnotoi(char *s);
@@ -108,31 +109,33 @@ int       rdbLoadType(FILE *fp);
 uint32_t  rdbLoadLen(FILE *fp, int *isencoded);
 
 // from /DB/*.c
-void showCommand      (redisClient *c);
+void showCommand     (redisClient *c);
 
-void createCommand    (redisClient *c);
-void dropCommand      (redisClient *c);
-void descCommand      (redisClient *c);
-void alterCommand     (redisClient *c);
-void sqlDumpCommand   (redisClient *c);
+void createCommand   (redisClient *c);
+void dropCommand     (redisClient *c);
+void descCommand     (redisClient *c);
+void alterCommand    (redisClient *c);
+void sqlDumpCommand  (redisClient *c);
 
-void insertCommand    (redisClient *c);
-void replaceCommand   (redisClient *c);
-void sqlSelectCommand (redisClient *c);
-void updateCommand    (redisClient *c);
-void deleteCommand    (redisClient *c);
-void tscanCommand     (redisClient *c);
+void insertCommand   (redisClient *c);
+void replaceCommand  (redisClient *c);
+void sqlSelectCommand(redisClient *c);
+void updateCommand   (redisClient *c);
+void deleteCommand   (redisClient *c);
+void tscanCommand    (redisClient *c);
 
-void luafuncCommand   (redisClient *c);
+void luafuncCommand  (redisClient *c);
 
-void explainCommand   (redisClient *c);
+void explainCommand  (redisClient *c);
+void prepareCommand  (redisClient *c);
+void executeCommand  (redisClient *c);
 
-void btreeCommand     (redisClient *c);
+void btreeCommand    (redisClient *c);
 
-void messageCommand   (redisClient *c);
+void messageCommand  (redisClient *c);
 
-void purgeCommand     (redisClient *c);
-void dirtyCommand     (redisClient *c);
+void purgeCommand    (redisClient *c);
+void dirtyCommand    (redisClient *c);
 
 #ifdef REDIS3
   #define CMD_END       NULL,1,1,1,0,0
@@ -142,29 +145,34 @@ void dirtyCommand     (redisClient *c);
 #endif
 
 struct redisCommand DXDBCommandTable[] = {
-    {"select",     sqlSelectCommand,  -2, 0,                   CMD_END},
-    {"insert",     insertCommand,     -5, REDIS_CMD_DENYOOM,   CMD_END},
-    {"update",     updateCommand,      6, REDIS_CMD_DENYOOM,   CMD_END},
-    {"delete",     deleteCommand,      5, 0,                   CMD_END},
-    {"replace",    replaceCommand,    -5, 0|REDIS_CMD_DENYOOM, CMD_END},
-    {"scan",       tscanCommand,      -4, 0,                   CMD_END},
-
-    {"lua",        luafuncCommand,    -2, 0,                   GLOB_FUNC_END},
-    {"message",    messageCommand,    -2, 0,                   GLOB_FUNC_END},
-
-    {"create",     createCommand,     -4, REDIS_CMD_DENYOOM,   GLOB_FUNC_END},
-    {"drop",       dropCommand,        3, 0,                   GLOB_FUNC_END},
-    {"desc",       descCommand,        2, 0,                   GLOB_FUNC_END},
-    {"dump",       sqlDumpCommand,    -2, 0,                   GLOB_FUNC_END},
-
-    {"explain",    explainCommand,     7, 0,                   GLOB_FUNC_END},
-    {"alter",      alterCommand,      -5, 0,                   GLOB_FUNC_END},
-
-    {"purge",      purgeCommand,       1, 0,                   GLOB_FUNC_END},
-    {"dirty",      dirtyCommand,      -1, 0,                   GLOB_FUNC_END},
-
-    {"show",       showCommand,        2, 0,                   GLOB_FUNC_END},
-    {"btree",      btreeCommand,      -2, 0,                   GLOB_FUNC_END},
+    // SELECT
+    {"select",     sqlSelectCommand,  -2, 0,                 CMD_END},
+    {"scan",       tscanCommand,      -4, 0,                 CMD_END},
+    // CRUD
+    {"insert",     insertCommand,     -5, REDIS_CMD_DENYOOM, CMD_END},
+    {"update",     updateCommand,      6, REDIS_CMD_DENYOOM, CMD_END},
+    {"delete",     deleteCommand,      5, 0,                 CMD_END},
+    {"replace",    replaceCommand,    -5, REDIS_CMD_DENYOOM, CMD_END},
+    // DDL
+    {"create",     createCommand,     -4, REDIS_CMD_DENYOOM, GLOB_FUNC_END},
+    {"drop",       dropCommand,        3, 0,                 GLOB_FUNC_END},
+    {"desc",       descCommand,        2, 0,                 GLOB_FUNC_END},
+    {"dump",       sqlDumpCommand,    -2, 0,                 GLOB_FUNC_END},
+    // MODIFICATION RDBMS
+    {"alter",      alterCommand,      -5, 0,                 GLOB_FUNC_END},
+    // NOSQL(advanced)
+    {"lua",        luafuncCommand,    -2, 0,                 GLOB_FUNC_END},
+    {"message",    messageCommand,    -2, 0,                 GLOB_FUNC_END},
+    // FAILOVER
+    {"purge",      purgeCommand,       1, 0,                 GLOB_FUNC_END},
+    {"dirty",      dirtyCommand,      -1, 0,                 GLOB_FUNC_END},
+    // PROFILE/DEBUG
+    {"explain",    explainCommand,     7, 0,                 GLOB_FUNC_END},
+    {"show",       showCommand,        2, 0,                 GLOB_FUNC_END},
+    {"btree",      btreeCommand,      -2, 0,                 GLOB_FUNC_END},
+    // COMPILE
+    {"prepare",    prepareCommand,     9, 0,                 GLOB_FUNC_END},
+    {"execute",    executeCommand,    -2, 0,                 GLOB_FUNC_END},
 };
 
 
@@ -226,6 +234,9 @@ static void init_Tbl_and_Index(uint32 ntbl, uint32 nindx) {
     if (IndD) dictRelease(IndD);
     IndD     = dictCreate(&sdsDictType, NULL);
     if (DropI) { listRelease(DropI); DropI = NULL; }
+
+    if (StmtD) dictRelease(StmtD);
+    StmtD    = dictCreate(&dbDictType,  NULL);
 }
 
 void DXDB_initServer() { //printf("DXDB_initServer\n");
@@ -411,6 +422,7 @@ int DXDB_loadServerConfig(int argc, sds *argv) {
 
 void initClient(redisClient *c) {       //printf("initClient\n");
     c->Explain         =  0;
+    c->Prepare         =  NULL;
     c->LruColInSelect  =  0;
     c->LfuColInSelect  =  0;
     c->InternalRequest =  0;
