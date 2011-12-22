@@ -48,9 +48,9 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "prep_stmt.h"
 
-extern dict    *StmtD;
-
-extern long JoinLim; extern long JoinOfst; extern bool JoinQed;
+extern dict *StmtD;
+extern bool  GlobalNeedCn;
+extern long  JoinLim; extern long JoinOfst; extern bool JoinQed;
 
 // PREPARED_STATEMENTS PREPARED_STATEMENTS PREPARED_STATEMENTS
 //TODO "SHOW  STATEMENTS"
@@ -226,17 +226,27 @@ static void executeCommand_RQ(cli *c, uchar *x) {
     init_check_sql_where_clause(&w, -1, NULL); init_wob(&wb);
     memcpy(&w.wtype, x, sizeof(bool));              x += sizeof(bool);
 
+#ifdef EXECUTE_DOES_QUERY_OPTIMISATION
     f_t *flt   = newEmptyFilter();
     int wfsize = deserialiseFLT(x, flt);            x += wfsize;
     flt->key   = sdsdup(c->argv[2]->ptr); // put c->argc[] into query-plan
     w.flist    = listCreate();
     listAddNodeTail(w.flist, flt);
+#else
+    int wfsize = deserialiseFLT(x, &w.wf);          x += wfsize;
+    w.wf.key   = sdsdup(c->argv[2]->ptr); // put c->argc[] into query-plan
+    releaseAobj(&w.wf.akey);              // take out the "$1"
+    convertFilterSDStoAobj(&w.wf);
+#endif
 
     int wbsize = deserialiseWB(x, &wb);             x += wbsize;
 
+#ifdef EXECUTE_DOES_QUERY_OPTIMISATION
     if (!optimiseRangeQueryPlan(c, &w, &wb)) return;
-    bool need_cn = 0; //TODO incorporate need_cn into API
-    sqlSelectBinary(c, w.wf.tmatch, cstar, cmatchs, qcols, &w, &wb, need_cn);
+#endif
+
+    sqlSelectBinary(c, w.wf.tmatch, cstar, cmatchs, qcols, &w, &wb, 
+                    GlobalNeedCn);
 
     if (!cstar) resetIndexPosOn(qcols, cmatchs);
     destroy_wob(&wb); destroy_check_sql_where_clause(&w);

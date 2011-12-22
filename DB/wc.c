@@ -631,7 +631,7 @@ bool executeJoin(cli *c, jb_t *jb) {
 bool doJoin(redisClient *c, sds clist, sds tlist, sds wclause) {
     jb_t jb; init_join_block(&jb);
     bool ok = parseJoin(c, &jb, clist, tlist, wclause);
-    if (ok) {
+    if (ok) { //TODO prepareJoin AFTER optimiseJoinPlan
         if      (c->Prepare) ok = prepareJoin(c, &jb);
         else if (optimiseJoinPlan(c, &jb) && validateChain(c, &jb)) {
             if (c->Explain) explainJoin(c, &jb);
