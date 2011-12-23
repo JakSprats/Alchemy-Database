@@ -1,13 +1,40 @@
 
-TODO LIST:
-  A.) GLOBAL VARIABLES -> Per Client Structures
-        1.) OB_asc [MAX_ORDER_BY_COLS]    -> push into cswc_t
-        2.) OB_ctype[MAX_ORDER_BY_COLS]   -> push into cswc_t
-        3.) JTAlias[MAX_JOIN_COLS]        -> push into JoinBlock
-  B.) Prohibit updates on Uniquely Indexed Columns -> Constraint Violation
-  C.) AddTable, AddIndex, AddColumn are NOT efficient - lots of copying
-  D.) PREPARE STATEMENT for joins is PRE QueryOptimisation -> do POST
+PROTOCOL
+  1.) First line of SQL responses should be comma-delimited list of columns
+  2.) ADD "SELECT col AS othername"
+
+PREPARED_STATEMENTS
+  0.) Make Persistent -> add to DXDB_rdbSave/Load()
+  1.) PREPARE STATEMENT for joins is PRE QueryOptimisation -> do POST
+  2.) Support CRUD
+  3.) SELECTs -> support RangeQueries & IN()Queries
+
+EMBEDDED_API
+  1.) REPLACE & InsertOnDuplicateUpdate need FAST v2 API bindings
+  2.) ALL Redis commands (SET/GET/DEL already done) need FAST v2 API bindings
 
 FIX:
   1.) [shard-key & foreign-key] info not in RDB
       [sk, fk_cmatch, fk_otmatch, fk_ocmatch] -> MAKE PERSISTENT
+  2.) bt_output(debug) of Compound Indexes does not recurse
+  3.) on ORDER BY INDEX lookups: "ORDER BY pk" requires q-ing & sorting
+  4.) FLUSHDB & FLUSHALL should be "DROP DATABASE" in sqlappendfile
+
+PROHIBIT:
+  1.) Prohibit RangeUpdates on Uniquely Indexed Columns -> Constraint Violation
+      (this is currently the only spot where a ROLLBACK would be needed)
+  2.) Prohibit ORDER BY & Unique Indexes on LRU/LFU column
+      (they are NOT unique -> high overlap)
+
+CLEANUP:
+  1.) GLOBAL VARIABLES -> Per Client Structures
+        A.) OB_asc [MAX_ORDER_BY_COLS]    -> push into cswc_t
+        B.) OB_ctype[MAX_ORDER_BY_COLS]   -> push into cswc_t
+        C.) JTAlias[MAX_JOIN_COLS]        -> push into JoinBlock
+  2.) AddTable, AddIndex, AddColumn are NOT efficient - lots of copying
+      |-> on array-grow: add in some extra space (10 slots)
+  3.) Compound Indexes scion's need to recurse from deepest index-btree
+      to highest index-btree, & scion iterators need to use these counts
+
+MISC:
+  1.) LOAD DATE FROM INFILE ... 1st rev as Lua routine reading in CSV file
