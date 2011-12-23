@@ -97,11 +97,13 @@ static void assign_auto_inc_pk(uchar pktyp, char **pk, int *pklen, int tmatch) {
     *pklen       = strlen(PKBuf);
     *pk          = _strdup(PKBuf);
 }
-static bool assign_pk(int tmatch, int *pklen, char **pk, char *cstart) {
+static bool assign_pk(int tmatch, int *pklen, char **pk, char *cstart,
+                      bool *ai) {
     if (!*pklen) {
         uchar pktyp = Tbl[tmatch].col[0].type;
-        if (C_IS_NUM(pktyp)) assign_auto_inc_pk(pktyp, pk, pklen, tmatch);
-        else                 return 0;
+        if (C_IS_NUM(pktyp)) {
+            *ai = 1; assign_auto_inc_pk(pktyp, pk, pklen, tmatch);
+        } else return 0;
     } else {
         char *s = malloc(*pklen + 1);              /* FREE ME 021 */
         memcpy(s, cstart, *pklen); s[*pklen] = '\0';
@@ -145,7 +147,7 @@ bool parseU128n(char *s, uint32 len, uint128 *x) {
 
 char *parseRowVals(sds vals,  char   **pk,        int    *pklen,
                    int ncols, twoint   cofsts[],  int     tmatch,
-                   int pcols, int      cmatchs[], int     lncols) {
+                   int pcols, int      cmatchs[], int     lncols, bool *ai) {
     if (vals[sdslen(vals) - 1] != ')' || *vals != '(') return NULL;
     int      cmatch;
     r_tbl_t *rt     = &Tbl[tmatch];
@@ -174,7 +176,7 @@ char *parseRowVals(sds vals,  char   **pk,        int    *pklen,
                 if (*cend   != '\'') return NULL; cend--;
             }
             *pklen       = (cend - cstart) + 1;
-            if (!assign_pk(tmatch, pklen, pk, cstart)) return NULL;
+            if (!assign_pk(tmatch, pklen, pk, cstart, ai)) return NULL;
         }
         cofsts[cmatch].i = token - mvals;
         token            = nextc;
@@ -189,11 +191,12 @@ char *parseRowVals(sds vals,  char   **pk,        int    *pklen,
     cofsts[cmatch ].i = (token - mvals);
     cofsts[cmatch ].j = (token - mvals) + len - 1;
     if (!cmatch) { /* PK */
-        *pklen = len - 1; if (!assign_pk(tmatch, pklen, pk, token)) return NULL;
+        *pklen = len - 1;
+        if (!assign_pk(tmatch, pklen, pk, token, ai)) return NULL;
     }
     numc++;
     /* NOTE: create PK if none exists for INT & LONG */
-    if (!*pklen && !assign_pk(tmatch, pklen, pk, token)) return NULL;
+    if (!*pklen) { if (!assign_pk(tmatch, pklen, pk, token, ai)) return NULL; }
     if (pcols) { if (numc != pcols)  return NULL; }
     else if         (numc != lncols) return NULL;
     return mvals;
@@ -600,7 +603,7 @@ bool parseCreateTable(cli    *c,      list *ctypes,  list *cnames,
         if (!token) break;
    
         sds cname = sdsnewlen(token, clen);
-        if (!strcmp(cname, "LRU") || !strcmp(cname, "LFU")) {
+        if (!strcasecmp(cname, "LRU") || !strcasecmp(cname, "LFU")) {
             addReply(c, shared.kw_cname); return 0;
         }
         listAddNodeTail(cnames, cname);

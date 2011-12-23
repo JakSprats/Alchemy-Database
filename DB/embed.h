@@ -43,13 +43,13 @@ typedef struct embedded_response_t {
 void initEmbeddedAlchemy(); // NOTE: used for UNSAFE access
 void embedded_exit();
 
+
 void embeddedSaveSelectedColumnNames(int tmatch, int cmatchs[], int qcols);
 struct jb_t;
 void embeddedSaveJoinedColumnNames(struct jb_t *jb);
 
-eresp_t *e_alchemy_raw    (char *sql,             select_callback *scb);
-eresp_t *e_alchemy        (int argc, robj **argv, select_callback *scb);
-eresp_t *e_alchemy_no_free(int argc, robj **argv, select_callback *scb);
+eresp_t *e_alchemy_raw(char *sql,             select_callback *scb);
+eresp_t *e_alchemy    (int argc, robj **argv, select_callback *scb);
 
 // VERSION_2 VERSION_2 VERSION_2 VERSION_2 VERSION_2 VERSION_2 VERSION_2
 enum E_OP {INSERT, UPDATE, DELETE, SELECT, SCAN, EXECUTE, EXEC_BIN}; // SQL
@@ -79,14 +79,17 @@ typedef struct ereq_t {
 void init_ereq   (ereq_t *ereq);
 void release_ereq(ereq_t *ereq);
 
+// SQL
 eresp_t *e_alchemy_sql_fast(ereq_t *ereq);
 
+// BINARY_SELECT
 eresp_t *e_alchemy_thin_select(uchar qtype,  int tmatch, int cmatch, int imatch,
                                enum OP op,   int qcols,
                                uint128 keyx, long keyl,  int keyi,
                                int *cmatchs, bool cstar, select_callback *scb,
                                bool save_cnames);
 
+// REDIS
 eresp_t *e_alchemy_redis(ereq_t *ereq);
 
 // DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG

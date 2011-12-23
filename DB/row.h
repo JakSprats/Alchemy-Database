@@ -34,12 +34,11 @@ ALL RIGHTS RESERVED
 
 void *createRow(cli    *c,    bt     *btr,      int tmatch, int  ncols,
                 char   *vals, twoint  cofsts[]);
-
 uint32 getRowMallocSize(uchar *stream);
 
-uchar *getColData(    uchar *orow, int cmatch, uint32 *clen, uchar *rflag);
-aobj getCol (bt *btr, uchar *rrow, int cmatch, aobj *apk, int tmatch);
-aobj getSCol(bt *btr, uchar *rrow, int cmatch, aobj *apk, int tmatch);
+uchar *getColData(         uchar *orow, int cmatch, uint32 *clen, uchar *rflag);
+aobj   getCol    (bt *btr, uchar *rrow, int cmatch, aobj *apk, int tmatch);
+aobj   getSCol   (bt *btr, uchar *rrow, int cmatch, aobj *apk, int tmatch);
 
 robj *cloneRobjErow(robj *r);   // EMBEDDED
 void decrRefCountErow(robj *r); // EMBEDDED
@@ -47,7 +46,7 @@ void decrRefCountErow(robj *r); // EMBEDDED
 bool addReplyRow(cli   *c,    robj *r,    int    tmatch, aobj *apk,
                  uchar *lruc, bool  lrud, uchar *lfuc,   bool  lfu);
 
-int output_start(char *buf, uint32 blen, int qcols);
+int   output_start    (char *buf, uint32 blen, int qcols);
 robj *write_output_row(int   qcols,   uint32  prelen, char *pbuf,
                        uint32 totlen, sl_t   *outs);
 robj *outputRow(bt   *btr,       void *row,  int qcols,
@@ -75,8 +74,10 @@ void init_uc(uc_t  *uc,     bt     *btr,
              char  *vals[], uint32  vlens[], uchar  cmiss[], ue_t  ue[],
              lue_t *le);
 void release_uc(uc_t *uc);
+
 int updateRow(cli *c, uc_t *uc, aobj *apk, void *orow);
 
+// DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
 void dumpRow(printer *prn, bt *btr, void *rrow, aobj *apk, int tmatch);
 
 #endif /* __ALSOSQL_ROW__H */

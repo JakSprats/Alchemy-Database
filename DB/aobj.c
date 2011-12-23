@@ -46,62 +46,67 @@ ALL RIGHTS RESERVED
 extern r_tbl_t *Tbl;
 
 void initAobj(aobj *a) {
-    bzero(a, sizeof(aobj)); a->type = COL_TYPE_NONE; a->empty = 1;
+    bzero(a, sizeof(aobj)); a->type = COL_TYPE_NONE;              a->empty = 1;
 }
 void releaseAobj(void *v) {
-    aobj *a = (aobj *)v; a->type = COL_TYPE_NONE;    a->empty = 1;
+    aobj *a = (aobj *)v; a->type = COL_TYPE_NONE;                 a->empty = 1;
     if (a->freeme) { free(a->s); a->s = NULL; a->freeme = 0; }
 }
-void destroyAobj(void *v) {
-    releaseAobj(v); free(v);
-}
+void destroyAobj(void *v) { releaseAobj(v); free(v); }
+
 void initAobjZeroNum(aobj *a, uchar ctype) {
     initAobj(a);
-    a->i     = 0;     a->l    = 0;     a->x     = 0;
-    a->type  = ctype; a->enc  = ctype; a->empty = 0;
+    a->i = 0; a->l = 0; a->x = 0; a->type = a->enc = ctype;       a->empty = 0;
 }
 bool initAobjInt(aobj *a, ulong l) {
     initAobjZeroNum(a, COL_TYPE_INT); a->i = l; return 1;
 }
 void initAobjLong(aobj *a, ulong l) {
-    initAobj(a); a->l = l; a->type = a->enc = COL_TYPE_LONG; a->empty = 0;
+    initAobj(a); a->l = l; a->type = a->enc = COL_TYPE_LONG;      a->empty = 0;
 }
 void initAobjString(aobj *a, char *s, int len) {
     initAobj(a);
     a->s     = s;               a->len  = len;
-    a->type  = COL_TYPE_STRING; a->enc  = COL_TYPE_STRING;   a->empty = 0;
+    a->type  = a->enc = COL_TYPE_STRING;                          a->empty = 0;
 }
 void initAobjU128(aobj *a, uint128 x) {
     a->enc  = COL_TYPE_U128;   a->type = COL_TYPE_U128; a->x = x; a->empty = 0;
 }
 void initAobjFloat(aobj *a, float f) {
-    initAobj(a);
-    a->f = f; a->type = COL_TYPE_FLOAT; a->enc  = COL_TYPE_FLOAT; a->empty = 0;
+    initAobj(a); a->f = f; a->type = a->enc = COL_TYPE_FLOAT;     a->empty = 0;
 }
+//NOTE: does not throw errors
 void initAobjFromStr(aobj *a, char *s, int len, uchar ctype) {
     initAobj(a);
-    if        (C_IS_S(ctype)) {
-        a->enc    = COL_TYPE_STRING; a->type   = COL_TYPE_STRING;
+    if (       C_IS_S(ctype)) {
+        a->enc    = a->type   = COL_TYPE_STRING;
         a->freeme = 1;
         a->s      = malloc(len); memcpy(a->s, s, len);
         a->len    = len;
     } else if (C_IS_F(ctype)) {
-        a->enc  = COL_TYPE_FLOAT;    a->type = COL_TYPE_FLOAT;
-        a->f    = atof(s);                        /* OK: DELIM: \0 */
+        a->enc    = a->type = COL_TYPE_FLOAT; a->f = atof(s); // OK: DELIM: \0 
     } else if (C_IS_L(ctype)) {
-        a->enc  = COL_TYPE_LONG;     a->type = COL_TYPE_LONG;
-        a->l    = strtoul(s, NULL, 10);           /* OK: DELIM: \0 */
+        a->enc    = a->type = COL_TYPE_LONG;
+        a->l      = strtoul(s, NULL, 10);                     // OK: DELIM: \0
     } else if (C_IS_I(ctype)) {
-        a->enc  = COL_TYPE_INT;      a->type = COL_TYPE_INT;
-        a->i    = (uint32)strtoul(s, NULL, 10);   /* OK: DELIM: \0 */
+        a->enc    = a->type = COL_TYPE_INT;
+        a->i      = (uint32)strtoul(s, NULL, 10);             // OK: DELIM: \0
     } else if (C_IS_X(ctype)) {
-        a->enc  = COL_TYPE_U128;     a->type = COL_TYPE_U128;
-        parseU128(s, &a->x); //TODO check for error
+        a->enc    = COL_TYPE_U128;     a->type = COL_TYPE_U128;
+        parseU128(s, &a->x);
     } else if (C_IS_P(ctype)) {
-        a->enc  = COL_TYPE_FUNC;      a->type = COL_TYPE_FUNC;
-        a->i    = (uint32)strtoul(s, NULL, 10);   /* OK: DELIM: \0 */
+        a->enc    = COL_TYPE_FUNC;      a->type = COL_TYPE_FUNC;
+        a->i      = (uint32)strtoul(s, NULL, 10);             // OK: DELIM: \0
     } else assert(!"initAobjFromStr ERROR\n");
     a->empty = 0;
+}
+void initAobjFromLong(aobj *a, ulong l, uchar ctype) {
+    initAobj(a);
+    if (C_IS_L(ctype)) {
+        a->l    = l;         a->enc = a->type = COL_TYPE_LONG;
+    } else if (C_IS_I(ctype)) {
+        a->i    = (uint32)l; a->enc = a->type = COL_TYPE_INT;
+    } else { assert(!"initAobjFromLong must be INT|LONG"); }
 }
 aobj *createAobjFromString(char *s, int len, uchar ctype) {
     aobj *a = (aobj *)malloc(sizeof(aobj));
@@ -132,17 +137,18 @@ aobj *copyAobj (aobj *a) { //WARNING: do not double-free a->s
 void convertSdsToAobj(sds s, aobj *a, uchar ctype) {//NOTE: NO thrown errors
     initAobj(a);
     if (       C_IS_S(ctype)) {
-        a->enc    = COL_TYPE_STRING; a->type   = COL_TYPE_STRING;
+
+        a->enc    = a->type   = COL_TYPE_STRING;
         a->freeme = 1;
         a->s      = _strdup(s);      a->len    = sdslen(s);
     } else if (C_IS_I(ctype)) {
-        a->enc    = COL_TYPE_INT;    a->type   = COL_TYPE_INT;
+        a->enc    = a->type   = COL_TYPE_INT;
         a->i      = (uint32)strtoul(s, NULL, 10); /* OK: DELIM: \0 */
     } else if (C_IS_L(ctype)) {
-        a->enc    = COL_TYPE_LONG;   a->type   = COL_TYPE_LONG;
+        a->enc    = a->type   = COL_TYPE_LONG;
         a->l      = strtoul(s, NULL, 10);         /* OK: DELIM: \0 */
     } else if (C_IS_F(ctype)) {
-        a->enc    = COL_TYPE_FLOAT;  a->type   = COL_TYPE_FLOAT;
+        a->enc    = a->type   = COL_TYPE_FLOAT;
         a->f      = atof(s);                      /* OK: DELIM: \0 */
     } else if (C_IS_X(ctype)) {
         a->enc    = COL_TYPE_U128;   a->type   = COL_TYPE_U128; 
@@ -157,6 +163,7 @@ static aobj *cloneSDSToAobj(sds s, uchar ctype) {
     aobj *a = (aobj *)malloc(sizeof(aobj));
     convertSdsToAobj(s, a, ctype); return a;
 }
+
 void convertFilterSDStoAobj(f_t *flt) {
     uchar ctype    = CTYPE_FROM_FLT(flt)
     flt->akey.type = ctype;
@@ -326,6 +333,21 @@ int getSizeAobj(aobj *a) { //TODO support FLOAT,STRING
     if (C_IS_L(a->type))    return sizeof(long);
     if (C_IS_X(a->type))    return sizeof(uint128);
     assert(!"getSizeAobj ERROR");
+}
+void incrbyAobj(aobj *a, ulong l) {
+    if      (C_IS_L(a->type)) a->l += l;
+    else if (C_IS_I(a->type)) a->i += (uint32)l;
+    else                      assert(!"incrbyAobj must be INT|LONG");
+}
+void decrbyAobj(aobj *a, ulong l) {
+    if      (C_IS_L(a->type)) a->l -= l;
+    else if (C_IS_I(a->type)) a->i -= (uint32)l;
+    else                      assert(!"decrbyAobj must be INT|LONG");
+}
+ulong subtractAobj(aobj *a, aobj *b) {
+    if      (C_IS_L(a->type) && C_IS_L(b->type)) return a->l - b->l;
+    else if (C_IS_I(a->type) && C_IS_I(b->type)) return a->i - b->i;
+    else                      assert(!"subtractAobj must be INT|LONG");
 }
 
 /* DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG */

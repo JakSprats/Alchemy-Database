@@ -88,6 +88,7 @@ typedef struct range {
     rup_t   up;
     qr_t    *q;
     jb_t    *jb;
+    bool     asc;
 } range_t;
 
 void init_range(range_t *g, redisClient *c,  cswc_t *w,     wob_t *wb,

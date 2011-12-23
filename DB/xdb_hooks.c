@@ -130,12 +130,17 @@ void explainCommand  (redisClient *c);
 void prepareCommand  (redisClient *c);
 void executeCommand  (redisClient *c);
 
-void btreeCommand    (redisClient *c);
+#ifdef CLIENT_BTREE_DEBUG
+void btreeCommand     (redisClient *c);
+void validateBTommand (redisClient *c);
+#endif
 
 void messageCommand  (redisClient *c);
 
 void purgeCommand    (redisClient *c);
 void dirtyCommand    (redisClient *c);
+
+void evictCommand     (redisClient *c);
 
 #ifdef REDIS3
   #define CMD_END       NULL,1,1,1,0,0
@@ -153,6 +158,8 @@ struct redisCommand DXDBCommandTable[] = {
     {"update",     updateCommand,      6, REDIS_CMD_DENYOOM, CMD_END},
     {"delete",     deleteCommand,      5, 0,                 CMD_END},
     {"replace",    replaceCommand,    -5, REDIS_CMD_DENYOOM, CMD_END},
+    // EVICT
+    {"evict",      evictCommand,      -3, 0,                 GLOB_FUNC_END},
     // DDL
     {"create",     createCommand,     -4, REDIS_CMD_DENYOOM, GLOB_FUNC_END},
     {"drop",       dropCommand,        3, 0,                 GLOB_FUNC_END},
@@ -169,8 +176,11 @@ struct redisCommand DXDBCommandTable[] = {
     // PROFILE/DEBUG
     {"explain",    explainCommand,     7, 0,                 GLOB_FUNC_END},
     {"show",       showCommand,        2, 0,                 GLOB_FUNC_END},
+#ifdef CLIENT_BTREE_DEBUG
     {"btree",      btreeCommand,      -2, 0,                 GLOB_FUNC_END},
-    // COMPILE
+    {"vbtree",     validateBTommand,  -2, 0,                 GLOB_FUNC_END},
+#endif
+    // PREPARED_STATEMENTs
     {"prepare",    prepareCommand,     9, 0,                 GLOB_FUNC_END},
     {"execute",    executeCommand,    -2, 0,                 GLOB_FUNC_END},
 };
@@ -209,7 +219,6 @@ void DXDB_initServerConfig() { //printf("DXDB_initServerConfig\n");
     Basedir            = zstrdup("./extra/"); // DEFAULT dir for Alchemy
     WebServerMode      = -1;
     WebServerIndexFunc = NULL;
-
     WS_WL_Broadcast    =  0;
     WS_WL_Subnet       =  0;
     bzero(&WS_WL_Addr, sizeof(struct in_addr));
@@ -240,6 +249,8 @@ static void init_Tbl_and_Index(uint32 ntbl, uint32 nindx) {
 }
 
 void DXDB_initServer() { //printf("DXDB_initServer\n");
+    server.stat_num_dirty_commands = 0;
+    server.delete_miss             = 0;
     aeCreateTimeEvent(server.el, 1, luaCronTimeProc, NULL, NULL);
     initX_DB_Range();
     initAccessCommands();
@@ -300,9 +311,7 @@ static bool initLua(cli *c) {
     else                                                             return 1;
 }
 static bool reloadLua(cli *c) {
-    lua_close(server.lua);
-    scriptingInit();
-    return initLua(c);
+    lua_close(server.lua); scriptingInit(); return initLua(c);
 }
 void DXDB_main() { //NOTE: must come after rdbLoad()
     if (!initLua(NULL)) exit(-1);
@@ -338,6 +347,7 @@ rcommand *DXDB_lookupCommand(sds name) {
 }
 
 void DXDB_call(struct redisCommand *cmd, long long *dirty) {
+    server.delete_miss = 0;
     if (cmd->proc == luafuncCommand || cmd->proc == messageCommand) *dirty = 0;
     if (*dirty) server.stat_num_dirty_commands++;
 }

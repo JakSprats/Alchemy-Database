@@ -37,24 +37,28 @@ ALL RIGHTS RESERVED
 
 void iAddUniq(bt *ibtr, uchar pktyp, aobj *apk, aobj *acol); // OBYI uses also
 
-sds  getMCIlist(list *clist, int tmatch);
-bool addC2MCI(cli *c, int cmatch, list *clist);
+sds  getMCIlist(list *clist, int tmatch); // NOTE: Used in DESC command
+bool addC2MCI  (cli *c, int cmatch, list *clist); //NOTE: Used in rdbLoad()
+
 int  newIndex(cli    *c,     sds   iname, int  tmatch, int   cmatch,
               list   *clist, uchar cnstr, bool virt,   bool  lru,
               luat_t *luat,  int   obc,   bool prtl,   bool  lfu);
 void createIndex(cli *c);
 
-long buildIndex(cli *c,  bt *btr, int imatch, long limit);
+long buildIndex (cli *c, bt *btr, int imatch, long limit);
 
 bool addToIndex (cli *c, bt *btr, aobj *apk,  void *rrow,   int imatch);
+
 void delFromIndex       (bt *btr, aobj *apk,  void *rrow,   int imatch);
+void evictFromIndex     (bt *btr, aobj *apk,  void *rrow,   int imatch);
+
 bool upIndex    (cli *c, bt *btr, aobj *aopk,  aobj *ocol, 
                                   aobj *anpk,  aobj *ncol,  int pktyp,
                                   aobj *oocol, aobj *nocol, int imatch);
-bool updateIndex(cli *c, bt *btr, aobj *aopk, void *orow,
-                                  aobj *anpk, void *nrow, int imatch);
+bool updateIndex(cli *c, bt *btr, aobj *aopk,  void *orow,
+                                  aobj *anpk,  void *nrow,  int imatch);
 
 void emptyIndex(int inum);
-void dropIndex(redisClient *c);
+void dropIndex (cli *c);
 
 #endif /* __INDEX__H */ 
