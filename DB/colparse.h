@@ -39,7 +39,7 @@ bool parseU128n(char *s, uint32 len, uint128 *x);
 
 char *parseRowVals(sds vals,  char   **pk,        int    *pklen,
                    int ncols, twoint   cofsts[],  int     tmatch,
-                   int pcols, int      cmatchs[], int     lncols);
+                   int pcols, int      cmatchs[], int     lncols, bool *ai);
 
 bool parseCommaSpaceList(cli  *c,         char  *tkn,
                          bool  col_check, bool   tbl_check, bool  join_check,

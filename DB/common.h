@@ -147,6 +147,9 @@ typedef struct twoint {
 #define ASSERT_OK(x) assert(x == DICT_OK)
 
 #define VOIDINT (void *)(long)
+#define INTVOID (uint32)(ulong)
+
+#define CLIENT_BTREE_DEBUG
 
 #define SPLICE_128(num) {                                  \
   uint128 bu = num; char *pbu = (char *)&bu; ull ubl, ubh; \

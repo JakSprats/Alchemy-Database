@@ -33,6 +33,7 @@ ALL RIGHTS RESERVED
 
 #include "btree.h"
 #include "bt.h"
+#include "bt_iterator.h"
 #include "index.h"
 #include "query.h"
 #include "stream.h"
@@ -185,14 +186,8 @@ bt *createIndexBT(uchar ktype, int imatch) {
 #define DEBUG_REP_REALLOC_OVRWR printf("abt_replace: REALLOC OVERWRITE\n");
 #define DEBUG_REP_RELOC_NEW     printf("abt_replace: REALLOC -> new \n");
 
-#define DECLARE_BT_KEY                                                     \
-    bool  med; uint32 ksize;                                               \
-    char *btkey = createBTKey(akey, &med, &ksize, btr);  /* FREE ME 026 */ \
-    if (!btkey) return 0;
-    
 static int abt_replace(bt *btr, aobj *akey, void *val) {
-    uint32 ssize;
-    DECLARE_BT_KEY
+    uint32 ssize; DECLARE_BT_KEY(akey, 0)
     uchar  *nstream = createStream(btr, val, btkey, ksize, &ssize);
     if NORM_BT(btr) {
         uchar  **ostream = (uchar **)bt_find_loc(btr, btkey);
@@ -220,21 +215,65 @@ static int abt_replace(bt *btr, aobj *akey, void *val) {
     return ssize;
 }
 static void *abt_find(bt *btr, aobj *akey) {
-    DECLARE_BT_KEY
-    uchar *stream = bt_find(btr, btkey);
+    DECLARE_BT_KEY(akey, 0)
+    uchar *stream = bt_find(btr, btkey, akey);
     destroyBTKey(btkey, med);                            /* FREED 026 */
     return parseStream(stream, btr);
 }
-static bool abt_del(bt *btr, aobj *akey) {
-    DECLARE_BT_KEY
-    uchar *stream = bt_delete(btr, btkey);               /* FREED 028 */
+static bool abt_exist(bt *btr, aobj *akey) { //NOTE: Evicted Indexes are NULL
+    DECLARE_BT_KEY(akey, 0)
+    bool ret = bt_exist(btr, btkey, akey);
+    destroyBTKey(btkey, med);                            /* FREED 026 */
+    return ret;
+}
+static dwm_t abt_find_d(bt *btr, aobj *akey) { //NOTE: use for dirty tables
+    dwm_t dwme; bzero(&dwme, sizeof(dwm_t));
+    DECLARE_BT_KEY(akey, dwme)
+    dwm_t  dwm = findnodekey(btr, btr->root, btkey, akey);
+    destroyBTKey(btkey, med);                            // FREED 026
+    dwm.k      = parseStream(dwm.k, btr);
+    return dwm;
+}
+static bool abt_del(bt *btr, aobj *akey) { // DELETE the row
+    DECLARE_BT_KEY(akey, 0)
+    dwd_t  dwd    = bt_delete(btr, btkey, akey);         /* FREED 028 */
+    if (dwd.ngost) { // replace MISS w/ GHOST,abt abstraction needed -- ECASE:1
+                     // TODO: this should be done in bt_code.c: remove_key
+        aobj gpk; initAobjFromLong(&gpk, dwd.ngost, btr->s.ktype);
+        uint32 ssize; DECLARE_BT_KEY(&gpk, 0)
+        char *stream = createStream(btr, NULL, btkey, ksize, &ssize);//DEST 027
+        bt_insert_ghost(btr, btkey, &gpk, stream, dwd.dr);       // FREE ME 028
+        destroyBTKey(btkey, med);                                  // FREED 026
+    }
+    uchar *stream = dwd.k;
     destroyBTKey(btkey, med);                            /* FREED 026 */
     return destroyStream(btr, stream);                   /* DESTROYED 027 */
 }
+static void abt_del_d(bt *btr, aobj *akey) { // GHOST the row
+    uint32 ssize; DECLARE_BT_KEY(akey, )
+    char   *stream = createStream(btr, NULL, btkey, ksize, &ssize); // DEST 027
+    bt_delete_d(btr, btkey, akey, stream);
+    destroyBTKey(btkey, med);
+}
+static bool abt_evict(bt *btr, aobj *akey) {
+    DECLARE_BT_KEY(akey, 0)
+    uchar * stream = bt_evict(btr, btkey);
+    destroyBTKey(btkey, med);                            // FREED 026
+    return destroyStream(btr, stream);                   // DESTROYED 027
+}
+static uint32 abt_get_dr(bt *btr, aobj *akey) {
+    DECLARE_BT_KEY(akey, 0)
+    uint32 dr = bt_get_dr(btr, btkey, akey); destroyBTKey(btkey, med);
+    return dr;
+}
+static bool abt_decr_dr_pk(bt *btr, aobj *akey, uint32 by) {
+    DECLARE_BT_KEY(akey, 0) return bt_decr_dr_pk(btr, btkey, akey, by);
+}
 static uint32 abt_insert(bt *btr, aobj *akey, void *val) {
+#ifndef TEST_WITH_TRANS_ONE_ONLY
     if (btr->numkeys == TRANS_ONE_MAX) btr = abt_resize(btr, TRANS_TWO);
-    uint32 ssize;
-    DECLARE_BT_KEY
+#endif
+    uint32 ssize; DECLARE_BT_KEY(akey, 0)
     char   *stream = createStream(btr, val, btkey, ksize, &ssize); /*DEST 027*/
     destroyBTKey(btkey, med);                            /* FREED 026 */
     bt_insert(btr, stream);                              /* FREE ME 028 */
@@ -255,37 +294,71 @@ bt *abt_resize(bt *obtr, uchar trans) {              // printf("abt_resize\n");
 }
 
 /* DATA DATA DATA DATA DATA DATA DATA DATA DATA DATA DATA DATA DATA DATA */
-int   btAdd(bt *btr, aobj *apk, void *val) { return abt_insert( btr, apk, val);}
-void *btFind(bt *btr, aobj *apk) {           return abt_find(   btr, apk); }
+int   btAdd    (bt *btr, aobj *apk, void *val) {
+                                      return abt_insert (btr, apk, val); }
 int   btReplace(bt *btr, aobj *apk, void *val) {
-                                             return abt_replace(btr, apk, val);}
-int   btDelete( bt *btr, aobj *apk) {        return abt_del(    btr, apk); }
+                                      return abt_replace(btr, apk, val); }
+void *btFind   (bt *btr, aobj *apk) { return abt_find   (btr, apk); }
+int   btDelete (bt *btr, aobj *apk) { return abt_del    (btr, apk); }
+
+// DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY
+dwm_t btFindD  (bt *btr, aobj *apk) { return abt_find_d(btr, apk); }
+int   btDeleteD(bt *btr, aobj *apk) { abt_del_d (btr, apk); return 1; }
+//NOTE: btFindD() must precede btEvict()
+bool  btEvict  (bt *btr, aobj *apk) { return abt_evict (btr, apk); }
 
 /* INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX */
-void btIndAdd(bt *ibtr, aobj *akey, bt *nbtr) { abt_insert(ibtr, akey, nbtr); }
-bt *btIndFind(bt *ibtr, aobj *akey) {    return abt_find(  ibtr, akey); }
-int btIndDelete(bt *ibtr, aobj *akey) {
-    abt_del(ibtr, akey);
-    return ibtr->numkeys;
+void  btIndAdd   (bt *ibtr, aobj *ikey, bt *nbtr) {
+                                               abt_insert(ibtr, ikey, nbtr);
 }
+bt   *btIndFind  (bt *ibtr, aobj *ikey) { return abt_find (ibtr, ikey); }
+bool  btIndExist (bt *ibtr, aobj *ikey) { return abt_exist(ibtr, ikey); }
+int   btIndDelete(bt *ibtr, aobj *ikey) {
+                                      abt_del(ibtr, ikey); return ibtr->numkeys;
+}
+void btIndNull   (bt *ibtr, aobj *ikey) { abt_replace(ibtr, ikey, NULL); }
 
 /* INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE */
-#define DEBUG_IADD_OBC                                         \
-    printf("btIndNodeOBCAdd: nbtr: %p\n", nbtr);               \
-    printf("btIndNodeOBCAdd: apk : "); dumpAobj(printf, apk);  \
-    printf("btIndNodeOBCAdd: ocol: "); dumpAobj(printf, ocol);
+#define DEBUG_INODE_ADD                                                   \
+    printf("btIndNodeAdd: apk : "); dumpAobj(printf, apk);                \
+    if (ocol) { printf("btIndNodeAdd: ocol: "); dumpAobj(printf, ocol); }
+#define DEBUG_INODE_EVICT \
+    printf("btIndNodeEvict: nkeys: %d apk: %p: ",       \
+            nbtr->numkeys, apk); dumpAobj(printf, apk);
 
-void *btIndNodeFind  (bt *nbtr, aobj *apk) { return abt_find(nbtr, apk); }
-void  btIndNodeAdd   (bt *nbtr, aobj *apk) { abt_insert(nbtr, apk, NULL); }
-int   btIndNodeDelete(bt *nbtr, aobj *apk) {
-    abt_del(nbtr, apk); return nbtr->numkeys;
+void *btIndNodeFind(bt *nbtr, aobj *apk) { return abt_find(nbtr, apk); }
+bool  btIndNodeAdd (cli *c, bt *nbtr, aobj *apk, aobj *ocol) { DEBUG_INODE_ADD
+    if (ocol) {
+        if (abt_find(nbtr, ocol)) {
+            if (c) addReply(c, shared.obindexviol); return 0;
+        }
+        iAddUniq(nbtr, apk->type, apk, ocol);
+    } else abt_insert(nbtr, apk, NULL);
+    return 1;
 }
-bool  btIndNodeOBCAdd(cli *c, bt *nbtr, aobj *apk, aobj *ocol) {//DEBUG_IADD_OBC
-    if (abt_find(nbtr, ocol)) {
-        if (c) addReply(c, shared.obindexviol); return 0;
-    }
-    iAddUniq(nbtr, apk->type, apk, ocol);       return 1;
+int  btIndNodeDelete(bt *nbtr, aobj *apk, aobj *ocol) {
+    abt_del  (nbtr, ocol ? ocol : apk); return nbtr->numkeys;
 }
-int   btIndNodeOBCDelete(bt *nbtr, aobj *ocol) {
-    abt_del(nbtr, ocol); return nbtr->numkeys;
+int  btIndNodeEvict(bt *nbtr, aobj *apk, aobj *ocol) {       DEBUG_INODE_EVICT
+    abt_evict(nbtr, ocol ? ocol : apk); return nbtr->numkeys;
+}
+
+// HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER
+uint32  btGetDR  (bt *btr, aobj *akey) { return abt_get_dr(btr, akey); }
+aobj   *btGetNext(bt *btr, aobj *akey) {
+printf("btGetNext\n");
+    aobj     aH; if (!assignMaxKey(btr, &aH))                   return NULL;
+    aobj    *rkey = NULL;
+    btSIter *bi   = btGetRangeIter(btr, akey, &aH, 1); if (!bi) goto btgn_e;
+    btEntry *be   = btRangeNext(bi, 1);                if (!be) goto btgn_e;
+    be            = btRangeNext(bi, 1);                if (!be) goto btgn_e;
+    rkey          = be->key;
+
+btgn_e:
+    btReleaseRangeIterator(bi);
+    return rkey;
+}
+bool btDecrDR_PK(bt *btr, aobj *akey, uint32 by) {
+    printf("btDecrDR_PK: by: %u, key: ", by); dumpAobj(printf, akey);
+    return abt_decr_dr_pk(btr, akey, by);
 }

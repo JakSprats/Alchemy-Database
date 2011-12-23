@@ -585,6 +585,7 @@ static uchar *getRowPayload(uchar  *row,   uchar  *rflag,
     return row;
 }
 uint32 getRowMallocSize(uchar *stream) { // used in stream.c also
+    if (!stream) return sizeof(void *); // NULL will be stored IN-stream
     uchar rflag; uint32 rlen; uint32 ncols;
     getRowPayload(stream, &rflag, &ncols, &rlen); return rlen;
 }
@@ -782,6 +783,7 @@ static robj *orow_embedded(bt   *btr,       void *rrow, int   qcols,
     }
     r->ptr = er; return r;
 }
+
 #define OBUFF_SIZE 4096
 static char OutBuff[OBUFF_SIZE]; /*avoid malloc()s */
 
@@ -855,14 +857,28 @@ robj *outputRow(bt   *btr,       void *rrow, int qcols,
 }
 
 /* DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW */
+#define DEBUG_DELR_1 \
+  printf("deleteRow: miss: %d rrow: %p gost: %d\n", dwm.miss, rrow, gost);
+#define DEBUG_DELR_2 \
+  printf("INDEX DELETION DONE : delete_miss: %d\n", server.delete_miss);
+
 bool deleteRow(int tmatch, aobj *apk, int matches, int inds[]) {
-    bt   *btr  = getBtr(tmatch);
-    void *rrow = btFind(btr, apk);
-    if (!rrow) return 0;
-    if (matches) { /* delete indexes */
-        for (int i = 0; i < matches; i++) delFromIndex(btr, apk, rrow, inds[i]);
-    }
-    btDelete(btr, apk); server.dirty++; return 1;
+printf("\n\nSTART: deleteRow: key: "); dumpAobj(printf, apk);
+    bt    *btr  = getBtr(tmatch);
+    dwm_t  dwm  = btFindD(btr, apk);
+    void  *rrow = dwm.k;
+    bool   gost = rrow && !(*(uchar *)rrow) && btGetDR(btr, apk);   DEBUG_DELR_1
+    if ((!rrow && !dwm.miss) || gost) return 0; // GHOST -> ECASE:6
+    if (matches) { // delete indexes
+        if (dwm.miss) server.delete_miss = 1; // ASYNC delFromIndex()
+        else {
+            for (int i = 0; i < matches; i++) {
+                delFromIndex(btr, apk, rrow, inds[i]); }}
+    }                                                               DEBUG_DELR_2
+    btdeleter *btd = dwm.miss ? btDeleteD : btDelete;
+    (*btd)(btr, apk); server.dirty++; 
+printf("END: deleteRow\n\n\n");
+    return 1;
 }
 
 /* UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE */
@@ -1072,8 +1088,8 @@ int updateRow(cli *c, uc_t *uc, aobj *apk, void *orow) {
                 if (!updateIndex(c, uc->btr, apk, orow, &avs[0],
                                  nrow, uc->inds[i]))                    UP_ERR
             }
-            btDelete(uc->btr, apk);              /* DELETE row w/ OLD PK */
-            ret = btAdd(uc->btr, &avs[0], nrow); /* ADD row w/ NEW PK */
+            btDelete(uc->btr, apk);              // DELETE row w/ OLD PK
+            ret = btAdd(uc->btr, &avs[0], nrow); // ADD row w/ NEW PK
             UPDATE_AUTO_INC(rt->col[0].type, avs[0])
         } else {
             if (!upEffctdInds(c, uc->btr, apk, orow, avs, nrow,

@@ -6,7 +6,7 @@
 #define REDIS_BTREE       5
 #define REDIS_LUA_TRIGGER 6
 
-#define OUTPUT_NONE       0 # this is an error state
+#define OUTPUT_NONE       0 /* this is an error state */
 #define OUTPUT_NORMAL     1
 #define OUTPUT_PURE_REDIS 2
 #define OUTPUT_EMBEDDED   3
@@ -81,6 +81,10 @@ typedef bool select_callback(erow_t* erow);
     int                 bindport;           \
     select_callback    *scb;
 
+#define ALCHEMY_SERVER_EXTENSIONS \
+    long long     stat_num_dirty_commands; /* number of dirty commands */ \
+    unsigned char delete_miss;             /* DELETE hit a MISSing ROW */
+
 #define SHARED_OBJ_DECLARATION \
     robj \
     *singlerow,           *inserted,               *upd8ed, \
@@ -129,27 +133,30 @@ typedef bool select_callback(erow_t* erow);
     *join_order_by_syntax,       *join_order_by_tbl,       *join_order_by_col, \
     *join_table_not_in_query,    *joinsyntax_no_tablename, *join_chain, \
     *joindanglingfilter,         *join_noteq,              *join_coltypediff, \
-    *join_col_not_indexed,       *join_qo_err,            \
-    *createtable_as_on_wrong_type,                        \
-    *create_table_err,                                    \
-    *create_table_as_count,                               \
-    *dump_syntax, *show_syntax,                           \
-    *alter_sk_rpt,    *alter_sk_no_i,   *alter_sk_no_lru, \
-    *alter_fk_not_sk, *alter_fk_repeat, *alter_sk_no_lfu, \
-    *select_on_sk, *scan_sharded,                         \
-    *constraint_wrong_nargs, *constraint_col_indexed,     \
-    *constraint_not_num,     *constraint_table_mismatch,  \
-    *constraint_nonuniq,     *constraint_viol,            \
-    *indexobcerr,            *indexobcrpt,                \
-    *indexobcill,            *indexcursorerr,             \
-    *obindexviol,            *repeat_hash_cnames,         \
-    *lfu_other,              *lfu_repeat,                 \
-    *drop_lfu,               *col_lfu,                    \
-    *insert_lfu,             *kw_cname,                   \
-    *u128_parse,             *update_u128_complex,        \
-    *uniq_simp_index_nums,   *updateipos,                 \
-    *join_type_err,          *supported_prepare,          \
-    *prepare_syntax,         *execute_argc,               \
+    *join_col_not_indexed,       *join_qo_err,             \
+    *createtable_as_on_wrong_type,                         \
+    *create_table_err,                                     \
+    *create_table_as_count,                                \
+    *dump_syntax, *show_syntax,                            \
+    *alter_sk_rpt,    *alter_sk_no_i,   *alter_sk_no_lru,  \
+    *alter_fk_not_sk, *alter_fk_repeat, *alter_sk_no_lfu,  \
+    *select_on_sk,            *scan_sharded,               \
+    *constraint_wrong_nargs,  *constraint_col_indexed,     \
+    *constraint_not_num,      *constraint_table_mismatch,  \
+    *constraint_nonuniq,      *constraint_viol,            \
+    *indexobcerr,             *indexobcrpt,                \
+    *indexobcill,             *indexcursorerr,             \
+    *obindexviol,             *repeat_hash_cnames,         \
+    *lfu_other,               *lfu_repeat,                 \
+    *drop_lfu,                *col_lfu,                    \
+    *insert_lfu,              *kw_cname,                   \
+    *dirty_miss,              *evict_other,                \
+    *replace_on_dirty_w_inds, *insert_dirty_pkdecl,        \
+    *update_on_dirty_w_inds,                               \
+    *u128_parse,             *update_u128_complex,         \
+    *uniq_simp_index_nums,   *updateipos,                  \
+    *join_type_err,          *supported_prepare,           \
+    *prepare_syntax,         *execute_argc,                \
     *execute_miss;
 
 #define DEBUG_C_ARGV(c) \

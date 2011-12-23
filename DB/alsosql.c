@@ -118,9 +118,10 @@ uchar insertCommit(cli  *c,      sds     uset,   sds     vals,
     int      lncols = ncols;
     if (rt->lrud) lncols--; // INSERT can NOT have LRU
     if (rt->lfu)  lncols--; // INSERT can NOT have LFU
+    bool     ai     = 0;    // AUTO-INCREMENT
     char    *mvals  = parseRowVals(vals, &pk, &pklen, ncols, cofsts, tmatch,
-                                   pcols, cmatchs, lncols);  // ERR now GOTO
-    if (!mvals) { addReply(c, shared.insertcolumn);            goto insc_end; }
+                                   pcols, cmatchs, lncols, &ai); // ERR NOW GOTO
+    if (!mvals) { addReply(c, shared.insertcolumn);            goto insc_e; }
     if (parse) { // used in cluster-mode to get sk's value
         int skl = cofsts[rt->sk].j - cofsts[rt->sk].i;
         sds sk  = rt->sk ? sdsnewlen(mvals + cofsts[rt->sk].i, skl) : pk;
@@ -132,46 +133,64 @@ uchar insertCommit(cli  *c,      sds     uset,   sds     vals,
     apk.type        = apk.enc = pktyp;
     if        (C_IS_I(pktyp)) {
         long l      = atol(pk);                              /* OK: DELIM: \0 */
-        if (l >= TWO_POW_32) { addReply(c, shared.uint_pkbig); goto insc_end; }
+        if (l >= TWO_POW_32) { addReply(c, shared.uint_pkbig); goto insc_e; }
         apk.i       = (int)l;
     } else if (C_IS_L(pktyp)) apk.l = strtoul(pk, NULL, 10); /* OK: DELIM: \0 */
       else if (C_IS_X(pktyp)) {
           bool r = parseU128(pk, &apk.x); 
-          if (!r) { addReply(c, shared.u128_parse); goto insc_end; }
+          if (!r) { addReply(c, shared.u128_parse);            goto insc_e; }
     } else if (C_IS_F(pktyp)) apk.f = atof(pk);              /* OK: DELIM: \0 */
       else { /* COL_TYPE_STRING */
         apk.s       = pk; apk.len = pklen; apk.freeme = 0; /* "pk freed below */
     }
-    bt   *btr  = getBtr(tmatch);
-    void *rrow = btFind(btr, &apk);
-    int   len  = 0;
-    if (rrow && !upd && !repl) {
-         addReply(c, shared.insert_ovrwrt);                    goto insc_end;
-    } else if (rrow && upd) {                              //DEBUG_INSERT_DEBUG
+    int    len      = 0;
+    bt    *btr      = getBtr(tmatch);
+    dwm_t  dwm      = btFindD(btr, &apk);
+    void  *rrow     = dwm.k;
+    bool   gost     = rrow && !(*(uchar *)rrow);
+    bool   exists   = (rrow || dwm.miss) && !gost;
+    bool   isinsert = !upd && !repl;
+    if (btr->dirty) { // NOTE: DirtyTable's have prohibited actions
+        bool thasi = (bool)(rt->ilist->len - 1);
+        if (repl && thasi) { // REPLACE & indexed-table
+            addReply(c, shared.replace_on_dirty_w_inds);       goto insc_e;
+        }
+        if (isinsert && !ai) { //INSERT on DIRTY w/ PK declation PROHIBITED
+            addReply(c, shared.insert_dirty_pkdecl);           goto insc_e;
+        }
+    }
+    if        (exists && isinsert) {
+         addReply(c, shared.insert_ovrwrt);                    goto insc_e;
+    } else if (exists && upd) {                            //DEBUG_INSERT_DEBUG
         len = updateAction(c, uset, &apk, tmatch);
-        if (len == -1)                                         goto insc_end;
+        if (len == -1)                                         goto insc_e;
         ret = INS_UP;             /* negate presumed failure */
-    } else {
+    } else { // UPDATE on GHOST/new, REPLACE, INSERT
         nrow = createRow(c, btr, tmatch, ncols, mvals, cofsts);
-        if (!nrow) /* e.g. (UINT_COL > 4GB) error */           goto insc_end;
+        if (!nrow) /* e.g. (UINT_COL > 4GB) error */           goto insc_e;
         if (matches) { /* Add to Indexes */
             for (int i = 0; i < matches; i++) { /* REQ: addIndex B4 delIndex */
-                if (!addToIndex(c, btr, &apk, nrow, inds[i]))  goto insc_end;
+                if (!addToIndex(c, btr, &apk, nrow, inds[i]))  goto insc_e;
             }
             if (repl && rrow) { /* Delete repld row's Indexes - same PK */
                 for (int i = 0; i < matches; i++) {
                     delFromIndex(btr, &apk, rrow, inds[i]);
             }}
         }
-        len = (repl && rrow) ? btReplace(btr, &apk, nrow) :
-                               btAdd    (btr, &apk, nrow);
+        bool ovwr = (repl || gost);
+
+printf("repl: %d rrow: %p upd: %d gost: %d miss: %d exists: %d ovwr: %d key: ",
+        repl, rrow, upd, gost, dwm.miss, exists, ovwr); dumpAobj(printf, &apk);
+
+        if (repl && dwm.miss) btDeleteD(btr, &apk);
+        len = ovwr ? btReplace(btr, &apk, nrow) : btAdd(btr, &apk, nrow);
         UPDATE_AUTO_INC(pktyp, apk)
         ret = INS_INS;            /* negate presumed failure */
     }
     if (tsize) *tsize = *tsize + len;
     server.dirty++;
 
-insc_end:
+insc_e:
     if (nrow && NORM_BT(btr)) free(nrow);                /* FREED 023 */
     if (pk)                   free(pk);                  /* FREED 021 */
     releaseAobj(&apk);
@@ -374,12 +393,12 @@ bool leftoverParsingReply(redisClient *c, char *x) {
 bool sqlSelectBinary(cli   *c, int tmatch, bool cstar, int *cmatchs, int qcols,
                     cswc_t *w, wob_t *wb,  bool need_cn) {
     if (cstar && wb->nob) { /* SELECT COUNT(*) ORDER BY -> stupid */
-        addReply(c, shared.orderby_count);            return 0;
+        addReply(c, shared.orderby_count);                          return 0;
     }
     if      (c->Prepare) { prepareRQ(c, w, wb, cstar,
-                                     qcols, cmatchs); return 0; }
+                                     qcols, cmatchs);               return 0; }
     else if (c->Explain) { explainRQ(c, w, wb, cstar,
-                                     qcols, cmatchs); return 0; }
+                                     qcols, cmatchs);               return 0; }
     //dumpW(printf, w); dumpWB(printf, wb);
 
     if (EREDIS && (need_cn || GlobalNeedCn)) {
@@ -393,12 +412,15 @@ bool sqlSelectBinary(cli   *c, int tmatch, bool cstar, int *cmatchs, int qcols,
         if (w->wf.imatch == Tbl[tmatch].lfui) c->LfuColInSelect = 1;
         iselectAction(c, w, wb, cmatchs, qcols, cstar);
     } else {                         /* SQL_SINGLE_LKP */
-        bt   *btr  = getBtr(w->wf.tmatch);
-        aobj *apk  = &w->wf.akey;
-        void *rrow = btFind(btr, apk);
-        if (!rrow) { addReply(c, shared.nullbulk);                  return 0; }
-        if (cstar) { addReply(c, shared.cone);                      return 0; }
-        robj *r    = outputRow(btr, rrow, qcols, cmatchs, apk, tmatch);
+        bt    *btr   = getBtr(w->wf.tmatch);
+        aobj  *apk   = &w->wf.akey;
+        dwm_t  dwm   = btFindD(btr, apk);
+        if (dwm.miss) { addReply(c, shared.dirty_miss);             return 0; }
+        if (cstar)    { addReply(c, shared.cone);                   return 0; }
+        void  *rrow  = dwm.k;
+        bool   gost  = rrow && !(*(uchar *)rrow);
+        if (gost || !rrow) { addReply(c, shared.nullbulk);          return 0; }
+        robj *r = outputRow(btr, rrow, qcols, cmatchs, apk, tmatch);
         addReply(c, shared.singlerow);
         GET_LRUC GET_LFUC
         if (!addReplyRow(c, r, tmatch, apk, lruc, lrud, lfuc, lfu)) return 0;
@@ -460,9 +482,9 @@ bool deleteInnards(cli *c, sds tlist, sds wclause) {
         ideleteAction(c, &w, &wb);
     } else {                         /* SQL_SINGLE_DELETE */
         MATCH_INDICES(w.wf.tmatch)
-        aobj  *apk   = &w.wf.akey;
-        bool   del   = deleteRow(w.wf.tmatch, apk, matches, inds);
-        addReply(c, del ? shared.cone :shared.czero);
+        aobj *apk = &w.wf.akey;
+        bool  del = deleteRow(w.wf.tmatch, apk, matches, inds);
+        addReply(c, del ? shared.cone : shared.czero);
         if (wb.ovar) incrOffsetVar(c, &wb, 1);
     }
     ret = 1;
@@ -481,13 +503,12 @@ void deleteCommand(redisClient *c) {
 }
 
 /* UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE */
-static bool ovwrPKUp(cli    *c,        int    pkupc, char *mvals[],
-                     uint32  mvlens[], uchar  pktyp, bt   *btr) {
-    aobj *ax   = createAobjFromString(mvals[pkupc], mvlens[pkupc], pktyp);
-    void *xrow = btFind(btr, ax);
-    destroyAobj(ax);
-    if (xrow) { addReply(c, shared.update_pk_overwrite); return 1; }
-    return 0;
+static int getPkUpdateCol(int qcols, int cmatchs[]) {
+    int pkupc = -1; /* PK UPDATEs that OVERWRITE rows disallowed */
+    for (int i = 0; i < qcols; i++) {
+        if (!cmatchs[i]) { pkupc = i; break; }
+    }
+    return pkupc;
 }
 static bool assignMisses(cli   *c,      int    tmatch,    int   ncols,
                          int   qcols,   int    cmatchs[], uchar cmiss[],
@@ -528,12 +549,24 @@ static bool assignMisses(cli   *c,      int    tmatch,    int   ncols,
     }
     return 1;
 }
-static int getPkUpdateCol(int qcols, int cmatchs[]) {
-    int pkupc = -1; /* PK UPDATEs that OVERWRITE rows disallowed */
-    for (int i = 0; i < qcols; i++) {
-        if (!cmatchs[i]) { pkupc = i; break; }
+static bool ovwrPKUp(cli    *c,        int    pkupc, char *mvals[],
+                     uint32  mvlens[], uchar  pktyp, bt   *btr) {
+    aobj *ax   = createAobjFromString(mvals[pkupc], mvlens[pkupc], pktyp);
+    void *xrow = btFind(btr, ax);
+    destroyAobj(ax);
+    if (xrow) { addReply(c, shared.update_pk_overwrite); return 1; }
+    return 0;
+}
+static bool updatingIndex(int matches, int inds[], uchar cmiss[]) {
+    for (int i = 0; i < matches; i++) {
+        r_ind_t *ri = &Index[inds[i]];
+        if (ri->clist) {
+            for (int i = 0; i < ri->nclist; i++) {
+                if (!cmiss[ri->bclist[i]]) return 1;
+            }
+        } else if (!cmiss[ri->column]) return 1;
     }
-    return pkupc;
+    return 0;
 }
 int updateInnards(cli *c, int tmatch, sds vallist, sds wclause,
                   bool fromup, aobj *u_apk) {
@@ -574,6 +607,11 @@ int updateInnards(cli *c, int tmatch, sds vallist, sds wclause,
         if (!leftoverParsingReply(c, w.lvr))                   goto upc_end;
     } //dumpW(printf, &w); dumpWB(printf, &wb);
 
+    bool  upi = updatingIndex(matches, inds, cmiss);
+    bt   *btr = getBtr(w.wf.tmatch);
+    if (btr->dirty && upi) {// UPDATE IndexedColumns of DirtyTable - PROHIBITED
+        addReply(c, shared.update_on_dirty_w_inds);            goto upc_end;
+    }
     if (w.wtype != SQL_SINGLE_LKP) { /* FK, RQ, IN -> RANGE UPDATE */
         if (pkupc != -1) {
             addReply(c, shared.update_pk_range_query);         goto upc_end;
@@ -585,13 +623,16 @@ int updateInnards(cli *c, int tmatch, sds vallist, sds wclause,
                      ue, le);
     } else {                         /* SQL_SINGLE_UPDATE */
         uchar  pktyp = rt->col[0].type;
-        bt    *btr   = getBtr(w.wf.tmatch);
         if (pkupc != -1) { /* disallow pk updts that overwrite other rows */
             if (ovwrPKUp(c, pkupc, mvals, mvlens, pktyp, btr)) goto upc_end;
         }
-        aobj  *apk   = &w.wf.akey;
-        void  *rrow  = btFind(btr, apk);
-        if (!rrow) { addReply(c, shared.czero);                goto upc_end; }
+        aobj  *apk    = &w.wf.akey;
+        dwm_t  dwm    = btFindD(btr, apk);
+        void  *rrow   = dwm.k;
+        bool   gost   = rrow && !(*(uchar *)rrow);
+        bool   exists = (rrow || dwm.miss) && !gost;
+        if (!exists) { addReply(c, shared.czero);                goto upc_end; }
+        if (dwm.miss) { addReply(c, shared.cone); /* NOOP */     goto upc_end; }
         uc_t uc;
         init_uc(&uc, btr, w.wf.tmatch, ncols, matches, inds, vals, vlens,
                 cmiss, ue, le);

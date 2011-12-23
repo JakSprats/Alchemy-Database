@@ -40,6 +40,7 @@ typedef struct r_col {
 } r_col_t;
 
 //TODO many of r_tbl's elements are optional -> bitmap + malloc(elements)
+//TODO MM: many of r_tbl's elements are optional -> bitmap + malloc(elements)
 typedef struct r_tbl { // 114 bytes -> 120B
     sds      name;
     bt      *btr;
@@ -71,6 +72,7 @@ typedef struct r_tbl { // 114 bytes -> 120B
 } r_tbl_t;
 
 //TODO bool's can all be in a bitmap
+//TODO MM: r_ind's elements [clist,ofst] are optional -> bitmap+malloc(elements)
 typedef struct r_ind { // 67 bytes -> 72B
     bt     *btr;     /* Btree of index                                     */
     sds     name;    /* Name of index                                      */
@@ -112,7 +114,7 @@ typedef struct filter {
     int      imatch; /* index  filter runs on (for JOINS)                 */
     int      tmatch; /* table  filter runs on (for JOINS)                 */
     int      cmatch; /* column filter runs on                             */
-    enum OP  op;     /* operation filter applies [,=,!=]                  */
+    enum OP  op;     /* operation filter applies [>,<,=,!=]               */
 
     bool     iss;    /* is string, WHERE fk = 'fk' (1st iss=0, 2nd iss=1) */
     sds      key;    /* RHS of filter (e.g. AND x < 7 ... key=7)          */

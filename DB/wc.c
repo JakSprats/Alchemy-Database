@@ -625,8 +625,7 @@ bool executeJoin(cli *c, jb_t *jb) {
        for (int i = 0; i < jb->hw; i++) addQcol(jb, jb->ij[i].lhs.tmatch);
        addQcol(jb, jb->ij[jb->hw - 1].rhs.tmatch);
     }
-    joinGeneric(c, jb);
-    return 1;
+    return joinGeneric(c, jb);
 }
 bool doJoin(redisClient *c, sds clist, sds tlist, sds wclause) {
     jb_t jb; init_join_block(&jb);

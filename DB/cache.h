@@ -1,5 +1,5 @@
 /*
- * This file implements the DDL SQL commands of AlchemyDatabase
+ * This file implements Alchemy's EVICT & RECACHE commands
  *
 
 AGPL License
@@ -23,21 +23,13 @@ ALL RIGHTS RESERVED
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef __A_DDL__H
-#define __A_DDL__H
+#ifndef __A_CACHE__H
+#define __A_CACHE__H
 
-#include "dict.h"
 #include "redis.h"
 
 #include "common.h"
 
-void createCommand   (redisClient *c);
-void dropCommand     (redisClient *c);
-void alterCommand    (redisClient *c);
+void evictCommand(redisClient *c);
 
-void initTable(r_tbl_t *rt);
-
-void addColumn(int tmatch, char *cname, int ctype);
-ulong emptyTable(int tmatch);
-
-#endif /*__A_DDL__H */ 
+#endif /*__A_CACHE__H */ 

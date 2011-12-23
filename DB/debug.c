@@ -57,6 +57,7 @@ extern long JoinLim; extern long JoinOfst; extern bool JoinQed;
   (*prn)("\t\tJoinQed: %d JoinLim: %ld JoinOfst: %ld\n", \
          JoinQed, JoinLim, JoinOfst);
 
+//TODO move to output.c
 // DEFERRED_ADD_REPLY_BULK DEFERRED_ADD_REPLY_BULK DEFERRED_ADD_REPLY_BULK
 void setDeferredMultiBulkError(redisClient *c, void *node, sds error) {
     if (!node) return; /* Abort when addDeferredMultiBulkLength not called. */
@@ -72,9 +73,49 @@ void setDeferredMultiBulkError(redisClient *c, void *node, sds error) {
         }
     }
 }
+void resetDeferredMultiBulk_ToError(redisClient *c, void *node, sds error) {
+    if (!node) return; /* Abort when addDeferredMultiBulkLength not called. */
+    listRelease(c->reply);
+    c->reply = listCreate();
+    listSetFreeMethod(c->reply, decrRefCount);
+    listSetDupMethod (c->reply, dupClientReplyValue);
+    robj *r  = createStringObject(error, sdslen(error));
+    listAddNodeTail(c->reply, r);
+}
+void prependDeferredMultiBulkError(redisClient *c, void *node, sds error) {
+    if (!node) return; /* Abort when addDeferredMultiBulkLength not called. */
+    listNode *ln  = (listNode*)node;
+    robj     *len = listNodeValue(ln);
+    len->ptr      = error;
+    if (ln->next) {
+        robj *next = listNodeValue(ln->next);
+        /* Only glue when the next node is non-NULL (an sds in this case) */
+        if (next->ptr) {
+            len->ptr = sdscatlen(len->ptr, next->ptr, sdslen(next->ptr));
+            listDelNode(c->reply,ln->next);
+        }
+    }
+}
 void setDeferredMultiBulkLong(redisClient *c, void *node, long card) {
+    if (!node) return; /* Abort when addDeferredMultiBulkLength not called. */
     sds rep_int = sdscatprintf(sdsempty(), ":%ld\r\n", card);
-    setDeferredMultiBulkError(c, node, rep_int);
+    prependDeferredMultiBulkError(c, node, rep_int);
+}
+void replaceDMB_WithDirtyMissErr(cli *c, void *node) {
+    if (!node) addReply(c, shared.dirty_miss); // SELECT "COUNT(*)"
+    else {
+        sds err = sdsdup(shared.dirty_miss->ptr); // FREE ME 111
+        resetDeferredMultiBulk_ToError(c, node, err);
+        sdsfree(err);                             // FREED 111
+    }
+}
+void replaceDMB_With_QO_Err(cli *c, void *node) {
+    if (!node) addReply(c, shared.join_qo_err); // SELECT "COUNT(*)"
+    else {
+        sds err = sdsdup(shared.join_qo_err->ptr); // FREE ME 111
+        resetDeferredMultiBulk_ToError(c, node, err);
+        sdsfree(err);                             // FREED 111
+    }
 }
 
 // QUEUE_OUTPUT QUEUE_OUTPUT QUEUE_OUTPUT QUEUE_OUTPUT QUEUE_OUTPUT
@@ -194,6 +235,7 @@ void dumpW(printer *prn, cswc_t *w) {
     dumpFL(prn, "\t\t", "FLIST", w->flist);
     (*prn)("\tEND dumpW\n");
 }
+
 void dumpIJ(cli *c, printer *prn, int i, ijp_t *ij, ijp_t *nij) {
     int lt = ij->lhs.tmatch; int lc = ij->lhs.cmatch;
     int lj = ij->lhs.jan;    int li = ij->lhs.imatch;

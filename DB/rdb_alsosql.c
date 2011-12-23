@@ -205,7 +205,9 @@ static int rdbLoadRow(FILE *fp, bt *btr, int tmatch) {
                    LX(btr) ? &LX_RDBPointer : XL(btr) ? &XL_RDBPointer :
                    XX(btr) ? &XX_RDBPointer : row_malloc(btr, ssize);
     if (fread(stream, ssize, 1, fp) == 0)                       return -1;
+#ifndef TEST_WITH_TRANS_ONE_ONLY
     if (btr->numkeys == TRANS_ONE_MAX) btr = abt_resize(btr, TRANS_TWO);
+#endif
     if      UU(btr) bt_insert(btr, UUbuf);
     else if UL(btr) bt_insert(btr, &UL_RDBPointer);
     else if LU(btr) bt_insert(btr, &LU_RDBPointer);

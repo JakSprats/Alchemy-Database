@@ -33,20 +33,26 @@ ALL RIGHTS RESERVED
 #include "query.h"
 #include "common.h"
 
-void initAobj       (aobj *a);
-void initAobjZeroNum(aobj *a, uchar ctype);
-bool initAobjInt    (aobj *a, ulong l);
-void initAobjLong   (aobj *a, ulong l);
-void initAobjString (aobj *a, char *s, int len);
-void initAobjU128   (aobj *a, uint128 x);
-void initAobjFloat  (aobj *a, float f);
-void initAobjFromStr(aobj *a, char *s, int len, uchar ctype);
+void initAobj        (aobj *a);
+void initAobjZeroNum (aobj *a, uchar ctype);
+bool initAobjInt     (aobj *a, ulong l);
+void initAobjLong    (aobj *a, ulong l);
+void initAobjString  (aobj *a, char *s, int len);
+void initAobjU128    (aobj *a, uint128 x);
+void initAobjFloat   (aobj *a, float f);
+void initAobjFromStr (aobj *a, char *s, int len, uchar ctype);
+void initAobjFromLong(aobj *a, ulong l,          uchar ctype);
+
 void releaseAobj(void *a);
 void destroyAobj(void *a);
 
 void  aobjClone (aobj *dest, aobj *src);
+#define CREATE_CLONE(dest, src) \
+  aobj dest; aobjClone(&dest, src);
+
 aobj *cloneAobj (aobj *a);
 aobj *copyAobj  (aobj *a); //WARNING: do NOT double free
+
 void  convertSdsToAobj(sds s, aobj *a, uchar ctype);
 aobj *createAobjFromString(char *s, int len, uchar ctype);
 aobj *createAobjFromLong  (ulong l);
@@ -72,6 +78,10 @@ bool aobjGE(aobj *a, aobj *b);
 
 //USED for PREPARE/EXECUTE
 int getSizeAobj(aobj *a);
+
+void  incrbyAobj  (aobj *a, ulong l);
+void  decrbyAobj  (aobj *a, ulong l);
+ulong subtractAobj(aobj *a, aobj *b);
 
 // DEBUG
 void dumpAobj(printer *prn, aobj *a);

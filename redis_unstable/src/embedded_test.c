@@ -158,7 +158,6 @@ static void test_scan(bool dbg) {
               num_print_callback, -1, "6_5_4", dbg);
 }
 
-
 int main(int argc, char **argv) {
     argc = 0; argv = NULL; /* compiler warning */
     bool dbg      = 0;

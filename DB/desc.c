@@ -165,7 +165,7 @@ void sqlDumpCommand(redisClient *c) {
             if((fp = fopen(fname, "w")) == NULL) {
                 sds err = sdscatprintf(sdsempty(),
                                   "-ERR failed to open: %s\r\n", fname);
-                setDeferredMultiBulkError(c, rlen, err); return;
+                prependDeferredMultiBulkError(c, rlen, err); return;
             }
         }
         btEntry *be;
@@ -175,7 +175,7 @@ void sqlDumpCommand(redisClient *c) {
         list  *cmatchl = listCreate();
         int    qcols   = get_all_cols(tmatch, cmatchl, 1, 1);
         CMATCHS_FROM_CMATCHL
-        btSIter *bi    = btGetFullRangeIter(btr, 1);
+        btSIter *bi    = btGetFullRangeIter(btr, 1, NULL);
         while ((be = btRangeNext(bi, 1))) {
             aobj *apk  = be->key;
             void *rrow = be->val;
@@ -195,7 +195,7 @@ void sqlDumpCommand(redisClient *c) {
                                                             bytes, card, fname);
                     sds err = sdscatprintf(sdsempty(), SINGLE_LINE,
                                                             sdslen(s), s);
-                    setDeferredMultiBulkError(c, rlen, err); 
+                    prependDeferredMultiBulkError(c, rlen, err); 
                     sdsfree(s); fclose(fp); decrRefCount(r);
                     ok = 0; break;
                 }
@@ -224,11 +224,11 @@ void sqlDumpCommand(redisClient *c) {
             sds s   = sdscatprintf(sdsempty(), FILE_DUMP_SUCCESS,
                                                 bytes, card, fname);
             sds err = sdscatprintf(sdsempty(), SINGLE_LINE, sdslen(s), s);
-            setDeferredMultiBulkError(c, rlen, err); 
+            prependDeferredMultiBulkError(c, rlen, err); 
             sdsfree(s); fclose(fp);
         } else {
             sds err = sdsnewlen(EMPTY_DUMP2FILE, strlen(EMPTY_DUMP2FILE));
-            setDeferredMultiBulkError(c, rlen, err); 
+            prependDeferredMultiBulkError(c, rlen, err); 
         }
     } else setDeferredMultiBulkLength(c, rlen, card);
 }

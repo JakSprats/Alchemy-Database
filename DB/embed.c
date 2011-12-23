@@ -31,6 +31,7 @@ ALL RIGHTS RESERVED
 
 #include "xdb_client_hooks.h"
 #include "xdb_hooks.h"
+#include "prep_stmt.h"
 #include "query.h"
 #include "find.h"
 #include "alsosql.h"
@@ -73,6 +74,7 @@ static inline void initEmbeddedResponse() {
         CurrEresp     =  ersp;
     }
 }
+
 static inline void resetEmbeddedResponse() {
     eresp_t *ersp = CurrEresp;
     if (ersp->objs) {
@@ -94,6 +96,7 @@ static void resetEmbeddedAlchemy() {
 
 #define NUM_MANY_ROBJ 1000
 robj *ManyRobj[NUM_MANY_ROBJ];
+
 static bool embeddedInited = 0;
 void initEmbeddedAlchemy() {
     OutputMode = OUTPUT_EMBEDDED;
@@ -124,7 +127,6 @@ void release_ereq(ereq_t *ereq) {
         }
         zfree(ereq->eargv);                              // FREED 115
     }
-
 }
 
 static uint32 numElementsReply(redisReply *r) {
@@ -199,13 +201,11 @@ static void redisReplyToEmbedResp(cli *c, eresp_t *ersp) {
             redisReply *reply = (redisReply*)_reply;
             ersp->nobj        = numElementsReply(reply);
             ersp->objs        = malloc(sizeof(aobj) * ersp->nobj);
-            int         cnt   = 0;
+            int cnt = 0;
             createEmbedRespFromReply(ersp, reply, &cnt);
-            freeReplyObject(reply);
         }
-        redisFree(context);
+        sdsfree(out);
     }
-    sdsfree(out);
 }
 
 static void addSelectedColumnNames() {
@@ -242,7 +242,6 @@ static eresp_t *__e_alchemy(int argc, robj **rargv, select_callback *scb,
     c->argc  = argc;        c->argv  = rargv;
     processCommand(c);
     redisReplyToEmbedResp(c, CurrEresp);
-
     if (freer) {
         for (int i = 0; i < argc; i++) decrRefCount(rargv[i]);
         zfree(rargv);

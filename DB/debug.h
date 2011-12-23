@@ -37,13 +37,18 @@ void explainRQ     (cli *c,     cswc_t *w, wob_t *wb, bool cstar,
 void explainJoin   (cli *c, jb_t *jb);
 void explainCommand(cli *c);
 
-void setDeferredMultiBulkLong (cli *c, void *node, long card);
-void setDeferredMultiBulkError(cli *c, void *node, sds error);
-
 // QUEUE_PRINTF_TO_CLIENT QUEUE_PRINTF_TO_CLIENT QUEUE_PRINTF_TO_CLIENT
 void initQueueOutput();
 int  queueOutput(const char *format, ...);
 void dumpQueueOutput(cli *c);
+
+// OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT
+void resetDeferredMultiBulk_ToError(cli *c, void *node, sds error);
+void setDeferredMultiBulkLong      (cli *c, void *node, long card);
+void prependDeferredMultiBulkError (cli *c, void *node, sds error);
+
+void replaceDMB_WithDirtyMissErr(cli *c, void *node);
+void replaceDMB_With_QO_Err     (cli *c, void *node);
 
 // DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
 void dumpIJ(cli *c, printer *prn, int i, ijp_t *ij, ijp_t *nij);

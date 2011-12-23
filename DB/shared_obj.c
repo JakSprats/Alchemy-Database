@@ -339,4 +339,16 @@ void DXDB_createSharedObjects() {
         "-ERR SYNTAX: EXECUTE number-of-args does NOT match PREPARE number-of-args\r\n"));
     shared.execute_miss         = createObject(REDIS_STRING,sdsnew(
         "-ERR NOT-FOUND: EXECUTE prepared statement not found\r\n"));
+
+    shared.dirty_miss = createObject(REDIS_STRING,sdsnew(
+        "-MISS: row has been EVICTED\r\n"));
+    shared.evict_other = createObject(REDIS_STRING,sdsnew(
+        "-ERR: EVICT only supported on tables w/ [INT|LONG] PKs & 2+ columns\r\n"));
+
+    shared.replace_on_dirty_w_inds = createObject(REDIS_STRING,sdsnew(
+        "-ERR: REPLACE on a Table w/ SecondaryIndexes & EVICTIONS - PROHIBITED\r\n"));
+    shared.insert_dirty_pkdecl = createObject(REDIS_STRING,sdsnew(
+        "-ERR: INSERT on a Table w/ EVICTIONS can NOT declare PK values (auto-increment must be used)\r\n"));
+    shared.update_on_dirty_w_inds = createObject(REDIS_STRING,sdsnew(
+        "-ERR: UPDATE with IndexedColumn Updates on a Table w/ EVICTIONS - PROHIBITED\r\n"));
 }
