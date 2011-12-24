@@ -59,7 +59,7 @@ void evictCommand(cli *c) {
         aobj apk; initAobjFromStr(&apk, pk, sdslen(pk), btr->s.ktype);
         dwm_t  dwm  = btFindD(btr, &apk); releaseAobj(&apk);
         void  *rrow = dwm.k;
-        bool   gost = rrow && !(*(uchar *)rrow);
+        bool   gost = !UU(btr) && rrow && !(*(uchar *)rrow);
         printf("EVICT: K: %p MISS: %d gost: %d\n", dwm.k, dwm.miss, gost);
         if (!rrow || dwm.miss || gost) continue;
         MATCH_INDICES(tmatch)

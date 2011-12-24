@@ -214,12 +214,12 @@ static long singleOpPK(range_t *g, row_op *p) {               //DEBUG_SINGLE_PK
     cswc_t  *w     = g->co.w; qr_t *q = g->q;
     aobj    *apk   = &w->wf.akey;
     g->co.btr      = getBtr(w->wf.tmatch);
-    dwm_t    dwm   = btFindD(g->co.btr, apk); if (dwm.miss) return -1;
-    void    *rrow  = dwm.k;
-    bool     gost  = !(*(uchar *)rrow);       if (gost)     return -1;
+    dwm_t    dwm   = btFindD(g->co.btr, apk);         if (dwm.miss) return -1;
+    void    *rrow  = dwm.k;                           if (!rrow)    return  0;
+    bool     gost  = !UU(g->co.btr) && !(*(uchar *)rrow); if (gost) return -1;
     long     card  =  0;
-    if (!pk_row_op(apk, rrow, g, p, q, &card))              return -1;
-    else                                                    return card;
+    if (!pk_row_op(apk, rrow, g, p, q, &card))                      return -1;
+    else                                                            return card;
 }
 
 // RANGE_DEL_SIMULATE_DR RANGE_DEL_SIMULATE_DR RANGE_DEL_SIMULATE_DR
@@ -662,7 +662,7 @@ static long inOpPK(range_t *g, row_op *p) {                //printf("inOpPK\n");
         aobj  *apk  = ln->value;
         dwm_t  dwm  = btFindD(g->co.btr, apk); if (dwm.miss) return -1;
         void  *rrow = dwm.k;
-        bool   gost = !(*(uchar *)rrow);       if (gost)     continue;
+        bool   gost = !UU(g->co.btr) && !(*(uchar *)rrow); if (gost) continue;
         if (rrow && !pk_op_l(apk, rrow, g, p, wb, q, &card, &loops, &brkr)) CBRK
         if (brkr) break;
     } listReleaseIterator(li);

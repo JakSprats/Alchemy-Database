@@ -867,7 +867,8 @@ printf("\n\nSTART: deleteRow: key: "); dumpAobj(printf, apk);
     bt    *btr  = getBtr(tmatch);
     dwm_t  dwm  = btFindD(btr, apk);
     void  *rrow = dwm.k;
-    bool   gost = rrow && !(*(uchar *)rrow) && btGetDR(btr, apk);   DEBUG_DELR_1
+    bool   gost = !UU(btr) && rrow && !(*(uchar *)rrow) && btGetDR(btr, apk);
+                                                                    DEBUG_DELR_1
     if ((!rrow && !dwm.miss) || gost) return 0; // GHOST -> ECASE:6
     if (matches) { // delete indexes
         if (dwm.miss) server.delete_miss = 1; // ASYNC delFromIndex()

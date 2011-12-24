@@ -147,7 +147,7 @@ uchar insertCommit(cli  *c,      sds     uset,   sds     vals,
     bt    *btr      = getBtr(tmatch);
     dwm_t  dwm      = btFindD(btr, &apk);
     void  *rrow     = dwm.k;
-    bool   gost     = rrow && !(*(uchar *)rrow);
+    bool   gost     = !UU(btr) && rrow && !(*(uchar *)rrow);
     bool   exists   = (rrow || dwm.miss) && !gost;
     bool   isinsert = !upd && !repl;
     if (btr->dirty) { // NOTE: DirtyTable's have prohibited actions
@@ -418,7 +418,7 @@ bool sqlSelectBinary(cli   *c, int tmatch, bool cstar, int *cmatchs, int qcols,
         if (dwm.miss) { addReply(c, shared.dirty_miss);             return 0; }
         if (cstar)    { addReply(c, shared.cone);                   return 0; }
         void  *rrow  = dwm.k;
-        bool   gost  = rrow && !(*(uchar *)rrow);
+        bool   gost  = !UU(btr) && rrow && !(*(uchar *)rrow);
         if (gost || !rrow) { addReply(c, shared.nullbulk);          return 0; }
         robj *r = outputRow(btr, rrow, qcols, cmatchs, apk, tmatch);
         addReply(c, shared.singlerow);
@@ -629,7 +629,7 @@ int updateInnards(cli *c, int tmatch, sds vallist, sds wclause,
         aobj  *apk    = &w.wf.akey;
         dwm_t  dwm    = btFindD(btr, apk);
         void  *rrow   = dwm.k;
-        bool   gost   = rrow && !(*(uchar *)rrow);
+        bool   gost   = !UU(btr) && rrow && !(*(uchar *)rrow);
         bool   exists = (rrow || dwm.miss) && !gost;
         if (!exists) { addReply(c, shared.czero);                goto upc_end; }
         if (dwm.miss) { addReply(c, shared.cone); /* NOOP */     goto upc_end; }

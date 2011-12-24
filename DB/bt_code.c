@@ -994,7 +994,7 @@ void bt_delete_d(bt *btr, bt_data_t k, aobj *akey, bt_data_t stream) {
     if (!dpdr) { // KEY is final EVICTION in PREV's DR
         uchar *stream = KEYS(btr, dwm.x, dwm.i);
         void  *rrow   = parseStream(stream, btr);
-        bool   gost   = rrow && !(*(uchar *)rrow);
+        bool   gost   = !UU(btr) && rrow && !(*(uchar *)rrow);
 printf("gost: %d\n", gost);
         if (gost) bt_delete(btr, KEYS(btr, dwm.x, dwm.i), NULL); // ECASE:7
         else      zeroDR(btr, dwm.x, dwm.i, dwm.p, dwm.pi);      // ECASE:2
