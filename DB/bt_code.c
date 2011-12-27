@@ -58,12 +58,12 @@ static bt_data_t findmaxkey (bt *btr, bt_n *x);
 static int       real_log2(unsigned int a, int nbits);
 
 /* CACHE TODO LIST
+  0.) [dr+scion] moved as single unit
   1.) check "gost = !UU(btr) &&" can UUs have gosts????
-  2.) break incrPrevDR() into incrPrevDR_[1,2B,2C]
-  3.) setBTKeyCase2_B/C need "else x = zeroDR()" - for DELETEs around MISSes???
   4.) remove_key() replace MISS w/ GHOST, abt abstraction needed [in abt_del()]
   5.) setDR() on bt_insert()
   6.) DS: n.DR = o.DR ... (cloneDR)
+  7.) DS in rdbSave/Load
 */
 
 // HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER
@@ -84,7 +84,6 @@ bool isGhostRow(bt *btr, bt_n *x, int i) {
 }
 
 // MEMORY_MANAGEMENT MEMORY_MANAGEMENT MEMORY_MANAGEMENT MEMORY_MANAGEMENT
-
 /* NOTE used-memory bookkeeping maintained at the Btree level */
 static void bt_increment_used_memory(bt *btr, size_t size) {  //DEBUG_INCR_MEM
     btr->msize += (ull)size;
@@ -162,8 +161,7 @@ bt *bt_create(bt_cmp_t cmp, uchar trans, bts_t *s) {
     btr->nbyte      = nbyte;
     btr->kbyte      = kbyte;
     btr->root       = allocbtreenode(btr, 1, 0);
-    btr->numnodes   = 1;
-    //printf("bt_create\n"); bt_dump_info(printf, btr);
+    btr->numnodes   = 1; //printf("bt_create\n"); bt_dump_info(printf, btr);
     return btr;
 }
 
@@ -242,8 +240,7 @@ static int findkindex(bt *btr, bt_n *x, bt_data_t k, int *r, btIterator *iter) {
 }
 
 // KEY_SHUFFLING KEY_SHUFFLING KEY_SHUFFLING KEY_SHUFFLING KEY_SHUFFLING
-
-// NOTE: KEYS can be [4,8,12,16,20,24,32 bytes], so logic is needed
+// NOTE: KEYS are variable sizes: [4,8,12,16,20,24,32 bytes]
 #define ISVOID(btr)  (btr->s.ksize == VOIDSIZE)
 #define ISUINT(btr)  (btr->s.ksize == UINTSIZE)
 
@@ -264,11 +261,11 @@ typedef struct btn_pos {
     bt_n *x;
     int   i;
 } bp_t;
-static inline void free_bp(void *v) { free(v); }
 typedef struct two_bp_gens {
     bp_t p; // parent
     bp_t c; // child
 } tbg_t;
+static inline void free_bp(void *v) { free(v); }
 
 //TODO inline
 static bt_n *addDStoBTN(bt *btr, bt_n *x, bt_n *p, int pi) {
@@ -318,43 +315,42 @@ static tbg_t get_prev_child_recurse(bt *btr, bt_n *x, int i) {
     tbg.c.x = xp; tbg.c.i = xp->n - 1;                      DEBUG_GET_C_REC_2
     return tbg;
 }
-//TODO break into incrPrevDR_[1,2B,2C]
-static bt_n *incrPrevDR(bt *btr, bt_n *x, int i, uint32 dr, bt_n *p, int pi,
-                        list *plist, bool isb) {
-    if (!dr) return x;                                      DEBUG_INCR_PREV_DR
-    if (x->leaf) { //printf("incrPrevDR: leaf\n");
-        if (i > 0) return incrDR(btr, x, i - 1, dr, p,  pi);  // prev sibling
-        else   {
-            if (x == findminnode(btr, btr->root)) { // MIN KEY
-                btr->dirty_left += dr; btr->dirty = 1; return x;
-            }
-            listNode *ln; bt_n *rx = btr->root; int ri = 0;
-            listIter *li = listGetIterator(plist, AL_START_HEAD);
-            while((ln = listNext(li))) { // walk recursion backwards
-                bp_t *bp = ln->value;
-                //printf("LLLLLLLLL: x: %p i: %d\n", bp->x, bp->i);
-                if (bp->i) { rx = bp->x; ri = bp->i - 1; break; }
-            }
-            bt_n *prx = btr->root; int pri = 0;
-            if (rx != btr->root) { // get parent
-                ln  = listNext(li); bp_t *bp = ln->value;
-                prx = bp->x;        pri      = bp->i;
-            } listReleaseIterator(li);
-            //printf("rx: %p ri: %d prx: %p pri: %d\n", rx, ri, prx, pri);
-            incrDR(btr, rx, ri, dr, prx, pri);
-            return x; // x not modified, only rx
+static bt_n *incrPrevDR_leaf(bt   *btr, bt_n *x,  int   i, uint32 dr,
+                             bt_n *p,   int   pi, list *plist) {
+    if (!dr)   return x;                                     DEBUG_INCR_PREV_DR
+    if (i > 0) return incrDR(btr, x, i - 1, dr, p,  pi);  // prev sibling
+    else   {
+        if (x == findminnode(btr, btr->root)) { // MIN KEY
+            btr->dirty_left += dr; btr->dirty = 1; return x;
         }
-    } else { //printf("incrPrevDR NODE i: %d isb: %d\n", i, isb);
-        if (isb) { // NOTE: for CASE2_B (need recursive previous child)
-            uint32 drc = getDR(btr, x, i);
-            if (drc) { dr += drc; zeroDR(btr, x, i, p, pi); }
-            tbg_t tbg  = get_prev_child_recurse(btr, x, i);
-            DEBUG_INCR_PREV
-            incrDR(btr, tbg.c.x, tbg.c.i, dr, tbg.p.x, tbg.p.i);
-            return x; // x not modified, only tbg.c.x
+        listNode *ln; bt_n *rx = btr->root; int ri = 0;
+        listIter *li = listGetIterator(plist, AL_START_HEAD);
+        while((ln = listNext(li))) { // walk recursion backwards
+            bp_t *bp = ln->value;
+            if (bp->i) { rx = bp->x; ri = bp->i - 1; break; }
         }
-        return incrDR(btr, x, i, dr, p,  pi); //NOTE: for CASE2_A (i==prev)
+        bt_n *prx = btr->root; int pri = 0;
+        if (rx != btr->root) { // get parent
+            ln  = listNext(li); bp_t *bp = ln->value;
+            prx = bp->x;        pri      = bp->i;
+        } listReleaseIterator(li);
+        //printf("rx: %p ri: %d prx: %p pri: %d\n", rx, ri, prx, pri);
+        incrDR(btr, rx, ri, dr, prx, pri);
+        return x; // x not modified, only rx
     }
+}
+static bt_n *incrPrevDR_node(bt   *btr, bt_n *x,  int   i,     uint32 dr,
+                             bt_n *p,   int   pi, list *plist, bool   isb) {
+    if (!dr) return x;                                       DEBUG_INCR_PREV_DR
+    //printf("incrPrevDR_node i: %d isb: %d\n", i, isb);
+    if (isb) { // NOTE: for CASE2_B (need recursive previous child)
+        uint32 drc = getDR(btr, x, i);
+        if (drc) { dr += drc; zeroDR(btr, x, i, p, pi); }
+        tbg_t tbg  = get_prev_child_recurse(btr, x, i);
+        DEBUG_INCR_PREV
+        incrDR(btr, tbg.c.x, tbg.c.i, dr, tbg.p.x, tbg.p.i);
+        return x; // x not modified, only tbg.c.x
+    } else return incrDR(btr, x, i, dr, p,  pi); //NOTE: for CASE2_A (i==prev)
 }
 
 // SET_BT_KEY SET_BT_KEY SET_BT_KEY SET_BT_KEY SET_BT_KEY SET_BT_KEY
@@ -370,8 +366,8 @@ static void setBTKeyRaw(bt *btr, bt_n *x, int i, void *src) { //PRIVATE
 static bt_n *setBTKeyCase2_A(bt   *btr, bt_n *x, int i,  dwd_t dwd,
                              bool  drt, bt_n *p, int pi, list *plist) {
     DEBUG_SET_BTKEY_2A
-    if (drt) x = incrPrevDR(btr, x, i, dwd.dr, p, pi, plist, 0);
-    else     x = zeroDR    (btr, x, i, p, pi);
+    if (drt) x = incrPrevDR_node(btr, x, i, dwd.dr, p, pi, plist, 0);
+    else     x = zeroDR         (btr, x, i,         p, pi);
     setBTKeyRaw(btr, x, i, dwd.k);
     return x;
 }
@@ -379,25 +375,23 @@ static bt_n *setBTKeyCase2_B(bt   *btr, bt_n *x, int i,  dwd_t dwd,
                              bool  drt, bt_n *p, int pi, list *plist) {
     DEBUG_SET_BTKEY_2B
     if (drt) {
-        x = incrPrevDR(btr, x, i, 1,      p, pi, plist, 1);
-        x = setDR     (btr, x, i, dwd.dr, p, pi);
-    }
-//TODO else x = zeroDR() ???
+        x = incrPrevDR_node(btr, x, i, 1,      p, pi, plist, 1);
+        x = setDR          (btr, x, i, dwd.dr, p, pi);
+    } else x = zeroDR      (btr, x, i,         p, pi);
     setBTKeyRaw(btr, x, i, dwd.k);
     return x;
 }
 
 static bt_n *setBTKeyCase2_C(bt  *btr, bt_n *x, int i, dwd_t dwd,
                              bool  drt, bt_n *p, int pi) {   DEBUG_SET_BTKEY_2C
-    if (drt) x = setDR(btr, x, i, dwd.dr, p, pi);
-//TODO else x = zeroDR() ???
+    if (drt) x = setDR (btr, x, i, dwd.dr, p, pi);
+    else     x = zeroDR(btr, x, i,         p, pi);
     setBTKeyRaw(btr, x, i, dwd.k);
     return x;
 }
 static bt_n *setBTKeyInsert(bt   *btr, bt_n *x, int i, void *src,
                             bt_n *p,   int   pi) { //DEBUG_SET_BTKEY_INS
-    x = zeroDR(btr, x, i, p, pi); setBTKeyRaw(btr, x, i, src);
-    return x;
+    x = zeroDR(btr, x, i, p, pi); setBTKeyRaw(btr, x, i, src); return x;
 }
 static bt_n *setBTKey(bt *btr,  bt_n *dx, int di,  bt_n *sx, int si,
                       bool drt, bt_n *pd, int pdi, bt_n *ps, int psi) {
@@ -405,8 +399,7 @@ static bt_n *setBTKey(bt *btr,  bt_n *dx, int di,  bt_n *sx, int si,
         uint32 dr = getDR      (btr, sx, si);               DEBUG_SET_BTKEY
         dx        = overwriteDR(btr, dx, di, dr, pd, pdi);
         sx        = zeroDR     (btr, sx, si, ps, psi);
-    }
-//TODO else x = zeroDR() ???
+    } else sx = zeroDR         (btr, sx, si, ps, psi);
     setBTKeyRaw(btr, dx, di, KEYS(btr, sx, si));
     return dx;
 }
@@ -593,10 +586,10 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,    int    s, bool drt,
         if (drt && !s) dwd.dr++; // NOTE: only place DR grows
         DEBUG_DEL_CASE_1_DIRTY
         if (dwd.ngost && INODE(btr) && !s) { // INODE does ngost HERE
-            dwd.ngost = 0; x = incrPrevDR(btr, x, i, dwd.dr, p, pi, plist, 0);
+            dwd.ngost = 0; x = incrPrevDR_leaf(btr, x, i, dwd.dr, p, pi, plist);
         }
-        if (!s && drt) x = incrPrevDR(btr, x, i, dwd.dr, p, pi, plist, 0);
-        if (!s)        x = zeroDR(btr, x, i, p, pi);
+        if (!s && drt) x = incrPrevDR_leaf    (btr, x, i, dwd.dr, p, pi, plist);
+        if (!s)        x = zeroDR             (btr, x, i, p, pi);
         if BIG_BT(btr) memcpy(BT_DelBuf, kp, btr->s.ksize);
         mvXKeys(btr, &x, i, &x, i + 1, (x->n - i - 1), ks, drt, p, pi, p, pi);
         printf("CASE1: post mvXKeys\n");
@@ -823,8 +816,8 @@ printf("gost: %d\n", gost);
         bt_insert(btr, stream); // insert a "GHOST" row
         dwm         = findnodekey(btr, btr->root, k, akey); // GHOST DR -> diff
         setDR(btr, dwm.x, dwm.i, ndr, dwm.p, dwm.pi);
-    }
-} //TODO setDR() on bt_insert()
+    } //TODO setDR() on bt_insert()
+}
 
 // ACCESSORS ACCESSORS ACCESSORS ACCESSORS ACCESSORS ACCESSORS ACCESSORS
 static inline bool key_covers_miss(bt *btr, bt_n *x, int i, aobj *akey) {
