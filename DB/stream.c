@@ -157,7 +157,7 @@ static void wUCol(uchar **row, uchar sflag, ulong icol, bool isi) {
 }
 static ulong sI2I(uchar *data, uint32 *clen, bool isi) {
     ulong  val = 0;
-    uchar  b1 = *data;
+    uchar  b1  = *data;
     if (b1 & COL_1BYTE_INT) {
         if (clen) *clen  = 1;
         val = (*(uchar *)data);    val -= 1; val /= 2;

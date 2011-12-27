@@ -3005,6 +3005,7 @@ function test_OBT() {
   test_CI_ALL_ALL
 }
 
+# PREPARE_EXECUTE PREPARE_EXECUTE PREPARE_EXECUTE PREPARE_EXECUTE
 function benchmark_SB() {
   $CLI DROP   TABLE SB > /dev/null;
   $CLI CREATE TABLE SB "(userid U128, cu U128)";
@@ -3038,6 +3039,7 @@ function test_prepare_execute() {
   $CLI EXECUTE P_JOIN 11
 }
 
+# CACHE_SIMPLE CACHE_SIMPLE CACHE_SIMPLE CACHE_SIMPLE CACHE_SIMPLE
 function populate_simple() {
   $CLI DROP TABLE simple;
   $CLI CREATE TABLE simple "(pk INT, fk INt, col2 INT)";

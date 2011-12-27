@@ -52,11 +52,9 @@ static void dump_tree_node(printer *prn, bt *btr, bt_n *x, int depth,
 static int treeheight(bt *btr);
 
 void printKey(bt *btr, bt_n *x, int i) {
-    if (i < 0 || i >= x->n) {
-        printf(" NO KEY\n");
-    } else {
-        aobj  akey;
-        void *be = KEYS(btr, x, i);
+    if (i < 0 || i >= x->n) printf(" NO KEY\n");
+    else {
+        aobj akey; void *be = KEYS(btr, x, i);
         //printf("btr: %p x: %p i: %d be: %p\n", btr, x, i, be);
         convertStream2Key(be, &akey, btr);
         dumpAobj(printf, &akey);

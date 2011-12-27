@@ -38,3 +38,11 @@ CLEANUP:
 
 MISC:
   1.) LOAD DATE FROM INFILE ... 1st rev as Lua routine reading in CSV file
+
+INDEX.POS()
+  1.) ALLOW ONLY on SIMP_UNIQ()
+
+CACHE:
+  1.) specify "AUTO INCREMENT" in "CREATE TABLE" declaration
+  2.) DIRTY STREAM as STREAM
+  3.) slab allocator for the myriad of different btree-node sizes

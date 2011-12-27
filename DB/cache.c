@@ -49,6 +49,7 @@ void evictCommand(cli *c) {
     int   len   = sdslen(c->argv[1]->ptr);
     char *tname = rem_backticks(c->argv[1]->ptr, &len); // Mysql compliant
     TABLE_CHECK_OR_REPLY(tname,)
+    //TODO must be NUM PK & auto-inc
     bt   *btr   = getBtr(tmatch);
     if OTHER_BT(btr) { addReply(c, shared.evict_other); return; }
     if (!(C_IS_NUM(btr->s.ktype))) { addReply(c, shared.evict_other); return; }

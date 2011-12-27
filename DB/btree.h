@@ -139,7 +139,7 @@ void  printKey(struct btree *btr, struct btreenode *x, int i);
    5.) G]   -> []  |  -1       | happens in RangeDelete - HARD_DELETE
    6.) xGE* -> GE  |  6,7      | NOOP
    7.) GxE] -> []  |  -1       |
-  *8.) GxEE -> xGE |  6,7      | not a distince case: combo of cases [7 & 4]
+  *8.) GxEE -> xGE |  6,7      | not a distinct case: combo of cases [7 & 4]
 */
 
 #endif /* _BTREE_H_ */

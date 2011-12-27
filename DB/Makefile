@@ -77,7 +77,7 @@ alsosql.o: alsosql.h debug.h bt.h filter.h query.h index.h range.h rpipe.h desc.
 aobj.o: aobj.h row.h parser.h query.h common.h
 aof_alsosql.o: aof_alsosql.h lru.h bt_iterator.h alsosql.h index.h stream.h common.h
 bt.o: bt.h btree.h btreepriv.h query.h stream.h common.h
-bt_code.o: btree.h btreepriv.h bt.h bt_iterator.h common.h
+bt_code.o: btree.h btreepriv.h btreedebug.h bt.h bt_iterator.h common.h
 bt_output.o: btree.h debug.h stream.h colparse.h common.h
 bt_iterator.o: bt_iterator.h bt.h stream.h aobj.h query.h common.h
 cache.o: cache.h query.h find.h alsosql.h common.h
