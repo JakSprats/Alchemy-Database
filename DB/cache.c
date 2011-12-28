@@ -68,8 +68,9 @@ void evictCommand(cli *c) {
             for (int i = 0; i < matches; i++) {
                 evictFromIndex(btr, &apk, rrow, inds[i]);
             }}
+        printf("EVICT indexes done\n");
         btEvict(btr, &apk); card++; releaseAobj(&apk);
-        printf("\n\n");
+        printf("\n\n"); fflush(NULL);
     }
     printf("\n\n");
     addReplyLongLong(c, card);

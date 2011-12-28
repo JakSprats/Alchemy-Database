@@ -306,6 +306,7 @@ printf("rangeOpPK: iss: %d isu: %d isd: %d\n", iss, isu, isd);
     bt      *btr   = getBtr(w->wf.tmatch); g->co.btr = btr;
     g->asc         = !q->pk_desc;
     bool     brkr  = 0; long loops = -1; long card =  0;
+    //TODO XthIter ONLY @ ZERO miss_delete state
     bi = (q->pk_lo) ? 
               btGetXthIter  (btr, &w->wf.alow, &w->wf.ahigh, wb->ofst, g->asc) :
               btGetRangeIter(btr, &w->wf.alow, &w->wf.ahigh, g->asc);
@@ -426,6 +427,7 @@ static bool nBT_Op(ibtd_t *d) {                              //DEBUG_NODE_BT
     *d->brkr      = 0;
     bool     x    = (q->fk_lo && *d->ofst > 0);
     bool     nasc  = d->g->asc = !q->inr_desc;
+    //TODO XthIter ONLY @ ZERO miss_delete state
     btSIter *nbi  = x ?
                      btGetFullXthIter  (d->nbtr, *d->ofst, nasc, w, wb->lim) :
                      btGetFullRangeIter(d->nbtr,           nasc, w);

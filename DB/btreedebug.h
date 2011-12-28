@@ -62,18 +62,19 @@ void dump_bt_mem_profile(bt *btr) { btr = NULL; return; }
 #define DEBUG_DECR_MEM \
     printf("DECR MEM: osize: %ld minus: %lu nsize: %ld\n", btr->msize, size, (btr->msize - size));
 #define DEBUG_BT_MALLOC \
-    printf("bt_MALLOC: %p size: %d\n", btr, size);
+    printf("bt_MALLOC: %p size: %d\n", (void *)btr, size);
 #define DEBUG_ALLOC_BTN \
-    printf("allocbtreeNODE: %p leaf: %d size: %d\n", btr, leaf, size);
+    printf("allocbtreeNODE: %p leaf: %d size: %d\n", (void *)btr, leaf, size);
 #define DEBUG_ALLOC_BTREE \
-    printf("allocBTREE: %p size: %d\n", btr, size);
+    printf("allocBTREE: %p size: %d\n", (void *)btr, size);
 #define DEBUG_BT_FREE \
-    printf("bt_FREE: %p size: %d\n", btr, size);
+    printf("bt_FREE: %p size: %d\n", (void *)btr, size);
 #define DEBUG_FREE_BTN \
-    printf("bt_free_btreeNODE: %p leaf: %d size: %lu\n", btr, x->leaf, size);
+    printf("bt_free_btreeNODE: %p leaf: %d size: %lu\n", (void *)btr, x->leaf, size);
 #define DEBUG_ALLOC_DS \
   printf("alloc_ds: leaf: %d n: %d t: %d\n", x->leaf, btr->t * 2, btr->t); \
-  printf("alloc_ds: x: %p dsp: %p ds: %p dssize: %u\n", x, dsp, ds, dssize);
+  printf("alloc_ds: x: %p dsp: %p ds: %p dssize: %lu\n",                   \
+         (void *)x, (void *)dsp, (void *)ds, dssize);
 
 
 // INDEX.POS() INDEX.POS() INDEX.POS() INDEX.POS() INDEX.POS() INDEX.POS()
@@ -109,100 +110,104 @@ void dump_bt_mem_profile(bt *btr) { btr = NULL; return; }
                                    DEBUG_U128(printf, xx->key);                \
                                    printf(" VAL: ");                           \
                                    DEBUG_U128(printf, xx->val); printf("\n"); }\
-  if ISVOID(btr) printf("\t\tVOID: p: %p lu: %lu\n", v, v);                    \
+  if ISVOID(btr) printf("\t\tVOID: p: %p lu: %lu\n", (void *)v, v);            \
   if INODE_X(btr) {                                                            \
       uint128 *pbu = v; printf("\t\tINODE_X: ");                               \
       DEBUG_U128(printf, *pbu); printf("\n"); }
 
 #define DEBUG_AKEYS                                                            \
   printf("AKEYS: i: %d ofst: %d v: %p uint: %d uu: %d lu: %d ul: %d ll: %d\n", \
-          i, ofst, v, ISUINT(btr), UU(btr), LU(btr), UL(btr), LL(btr));        \
+          i, ofst, (void *)v, ISUINT(btr), UU(btr), LU(btr), UL(btr), LL(btr));\
   DEBUG_KEY_OTHER
 
 #define DEBUG_KEYS                                                        \
   printf("KEYS: uint: %d void: %d i: %d\n", ISUINT(btr), ISVOID(btr), i);
 
 #define DEBUG_SETBTKEY_OBT \
-  if (p) printf("setBTKey: memcpy to v: %p\n", v);
+  if (p) printf("setBTKey: memcpy to v: %p\n", (void *)v);
 
 
 
 // DR DR DR DR DR DR DR DR DR DR DR DR DR DR DR DR DR DR DR DR DR DR DR DR
 #define DEBUG_INCR_PREV                                                        \
   printf("tbg.p.x: %p tbg.p.i: %d tbg.c.x: %p tbg.c.i: %d\n",                  \
-          tbg.p.x, tbg.p.i, tbg.c.x, tbg.c.i);
+          (void *)tbg.p.x, tbg.p.i, (void *)tbg.c.x, tbg.c.i);
 #define DEBUG_ADD_DS_TO_BTN \
   printf("MMMMMMMMMMMM: addDStoBTN: to x: %p returning y: %p - p: %p pi: %d\n",\
-          x, y, p, pi);
+          (void *)x, (void *)y, (void *)p, pi);
 #define DEBUG_GET_DR                                                           \
-  printf("getDR: x: %p i: %d ds: %p -> dr: %u\n", x, i, ds, dr);
+  printf("getDR: x: %p i: %d ds: %p -> dr: %u\n", (void *)x, i, (void *)ds, dr);
 #define DEBUG_ZERO_DR                                                          \
   printf("zeroDR: dirty: %d x: %p i: %d p: %p, pi: %d x.n: %d key: \n",        \
-         x->dirty, x, i, p, pi, x->n); printKey(btr, x, i);
+         x->dirty, (void *)x, i, (void *)p, pi, x->n); printKey(btr, x, i);
 #define DEBUG_SET_DR_1                                                         \
   printf("============setDR: dirty: %d x: %p i: %d dr: %u p: %p, pi: %d key: ",\
-         x->dirty, x, i, dr, p, pi); printKey(btr, x, i);
+         x->dirty, (void *)x, i, dr, (void *)p, pi); printKey(btr, x, i);
 #define DEBUG_SET_DR_2                                                         \
-  printf("ds: %p i: %d dr: %d ds[i]: %d\n", ds, i, dr, ds[i]);
+  printf("ds: %p i: %d dr: %d ds[i]: %d\n", (void *)ds, i, dr, ds[i]);
 #define DEBUG_INCR_DR_1                                                        \
-  printf("++++++++++++incrDR: dirty: %d x: %p i: %d dr: %u p: %p, pi: %d key: ",          x->dirty, x, i, dr, p, pi); printKey(btr, x, i);
+  printf("++++++++++++incrDR: dirty: %d x: %p i: %d dr: %u p: %p, pi: %d key: ",          x->dirty, (void *)x, i, dr, (void *)p, pi); printKey(btr, x, i);
 #define DEBUG_INCR_DR_2                                                        \
   uint32 odr = ds[i];
 #define DEBUG_INCR_DR_3                                                        \
-  printf("ds: %p i: %d dr: %d ds[i]: %d odr: %d\n", ds, i, dr, ds[i], odr);
+  printf("ds: %p i: %d dr: %d ds[i]: %d odr: %d\n",                            \
+         (void *)ds, i, dr, ds[i], odr);
 
 
 // GET_CHILD_RECURSE GET_CHILD_RECURSE GET_CHILD_RECURSE GET_CHILD_RECURSE
-#define DEBUG_GET_C_REC_1 \
+#define DEBUG_GET_C_REC_1                                                     \
 printf("get_prev_child_recurse: x: %p i: %d xp: %p xp->leaf: %d xp->n: %d\n", \
-        x, i, xp, xp->leaf, xp->n);
-#define DEBUG_GET_C_REC_2 \
+        (void *)x, i, (void *)xp, xp->leaf, xp->n);
+#define DEBUG_GET_C_REC_2                                                     \
   printf("get_prev_child_recurse: tbg.c.i: %d\n", tbg.c.i);
 #define DEBUG_INCR_PREV_DR \
-  printf("incrPrevDR: x: %p i: %d dr: %d key: ", x, i, dr); printKey(btr, x, i);
+  printf("incrPrevDR: x: %p i: %d dr: %d key: ", (void *)x, i, dr);           \
+  printKey(btr, x, i);
 
 // SET_BT_KEY SET_BT_KEY SET_BT_KEY SET_BT_KEY SET_BT_KEY SET_BT_KEY
 #define DEBUG_SET_KEY \
   printf("setBTKey: ksize: %d btr: %p v: %p p: %p uint: %d void: %d uu: %d " \
          "lu: %d ul: %d ll: %d\n",                                           \
-          btr->s.ksize, btr, v, p, ISUINT(btr), ISVOID(btr), UU(btr),        \
+          btr->s.ksize, (void *)btr, v, (void *)p,                           \
+          ISUINT(btr), ISVOID(btr), UU(btr),                                 \
           LU(btr), UL(btr), LL(btr));                                        \
   DEBUG_KEY_OTHER
-#define DEBUG_SET_BTKEY_2A \
-  printf("22222AAAAAA: setBTKeyCase2_A: x: %p i: %d\n", x, i);
-#define DEBUG_SET_BTKEY_2B \
-  printf("22222BBBBBB: setBTKeyCase2_B: x: %p i: %d\n", x, i);
+#define DEBUG_SET_BTKEY_2A                                             \
+  printf("2A return: dr: %d\n", dwd.dr);                               \
+  printf("22222AAAAAA: setBTKeyCase2_A: x: %p i: %d\n", (void *)x, i);
+#define DEBUG_SET_BTKEY_2B                                             \
+  printf("2B return: dr: %d\n", dwd.dr);                               \
+  printf("22222BBBBBB: setBTKeyCase2_B: x: %p i: %d\n", (void *)x, i);
 #define DEBUG_SET_BTKEY_2C \
-  printf("22222CCCCCC: setBTKeyCase2_C: x: %p i: %d\n", x, i);
+  printf("22222CCCCCC: setBTKeyCase2_C: y: %p y->n: %d\n", (void *)y, y->n);
 #define DEBUG_SET_BTKEY_INS \
   printf("IIIIIIIIIII: setBTKeyInsert\n");
 #define DEBUG_SET_BTKEY \
   printf("KKKKKKKKKKK: setBTKey dx: %p di: %d sx: %p si: %d dr: %u skey: ", \
-        dx, di, sx, si, dr); printKey(btr, sx, si);
+        (void *)dx, di, (void *)sx, si, dr); printKey(btr, sx, si);
 #define DEBUG_MV_X_KEYS_1                                                \
   printf("VVVVVVVVVVV: drt: mvXKeys: x2x: %d dx: %p dii: %d sx: %p sii: %d " \
-         "drs: %d\n", x2x, *dx, dii, *sx, sii, drs);                         \
+         "drs: %d\n", x2x, (void *)*dx, dii, (void *)*sx, sii, drs);         \
   printf("drd: %u dkey: ", drd); printKey(btr, *dx, dii);                    \
   printf("drs: %u skey: ", drs); printKey(btr, *sx, sii);
 #define DEBUG_MV_X_KEYS_2 \
   printf("ZERO DEST: dii: %d\n", dii);
 #define DEBUG_TRIM_BTN \
-  printf("trimBTN: x: %p n: %d\n", x, x->n);
+  printf("trimBTN: x: %p n: %d\n", (void *)x, x->n);
 
 // DELETE DELETE DELETE DELETE DELETE DELETE DELETE DELETE DELETE DELETE
 #define DEBUG_DEL_START \
   printf("START: ndk\n"); //bt_dumptree(printf, btr, 0);
 #define DEBUG_DEL_POST_S \
   printf("POSTS: s: %d i: %d r: %d leaf: %d x.n: %d\n", \
-          s, i, r, x->leaf, x->n);
-#define DEBUG_DEL_POST_FINDKINDEX \
-  printf("NDK: x: %p i: %d p: %p pi: %d key: ",  \
-         x, i, p, pi); printKey(btr, x, i);
+          s, i, r, x->leaf, x->n);                      \
+  printf("NDK: x: %p i: %d p: %p pi: %d key: ",         \
+         (void *)x, i, (void *)p, pi); printKey(btr, x, i);
 #define DEBUG_DEL_CASE_1 \
   printf("ndk CASE_1    s: %d i: %d x->n: %d\n", s, i, x->n); \
   //bt_dumptree(printf, btr, 0);
 #define DEBUG_DEL_CASE_1_DIRTY \
-  printf("CASE1 drt: %d i: %d s: %d dr: %u ngost: %d key: ", \
+  printf("CASE1 drt: %d i: %d s: %d dr: %u ngost: %ld key: ", \
           drt, i, s, dwd.dr, dwd.ngost); printKey(btr, x, i);
 #define DEBUG_DEL_CASE_2 \
   printf("ndk CASE_2 x[i].n: %d x[i+1].n: %d t: %d\n", \
@@ -215,15 +220,22 @@ printf("get_prev_child_recurse: x: %p i: %d xp: %p xp->leaf: %d xp->n: %d\n", \
 #define DEBUG_DEL_CASE_2c \
   printf("ndk CASE_2c\n"); //bt_dumptree(printf, btr, 0);
 #define DEBUG_DEL_CASE_3a1 \
-  printf("ndk CASE_3a1\n"); //bt_dumptree(printf, btr, 0);
+  printf("ndk CASE_3a1: x: %p y: %p xp: %p\n", \
+          (void *)x, (void *)y, (void *)xp); //bt_dumptree(printf, btr, 0);
 #define DEBUG_DEL_CASE_3a2 \
-  printf("ndk CASE_3a2\n"); //bt_dumptree(printf, btr, 0);
+  printf("ndk CASE_3a2: x: %p y: %p xp: %p\n", \
+          (void *)x, (void *)y, (void *)xp); //bt_dumptree(printf, btr, 0);
 #define DEBUG_DEL_CASE_3b1 \
-  printf("ndk CASE_3b1\n"); //bt_dumptree(printf, btr, 0);
+  printf("ndk CASE_3b1: x: %p y: %p xp: %p\n", \
+          (void *)x, (void *)y, (void *)xp); //bt_dumptree(printf, btr, 0);
 #define DEBUG_DEL_CASE_3b2 \
-  printf("ndk CASE_3b2\n"); //bt_dumptree(printf, btr, 0);
+  printf("ndk CASE_3b2: x: %p y: %p xp: %p\n", \
+          (void *)x, (void *)y, (void *)xp); //bt_dumptree(printf, btr, 0);
 #define DEBUG_DEL_END \
   printf("END: ndk\n"); //bt_dumptree(printf, btr, 0);
+#define DEBUG_DEL_POST_CASE_3 \
+  printf("POST CASE3: xp: %p x: %p i: %d s: %d key: ",      \
+         (void *)xp, (void *)x, i, s); printKey(btr, x, i);
 
 
 #define DEBUG_BT_DELETE_D \
@@ -232,9 +244,11 @@ printf("get_prev_child_recurse: x: %p i: %d xp: %p xp->leaf: %d xp->n: %d\n", \
 
 
 // ACCESSORS ACCESSORS ACCESSORS ACCESSORS ACCESSORS ACCESSORS ACCESSORS
-#define DEBUG_FIND_NODE_KEY \
-  if (x->leaf) printf("LEAF: findnodekey: i: %d r: %d x: %p\n", i ,r, x); \
-  else         printf("NODE: findnodekey: i: %d r: %d x: %p\n", i ,r, x);
+#define DEBUG_FIND_NODE_KEY                                     \
+  if (x->leaf) printf("LEAF: findnodekey: i: %d r: %d x: %p\n", \
+                      i ,r, (void *)x);                         \
+  else         printf("NODE: findnodekey: i: %d r: %d x: %p\n", \
+                      i ,r, (void *)x);
 #define DEBUG_CURRKEY_MISS \
   printf("key_covers_miss: mkey: %lu qkey: %lu span: %lu -> hit: %d\n", \
           mkey, qkey, span, (qkey >= mkey && qkey <= span));

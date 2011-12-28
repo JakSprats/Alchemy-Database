@@ -51,6 +51,8 @@ static void dump_tree_node(printer *prn, bt *btr, bt_n *x, int depth,
                            bool is_index, int slot, bool is_inode);
 static int treeheight(bt *btr);
 
+#define PRINT_EVICTED_KEYS
+
 void printKey(bt *btr, bt_n *x, int i) {
     if (i < 0 || i >= x->n) printf(" NO KEY\n");
     else {
@@ -81,7 +83,7 @@ void bt_dumptree(printer *prn, bt *btr, bool is_index, bool is_inode) {
     }
     (*prn)("\n");
 }
-void dump_single_node(bt *btr, bt_n *x) {
+void dump_single_node(bt *btr, bt_n *x, bool is_inode) {
     printf(" NODE: n: %d scion: %d -> (%p)\n", x->n, x->scion, (void *)x);
     bool is_node = INODE(btr);
     for (int i = 0; i < x->n; i++) {
@@ -123,7 +125,6 @@ static void validate_root_scion(bt *btr) {
     }
 }
 
-#define PRINT_EVICTED_KEYS
 static void dump_tree_node(printer *prn, bt *btr, bt_n *x,
                            int depth, bool is_index, int slot, bool is_inode) {
     if (!x->leaf) {
@@ -227,6 +228,7 @@ static void dump_tree_node(printer *prn, bt *btr, bt_n *x,
                 if (gost) (*prn)("\t\tROW [%d]: %p \tGHOST-", i, rrow);
                 else      (*prn)("\t\tROW [%d]: %p\t",        i, rrow);
             }
+            if (!key_printed) { (*prn)("KEY: "); dumpAobj(prn, &akey); }
             if (x->dirty) {
 #ifdef PRINT_EVICTED_KEYS
                 uint32 dr = getDR(btr, x, i);
@@ -241,7 +243,6 @@ static void dump_tree_node(printer *prn, bt *btr, bt_n *x,
                 (*prn)("\t\t\t\tDR: %d\n", getDR(btr, x, i));
 #endif
             }
-            if (!key_printed) { (*prn)("KEY: "); dumpAobj(prn, &akey); }
         }
     }
 
