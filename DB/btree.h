@@ -71,7 +71,7 @@ typedef struct data_with_dirt_t {
     uint32    dr;    // dirty-right
     ulong     ngost; // delete a key w/ DR, add a NextGhost
 } dwd_t;
-void      bt_insert  (struct btree *btr, bt_data_t k);
+void      bt_insert  (struct btree *btr, bt_data_t k, uint32     dr);
 dwd_t     bt_delete  (struct btree *btr, bt_data_t k, aobj      *akey);
 bt_data_t bt_replace (struct btree *btr, bt_data_t k, bt_data_t  val);
 
@@ -89,8 +89,6 @@ bt_data_t bt_evict       (struct btree *btr, bt_data_t k);
 bool      bt_exist       (struct btree *btr, bt_data_t k, aobj *akey);
 void      bt_delete_d    (struct btree *btr, bt_data_t k, aobj *akey,
                                              bt_data_t stream);
-void      bt_insert_ghost(struct btree *btr, bt_data_t k, aobj *akey,
-                                             bt_data_t stream, uint32 dr);
 typedef struct data_with_miss_t {
     bt_data_t         k;    // the data
     bool              miss;

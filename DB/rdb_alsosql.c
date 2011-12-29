@@ -208,16 +208,17 @@ static int rdbLoadRow(FILE *fp, bt *btr, int tmatch) {
 #ifndef TEST_WITH_TRANS_ONE_ONLY
     if (btr->numkeys == TRANS_ONE_MAX) btr = abt_resize(btr, TRANS_TWO);
 #endif
-    if      UU(btr) bt_insert(btr, UUbuf);
-    else if UL(btr) bt_insert(btr, &UL_RDBPointer);
-    else if LU(btr) bt_insert(btr, &LU_RDBPointer);
-    else if LL(btr) bt_insert(btr, &LL_RDBPointer);
-    else if UX(btr) bt_insert(btr, &UX_RDBPointer);
-    else if XU(btr) bt_insert(btr, &XU_RDBPointer);
-    else if LX(btr) bt_insert(btr, &LX_RDBPointer);
-    else if XL(btr) bt_insert(btr, &XL_RDBPointer);
-    else if XX(btr) bt_insert(btr, &XX_RDBPointer);
-    else            bt_insert(btr, stream); // ROW
+    uint32 dr = 0;
+    if      UU(btr) bt_insert(btr, UUbuf,          dr);
+    else if UL(btr) bt_insert(btr, &UL_RDBPointer, dr);
+    else if LU(btr) bt_insert(btr, &LU_RDBPointer, dr);
+    else if LL(btr) bt_insert(btr, &LL_RDBPointer, dr);
+    else if UX(btr) bt_insert(btr, &UX_RDBPointer, dr);
+    else if XU(btr) bt_insert(btr, &XU_RDBPointer, dr);
+    else if LX(btr) bt_insert(btr, &LX_RDBPointer, dr);
+    else if XL(btr) bt_insert(btr, &XL_RDBPointer, dr);
+    else if XX(btr) bt_insert(btr, &XX_RDBPointer, dr);
+    else            bt_insert(btr, stream,         dr); // ROW
     aobj apk;                   convertStream2Key(stream, &apk, btr);
     r_tbl_t *rt = &Tbl[tmatch]; UPDATE_AUTO_INC(rt->col[0].type, apk);
     releaseAobj(&apk);

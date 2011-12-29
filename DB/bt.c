@@ -242,7 +242,7 @@ static bool abt_del(bt *btr, aobj *akey) { // DELETE the row
         aobj gpk; initAobjFromLong(&gpk, dwd.ngost, btr->s.ktype);
         uint32 ssize; DECLARE_BT_KEY(&gpk, 0)
         char *stream = createStream(btr, NULL, btkey, ksize, &ssize);//DEST 027
-        bt_insert_ghost(btr, btkey, &gpk, stream, dwd.dr);       // FREE ME 028
+        bt_insert(btr, stream, dwd.dr);       // FREE ME 028
         destroyBTKey(btkey, med);                                  // FREED 026
     }
     uchar *stream = dwd.k;
@@ -276,7 +276,7 @@ static uint32 abt_insert(bt *btr, aobj *akey, void *val) {
     uint32 ssize; DECLARE_BT_KEY(akey, 0)
     char   *stream = createStream(btr, val, btkey, ksize, &ssize); /*DEST 027*/
     destroyBTKey(btkey, med);                            /* FREED 026 */
-    bt_insert(btr, stream);                              /* FREE ME 028 */
+    bt_insert(btr, stream, 0);                           /* FREE ME 028 */
     return ssize;
 }
 bt *abt_resize(bt *obtr, uchar trans) {              // printf("abt_resize\n");
@@ -322,9 +322,9 @@ void btIndNull   (bt *ibtr, aobj *ikey) { abt_replace(ibtr, ikey, NULL); }
 #define DEBUG_INODE_ADD                                                   \
     printf("btIndNodeAdd: apk : "); dumpAobj(printf, apk);                \
     if (ocol) { printf("btIndNodeAdd: ocol: "); dumpAobj(printf, ocol); }
-#define DEBUG_INODE_EVICT \
-    printf("btIndNodeEvict: nkeys: %d apk: %p: ",       \
-            nbtr->numkeys, apk); dumpAobj(printf, apk);
+#define DEBUG_INODE_EVICT                                                 \
+    printf("btIndNodeEvict: nkeys: %d apk: %p: ",                         \
+            nbtr->numkeys, (void *)apk); dumpAobj(printf, apk);
 
 void *btIndNodeFind(bt *nbtr, aobj *apk) { return abt_find(nbtr, apk); }
 bool  btIndNodeAdd (cli *c, bt *nbtr, aobj *apk, aobj *ocol) { DEBUG_INODE_ADD

@@ -59,10 +59,9 @@ static int       real_log2 (unsigned int a, int nbits);
 
 /* CACHE TODO LIST
    1.) UU's have no gosts ... API for UU must be a "uuk" like all OBT
+
    NOTE: 4,5,6,10 are code cleanup/reorg
    4.) remove_key() replace MISS w/ GHOST, abt abstraction needed [in abt_del()]
-   5.) setDR() on bt_insert()
-   6.) DS: n.DR = o.DR ... (cloneDR)
   10.) DEL CASE1: INODE does gost in deletekey() -> FUBARed flow
 
    7.) DS in rdbSave/Load
@@ -70,6 +69,8 @@ static int       real_log2 (unsigned int a, int nbits);
    9.) record miss_delete state in Tbl[] -> disable scion iterators
   11.) DS as stream
   12.) slab allocator for ALL btn's
+
+  14.) make sure btFind() and btFindD() are in the right places
 */
 
 // HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER
@@ -342,8 +343,7 @@ static tbg_t get_prev_child_recurse(bt *btr, bt_n *x, int i) {
     tbg.c.x = xp; tbg.c.i = xp->n - 1;                      DEBUG_GET_C_REC_2
     return tbg;
 }
-static bt_n *incrCase2B(bt *btr, bt_n *x, int i, int dr) {
-    printf("incrCase2B dr: %d\n", dr);
+static bt_n *incrCase2B(bt *btr, bt_n *x, int i, int dr) {    DEBUG_INCR_CASE2B
     tbg_t  tbg = get_prev_child_recurse(btr, x, i);         DEBUG_INCR_PREV
     bt_n  *nc  = incrDR(btr, tbg.c.x, tbg.c.i, dr, tbg.p.x, tbg.p.i);
     incr_scion(nc, dr);
@@ -355,11 +355,8 @@ static void setBTKeyRaw(bt *btr, bt_n *x, int i, void *src) { //PRIVATE
     void **dest = AKEYS(btr, x, i);
     if      ISVOID(btr) *dest                  = src;   
     else if ISUINT(btr) *(int *)((long *)dest) = (int)(long)src;
-    else { /* OTHER_BT */                              //DEBUG_SETBTKEY_OTHERBT
-        assert(src);
-        memcpy(dest, src, btr->s.ksize);
-        //if (src) else bzero (dest, btr->s.ksize); //TODO src is never NULL 
-    }                                                           //DEBUG_SET_KEY
+    else                memcpy(dest, src, btr->s.ksize);
+    //DEBUG_SET_KEY
 }
 static bt_n *setBTKey(bt *btr,  bt_n *dx, int di,  bt_n *sx, int si,
                       bool drt, bt_n *pd, int pdi, bt_n *ps, int psi) {
@@ -448,25 +445,26 @@ static void btreesplitchild(bt *btr, bt_n *x, int i, bt_n *y, bt_n *p, int pi) {
 }
 
 #define GETN(btr) ((2 * btr->t) - 1)
-static void btreeinsertnonfull(bt *btr, bt_n *x, bt_data_t k, bt_n *p, int pi) {
+static void bt_insertnonfull(bt  *btr, bt_n *x, bt_data_t k, bt_n *p, int pi,
+                             int  dr) {
     if (x->leaf) { /* we are a leaf, just add it in */
         int i = findkindex(btr, x, k, NULL, NULL);
         if (i != x->n - 1) {
             mvXKeys(btr, &x, i + 2, &x, i + 1, (x->n - i - 1), btr->s.ksize,
                     p, pi, p, pi);
         }
-        x = zeroDR(btr, x, i + 1, p, pi); setBTKeyRaw(btr, x, i + 1, k); 
-        x->n++; incr_scion(x, 1);
+        x = overwriteDR(btr, x, i + 1, dr, p, pi);
+        setBTKeyRaw(btr, x, i + 1, k); x->n++; incr_scion(x, 1);
     } else { /* not leaf */
-        int i = findkindex(btr, x, k, NULL, NULL) + 1;
+        int   i  = findkindex(btr, x, k, NULL, NULL) + 1;
         if (NODES(btr, x)[i]->n == GETN(btr)) { // if next node is full
             btreesplitchild(btr, x, i, NODES(btr, x)[i], x, i);
             if (btr->cmp(k, KEYS(btr, x, i)) > 0) i++;
         }
-        btreeinsertnonfull(btr, NODES(btr, x)[i], k, x, i); incr_scion(x, 1);
+        bt_insertnonfull(btr, NODES(btr, x)[i], k, x, i, dr); incr_scion(x, 1);
     }
 }
-void bt_insert(bt *btr, bt_data_t k) {
+void bt_insert(bt *btr, bt_data_t k, uint32 dr) {
     bt_n *r  = btr->root;
     bt_n *p  = r;
     int   pi = 0;
@@ -481,7 +479,7 @@ void bt_insert(bt *btr, bt_data_t k) {
         p                = r = s;
         btr->numnodes++;
     }
-    btreeinsertnonfull(btr, r, k, p, pi);    /* finally insert the new node */
+    bt_insertnonfull(btr, r, k, p, pi, dr); // finally insert the new node
     btr->numkeys++;
 }
 
@@ -582,9 +580,8 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,    int    s, bool drt,
             printf("CASE2B recurse: key: "); printKey(btr, x, i);
             dwd_t dwd  = deletekey(btr, xp, NULL, DK_2B, drt, x, i + 1, plist);
             DEBUG_SET_BTKEY_2B
-            if (drt) {
-                int dr = getDR      (btr, x, i) + 1; // prev key inherits DR+1
-                x      = incrCase2B (btr, x, i, dr);
+            if (drt) { // prev key inherits DR+1
+                x      = incrCase2B (btr, x, i, (getDR(btr, x, i) + 1));
             } 
             x          = overwriteDR(btr, x, i, dwd.dr, p, pi);
             setBTKeyRaw(btr, x, i, dwd.k);
@@ -746,16 +743,8 @@ dwd_t bt_delete(bt *btr, bt_data_t k, aobj *akey) {
     return remove_key(btr, k, 0, akey);
 }
 bt_data_t bt_evict(bt *btr, bt_data_t k) { printf("bt_evict k: %p\n", k);
-    dwd_t dwd = remove_key(btr, k, 1, NULL);
-    return dwd.k;
+    dwd_t dwd = remove_key(btr, k, 1, NULL); return dwd.k;
 }
-void bt_insert_ghost(bt *btr, bt_data_t k, aobj *akey,
-                              bt_data_t stream, uint32 dr) {
-    printf("bt_insert_ghost: dr: %u key: \n", dr); dumpAobj(printf, akey);
-    bt_insert(btr, stream); // insert a "GHOST" row
-    dwm_t dwm = findnodekey(btr, btr->root, k, akey); // GHOST DR -> diff
-    setDR(btr, dwm.x, dwm.i, dr, dwm.p, dwm.pi);
-} //TODO setDR() on bt_insert()
 
 // bt_delete_d handles the deletion of an EVICTed Key (cases 2,3,4,7)
 void bt_delete_d(bt *btr, bt_data_t k, aobj *akey, bt_data_t stream) {
@@ -769,15 +758,13 @@ void bt_delete_d(bt *btr, bt_data_t k, aobj *akey, bt_data_t stream) {
         uchar *stream = KEYS(btr, dwm.x, dwm.i);
         void  *rrow   = parseStream(stream, btr);
         bool   gost   = !UU(btr) && rrow && !(*(uchar *)rrow);
-printf("gost: %d\n", gost);
+        printf("bt_delete_d: gost: %d\n", gost);
         if (gost) bt_delete(btr, KEYS(btr, dwm.x, dwm.i), NULL); // ECASE:7
         else      zeroDR(btr, dwm.x, dwm.i, dwm.p, dwm.pi);      // ECASE:2
     } else  setDR(btr, dwm.x, dwm.i, dpdr, dwm.p, dwm.pi);       // ECASE:3
     if (ndr) { // delete from middle of sequential evictions     -- ECASE:4
-        bt_insert(btr, stream); // insert a "GHOST" row
-        dwm         = findnodekey(btr, btr->root, k, akey); // GHOST DR -> diff
-        setDR(btr, dwm.x, dwm.i, ndr, dwm.p, dwm.pi);
-    } //TODO setDR() on bt_insert()
+        bt_insert(btr, stream, ndr); // insert a "GHOST" row
+    }
 }
 
 // ACCESSORS ACCESSORS ACCESSORS ACCESSORS ACCESSORS ACCESSORS ACCESSORS
@@ -955,9 +942,8 @@ void bt_release(bt *btr, bt_n *x) { /* dont destroy data, just btree */
 // CLONE CLONE CLONE CLONE CLONE CLONE CLONE CLONE CLONE CLONE CLONE CLONE
 void bt_to_bt_insert(bt *nbtr, bt *obtr, bt_n *x) {
     for (int i = 0; i < x->n; i++) {
-        void *be = KEYS(obtr, x, i);
-        //TODO DS: n.DR = o.DR ... (cloneDR)
-        bt_insert(nbtr, be);
+        void *be  = KEYS (obtr, x, i); uint32 odr = getDR(obtr, x, i);
+        bt_insert(nbtr, be, odr);
     }
     if (!x->leaf) {
         for (int i = 0; i <= x->n; i++) {

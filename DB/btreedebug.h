@@ -132,7 +132,9 @@ void dump_bt_mem_profile(bt *btr) { btr = NULL; return; }
 #define DEBUG_INCR_PREV                                                        \
   printf("tbg.p.x: %p tbg.p.i: %d tbg.c.x: %p tbg.c.i: %d\n",                  \
           (void *)tbg.p.x, tbg.p.i, (void *)tbg.c.x, tbg.c.i);
-#define DEBUG_ADD_DS_TO_BTN \
+#define DEBUG_INCR_CASE2B                                                      \
+  printf("incrCase2B dr: %d\n", dr);
+#define DEBUG_ADD_DS_TO_BTN                                                    \
   printf("MMMMMMMMMMMM: addDStoBTN: to x: %p returning y: %p - p: %p pi: %d\n",\
           (void *)x, (void *)y, (void *)p, pi);
 #define DEBUG_GET_DR                                                           \
@@ -236,7 +238,6 @@ printf("get_prev_child_recurse: x: %p i: %d xp: %p xp->leaf: %d xp->n: %d\n", \
 #define DEBUG_DEL_POST_CASE_3 \
   printf("POST CASE3: xp: %p x: %p i: %d s: %d key: ",      \
          (void *)xp, (void *)x, i, s); printKey(btr, x, i);
-
 
 #define DEBUG_BT_DELETE_D \
     printf("bt_delete_d: qkey: %lu mkey: %lu dpdr: %lu ndr: %lu\n", \
