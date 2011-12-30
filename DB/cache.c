@@ -43,12 +43,12 @@ ALL RIGHTS RESERVED
 #include "cache.h"
 
 extern r_tbl_t  *Tbl;
-extern r_ind_t  *Index;
 
 void evictCommand(cli *c) {
     int   len   = sdslen(c->argv[1]->ptr);
     char *tname = rem_backticks(c->argv[1]->ptr, &len); // Mysql compliant
     TABLE_CHECK_OR_REPLY(tname,)
+    if (!Tbl[tmatch].dirty) { addReply(c, shared.evictnotdirty); return; }
     //TODO must be NUM PK & auto-inc
     bt   *btr   = getBtr(tmatch);
     if OTHER_BT(btr) { addReply(c, shared.evict_other); return; }

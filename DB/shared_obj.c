@@ -117,7 +117,7 @@ void DXDB_createSharedObjects() {
     shared.dropsyntax = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: DROP TABLE tablename OR DROP INDEX indexname OR DROP LUATRIGGER\r\n"));
     shared.altersyntax = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: ALTER TABLE tablename ADD [COLUMN columname type[INT,LONG,FLOAT,TEXT,U128]] [SHARDKEY columname] [FOREIGN KEY (fk_name) REFERENCES othertable (other_table_indexed_column)] [HASHABILITY]\r\n"));
+        "-ERR SYNTAX: ALTER TABLE tablename ADD [COLUMN columname type[INT,LONG,FLOAT,TEXT,U128]] [SHARDKEY columname] [FOREIGN KEY (fk_name) REFERENCES othertable (other_table_indexed_column)] [HASHABILITY] - ALTER TABLE tablename SET DIRTY\r\n"));
     shared.alter_other = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: ALTER TABLE - CAN NOT be done on OPTIMISED 2 COLUMN TABLES\r\n"));
     shared.lru_other = createObject(REDIS_STRING,sdsnew(
@@ -351,4 +351,7 @@ void DXDB_createSharedObjects() {
         "-ERR: INSERT on a Table w/ EVICTIONS can NOT declare PK values (auto-increment must be used)\r\n"));
     shared.update_on_dirty_w_inds = createObject(REDIS_STRING,sdsnew(
         "-ERR: UPDATE with IndexedColumn Updates on a Table w/ EVICTIONS - PROHIBITED\r\n"));
+
+    shared.evictnotdirty          = createObject(REDIS_STRING,sdsnew(
+        "-ERR: EVICT can not be called on NON-DIRTY tables -> call \"ALTER table SET DIRTY\"\r\n"));
 }

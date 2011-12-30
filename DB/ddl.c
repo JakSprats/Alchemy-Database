@@ -266,32 +266,49 @@ void addColumn(int tmatch, char *cname, int ctype) {
 }
 
 //TODO ALTER TABLE DROP [COLUMN cname] [HASHABILITY]
+/* SYNTAX
+  SQL:
+    1.) ALTER Tablename ADD Columnname Type
+    2.) ALTER Tablename ADD HASHABILITY
+  CACHE:
+    3.) ALTER Tablename SET DIRTY
+  CLUSTER:
+    4.) ALTER Tablename ADD SHARDKEY Columnname
+    5.) ALTER Tablename ADD FOREIGN KEY FKname REFERENCES Tablename (Columnname)
+*/
 void alterCommand(cli *c) {
-    bool altc = 0, altsk = 0, altfk = 0, althsh = 0;
-    if (strcasecmp(c->argv[1]->ptr, "TABLE") ||
-        strcasecmp(c->argv[3]->ptr, "ADD")) {
+    bool altc = 0, altsk = 0, altfk = 0, althsh = 0, altdrt = 0;;
+    if (strcasecmp(c->argv[1]->ptr, "TABLE")) {
         addReply(c, shared.altersyntax);                                return;
     }
-    if      (!strcasecmp(c->argv[4]->ptr, "COLUMN"))      altc  = 1;
-    else if (!strcasecmp(c->argv[4]->ptr, "SHARDKEY"))    altsk = 1;
+    if      (!strcasecmp(c->argv[4]->ptr, "COLUMN"))      altc   = 1;
+    else if (!strcasecmp(c->argv[4]->ptr, "SHARDKEY"))    altsk  = 1;
     else if (!strcasecmp(c->argv[4]->ptr, "HASHABILITY")) althsh = 1;
     else if (!strcasecmp(c->argv[4]->ptr, "FOREIGN") &&
-             !strcasecmp(c->argv[5]->ptr, "KEY"))         altfk = 1;
+             !strcasecmp(c->argv[5]->ptr, "KEY"))         altfk  = 1;
+    else if (!strcasecmp(c->argv[4]->ptr, "DIRTY"))       altdrt = 1;
     else { addReply(c, shared.altersyntax);                             return;}
+    if ((altdrt  && strcasecmp(c->argv[3]->ptr, "SET")) ||
+        (!altdrt && strcasecmp(c->argv[3]->ptr, "ADD"))) {
+        addReply(c, shared.altersyntax);                                return;
+    }
+
     uchar  ctype;
     int    len   = sdslen(c->argv[2]->ptr);
     char  *tname = rem_backticks(c->argv[2]->ptr, &len); /* Mysql compliant */
     TABLE_CHECK_OR_REPLY(tname,)
     if (OTHER_BT(getBtr(tmatch))) { addReply(c, shared.alter_other);    return;}
-    if         (altc) {
+    if        (altdrt) {
+        Tbl[tmatch].dirty = 1;
+    } else if (altc) {
         if (c->argc < 7) { addReply(c, shared.altersyntax);             return;}
         if (!checkRepeatCnames(c, tmatch, c->argv[5]->ptr))             return;
         if (!parseColType     (c, c->argv[6]->ptr, &ctype))             return;
         addColumn(tmatch, c->argv[5]->ptr, ctype);
-    } else if  (althsh) {
+    } else if (althsh) {
         if (c->argc > 5) { addReply(c, shared.altersyntax);             return;}
         Tbl[tmatch].hashy = 1; addReply(c, shared.ok);                  return;
-    } else if  (altsk) {
+    } else if (altsk) {
         if (c->argc < 6) { addReply(c, shared.altersyntax);             return;}
         sds cname  = c->argv[5]->ptr;
         if (Tbl[tmatch].sk != -1) { addReply(c, shared.alter_sk_rpt);   return;}
@@ -302,7 +319,7 @@ void alterCommand(cli *c) {
         if (Index[imatch].lru) { addReply(c, shared.alter_sk_no_lru);   return;}
         if (Index[imatch].lfu) { addReply(c, shared.alter_sk_no_lfu);   return;}
         Tbl[tmatch].sk = cmatch;
-    } else { /* altfk */
+    } else {/* altfk */
         if (c->argc < 10) { addReply(c, shared.altersyntax);            return;}
         if (strcasecmp(c->argv[7]->ptr, "REFERENCES")) {
             addReply(c, shared.altersyntax);                            return;

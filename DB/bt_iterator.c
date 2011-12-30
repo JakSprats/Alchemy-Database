@@ -1,7 +1,6 @@
-/* B-tree Implementation.
+/* 
  *
- * This file implements in memory b-tree tables with insert/del/replace/find/
- * operations.
+ * This file implements AlchemyDB's Btree-Iterators
 
 AGPL License
 
@@ -259,12 +258,12 @@ btIterator *iter = &siter->x; printf("streamToBTEntry: x: %p stream: %p missed: 
     return 1;
 }
 btSIter *btGetRangeIter(bt *btr, aobj *alow, aobj *ahigh, bool asc) {
-    if (!btr->root || !btr->numkeys) return NULL;
+    if (!btr->root || !btr->numkeys)           return NULL;
     bool med; uint32 ksize;                 //bt_dumptree(btr, btr->ktype);
     CR8ITER8R(btr, asc, iter_leaf, iter_leaf_rev, iter_node, iter_node_rev);
     setHigh(siter, asc ? ahigh : alow, btr->s.ktype);
     char    *bkey  = createBTKey(asc ? alow : ahigh, &med, &ksize, btr); //D032
-    if (!bkey) return NULL;
+    if (!bkey)                                 return NULL;
     bt_n *x  = NULL; int i = -1;
     uchar *stream = setIter(btr, bkey, siter, asc ? alow : ahigh, &x, &i, asc);
     destroyBTKey(bkey, med);                                /* DESTROYED 032 */
@@ -348,14 +347,11 @@ btSIter *btGetFullRangeIter(bt *btr, bool asc, cswc_t *w) {
   printf("scioned: %d scion: %d diff: %d cnt: %d ofst: %d\n",          \
           scioned, kid->scion, fl->diff, fl->cnt, fl->ofst);
 
-typedef struct four_longs {
-    long cnt; long ofst; long diff; long over;
-} fol_t;
+typedef struct four_longs { long cnt; long ofst; long diff; long over; } fol_t;
 
 static void iter_leaf_scion(btIterator *iter) {
     fol_t *fl      = (fol_t *)iter->data;               //DEBUG_ITER_LEAF_SCION
     long   cnt     = (long)(iter->bln->self->n - iter->bln->ik); 
-   
     if (fl->cnt + cnt >= fl->ofst) { fl->over = fl->ofst - fl->cnt; return; }
     fl->cnt       += cnt;
     fl->diff       = fl->ofst - fl->cnt;
@@ -550,8 +546,6 @@ btSIter *btGetXthIter(bt *btr, aobj *alow, aobj *ahigh, long oofst, bool asc) {
 #define DEBUG_SCION_FIND_END \
   printf("btScionFind: POST_LOOP: ofst: %d ik: %d\n", ofst, siter->x.bln->ik);
 
-
-
 static bool btScionFind(btSIter *siter, bt_n *x, ulong ofst, bt *btr, bool asc,
                         cswc_t  *w,     long  lim) {
     uint32 i   = asc ? 0        : x->n;                      DEBUG_SCION_FIND_1
@@ -608,7 +602,7 @@ printf("END btScionFind: asc: %d indr: %d i: %d ofst: %d ik: %d cnt: %lu dr: %u 
 }
 btSIter *btGetFullXthIter(bt *btr, long oofst, bool asc, cswc_t *w, long lim) {
     ulong ofst = (ulong)oofst;
-    if (!btr->root || !btr->numkeys) return NULL;
+    if (!btr->root || !btr->numkeys)                      return NULL;
     if (!w) w = &W; aobj *aL = &w->wf.alow, *aH = &w->wf.ahigh;
     if (!assignMinKey(btr, aL) || !assignMaxKey(btr, aH)) return NULL;
     CR8ITER8R(btr, asc, iter_leaf, iter_leaf_rev, iter_node, iter_node_rev);

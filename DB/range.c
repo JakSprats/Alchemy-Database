@@ -131,6 +131,7 @@ static void init_ibtd(ibtd_t *d,    row_op *p,    range_t *g,     qr_t *q,
     d->obc  = obc;
 }
 
+// QUEUE_FOR_ORDER_BY_SORT QUEUE_FOR_ORDER_BY_SORT QUEUE_FOR_ORDER_BY_SORT
 static bool mci_fk_queued(wob_t *wb, r_ind_t *ri) { //printf("mci_fk_queued\n");
     uint32_t i;
     for (i = 0; i < (uint32_t)ri->nclist && i < wb->nob; i++) {
@@ -184,7 +185,7 @@ static void setInQueued(cswc_t *w, wob_t *wb, qr_t *q) {
     setRangeQueued(w, wb, q); q->pk_lo = q->fk_lo = 0;// LIM OFST -> ALWAYS SORT
 }
 void setQueued(cswc_t *w, wob_t *wb, qr_t *q) { /* NOTE: NOT for JOINS */
-    if (w->wf.inl) setInQueued(   w, wb, q);
+    if (w->wf.inl) setInQueued   (w, wb, q);
     else           setRangeQueued(w, wb, q);
 }
 
@@ -199,7 +200,7 @@ static bool pk_op_l(aobj *apk, void *rrow, range_t *g,     row_op *p, wob_t *wb,
                     qr_t *q,   long *card, long    *loops, bool   *brkr) {
 printf("pk_op_l\n");
     *brkr = 0; INCR(*loops)
-     long pkl = q->pk_lim;
+    long pkl = q->pk_lim;
     if (pkl && !q->pk_lo && wb->ofst != -1 && *loops < wb->ofst) return 1;
     bool ret = pk_row_op(apk, rrow, g, p, q, card);
     if (pkl && wb->lim == *card) { *brkr = 1;                    return 1; }
@@ -225,7 +226,7 @@ static long singleOpPK(range_t *g, row_op *p) {               //DEBUG_SINGLE_PK
 // RANGE_DEL_SIMULATE_DR RANGE_DEL_SIMULATE_DR RANGE_DEL_SIMULATE_DR
 #define DEBUG_RDSD                                                   \
   if (pk) {                                                          \
-      printf("rDelSimDrPK: dr: %u delta: %u key: ", dr, delta);      \
+      printf("rDelSimDrPK: dr: %u dlt: %u key: ", dr, dlt);          \
       dumpAobj(printf, akey);                                        \
       printf("rDelSimDrPK: low:  "); dumpAobj(printf, &w->wf.alow);  \
       printf("rDelSimDrPK: high: "); dumpAobj(printf, &w->wf.ahigh); \
@@ -237,8 +238,10 @@ static long singleOpPK(range_t *g, row_op *p) {               //DEBUG_SINGLE_PK
 
 typedef struct range_del_sim_dr_t {
     long   *card; long *loops;  bool *brkr; // PK_OP_L
-    ibtd_t *d; bool  missed; void *brow; bool *ret; btSIter *bi; bool asc;
+    ibtd_t *d;    bool  missed; void *brow; bool *ret; btSIter *bi; bool asc;
 } rdsd_t;
+
+//NOTE: RangeDelete/Update need to simulate DRs to run to completion
 #define RDSR_ERR  0
 #define RDSR_OK   1
 #define RDSR_FULL 2
@@ -248,13 +251,13 @@ typedef struct range_del_sim_dr_t {
 #define DESC_DECRAKEY if (!t->asc) decrbyAobj(akey, 1);
 #define DESC_CONT     {DESC_DECRAKEY continue; }
 static int rDelSimDrGen(bool  pk,   row_op *p, range_t *g,    uint32 dr,
-                        aobj *akey, rdsd_t *t, uint32   delta) {
-    cswc_t *w = g->co.w; wob_t *wb = g->co.wb; qr_t *q = g->q;    DEBUG_RDSD
+                        aobj *akey, rdsd_t *t, uint32   dlt) {
+    cswc_t *w = g->co.w; wob_t *wb = g->co.wb; qr_t *q = g->q;       DEBUG_RDSD
     int i   = t->asc ? 0       : (int)dr - 1;
     int fin = t->asc ? (int)dr : -1;          uint32 j = 0;
-    if (!t->asc) incrbyAobj(akey, delta ? delta : dr); // REV PKs OK -> NOOP
-    if (t->asc && delta) incrbyAobj(akey, dr - delta);
-printf("i: %d fin: %d asc: %d dr: %d delta: %d key: ", i, fin, t->asc, dr, delta); dumpAobj(printf, akey);
+    if (!t->asc)       incrbyAobj(akey, dlt ? dlt : dr); // REV PKs OK -> NOOP
+    if (t->asc && dlt) incrbyAobj(akey, dr - dlt);
+printf("i: %d fin: %d asc: %d dr: %d dlt: %d key: ", i, fin, t->asc, dr, dlt); dumpAobj(printf, akey);
     while (i != fin) {
         ASC_INCRAKEY
 printf("%d: key: ", i); dumpAobj(printf, akey);
@@ -267,15 +270,15 @@ printf("%d: key: ", i); dumpAobj(printf, akey);
         } else {
             nBT_RowOp(t->d, q, wb, t->missed, akey, t->brow, 0, t->ret, 1); j++;
             if (*t->d->brkr) break;// PREV line (nBT_RowOp) can NOT fail -> NOOP
-        } 
+        }
         i = t->asc ? i + 1 : i - 1; // loop increment
         DESC_DECRAKEY
     }
     return j;
 }
 static int rDelSimDrPK(range_t *g, row_op *p, uint32 dr, aobj *akey, rdsd_t *t,
-                       uint32   delta){
-    uint32 j = rDelSimDrGen(1, p, g, dr, akey, t, delta);
+                       uint32   dlt) {
+    uint32 j = rDelSimDrGen(1, p, g, dr, akey, t, dlt);
 printf("END rDelSimDrPK: ret: %d\n", (j == dr) ? RDSR_FULL : RDSR_OK);
     return (j == dr) ? RDSR_FULL : RDSR_OK;
 }
@@ -299,10 +302,10 @@ printf("EMPTY GHOST KEY DELETIION: key: "); dumpAobj(printf, opkey);
 // RANGE_PK RANGE_PK RANGE_PK RANGE_PK RANGE_PK RANGE_PK RANGE_PK RANGE_PK
 static long rangeOpPK(range_t *g, row_op *p) {                 //DEBUG_RANGE_PK
     btEntry *be; btSIter *bi;
+    cswc_t  *w     = g->co.w; wob_t *wb = g->co.wb; qr_t *q = g->q;
     bool     iss   = g->se.qcols ? 1 : 0; bool isu = g->up.ncols ? 1 : 0;
     bool     isd   = !iss && !isu;
 printf("rangeOpPK: iss: %d isu: %d isd: %d\n", iss, isu, isd);
-    cswc_t  *w     = g->co.w; wob_t *wb = g->co.wb; qr_t *q = g->q;
     bt      *btr   = getBtr(w->wf.tmatch); g->co.btr = btr;
     g->asc         = !q->pk_desc;
     bool     brkr  = 0; long loops = -1; long card =  0;
@@ -412,7 +415,7 @@ printf("nBT_RowOp: fklim: %d lim: %d card: %d\n", q->fk_lim, wb->lim, *d->card);
     return 1;
 }
 static bool nBT_Op(ibtd_t *d) {                              //DEBUG_NODE_BT
-    cswc_t  *w = d->g->co.w; wob_t *wb = d->g->co.wb; qr_t *q = d->g->q;
+    cswc_t *w = d->g->co.w; wob_t *wb = d->g->co.wb; qr_t *q = d->g->q;
     if (d->g->se.cstar && !w->flist) { /* FK cstar w/o filters */
         if (d->nbtr->dirty)                return 0;
         INCRBY(*d->card, d->nbtr->numkeys) return 1;
@@ -570,11 +573,11 @@ static bool runOnNode(bt      *ibtr, uint32  still,
 // RANGE_FK RANGE_FK RANGE_FK RANGE_FK RANGE_FK RANGE_FK RANGE_FK RANGE_FK
 static long rangeOpFK(range_t *g, row_op *p) {                 //DEBUG_RANGE_FK
     ibtd_t   d; btEntry *be; btSIter *bi;
-    bool     iss   = g->se.qcols ? 1 : 0;
     cswc_t  *w     = g->co.w; wob_t *wb = g->co.wb; qr_t *q = g->q;
-    g->co.btr      = getBtr(w->wf.tmatch);
+    bool     iss   = g->se.qcols ? 1 : 0;
+    g->co.btr      = getBtr (w->wf.tmatch);
     bt      *ibtr  = getIBtr(w->wf.imatch);
-    r_ind_t *ri    = &Index[w->wf.imatch];
+    r_ind_t *ri    = &Index [w->wf.imatch];
     node_op *nop   = UNIQ(ri->cnstr) ? uBT_Op : nBT_Op;
     uint32   nexpc = ri->clist ? (ri->clist->len - 1) : 0;
     bool     singu = (!ri->clist && UNIQ(ri->cnstr)); // SINGLE COL UNIQ
@@ -609,14 +612,12 @@ printf("rangeOpFK: LOOP: bi->miss: %d be->val: %p\n", bi->missed, be->val);
 }
 static long singleOpFK(range_t *g, row_op *p) {               //DEBUG_SINGLE_FK
     ibtd_t    d;
+    cswc_t   *w      = g->co.w; wob_t *wb = g->co.wb; qr_t *q = g->q;
     bool      iss    = g->se.qcols ? 1 : 0;
-    cswc_t   *w      = g->co.w;
-    wob_t    *wb     = g->co.wb;
-    qr_t     *q      = g->q;
-    g->co.btr        = getBtr(w->wf.tmatch);
+    g->co.btr        = getBtr (w->wf.tmatch);
     bt       *ibtr   = getIBtr(w->wf.imatch);
     aobj     *afk    = &w->wf.akey;
-    uint32    nmatch =  0;
+    uint32    nmatch = 0;
     r_ind_t  *ri     = &Index[w->wf.imatch];
     node_op  *nop    = UNIQ(ri->cnstr) ? uBT_Op : nBT_Op;
     uint32    nexpc  = ri->clist ? (ri->clist->len - 1) : 0;
@@ -653,10 +654,8 @@ long keyOp(range_t *g, row_op *p) {
 // TODO inOPs should use a BT not a LL -> do a bt_find()
 static long inOpPK(range_t *g, row_op *p) {                //printf("inOpPK\n");
     listNode  *ln;
+    cswc_t    *w      = g->co.w; wob_t *wb = g->co.wb; qr_t *q = g->q;
     bool       brkr   =  0;
-    cswc_t    *w      = g->co.w;
-    wob_t     *wb     = g->co.wb;
-    qr_t      *q      = g->q;
     g->co.btr         = getBtr(w->wf.tmatch);
     long      loops   = -1;
     long      card    =  0;
@@ -673,11 +672,11 @@ static long inOpPK(range_t *g, row_op *p) {                //printf("inOpPK\n");
 }
 static long inOpFK(range_t *g, row_op *p) {                //printf("inOpFK\n");
     ibtd_t    d; listNode *ln;
-    bool      iss     = g->se.qcols ? 1 : 0;
     cswc_t   *w       = g->co.w; wob_t *wb = g->co.wb; qr_t *q = g->q;
-    g->co.btr         = getBtr(w->wf.tmatch);
+    bool      iss     = g->se.qcols ? 1 : 0;
+    g->co.btr         = getBtr (w->wf.tmatch);
     bt       *ibtr    = getIBtr(w->wf.imatch);
-    r_ind_t  *ri      = &Index[w->wf.imatch];
+    r_ind_t  *ri      = &Index [w->wf.imatch];
     node_op  *nop     = UNIQ(ri->cnstr) ? uBT_Op : nBT_Op;
     uint32    nexpc   = ri->clist ? (ri->clist->len - 1) : 0;
     long      ofst    = wb->ofst;

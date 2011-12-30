@@ -1,7 +1,6 @@
-/* B-trees Implementation.
+/*
  *
- * This file implements in the iterators for the Btree
- *
+ * This file implements AlchemyDB's Btree-Iterators
 
 AGPL License
 

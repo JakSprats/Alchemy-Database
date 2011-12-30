@@ -150,7 +150,7 @@ uchar insertCommit(cli  *c,      sds     uset,   sds     vals,
     bool   gost     = !UU(btr) && rrow && !(*(uchar *)rrow);
     bool   exists   = (rrow || dwm.miss) && !gost;
     bool   isinsert = !upd && !repl;
-    if (btr->dirty) { // NOTE: DirtyTable's have prohibited actions
+    if (rt->dirty) { // NOTE: DirtyTable's have prohibited actions
         bool thasi = (bool)(rt->ilist->len - 1);
         if (repl && thasi) { // REPLACE & indexed-table
             addReply(c, shared.replace_on_dirty_w_inds);       goto insc_e;
@@ -610,7 +610,7 @@ int updateInnards(cli *c, int tmatch, sds vallist, sds wclause,
 
     bool  upi = updatingIndex(matches, inds, cmiss);
     bt   *btr = getBtr(w.wf.tmatch);
-    if (btr->dirty && upi) {// UPDATE IndexedColumns of DirtyTable - PROHIBITED
+    if (rt->dirty && upi) {// UPDATE IndexedColumns of DirtyTable - PROHIBITED
         addReply(c, shared.update_on_dirty_w_inds);            goto upc_end;
     }
     if (w.wtype != SQL_SINGLE_LKP) { /* FK, RQ, IN -> RANGE UPDATE */
