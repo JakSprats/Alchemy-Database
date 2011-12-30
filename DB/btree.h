@@ -69,10 +69,9 @@ struct btree *bt_create(bt_cmp_t cmp, unsigned char trans, bts_t *s);
 typedef struct data_with_dirt_t {
     bt_data_t k;     // the data
     uint32    dr;    // dirty-right
-    ulong     ngost; // delete a key w/ DR, add a NextGhost
 } dwd_t;
-void      bt_insert  (struct btree *btr, bt_data_t k, uint32     dr);
-dwd_t     bt_delete  (struct btree *btr, bt_data_t k, aobj      *akey);
+void      bt_insert  (struct btree *btr, bt_data_t k, uint32     dr, bool gst);
+dwd_t     bt_delete  (struct btree *btr, bt_data_t k);
 bt_data_t bt_replace (struct btree *btr, bt_data_t k, bt_data_t  val);
 
 // OPERATORS OPERATORS OPERATORS OPERATORS OPERATORS OPERATORS OPERATORS

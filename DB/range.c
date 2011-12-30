@@ -431,7 +431,8 @@ static bool nBT_Op(ibtd_t *d) {                              //DEBUG_NODE_BT
     btSIter *nbi  = x ?
                      btGetFullXthIter  (d->nbtr, *d->ofst, nasc, w, wb->lim) :
                      btGetFullRangeIter(d->nbtr,           nasc, w);
-printf("nBT_Op: nbi: %p isd: %d empty: %d\n", nbi, isd, nbi->empty);
+if (nbi) printf("nBT_Op: nbi: %p isd: %d empty: %d\n", nbi, isd, nbi->empty);
+else     printf("nBT_Op: NO nbi: x: %d\n", x);
     if      (!nbi)               return ret;
     else if (iss && nbi->missed) ret = 0; // MISSED only relevant for SELECT
     else if (!nbi->empty){
@@ -838,7 +839,7 @@ static void opDeleteSort(list *ll,    cswc_t *w,      wob_t *wb,   bool  ofree,
         if (ofst > 0) { ofst--; continue; }
         obsl_t *ob  = v[i];
         aobj   *apk = ob->row;
-        if (deleteRow(w->wf.tmatch, apk, matches, inds)) INCR(*sent)
+        if (deleteRow(w->wf.tmatch, apk, matches, inds, 0)) INCR(*sent)
     }
     sortOBCleanup(v, listLength(ll), ofree);
     free(v); /* FREED 004 */
@@ -862,7 +863,7 @@ void ideleteAction(redisClient *c, cswc_t *w, wob_t *wb) {
         while((ln = listNext(li))) {
             aobj *apk = ln->value;
 printf("ideleteAction: key: "); dumpAobj(printf, apk);
-            if (deleteRow(w->wf.tmatch, apk, matches, inds)) sent++;
+            if (deleteRow(w->wf.tmatch, apk, matches, inds, 0)) sent++;
         } listReleaseIterator(li);
     }
     if (sent < card) card = sent;

@@ -427,6 +427,7 @@ bool sqlSelectBinary(cli   *c, int tmatch, bool cstar, int *cmatchs, int qcols,
         decrRefCount(r);
         if (wb->ovar) incrOffsetVar(c, wb, 1);
     }
+fflush(NULL);
     return 1;
 }
 bool sqlSelectInnards(cli *c,       sds  clist, sds from, sds tlist, sds where,
@@ -483,7 +484,7 @@ bool deleteInnards(cli *c, sds tlist, sds wclause) {
     } else {                         /* SQL_SINGLE_DELETE */
         MATCH_INDICES(w.wf.tmatch)
         aobj *apk = &w.wf.akey;
-        bool  del = deleteRow(w.wf.tmatch, apk, matches, inds);
+        bool  del = deleteRow(w.wf.tmatch, apk, matches, inds, 1);
         addReply(c, del ? shared.cone : shared.czero);
         if (wb.ovar) incrOffsetVar(c, &wb, 1);
     }

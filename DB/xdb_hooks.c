@@ -250,7 +250,8 @@ static void init_Tbl_and_Index(uint32 ntbl, uint32 nindx) {
 
 void DXDB_initServer() { //printf("DXDB_initServer\n");
     server.stat_num_dirty_commands = 0;
-    server.delete_miss             = 0;
+    server.delete_miss_pk          = 0;
+    server.delete_miss_fk          = 0;
     aeCreateTimeEvent(server.el, 1, luaCronTimeProc, NULL, NULL);
     initX_DB_Range();
     initAccessCommands();
@@ -347,7 +348,7 @@ rcommand *DXDB_lookupCommand(sds name) {
 }
 
 void DXDB_call(struct redisCommand *cmd, long long *dirty) {
-    server.delete_miss = 0;
+    server.delete_miss_pk = server.delete_miss_fk = 0;
     if (cmd->proc == luafuncCommand || cmd->proc == messageCommand) *dirty = 0;
     if (*dirty) server.stat_num_dirty_commands++;
 }

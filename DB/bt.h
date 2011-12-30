@@ -1,7 +1,7 @@
-/* B-tree Implementation.
+/*
  *
- * This file implements in memory b-tree with insert/del/replace/find/ ops
- *
+ * Creation of different btree types and
+ * Public Btree Operations w/ stream abstractions under the covers
 
 AGPL License
 

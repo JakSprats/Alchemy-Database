@@ -248,7 +248,6 @@ static bool streamToBTEntry(uchar *stream, btSIter *siter, bt_n *x, int i) {
     if (!stream) return 0; if (i < 0) i = 0;
     convertStream2Key(stream, siter->be.key, siter->x.btr);
     siter->be.val    = parseStream(stream, siter->x.btr);
-printf("streamToBTEntry: UNIQ: %d SIMP: %d\n", UNIQ(siter->x.btr), SIMP_UNIQ(siter->x.btr));
     //TODO this btr needs to contain pointers
     bool  gost       = !UU(siter->x.btr) && 
                        siter->be.val && !(*((uchar *)(siter->be.val)));
@@ -321,19 +320,20 @@ bool assignMaxKey(bt *btr, aobj *akey) {
 }
 static cswc_t W; // iterators dont care about w.wf.alow/ahigh
 btSIter *btGetFullRangeIter(bt *btr, bool asc, cswc_t *w) {
-    if (!btr->root || !btr->numkeys) return NULL; if (!w) w = &W;
-    aobj *aL = &w->wf.alow, *aH = &w->wf.ahigh;
+    if (!btr->root || !btr->numkeys)                      return NULL;
+    if (!w) w = &W; aobj *aL = &w->wf.alow, *aH = &w->wf.ahigh;
     if (!assignMinKey(btr, aL) || !assignMaxKey(btr, aH)) return NULL;
     bool med; uint32 ksize;
     CR8ITER8R(btr, asc, iter_leaf, iter_leaf_rev, iter_node, iter_node_rev);
     siter->scan = 1;
     setHigh(siter, asc ? aH : aL, btr->s.ktype);
     char *bkey  = createBTKey(asc ? aL : aH, &med, &ksize, btr); //DEST 030
-    if (!bkey) return NULL;
+    if (!bkey)                                            return NULL;
     bt_n *x  = NULL; int i = -1;
     uchar *stream = setIter(btr, bkey, siter, asc ? aL : aH, &x, &i, asc);
     destroyBTKey(bkey, med);                             /* DESTROYED 030 */
-    if (!streamToBTEntry(stream, siter, x, i)) return NULL;
+    if (!stream && siter->missed)                         return siter;//IILMISS
+    if (!streamToBTEntry(stream, siter, x, i))            return NULL;
     return siter;
 }
 

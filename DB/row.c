@@ -857,28 +857,31 @@ robj *outputRow(bt   *btr,       void *rrow, int qcols,
 }
 
 /* DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW */
-#define DEBUG_DELR_1 \
+#define DEBUG_DELR_1                                                       \
   printf("deleteRow: miss: %d rrow: %p gost: %d\n", dwm.miss, rrow, gost);
-#define DEBUG_DELR_2 \
-  printf("INDEX DELETION DONE : delete_miss: %d\n", server.delete_miss);
+#define DEBUG_DELR_2                                                           \
+  printf("INDEX DELETION DONE : delete_miss_pk: %d\n", server.delete_miss_pk); \
+  printf("INDEX DELETION DONE : delete_miss_fk: %d\n", server.delete_miss_fk);
 
-bool deleteRow(int tmatch, aobj *apk, int matches, int inds[]) {
+bool deleteRow(int tmatch, aobj *apk, int matches, int inds[], bool ispk) {
 printf("\n\nSTART: deleteRow: key: "); dumpAobj(printf, apk);
     bt    *btr  = getBtr(tmatch);
     dwm_t  dwm  = btFindD(btr, apk);
     void  *rrow = dwm.k;
     bool   gost = !UU(btr) && rrow && !(*(uchar *)rrow) && btGetDR(btr, apk);
-                                                                    DEBUG_DELR_1
-    if ((!rrow && !dwm.miss) || gost) return 0; // GHOST -> ECASE:6
+                                                                   DEBUG_DELR_1
+    if ((!rrow && !dwm.miss)) return 0;
+    if (gost)                 return 0; // GHOST -> ECASE:6
     if (matches) { // delete indexes
-        if (dwm.miss) server.delete_miss = 1; // ASYNC delFromIndex()
-        else {
+        if (dwm.miss) { // ASYNC delFromIndex()
+            if (ispk) server.delete_miss_pk++; else server.delete_miss_fk++;
+        } else {
             for (int i = 0; i < matches; i++) {
                 delFromIndex(btr, apk, rrow, inds[i]); }}
-    }                                                               DEBUG_DELR_2
+    }                                                              DEBUG_DELR_2
     btdeleter *btd = dwm.miss ? btDeleteD : btDelete;
     (*btd)(btr, apk); server.dirty++; 
-printf("END: deleteRow\n\n\n");
+printf("END: deleteRow\n\n\n"); fflush(NULL);
     return 1;
 }
 

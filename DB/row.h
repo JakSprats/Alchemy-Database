@@ -52,7 +52,7 @@ robj *write_output_row(int   qcols,   uint32  prelen, char *pbuf,
 robj *outputRow(bt   *btr,       void *row,  int qcols,
                 int   cmatchs[], aobj *aopk, int tmatch);
 
-bool deleteRow(int tmatch, aobj *apk, int matches, int inds[]);
+bool deleteRow(int tmatch, aobj *apk, int matches, int inds[], bool ispk);
 
 typedef struct update_ctl {
     bt      *btr;

@@ -1,6 +1,7 @@
-/* B-tree Implementation.
+/*
  *
- * Implements in memory b-tree tables with insert/del/replace/find/ ops
+ * Creation of different btree types and
+ * Public Btree Operations w/ stream abstractions under the covers
 
 AGPL License
 
@@ -236,15 +237,7 @@ static dwm_t abt_find_d(bt *btr, aobj *akey) { //NOTE: use for dirty tables
 }
 static bool abt_del(bt *btr, aobj *akey) { // DELETE the row
     DECLARE_BT_KEY(akey, 0)
-    dwd_t  dwd    = bt_delete(btr, btkey, akey);         /* FREED 028 */
-    if (dwd.ngost) { // replace MISS w/ GHOST,abt abstraction needed -- ECASE:1
-                     // TODO: this should be done in bt_code.c: remove_key
-        aobj gpk; initAobjFromLong(&gpk, dwd.ngost, btr->s.ktype);
-        uint32 ssize; DECLARE_BT_KEY(&gpk, 0)
-        char *stream = createStream(btr, NULL, btkey, ksize, &ssize);//DEST 027
-        bt_insert(btr, stream, dwd.dr);       // FREE ME 028
-        destroyBTKey(btkey, med);                                  // FREED 026
-    }
+    dwd_t  dwd    = bt_delete(btr, btkey);               /* FREED 028 */
     uchar *stream = dwd.k;
     destroyBTKey(btkey, med);                            /* FREED 026 */
     return destroyStream(btr, stream);                   /* DESTROYED 027 */
@@ -276,7 +269,7 @@ static uint32 abt_insert(bt *btr, aobj *akey, void *val) {
     uint32 ssize; DECLARE_BT_KEY(akey, 0)
     char   *stream = createStream(btr, val, btkey, ksize, &ssize); /*DEST 027*/
     destroyBTKey(btkey, med);                            /* FREED 026 */
-    bt_insert(btr, stream, 0);                           /* FREE ME 028 */
+    bt_insert(btr, stream, 0, 0);                        /* FREE ME 028 */
     return ssize;
 }
 bt *abt_resize(bt *obtr, uchar trans) {              // printf("abt_resize\n");
@@ -293,6 +286,7 @@ bt *abt_resize(bt *obtr, uchar trans) {              // printf("abt_resize\n");
     return obtr;
 }
 
+// PUBLIC_API PUBLIC_API PUBLIC_API PUBLIC_API PUBLIC_API PUBLIC_API PUBLIC_API
 /* DATA DATA DATA DATA DATA DATA DATA DATA DATA DATA DATA DATA DATA DATA */
 int   btAdd    (bt *btr, aobj *apk, void *val) {
                                       return abt_insert (btr, apk, val); }
@@ -303,20 +297,18 @@ int   btDelete (bt *btr, aobj *apk) { return abt_del    (btr, apk); }
 
 // DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY
 dwm_t btFindD  (bt *btr, aobj *apk) { return abt_find_d(btr, apk); }
-int   btDeleteD(bt *btr, aobj *apk) { abt_del_d (btr, apk); return 1; }
+int   btDeleteD(bt *btr, aobj *apk) { abt_del_d(btr, apk); return 1; }
 //NOTE: btFindD() must precede btEvict()
 bool  btEvict  (bt *btr, aobj *apk) { return abt_evict (btr, apk); }
 
 /* INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX */
 void  btIndAdd   (bt *ibtr, aobj *ikey, bt *nbtr) {
-                                               abt_insert(ibtr, ikey, nbtr);
-}
-bt   *btIndFind  (bt *ibtr, aobj *ikey) { return abt_find (ibtr, ikey); }
-bool  btIndExist (bt *ibtr, aobj *ikey) { return abt_exist(ibtr, ikey); }
-int   btIndDelete(bt *ibtr, aobj *ikey) {
-                                      abt_del(ibtr, ikey); return ibtr->numkeys;
-}
-void btIndNull   (bt *ibtr, aobj *ikey) { abt_replace(ibtr, ikey, NULL); }
+                                                 abt_insert (ibtr, ikey, nbtr);}
+bt   *btIndFind  (bt *ibtr, aobj *ikey) { return abt_find   (ibtr, ikey);      }
+bool  btIndExist (bt *ibtr, aobj *ikey) { return abt_exist  (ibtr, ikey);      }
+int   btIndDelete(bt *ibtr, aobj *ikey) {        abt_del    (ibtr, ikey); 
+                                          return ibtr->numkeys;                }
+void btIndNull   (bt *ibtr, aobj *ikey) {        abt_replace(ibtr, ikey, NULL);}
 
 /* INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE */
 #define DEBUG_INODE_ADD                                                   \

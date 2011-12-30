@@ -46,3 +46,5 @@ CACHE:
   1.) specify "AUTO INCREMENT" in "CREATE TABLE" declaration
   2.) DIRTY STREAM as STREAM
   3.) slab allocator for the myriad of different btree-node sizes
+
+  A.) "SELECT * FROM simple WHERE fk = 2 ORDER BY pk LIMIT 1 OFFSET 2" -> evicted skipped over

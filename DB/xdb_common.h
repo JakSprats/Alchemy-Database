@@ -82,8 +82,9 @@ typedef bool select_callback(erow_t* erow);
     select_callback    *scb;
 
 #define ALCHEMY_SERVER_EXTENSIONS \
-    long long     stat_num_dirty_commands; /* number of dirty commands */ \
-    unsigned char delete_miss;             /* DELETE hit a MISSing ROW */
+    long long     stat_num_dirty_commands; /* number of dirty commands    */ \
+    unsigned int  delete_miss_pk;          /* PK DELETE hit a MISSing ROW */ \
+    unsigned int  delete_miss_fk;          /* FK DELETE hit a MISSing ROW */
 
 #define SHARED_OBJ_DECLARATION \
     robj \
