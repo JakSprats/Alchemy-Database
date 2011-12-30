@@ -265,7 +265,8 @@ void addColumn(int tmatch, char *cname, int ctype) {
     ASSERT_OK(dictAdd(rt->cdict, sdsnew(cname), VOIDINT (col_count + 1)));
 }
 
-//TODO ALTER TABLE DROP [COLUMN cname] [HASHABILITY]
+//TODO ALTER TABLE DROP *
+//TODO ALTER TABLE UNSET DIRTY -> table must be 100% un-dirtied
 /* SYNTAX
   SQL:
     1.) ALTER Tablename ADD Columnname Type

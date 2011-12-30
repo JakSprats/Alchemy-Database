@@ -786,8 +786,7 @@ bool opSelectSort(cli  *c,    list *ll,   wob_t *wb,
 }
 void iselectAction(cli *c,         cswc_t *w,     wob_t *wb,
                    int  cmatchs[], int     qcols, bool   cstar) {
-    range_t g; qr_t    q;
-    setQueued(w, wb, &q);
+    range_t g; qr_t q; setQueued(w, wb, &q);
     list *ll     = initOBsort(q.qed, wb, 0);
     init_range(&g, c, w, wb, &q, ll, OBY_FREE_ROBJ, NULL);
     g.se.cstar   = cstar;
@@ -844,16 +843,18 @@ static void opDeleteSort(list *ll,    cswc_t *w,      wob_t *wb,   bool  ofree,
     free(v); /* FREED 004 */
 }
 void ideleteAction(redisClient *c, cswc_t *w, wob_t *wb) {
-    range_t g; qr_t    q;
-    setQueued(w, wb, &q);
+    range_t g; qr_t q; setQueued(w, wb, &q);
+    MATCH_INDICES(w->wf.tmatch)
     list *ll   = initOBsort(q.qed, wb, 1);
     if (!q.qed) ll->free = destroyAobj;
     init_range(&g, c, w, wb, &q, ll, OBY_FREE_AOBJ, NULL);
+    if (Tbl[w->wf.tmatch].dirty && g.co.w->flist) {
+        addReply(c, shared.rangedeldirtyfilter); goto idel_end;
+    }
     long  sent = 0;
     long  card = Op(&g, dellist_op);
     if (!card) addReply(c, shared.czero);
-    if (card <= 0) { releaseOBsort(ll); return; }
-    MATCH_INDICES(w->wf.tmatch)
+    if (card <= 0)                               goto idel_end;
     if (q.qed) {
         opDeleteSort(ll, w, wb, g.co.ofree, &sent, matches, inds);
     } else {
@@ -868,6 +869,8 @@ printf("ideleteAction: key: "); dumpAobj(printf, apk);
     if (sent < card) card = sent;
     addReplyLongLong(c, (ull)card);
     if (wb->ovar) incrOffsetVar(c, wb, card);
+
+idel_end:
     releaseOBsort(ll);
 }
 
@@ -914,10 +917,12 @@ void iupdateAction(cli  *c,      cswc_t *w,       wob_t *wb,
                    int   ncols,  int     matches, int    inds[],
                    char *vals[], uint32  vlens[], uchar  cmiss[],
                    ue_t  ue[],   lue_t  *le) {
-    range_t g; qr_t    q;
-    setQueued(w, wb, &q);
+    range_t g; qr_t q; setQueued(w, wb, &q);
     list *ll     = initOBsort(q.qed, wb, 1);
     init_range(&g, c, w, wb, &q, ll, OBY_FREE_AOBJ, NULL);
+    if (Tbl[w->wf.tmatch].dirty && g.co.w->flist) {
+        addReply(c, shared.rangeupddirtyfilter); goto iup_end;
+    }
     bt   *btr    = getBtr(w->wf.tmatch); g.up.btr = btr;
     g.up.ncols   = ncols;
     g.up.matches = matches; g.up.indices = inds;
