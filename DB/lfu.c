@@ -112,7 +112,7 @@ void updateLfu(cli *c, int tmatch, aobj *apk, uchar *lfuc, bool lfu) {
             } else cmiss[i] = 1;
         }
         bt      *btr   = getBtr(tmatch);
-        void    *rrow  = btFind(btr, apk);
+        void    *rrow  = btFind(btr, apk); // apk has NOT been evicted
         uc_t uc;
         init_uc(&uc, btr, tmatch, ncols, matches, inds, vals, vlens, cmiss,
                 ue,  le);

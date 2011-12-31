@@ -116,7 +116,7 @@ typedef bool select_callback(erow_t* erow);
     *orderby_count, \
     *selectsyntax,           *selectsyntax_nofrom,   *selectsyntax_nowhere, \
     *deletesyntax,           *deletesyntax_nowhere, \
-    *updatesyntax,           *update_pk_range_query, *update_pk_overwrite, \
+    *updatesyntax,           *update_pk_range_query, *update_pk_ovrw, \
     *updatesyntax_nowhere, \
     *update_expr,            *update_expr_col, \
     *update_expr_div_0,      *update_expr_mod,       *update_expr_cat, \

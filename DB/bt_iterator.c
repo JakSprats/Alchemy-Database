@@ -36,10 +36,10 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "bt_iterator.h"
 
-#define DUMP_CURR_KEY                                                \
-  { void *curr = KEYS(iter->btr, iter->bln->self, iter->bln->ik);    \
-    aobj  key; convertStream2Key(curr, &key, iter->btr);             \
-    printf("x: %p ik: %d key: ", iter->bln->self, iter->bln->ik);    \
+#define DUMP_CURR_KEY                                                     \
+  { void *curr = KEYS(iter->btr, iter->bln->self, iter->bln->ik);         \
+    aobj  key; convertStream2Key(curr, &key, iter->btr);                  \
+    printf("x: %p ik: %d key: ", (void *)iter->bln->self, iter->bln->ik); \
     dumpAobj(printf, &key); } fflush(NULL);
 
 // HELPER_DEFINES HELPER_DEFINES HELPER_DEFINES HELPER_DEFINES HELPER_DEFINES
@@ -254,7 +254,7 @@ static bool streamToBTEntry(uchar *stream, btSIter *siter, bt_n *x, int i) {
     siter->be.dr = x ? getDR(siter->x.btr, x, i) : 0;
     siter->be.stream = stream;
     siter->be.x      = x; siter->be.i = i; //NOTE: used by bt_validate_dirty
-btIterator *iter = &siter->x; printf("streamToBTEntry: x: %p stream: %p missed: %d gost: %d dr: %u key: ", x, stream, siter->missed, gost, siter->be.dr); DUMP_CURR_KEY
+btIterator *iter = &siter->x; printf("streamToBTEntry: x: %p stream: %p missed: %d gost: %d dr: %u key: ", (void *)x, stream, siter->missed, gost, siter->be.dr); DUMP_CURR_KEY
     return 1;
 }
 btSIter *btGetRangeIter(bt *btr, aobj *alow, aobj *ahigh, bool asc) {
@@ -271,7 +271,7 @@ btSIter *btGetRangeIter(bt *btr, aobj *alow, aobj *ahigh, bool asc) {
     return siter;
 }
 btEntry *btRangeNext(btSIter *siter, bool asc) { //printf("btRangeNext\n");
-printf("btRangeNext: siter: %p\n", siter);
+printf("btRangeNext: siter: %p\n", (void *)siter);
 if (siter) printf("btRangeNext: empty: %d\n", siter->empty);
     if (!siter || siter->empty) return NULL;
     bt_n *x  = NULL; int i = -1;
@@ -337,14 +337,14 @@ btSIter *btGetFullRangeIter(bt *btr, bool asc, cswc_t *w) {
 }
 
 // SCION_ITERATOR SCION_ITERATOR SCION_ITERATOR SCION_ITERATOR SCION_ITERATOR
-#define DEBUG_ITER_LEAF_SCION                                          \
-  printf("iter_leaf_scion: key: "); DUMP_CURR_KEY                      \
-  printf("LEAF: ik: %d n: %d flcnt: %d cnt: %d ofst: %d\n"  ,          \
+#define DEBUG_ITER_LEAF_SCION                                                \
+  printf("iter_leaf_scion: key: "); DUMP_CURR_KEY                            \
+  printf("LEAF: ik: %d n: %d flcnt: %d cnt: %d ofst: %d\n"  ,                \
          iter->bln->ik, iter->bln->self->n, fl->cnt, cnt, fl->ofst);
-#define DEBUG_ITER_NODE_SCION                                          \
-  printf("iter_node_scion\n");                                         \
-  printf("kid_in: %d kid: %p in: %d\n", kid_in, kid, iter->bln->in);   \
-  printf("scioned: %d scion: %d diff: %d cnt: %d ofst: %d\n",          \
+#define DEBUG_ITER_NODE_SCION                                                \
+  printf("iter_node_scion\n");                                               \
+  printf("kid_in: %d kid: %p in: %d\n", kid_in, (void *)kid, iter->bln->in); \
+  printf("scioned: %d scion: %d diff: %d cnt: %d ofst: %d\n",                \
           scioned, kid->scion, fl->diff, fl->cnt, fl->ofst);
 
 typedef struct four_longs { long cnt; long ofst; long diff; long over; } fol_t;
@@ -399,7 +399,7 @@ printf("iter_leaf_dirty_scion: ik: %d n: %d\n", iter->bln->ik, iter->bln->self->
         cnt += (isGhostRow(btr, iter->bln->self, iter->bln->ik) ? 0 : 1) +
                 getDR     (btr, iter->bln->self, iter->bln->ik);// 1forRow + DR
         long fcnt = fl->cnt + cnt;
-printf("ik: %d fl->cnt: %d cnt: %d dr: %d ofst: %d - (fcnt): %d\n", iter->bln->ik, fl->cnt, cnt, getDR(btr, iter->bln->self, iter->bln->ik), fl->ofst, fcnt);
+printf("ik: %d fl->cnt: %ld cnt: %ld dr: %d ofst: %ld - (fcnt): %ld\n", iter->bln->ik, fl->cnt, cnt, getDR(btr, iter->bln->self, iter->bln->ik), fl->ofst, fcnt);
         if (fcnt == fl->ofst) { fl->over = 0; iter->bln->ik++; return; }
         if (fcnt >  fl->ofst) { fl->over = fcnt - fl->ofst;    return; }
         iter->bln->ik++;
@@ -464,7 +464,7 @@ printf("iter_leaf_dirty_scion_rev: ik: %d n: %d\n", iter->bln->ik, iter->bln->se
     while (iter->bln->ik >= 0) { // DRs must be added individually
         cnt += getDR(btr, iter->bln->self, iter->bln->ik);
         long fcnt = fl->cnt + cnt;
-printf("ik: %d fl->cnt: %d cnt: %d dr: %d ofst: %d - (fcnt): %d\n", iter->bln->ik, fl->cnt, cnt, getDR(btr, iter->bln->self, iter->bln->ik), fl->ofst, fcnt);
+printf("ik: %d fl->cnt: %ld cnt: %ld dr: %d ofst: %ld - (fcnt): %ld\n", iter->bln->ik, fl->cnt, cnt, getDR(btr, iter->bln->self, iter->bln->ik), fl->ofst, fcnt);
         if (fcnt >= fl->ofst) { fl->over = fcnt - fl->ofst; return; }
         if (!isGhostRow(btr, iter->bln->self, iter->bln->ik)) cnt++; // KEY also
         iter->bln->ik--;
@@ -523,7 +523,7 @@ xthi_e:
     if (d && fl.over > 0 && getDR(btr, siter->x.bln->self, siter->x.bln->ik)) {
         siter->missed = 1; siter->mdelta = (uint32)fl.over;
     } else siter->mdelta = dlt;
-printf("END XthIterfind: over: %d missed: %d delta: %u key: ", fl.over, siter->missed, siter->mdelta); DUMP_CURR_KEY
+printf("END XthIterfind: over: %ld missed: %d delta: %u key: ", fl.over, siter->missed, siter->mdelta); DUMP_CURR_KEY
     iter->iLeaf = asc ? iter_leaf : iter_leaf_rev; // Back to NORMAL ITERATORS
     iter->iNode = asc ? iter_node : iter_node_rev;
     return 1;
@@ -538,13 +538,14 @@ btSIter *btGetXthIter(bt *btr, aobj *alow, aobj *ahigh, long oofst, bool asc) {
 }
 
 #define DEBUG_SCION_FIND_1 \
-  printf("btScionFind: PRE__LOOP: asc: %d ofst: %d x: %p i: %d leaf: %d key: ",\
-          asc, ofst, x, i, x->leaf); \
+  printf("btScionFind: PRE__LOOP: asc: %d ofst: %ld" \
+         " x: %p i: %d leaf: %d key: ",              \
+          asc, ofst, (void *)x, i, x->leaf);         \
   btIterator *iter = &siter->x; DUMP_CURR_KEY
 #define DEBUG_SCION_FIND_2 \
   printf("%d: ofst: %ld scion: %d\n", i, ofst, scion);
 #define DEBUG_SCION_FIND_END \
-  printf("btScionFind: POST_LOOP: ofst: %d ik: %d\n", ofst, siter->x.bln->ik);
+  printf("btScionFind: POST_LOOP: ofst: %ld ik: %d\n", ofst, siter->x.bln->ik);
 
 static bool btScionFind(btSIter *siter, bt_n *x, ulong ofst, bt *btr, bool asc,
                         cswc_t  *w,     long  lim) {
@@ -577,10 +578,10 @@ static bool btScionFind(btSIter *siter, bt_n *x, ulong ofst, bt *btr, bool asc,
     i           = asc ? 0     : n - 1;
     fin         = asc ? ofst  : n - 1 - ofst;
     ulong  cnt  = 0; bool indr = 0;
-printf("i: %d fin: %d ofst: %d x->n-1: %d\n", i, fin, ofst, siter->x.bln->self->n - 1);
+printf("i: %d fin: %d ofst: %ld x->n-1: %d\n", i, fin, ofst, siter->x.bln->self->n - 1);
     while (i != fin) {
         cnt += getDR(btr, x, i);
-printf("%d: dr: %d cnt: %d ofst: %d\n", i, getDR(btr, x, i), cnt, ofst);
+printf("%d: dr: %d cnt: %ld ofst: %ld\n", i, getDR(btr, x, i), cnt, ofst);
         if (cnt >= ofst) { // LOW one higher -> forces rDelSimDr()
             releaseAobj(&w->wf.alow); releaseAobj(&w->wf.ahigh); indr = 1;
             uchar *stream = KEYS(btr, x, i);
@@ -597,7 +598,7 @@ printf("%d: dr: %d cnt: %d ofst: %d\n", i, getDR(btr, x, i), cnt, ofst);
     INIT_ITER_BEENTRY(siter, btr, x, siter->x.bln->ik);
     if ((!asc && (cnt == ofst) && getDR(btr, x, siter->x.bln->ik)) ||
         (asc && indr))                                      siter->missed = 1;
-printf("END btScionFind: asc: %d indr: %d i: %d ofst: %d ik: %d cnt: %lu dr: %u key: ", asc, indr, i, ofst, siter->x.bln->ik, cnt, getDR(btr, x, siter->x.bln->ik)); DUMP_CURR_KEY
+printf("END btScionFind: asc: %d indr: %d i: %d ofst: %ld ik: %d cnt: %lu dr: %u key: ", asc, indr, i, ofst, siter->x.bln->ik, cnt, getDR(btr, x, siter->x.bln->ik)); DUMP_CURR_KEY
     return 1;                                            //DEBUG_SCION_FIND_END
 }
 btSIter *btGetFullXthIter(bt *btr, long oofst, bool asc, cswc_t *w, long lim) {

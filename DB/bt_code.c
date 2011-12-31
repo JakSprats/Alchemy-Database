@@ -66,7 +66,7 @@ static int       real_log2 (unsigned int a, int nbits);
   11.) DS as stream
   12.) slab allocator for ALL btn's
 
-  14.) make sure btFind() and btFindD() are in the right places
+  14.) btFind() in setUniqIndexVal() -> btFindD() + TESTING
   15.) test case3 "(s!=DK_NONE) decr_scion" w/ DEEP DR combos
 
   16.) fully EVICTED index -> MISS ON SELECT & DELETE

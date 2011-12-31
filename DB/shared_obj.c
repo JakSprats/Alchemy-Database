@@ -183,8 +183,8 @@ void DXDB_createSharedObjects() {
         "-ERR SYNTAX: UPDATE tablename SET col1=val1,col2=val2,,,, WHERE indexed_column = val \"WHERE\" keyword MISSING\r\n"));
     shared.update_pk_range_query = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: UPDATE of PK not allowed with Range Query\r\n"));
-    shared.update_pk_overwrite = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: UPDATE of PK would overwrite existing row - disallowed\r\n"));
+    shared.update_pk_ovrw = createObject(REDIS_STRING,sdsnew(
+        "-ERR PROHIBITED: UPDATE of PK would overwrite existing row - USE \"REPLACE\"\r\n"));
     shared.update_expr = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: UPDATE expression: parse error\r\n"));
     shared.update_expr_col = createObject(REDIS_STRING,sdsnew(

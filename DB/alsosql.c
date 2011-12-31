@@ -480,7 +480,7 @@ bool deleteInnards(cli *c, sds tlist, sds wclause) {
         ideleteAction(c, &w, &wb);
     } else {                         /* SQL_SINGLE_DELETE */
         MATCH_INDICES(w.wf.tmatch)
-        int   del = deleteRow(w.wf.tmatch, &w.wf.akey, matches, inds, 1);
+        int del = deleteRow(w.wf.tmatch, &w.wf.akey, matches, inds);
         if (del == -1) addReply(c, shared.deletemiss);
         else           addReply(c, del ? shared.cone : shared.czero);
         if (wb.ovar) incrOffsetVar(c, &wb, 1);
@@ -549,10 +549,9 @@ static bool assignMisses(cli   *c,      int    tmatch,    int   ncols,
 }
 static bool ovwrPKUp(cli    *c,        int    pkupc, char *mvals[],
                      uint32  mvlens[], uchar  pktyp, bt   *btr) {
-    aobj *ax   = createAobjFromString(mvals[pkupc], mvlens[pkupc], pktyp);
-    void *xrow = btFind(btr, ax);
-    destroyAobj(ax);
-    if (xrow) { addReply(c, shared.update_pk_overwrite); return 1; }
+    aobj  *ax  = createAobjFromString(mvals[pkupc], mvlens[pkupc], pktyp);
+    dwm_t  dwm = btFindD(btr, ax); destroyAobj(ax);
+    if (dwm.k || dwm.miss) { addReply(c, shared.update_pk_ovrw); return 1; }
     return 0;
 }
 static bool updatingIndex(int matches, int inds[], uchar cmiss[]) {

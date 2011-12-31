@@ -233,7 +233,8 @@ static bool uBT_Op(ibtd_t *d) { /* OTHER_BTs (no evictions)*/    //DEBUG_UBT_OP
         if      (q->fk_lo && *d->loops < *d->ofst)    return 1;
         else if (wb->lim == *d->card) { *d->brkr = 1; return 1; }
     }
-    void *rrow = btFind(d->g->co.btr, &UniqueIndexVal); /* FK lkp - must work */
+    // FK lookup must win, evictions not possible
+    void *rrow = btFind(d->g->co.btr, &UniqueIndexVal);
     if (!(*d->p)(d->g, &UniqueIndexVal, rrow, d->g->q->qed, d->card)) return 0;
     return 1;
 }
@@ -271,7 +272,8 @@ printf("nBT_RowOp: noop: %d\n", noop);
                 else /* XX */    OBT_NODE_BT_OP(xxk, x, COL_TYPE_U128)
             }
             key = &akey;                                //DEBUG_NODE_BT_OBC_2
-        }
+        } 
+        // pk comes from Index, so it has not been evicted
         void *rrow = btFind(d->g->co.btr, key); releaseAobj(&akey);
         if (!(*d->p)(d->g, key, rrow, q->qed, d->card)) { *ret = 0; return 0; }
     }
@@ -320,6 +322,7 @@ printf("LOOP: nbi.missed: %d dr: %u nasc: %d\n", nbi->missed, nbe->dr, nasc);
     return ret;
 }
 
+//TODO this should be btFindD() ... but this all needs to be TESTed
 #define SETUNIQIVAL(vt, vcast, aobjpart)                     \
   { uv->enc      = uv->type = vt;                            \
     vcast *vvar  = btFind(nbtr, akey); if (!vvar)  return 0; \
@@ -683,7 +686,7 @@ static void opDeleteSort(list *ll,    cswc_t *w,      wob_t *wb,   bool  ofree,
         if (ofst > 0) { ofst--; continue; }
         obsl_t *ob  = v[i];
         aobj   *apk = ob->row;
-        if (deleteRow(w->wf.tmatch, apk, matches, inds, 0) == 1) INCR(*sent)
+        if (deleteRow(w->wf.tmatch, apk, matches, inds) == 1) INCR(*sent)
     }
     sortOBCleanup(v, listLength(ll), ofree);
     free(v); /* FREED 004 */
@@ -709,7 +712,7 @@ void ideleteAction(redisClient *c, cswc_t *w, wob_t *wb) {
         while((ln = listNext(li))) {
             aobj *apk = ln->value;
 printf("ideleteAction: key: "); dumpAobj(printf, apk);
-            if (deleteRow(w->wf.tmatch, apk, matches, inds, 0) == 1) sent++;
+            if (deleteRow(w->wf.tmatch, apk, matches, inds) == 1) sent++;
         } listReleaseIterator(li);
     }
     if (sent < card) card = sent;
@@ -750,7 +753,7 @@ static bool opUpdateSort(cli   *c,   list *ll,    cswc_t  *w,
             *sent        = *sent + 1;
             obsl_t *ob   = v[i];
             aobj   *apk  = ob->row;
-            void   *rrow = btFind(btr, apk);
+            void   *rrow = btFind(btr, apk); // pk comes from LL
             if (updateRow(c, &uc, apk, rrow) == -1) {
                 ret = 0; break; /* negate presumed success */
             } //NOTE: rrow is no longer valid, updateRow() can change it
@@ -792,7 +795,7 @@ void iupdateAction(cli  *c,      cswc_t *w,       wob_t *wb,
             listIter  *li = listGetIterator(ll, AL_START_HEAD);
             while((ln = listNext(li))) {
                 aobj *apk  = ln->value;
-                void *rrow = btFind(g.up.btr, apk);
+                void *rrow = btFind(g.up.btr, apk); // pk comes from LL
                 if (updateRow(g.co.c, &uc, apk, rrow) == -1) { err = 1; break; }
                 //NOTE: rrow is no longer valid, updateRow() can change it
                 sent++;

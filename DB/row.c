@@ -860,7 +860,7 @@ robj *outputRow(bt   *btr,       void *rrow, int qcols,
 #define DEBUG_DELR_1                                                       \
   printf("deleteRow: miss: %d rrow: %p gost: %d\n", dwm.miss, rrow, gost);
 
-int deleteRow(int tmatch, aobj *apk, int matches, int inds[], bool ispk) {
+int deleteRow(int tmatch, aobj *apk, int matches, int inds[]) {
 printf("\n\nSTART: deleteRow: key: "); dumpAobj(printf, apk);
     bt    *btr  = getBtr(tmatch);
     dwm_t  dwm  = btFindD(btr, apk);
