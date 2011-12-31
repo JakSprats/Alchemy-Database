@@ -198,7 +198,7 @@ printf("rangeOpPK: iss: %d isu: %d isd: %d\n", iss, isu, isd);
               btGetXthIter  (btr, &w->wf.alow, &w->wf.ahigh, wb->ofst, g->asc) :
               btGetRangeIter(btr, &w->wf.alow, &w->wf.ahigh, g->asc);
     if (!bi) return card;
-printf("rangeOpPK: bi: %p missed: %d\n", bi, bi->missed);
+printf("rangeOpPK: bi: %p missed: %d\n", (void *)bi, bi->missed);
     if (iss && bi->missed) card = -1; //NOTE: MISSED only relevant for SELECT
     else {
 //TODO this miss before is not working
@@ -275,7 +275,7 @@ printf("nBT_RowOp: noop: %d\n", noop);
         void *rrow = btFind(d->g->co.btr, key); releaseAobj(&akey);
         if (!(*d->p)(d->g, key, rrow, q->qed, d->card)) { *ret = 0; return 0; }
     }
-printf("nBT_RowOp: fklim: %d lim: %d card: %d\n", q->fk_lim, wb->lim, *d->card);
+printf("nBT_RowOp: fklim: %d lim: %ld card: %ld\n", q->fk_lim, wb->lim, *d->card);
     if (q->fk_lim && wb->lim == *d->card) { *d->brkr = 1;           return 1; }
     return 1;
 }
@@ -299,7 +299,7 @@ static bool nBT_Op(ibtd_t *d) {                              //DEBUG_NODE_BT
     btSIter *nbi  = x ?
                      btGetFullXthIter  (d->nbtr, *d->ofst, nasc, w, wb->lim) :
                      btGetFullRangeIter(d->nbtr,           nasc, w);
-if (nbi) printf("nBT_Op: nbi: %p isd: %d empty: %d\n", nbi, isd, nbi->empty);
+if (nbi) printf("nBT_Op: nbi: %p isd: %d empty: %d\n", (void *)nbi, isd, nbi->empty);
 else     printf("nBT_Op: NO nbi: x: %d\n", x);
     if      (!nbi)               return ret;
     else if (iss && nbi->missed) ret = 0; // MISSED only relevant for SELECT
@@ -440,7 +440,7 @@ static long rangeOpFK(range_t *g, row_op *p) {                 //DEBUG_RANGE_FK
     if (!bi) return card;
     init_ibtd(&d, p, g, q, NULL, &ofst, &card, &loops, &brkr, ri->obc);
     while ((be = btRangeNext(bi, g->asc))) {
-printf("rangeOpFK: LOOP: bi->miss: %d be->val: %p\n", bi->missed, be->val);
+printf("rangeOpFK: LOOP: bi->miss: %d be->val: %p\n", bi->missed, (void *)be->val);
         if (iss && !be->val) { card = -1; break; }
         uint32  nmatch = 0;
         d.nbtr         = singu ? ibtr : btMCIFindVal(w, be->val, &nmatch, ri);
@@ -470,10 +470,10 @@ static long singleOpFK(range_t *g, row_op *p) {               //DEBUG_SINGLE_FK
     bool      singu  = SIMP_UNIQ(ibtr);
     bool      exists = btIndExist(ibtr, afk);
     bt       *fibtr  = singu ? NULL : btIndFind(ibtr, afk);
-printf("singleOpFK: fibtr: %p exists: %d\n", fibtr, exists);
+printf("singleOpFK: fibtr: %p exists: %d\n", (void *)fibtr, exists);
     if (!singu && iss && exists && !fibtr) return -1;
     bt       *nbtr   = singu ? ibtr : btMCIFindVal(w, fibtr, &nmatch, ri);
-printf("singleOpFK: nbtr: %p\n", nbtr);
+printf("singleOpFK: nbtr: %p\n", (void *)nbtr);
     long      ofst   = wb->ofst;
     long      loops  = -1; long card =  0; bool brkr =  0;
     init_ibtd(&d, p, g, q, nbtr, &ofst, &card, &loops, &brkr, ri->obc);
@@ -534,7 +534,7 @@ static long inOpFK(range_t *g, row_op *p) {                //printf("inOpFK\n");
         aobj   *afk    = ln->value;
         bool    exists = btIndExist(ibtr, afk);
         bt     *beval  = btIndFind (ibtr, afk);
-printf("inOpFK: beval: %p exists: %d\n", beval, exists);
+printf("inOpFK: beval: %p exists: %d\n", (void *)beval, exists);
         if (iss && exists && !beval) return -1;
         d.nbtr         = btMCIFindVal(w, beval, &nmatch, ri);
         if (d.nbtr) {

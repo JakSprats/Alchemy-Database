@@ -151,9 +151,8 @@ uchar insertCommit(cli  *c,      sds     uset,   sds     vals,
     bool   exists   = (rrow || dwm.miss) && !gost;
     bool   isinsert = !upd && !repl;
     if (rt->dirty) { // NOTE: DirtyTable's have prohibited actions
-        bool thasi = (bool)(rt->ilist->len - 1);
-        if (repl && thasi) { // REPLACE & indexed-table
-            addReply(c, shared.replace_on_dirty_w_inds);       goto insc_e;
+        if (repl) { // REPLACE & indexed-table
+            addReply(c, shared.replace_dirty);                 goto insc_e;
         }
         if (isinsert && !ai) { //INSERT on DIRTY w/ PK declation PROHIBITED
             addReply(c, shared.insert_dirty_pkdecl);           goto insc_e;
@@ -177,13 +176,11 @@ uchar insertCommit(cli  *c,      sds     uset,   sds     vals,
                     delFromIndex(btr, &apk, rrow, inds[i]);
             }}
         }
-        bool ovwr = (repl || gost);
 
-printf("repl: %d rrow: %p upd: %d gost: %d miss: %d exists: %d ovwr: %d key: ",
-        repl, rrow, upd, gost, dwm.miss, exists, ovwr); dumpAobj(printf, &apk);
+printf("repl: %d rrow: %p upd: %d miss: %d exists: %d key: ",
+        repl, rrow, upd, dwm.miss, exists); dumpAobj(printf, &apk);
 
-        if (repl && dwm.miss) btDeleteD(btr, &apk);
-        len = ovwr ? btReplace(btr, &apk, nrow) : btAdd(btr, &apk, nrow);
+        len = repl ? btReplace(btr, &apk, nrow) : btAdd(btr, &apk, nrow);
         UPDATE_AUTO_INC(pktyp, apk)
         ret = INS_INS;            /* negate presumed failure */
     }

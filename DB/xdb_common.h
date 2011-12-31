@@ -150,7 +150,7 @@ typedef bool select_callback(erow_t* erow);
     *drop_lfu,                *col_lfu,                    \
     *insert_lfu,              *kw_cname,                   \
     *dirty_miss,              *evict_other,                \
-    *replace_on_dirty_w_inds, *insert_dirty_pkdecl,        \
+    *replace_dirty,           *insert_dirty_pkdecl,        \
     *update_on_dirty_w_inds,                               \
     *u128_parse,             *update_u128_complex,         \
     *uniq_simp_index_nums,   *updateipos,                  \

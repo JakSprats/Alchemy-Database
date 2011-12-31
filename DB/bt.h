@@ -173,9 +173,7 @@ int    btAdd    (bt *btr, aobj *apk, void *val);
 void  *btFind   (bt *btr, aobj *apk);
 dwm_t  btFindD  (bt *btr, aobj *apk);
 int    btReplace(bt *btr, aobj *apk, void *val);
-typedef int btdeleter(bt *btr, aobj *apk);
-        int btDelete (bt *btr, aobj *apk);
-        int btDeleteD(bt *btr, aobj *apk);
+int    btDelete (bt *btr, aobj *apk);
 bool   btEvict  (bt *btr, aobj *apk);
 
 void  btIndAdd   (bt *ibtr, aobj *ikey, bt  *nbtr);

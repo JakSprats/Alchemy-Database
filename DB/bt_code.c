@@ -58,9 +58,8 @@ static bt_data_t findmaxkey(bt *btr, bt_n *x);
 static int       real_log2 (unsigned int a, int nbits);
 
 /* CACHE TODO LIST
-   0.) take out bt_delete_d ... it ghosts misses ... this is wrong
-
    1.) UU's have no gosts ... API for UU must be a "uuk" like all OBT
+     A.) findnodekey sets dwm.gost
 
    7.) DS in rdbSave/Load
    8.) U128PK/FK CACHE:[EVICT,MISS] support
@@ -262,16 +261,6 @@ static inline int get_scion_range(bt *btr, bt_n *x, int beg, int end) {
     for (int i = beg; i < end; i++) scion += 1 + getDR(btr, x, i);
     return scion;
 }
-// GHOST_DR
-static inline void decr_scion_via_key(bt *btr, bt_data_t k, uint32 by) {
-    int r = -1; bt_n *x = btr->root;
-    while (x) {
-        x->scion -= by;
-        int i     = findkindex(btr, x, k, &r, NULL);
-        if ((i >= 0 && r == 0) || x->leaf) return;
-        x = NODES(btr, x)[i + 1];
-    }                                      return;
-}
 
 // DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY
 typedef struct btn_pos {
@@ -456,7 +445,7 @@ static void btreesplitchild(bt *btr, bt_n *x, int i, bt_n *y, bt_n *p, int pi) {
 
 #define GETN(btr) ((2 * btr->t) - 1)
 static void bt_insertnonfull(bt  *btr, bt_n *x, bt_data_t k, bt_n *p, int pi,
-                             int  dr,  bool  gst) {
+                             int  dr) {
     if (x->leaf) { /* we are a leaf, just add it in */
         int i = findkindex(btr, x, k, NULL, NULL);
         if (i != x->n - 1) {
@@ -464,19 +453,17 @@ static void bt_insertnonfull(bt  *btr, bt_n *x, bt_data_t k, bt_n *p, int pi,
                     p, pi, p, pi);
         }
         x = overwriteDR(btr, x, i + 1, dr, p, pi);
-        setBTKeyRaw(btr, x, i + 1, k); x->n++; 
-        if (!gst) incr_scion(x, 1);
+        setBTKeyRaw(btr, x, i + 1, k); x->n++; incr_scion(x, 1);
     } else { /* not leaf */
         int i = findkindex(btr, x, k, NULL, NULL) + 1;
         if (NODES(btr, x)[i]->n == GETN(btr)) { // if next node is full
             btreesplitchild(btr, x, i, NODES(btr, x)[i], x, i);
             if (btr->cmp(k, KEYS(btr, x, i)) > 0) i++;
         }
-        bt_insertnonfull(btr, NODES(btr, x)[i], k, x, i, dr, gst); 
-        if (!gst) incr_scion(x, 1);
+        bt_insertnonfull(btr, NODES(btr, x)[i], k, x, i, dr); incr_scion(x, 1);
     }
 }
-void bt_insert(bt *btr, bt_data_t k, uint32 dr, bool gst) {
+void bt_insert(bt *btr, bt_data_t k, uint32 dr) {
     bt_n *r  = btr->root;
     bt_n *p  = r;
     int   pi = 0;
@@ -491,7 +478,7 @@ void bt_insert(bt *btr, bt_data_t k, uint32 dr, bool gst) {
         p                = r = s;
         btr->numnodes++;
     }
-    bt_insertnonfull(btr, r, k, p, pi, dr, gst);
+    bt_insertnonfull(btr, r, k, p, pi, dr);
     btr->numkeys++;
 }
 
@@ -530,7 +517,7 @@ void *case_2c_ptr = NULL;
 static char BT_DelBuf[MAX_KEY_SIZE];
 
 static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
-                       bt_n *p,   int   pi, list     *plist, bool gst) {
+                       bt_n *p,   int   pi, list     *plist) {
     bt_n *xp, *y, *z; bt_data_t kp;
     int   yn, zn, i = 0, r = -1, ks = btr->s.ksize;
     if (s != DK_NONE) { /* min or max node deletion */
@@ -543,7 +530,7 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
         else if (s == DK_2B) i = -1;       /* min node/leaf */
     } else i = findkindex(btr, x, k, &r, NULL);                DEBUG_DEL_POST_S
 
-    if (!drt && !gst) decr_scion(x, 1); // scion reduced by 1 every DELETE
+    if (!drt) decr_scion(x, 1); // scion reduced by 1 every DELETE
 
     /* Case 1:
      * If the key k is in node x and x is a leaf, delete the key k from x. */
@@ -557,7 +544,7 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
                 x = incrPrevDRCase1(btr, x, i, ++dwd.dr, p, pi, plist);
             } else decr_scion(x, 1 + dwd.dr); //NOTE: key FOR Case2A/B
         }                                                DEBUG_DEL_CASE_1_DIRTY
-        if (!drt && !gst && dwd.dr) { // DELETE KEY w/ DR -> REPLACE w/ GHOST
+        if (!drt && dwd.dr) { // DELETE KEY w/ DR -> REPLACE w/ GHOST
             x = replaceKeyWithGhost(btr, x, i, kp, dwd.dr, p, pi);
         } else {                      // OTHERWISE JUST REMOVE FROM BTREE
             mvXKeys(btr, &x, i, &x, i + 1, (x->n - i - 1), ks, p, pi, p, pi);
@@ -579,7 +566,7 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
             xp         = NODES(btr, x)[i];
             ADD_BP(plist, x, i)
             printf("CASE2A recurse: key: "); printKey(btr, x, i);
-            dwd_t dwd  = deletekey(btr, xp, NULL, DK_2A, drt, x, i, plist, gst);
+            dwd_t dwd  = deletekey(btr, xp, NULL, DK_2A, drt, x, i, plist);
             DEBUG_SET_BTKEY_2A
             if (drt) x = incrDR(btr, x, i, ++dwd.dr, p, pi);
             else     x = setDR (btr, x, i, dwd.dr,   p, pi);
@@ -596,8 +583,7 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
             xp         = NODES(btr, x)[i + 1];
             ADD_BP(plist, x, i + 1)
             printf("CASE2B recurse: key: "); printKey(btr, x, i);
-            dwd_t dwd  = deletekey(btr, xp, NULL, DK_2B, drt, x, i + 1,
-                                   plist, gst);
+            dwd_t dwd  = deletekey(btr, xp, NULL, DK_2B, drt, x, i + 1, plist);
             DEBUG_SET_BTKEY_2B
             if (drt) { // prev key inherits DR+1
                 x      = incrCase2B (btr, x, i, (getDR(btr, x, i) + 1));
@@ -632,7 +618,7 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
             bt_free_btreenode(btr, z);
             ADD_BP(plist, x, i)
             printf("CASE2C key: "); printKey(btr, x, i);
-            return deletekey(btr, y, k, s, drt, x, i, plist, gst);
+            return deletekey(btr, y, k, s, drt, x, i, plist);
         }
     }
     /* Case 3:
@@ -719,13 +705,13 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
         }
     } //printf("RECURSE CASE 3\n");
     ADD_BP(plist, x, i)                                   DEBUG_DEL_POST_CASE_3
-    dwd_t dwd = deletekey(btr, xp, k, s, drt, x, i, plist, gst);
+    dwd_t dwd = deletekey(btr, xp, k, s, drt, x, i, plist);
     //TODO test this decr_scion() w/ DEEP DR combos
     if (s != DK_NONE) decr_scion(x, 1 + dwd.dr); //NOTE: key for Case2A/B
     return dwd;
 }
 
-static dwd_t remove_key(bt *btr, bt_data_t k, bool drt, bool gst) {
+static dwd_t remove_key(bt *btr, bt_data_t k, bool drt) {
     dwd_t dwde; bzero(&dwde, sizeof(dwd_t)); if (!btr->root) return dwde;
     case_2c_ptr = NULL;                                         DEBUG_DEL_START
     bt_n  *p    = btr->root; int pi = 0;
@@ -733,7 +719,7 @@ static dwd_t remove_key(bt *btr, bt_data_t k, bool drt, bool gst) {
     if (drt) {
         plist = listCreate(); plist->free = free_bp; ADD_BP(plist, p, pi)//FR110
     } else plist = NULL;
-    dwd_t dwd   = deletekey(btr, btr->root, k, DK_NONE, drt, p, pi, plist, gst);
+    dwd_t dwd   = deletekey(btr, btr->root, k, DK_NONE, drt, p, pi, plist);
     btr->numkeys--;                                             //DEBUG_DEL_END
     /* remove empty non-leaf node from root, */
     if (!btr->root->n && !btr->root->leaf) { /* NOTE: tree decrease height */
@@ -747,37 +733,10 @@ static dwd_t remove_key(bt *btr, bt_data_t k, bool drt, bool gst) {
     return dwd;
 }
 dwd_t bt_delete(bt *btr, bt_data_t k) {
-    return      remove_key(btr, k, 0, 0);
+    return      remove_key(btr, k, 0);
 }
 bt_data_t bt_evict(bt *btr, bt_data_t k) {
-    dwd_t dwd = remove_key(btr, k, 1, 0); return dwd.k;
-}
-
-// bt_delete_d handles the deletion of an EVICTed Key (cases 2,3,4,7)
-void bt_delete_d(bt *btr, bt_data_t k, aobj *akey, bt_data_t stream) {
-    dwm_t  dwm  = findnodekey(btr, btr->root, k, akey);
-    ulong  dr   = (ulong)getDR(btr, dwm.x, dwm.i); // get PREV's DR
-    ulong  mkey = getNumKey(btr, dwm.x, dwm.i);
-    ulong  qkey = C_IS_I(btr->s.ktype) ? akey->i : akey->l;
-    ulong  dpdr = (qkey == mkey) ? 0 : qkey - mkey - 1; // Delta w/ PREV DR
-    ulong  ndr  = mkey + dr - qkey; /* DR after Evicted Key*/ DEBUG_BT_DELETE_D
-    if (!dpdr) { // KEY is final EVICTION in PREV's DR
-        uchar *gstream = KEYS(btr, dwm.x, dwm.i);
-        void  *rrow    = parseStream(gstream, btr);
-        bool   gost    = !UU(btr) && rrow && !(*(uchar *)rrow);
-        printf("bt_delete_d: gost: %d\n", gost);
-        if      (gost) remove_key(btr, gstream, 0, 1);       // ECASE:7
-        else if (dr) {                                       // ECASE:2
-            decr_scion_via_key(btr, k, 1);
-            zeroDR(btr, dwm.x, dwm.i, dwm.p, dwm.pi); 
-        }
-    } else {                                                 // ECASE:3
-        decr_scion_via_key(btr, k, 1);
-        setDR(btr, dwm.x, dwm.i, dpdr, dwm.p, dwm.pi);
-    }
-    if (ndr) { // delete from middle of sequential evictions -- ECASE:4
-        bt_insert(btr, stream, ndr, 1); // insert a "GHOST" row
-    }
+    dwd_t dwd = remove_key(btr, k, 1); return dwd.k;
 }
 
 // ACCESSORS ACCESSORS ACCESSORS ACCESSORS ACCESSORS ACCESSORS ACCESSORS
@@ -801,8 +760,8 @@ dwm_t findnodekey(bt *btr, bt_n *x, bt_data_t k, aobj *akey) {
     dwm_t  dwm; bzero(&dwm, sizeof(dwm_t)); SET_DWM_XIP
     if (SIMP_UNIQ(btr) && Index[btr->s.num].iposon) Index[btr->s.num].cipos = 0;
     while (x) {
-        i = findkindex(btr, x, k, &r, NULL); 
-        DEBUG_FIND_NODE_KEY
+        i = findkindex(btr, x, k, &r, NULL);                DEBUG_FIND_NODE_KEY
+//TODO set dwm.gost here
         if (i >= 0 && !r) { SET_DWM_XIP dwm.k = KEYS(btr, x, i); return dwm; }
         if (key_covers_miss(btr, x, i, akey)) { SET_DWM_XIP dwm.miss = 1; }
         if (x->leaf)       {            dwm.k = NULL;            return dwm; }
@@ -919,7 +878,7 @@ uint32 bt_get_dr(bt *btr, bt_data_t k, aobj *akey) {
 void bt_to_bt_insert(bt *nbtr, bt *obtr, bt_n *x) {
     for (int i = 0; i < x->n; i++) {
         void *be  = KEYS(obtr, x, i); uint32 odr = getDR(obtr, x, i);
-        bt_insert(nbtr, be, odr, 0);
+        bt_insert(nbtr, be, odr);
     }
     if (!x->leaf) {
         for (int i = 0; i <= x->n; i++) {

@@ -70,7 +70,7 @@ typedef struct data_with_dirt_t {
     bt_data_t k;     // the data
     uint32    dr;    // dirty-right
 } dwd_t;
-void      bt_insert  (struct btree *btr, bt_data_t k, uint32     dr, bool gst);
+void      bt_insert  (struct btree *btr, bt_data_t k, uint32     dr);
 dwd_t     bt_delete  (struct btree *btr, bt_data_t k);
 bt_data_t bt_replace (struct btree *btr, bt_data_t k, bt_data_t  val);
 

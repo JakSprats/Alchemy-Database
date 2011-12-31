@@ -244,12 +244,6 @@ static bool abt_del(bt *btr, aobj *akey) { // DELETE the row
     destroyBTKey(btkey, med);                            /* FREED 026 */
     return destroyStream(btr, stream);                   /* DESTROYED 027 */
 }
-static void abt_del_d(bt *btr, aobj *akey) { // GHOST the row
-    uint32 ssize; DECLARE_BT_KEY(akey, )
-    char   *stream = createStream(btr, NULL, btkey, ksize, &ssize); // DEST 027
-    bt_delete_d(btr, btkey, akey, stream);
-    destroyBTKey(btkey, med);
-}
 static bool abt_evict(bt *btr, aobj *akey) {
     DECLARE_BT_KEY(akey, 0)
     uchar * stream = bt_evict(btr, btkey);
@@ -268,7 +262,7 @@ static uint32 abt_insert(bt *btr, aobj *akey, void *val) {
     uint32 ssize; DECLARE_BT_KEY(akey, 0)
     char   *stream = createStream(btr, val, btkey, ksize, &ssize); /*DEST 027*/
     destroyBTKey(btkey, med);                            /* FREED 026 */
-    bt_insert(btr, stream, 0, 0);                        /* FREE ME 028 */
+    bt_insert(btr, stream, 0);                           /* FREE ME 028 */
     return ssize;
 }
 bt *abt_resize(bt *obtr, uchar trans) {              // printf("abt_resize\n");
@@ -296,7 +290,6 @@ int   btDelete (bt *btr, aobj *apk) { return abt_del    (btr, apk); }
 
 // DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY
 dwm_t btFindD  (bt *btr, aobj *apk) { return abt_find_d(btr, apk); }
-int   btDeleteD(bt *btr, aobj *apk) { abt_del_d(btr, apk); return 1; }
 //NOTE: btFindD() must precede btEvict()
 bool  btEvict  (bt *btr, aobj *apk) { return abt_evict (btr, apk); }
 

@@ -864,17 +864,17 @@ int deleteRow(int tmatch, aobj *apk, int matches, int inds[], bool ispk) {
 printf("\n\nSTART: deleteRow: key: "); dumpAobj(printf, apk);
     bt    *btr  = getBtr(tmatch);
     dwm_t  dwm  = btFindD(btr, apk);
+    if (dwm.miss) return -1;
     void  *rrow = dwm.k;
 printf("rrow: %p miss: %d\n", (void *)rrow, dwm.miss);
-    if (!rrow && !dwm.miss) return 0;
+    if (!rrow)    return 0;
     bool   gost = !UU(btr) && rrow && !(*(uchar *)rrow) && btGetDR(btr, apk);
                                                                    DEBUG_DELR_1
-    if (gost)               return 0; // GHOST -> ECASE:6
+    if (gost)     return 0; // GHOST -> ECASE:6
     if (matches && !dwm.miss) { // delete indexes
         for (int i = 0; i < matches; i++) delFromIndex(btr, apk, rrow, inds[i]);
     }
-    btdeleter *btd = dwm.miss ? btDeleteD : btDelete;
-    (*btd)(btr, apk); server.dirty++; 
+    btDelete(btr, apk); server.dirty++; 
 printf("END: deleteRow\n\n\n"); fflush(NULL);
     return dwm.miss ? -1 : 1;
 }
