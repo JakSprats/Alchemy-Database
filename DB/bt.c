@@ -43,6 +43,7 @@ ALL RIGHTS RESERVED
 extern r_tbl_t *Tbl;
 extern r_ind_t *Index;
 
+//TODO move to create_xbt.c
 #define CREATE_OBT(kt, ks, bf, cmp)                                         \
     bts_t bts;           bts.ktype = kt;                 bts.btype = btype; \
     bts.ksize = ks;      bts.bflag = bf;                 bts.num   = num;   \
@@ -180,6 +181,7 @@ bt *createIndexBT(uchar ktype, int imatch) {
     return createIBT(ktype, imatch, BTREE_INDEX);
 }
 
+//TODO move to abt.c
 /* ABSTRACT-BTREE ABSTRACT-BTREE ABSTRACT-BTREE ABSTRACT-BTREE ABSTRACT-BTREE */
 #define DEBUG_REP_NSIZE         printf("osize: %d nsize: %d\n", osize, nsize);
 #define DEBUG_REP_SAMESIZE      printf("abt_replace: SAME_SIZE\n");
@@ -259,9 +261,6 @@ static uint32 abt_get_dr(bt *btr, aobj *akey) {
     uint32 dr = bt_get_dr(btr, btkey, akey); destroyBTKey(btkey, med);
     return dr;
 }
-static bool abt_decr_dr_pk(bt *btr, aobj *akey, uint32 by) {
-    DECLARE_BT_KEY(akey, 0) return bt_decr_dr_pk(btr, btkey, akey, by);
-}
 static uint32 abt_insert(bt *btr, aobj *akey, void *val) {
 #ifndef TEST_WITH_TRANS_ONE_ONLY
     if (btr->numkeys == TRANS_ONE_MAX) btr = abt_resize(btr, TRANS_TWO);
@@ -337,20 +336,3 @@ int  btIndNodeEvict(bt *nbtr, aobj *apk, aobj *ocol) {       DEBUG_INODE_EVICT
 
 // HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER
 uint32  btGetDR  (bt *btr, aobj *akey) { return abt_get_dr(btr, akey); }
-aobj   *btGetNext(bt *btr, aobj *akey) {
-printf("btGetNext\n");
-    aobj     aH; if (!assignMaxKey(btr, &aH))                   return NULL;
-    aobj    *rkey = NULL;
-    btSIter *bi   = btGetRangeIter(btr, akey, &aH, 1); if (!bi) goto btgn_e;
-    btEntry *be   = btRangeNext(bi, 1);                if (!be) goto btgn_e;
-    be            = btRangeNext(bi, 1);                if (!be) goto btgn_e;
-    rkey          = be->key;
-
-btgn_e:
-    btReleaseRangeIterator(bi);
-    return rkey;
-}
-bool btDecrDR_PK(bt *btr, aobj *akey, uint32 by) {
-    printf("btDecrDR_PK: by: %u, key: ", by); dumpAobj(printf, akey);
-    return abt_decr_dr_pk(btr, akey, by);
-}

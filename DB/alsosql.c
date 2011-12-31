@@ -483,9 +483,9 @@ bool deleteInnards(cli *c, sds tlist, sds wclause) {
         ideleteAction(c, &w, &wb);
     } else {                         /* SQL_SINGLE_DELETE */
         MATCH_INDICES(w.wf.tmatch)
-        aobj *apk = &w.wf.akey;
-        bool  del = deleteRow(w.wf.tmatch, apk, matches, inds, 1);
-        addReply(c, del ? shared.cone : shared.czero);
+        int   del = deleteRow(w.wf.tmatch, &w.wf.akey, matches, inds, 1);
+        if (del == -1) addReply(c, shared.deletemiss);
+        else           addReply(c, del ? shared.cone : shared.czero);
         if (wb.ovar) incrOffsetVar(c, &wb, 1);
     }
     ret = 1;

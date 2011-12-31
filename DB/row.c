@@ -859,30 +859,24 @@ robj *outputRow(bt   *btr,       void *rrow, int qcols,
 /* DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW */
 #define DEBUG_DELR_1                                                       \
   printf("deleteRow: miss: %d rrow: %p gost: %d\n", dwm.miss, rrow, gost);
-#define DEBUG_DELR_2                                                           \
-  printf("INDEX DELETION DONE : delete_miss_pk: %d\n", server.delete_miss_pk); \
-  printf("INDEX DELETION DONE : delete_miss_fk: %d\n", server.delete_miss_fk);
 
-bool deleteRow(int tmatch, aobj *apk, int matches, int inds[], bool ispk) {
+int deleteRow(int tmatch, aobj *apk, int matches, int inds[], bool ispk) {
 printf("\n\nSTART: deleteRow: key: "); dumpAobj(printf, apk);
     bt    *btr  = getBtr(tmatch);
     dwm_t  dwm  = btFindD(btr, apk);
     void  *rrow = dwm.k;
+printf("rrow: %p miss: %d\n", (void *)rrow, dwm.miss);
+    if (!rrow && !dwm.miss) return 0;
     bool   gost = !UU(btr) && rrow && !(*(uchar *)rrow) && btGetDR(btr, apk);
                                                                    DEBUG_DELR_1
-    if ((!rrow && !dwm.miss)) return 0;
-    if (gost)                 return 0; // GHOST -> ECASE:6
-    if (matches) { // delete indexes
-        if (dwm.miss) { // ASYNC delFromIndex()
-            if (ispk) server.delete_miss_pk++; else server.delete_miss_fk++;
-        } else {
-            for (int i = 0; i < matches; i++) {
-                delFromIndex(btr, apk, rrow, inds[i]); }}
-    }                                                              DEBUG_DELR_2
+    if (gost)               return 0; // GHOST -> ECASE:6
+    if (matches && !dwm.miss) { // delete indexes
+        for (int i = 0; i < matches; i++) delFromIndex(btr, apk, rrow, inds[i]);
+    }
     btdeleter *btd = dwm.miss ? btDeleteD : btDelete;
     (*btd)(btr, apk); server.dirty++; 
 printf("END: deleteRow\n\n\n"); fflush(NULL);
-    return 1;
+    return dwm.miss ? -1 : 1;
 }
 
 /* UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE */

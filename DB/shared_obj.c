@@ -358,4 +358,6 @@ void DXDB_createSharedObjects() {
         "-ERR: PROHIBITED: DIRTY table RANGE DELETE with non-indexed column in where-clause\r\n"));
     shared.rangeupddirtyfilter    = createObject(REDIS_STRING,sdsnew(
         "-ERR: PROHIBITED: DIRTY table RANGE UPDATE with non-indexed column in where-clause\r\n"));
+    shared.deletemiss             = createObject(REDIS_STRING,sdsnew(
+        "-MISS: DELETE hits a MISSED row, unable to complete\r\n"));
 }

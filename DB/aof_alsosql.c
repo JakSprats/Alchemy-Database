@@ -49,9 +49,6 @@ extern uchar    OutputMode;
 extern bool     SQL_AOF;
 extern bool     SQL_AOF_MYSQL;
 
-//TODO server.delete_miss will prepend a SELECT before the DELETE
-//       to the SQLSUBSCRIBE channel
-
 static bool SQLappendOnlyDumpIndices(FILE *fp, int tmatch) {
     r_tbl_t *rt     = &Tbl[tmatch];
     MATCH_INDICES(tmatch)

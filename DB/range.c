@@ -48,6 +48,7 @@ ALL RIGHTS RESERVED
 #include "alsosql.h"
 #include "aobj.h"
 #include "common.h"
+#include "rangedebug.h"
 #include "range.h"
 
 extern aobj_cmp *OP_CMP[7];
@@ -72,48 +73,6 @@ static bool nBT_RowOp(ibtd_t *d,    qr_t *q,    wob_t *wb,  bool missed,
                       aobj   *bkey, void *brow,
                       bool    iss,  bool *ret,  bool   noop);
 static bool dellist_op(range_t *g, aobj *apk, void *rrow, bool q, long *card);
-
-#define DEBUG_SINGLE_PK                                       \
-  printf("singleOpPK: tmatch: %d\n", g->co.w->wf.tmatch);
-#define DEBUG_RANGE_PK                                        \
-  printf("rangeOpPK: imatch: %d\n", g->co.w->wf.imatch);
-#define DEBUG_UBT_OP                                                       \
-  printf("uBT_Op: btr: %p UniqueIndexVal: ", d->g->co.btr);                \
-  dumpAobj(printf, &UniqueIndexVal);
-#define DEBUG_NODE_BT                                                      \
-  printf("nodeBT_Op: nbtr->numkeys: %d\n", d->nbtr->numkeys);
-#define DEBUG_NODE_BT_OBC_1                                                \
-  printf("nodeBT_Op OBYI_1: key: ");                                       \
-  printf("nbe_key: "); dumpAobj(printf, nbe->key);                         \
-  DEBUG_BT_TYPE(printf, nbtr)
-#define DEBUG_NODE_BT_OBC_2                                                \
-  printf("nodeBT_Op OBYI_2: nbtr: %p ctype: %d obc: %d val: %p key: ",     \
-         nbtr, ctype, d->obc, nbe->val); dumpAobj(printf, &akey);          \
-  printf("nbe_key: "); dumpAobj(printf, nbe->key);
-#define DEBUG_MCI_FIND                                                     \
-  printf("in btMCIFindVal: trgr: %d\n", trgr);
-#define DEBUG_MCI_FIND_MID                                                 \
-  dumpFilter(printf, flt, "\t");
-#define DEBUG_RUN_ON_NODE                                                  \
-  printf("in runOnNode: ibtr: %p still: %u nop: %p\n", ibtr, still, nop);  \
-  bt_dumptree(printf, ibtr, 0, 0);
-#define DEBUG_SINGLE_FK                                       \
-  printf("singleOpFK: imatch: %d key: ", g->co.w->wf.imatch); \
-  dumpAobj(printf, &g->co.w->wf.akey);
-#define DEBUG_RANGE_FK                                        \
-  printf("rangeOpFK: imatch: %d\n", g->co.w->wf.imatch);
-#define DEBUG_PASS_FILT_INL                            \
-printf("PF: ret: %d a2: ", ret); dumpAobj(printf, a2); \
-printf("a: ");dumpAobj(printf, &a);
-#define DEBUG_PASS_FILT_LOW                                   \
-  printf("PassF: low:  "); dumpAobj(printf, &flt->alow);      \
-  printf("PassF: high: "); dumpAobj(printf, &flt->ahigh);     \
-  printf("PassF: a:    "); dumpAobj(printf, &a);              \
-  printf("ret: %d\n", ret);
-#define DEBUG_PASS_FILT_KEY                                   \
-  printf("PassF: key: "); dumpAobj(printf, &flt->akey);       \
-  printf("PassF: a:   "); dumpAobj(printf, &a);               \
-  printf("ret: %d\n", ret);
 
 //TODO inline
 void init_range(range_t *g, redisClient *c,  cswc_t *w,     wob_t *wb,
@@ -198,7 +157,6 @@ static bool pk_row_op(aobj  *apk, void *rrow, range_t *g,    row_op *p,
 }
 static bool pk_op_l(aobj *apk, void *rrow, range_t *g,     row_op *p, wob_t *wb,
                     qr_t *q,   long *card, long    *loops, bool   *brkr) {
-printf("pk_op_l\n");
     *brkr = 0; INCR(*loops)
     long pkl = q->pk_lim;
     if (pkl && !q->pk_lo && wb->ofst != -1 && *loops < wb->ofst) return 1;
@@ -223,81 +181,8 @@ static long singleOpPK(range_t *g, row_op *p) {               //DEBUG_SINGLE_PK
     else                                                            return card;
 }
 
-// RANGE_DEL_SIMULATE_DR RANGE_DEL_SIMULATE_DR RANGE_DEL_SIMULATE_DR
-#define DEBUG_RDSD                                                   \
-  if (pk) {                                                          \
-      printf("rDelSimDrPK: dr: %u dlt: %u key: ", dr, dlt);          \
-      dumpAobj(printf, akey);                                        \
-      printf("rDelSimDrPK: low:  "); dumpAobj(printf, &w->wf.alow);  \
-      printf("rDelSimDrPK: high: "); dumpAobj(printf, &w->wf.ahigh); \
-  } else {                                                           \
-      printf("rDelSimDrFK: dr: %u asc: %d key: ", dr, t->asc);       \
-      dumpAobj(printf, akey);                                        \
-      printf("rDelSimDrFK: low:  "); dumpAobj(printf, &w->wf.alow);  \
-      printf("rDelSimDrFK: high: "); dumpAobj(printf, &w->wf.ahigh); }
-
-typedef struct range_del_sim_dr_t {
-    long   *card; long *loops;  bool *brkr; // PK_OP_L
-    ibtd_t *d;    bool  missed; void *brow; bool *ret; btSIter *bi; bool asc;
-} rdsd_t;
-
-//NOTE: RangeDelete/Update need to simulate DRs to run to completion
-#define RDSR_ERR  0
-#define RDSR_OK   1
-#define RDSR_FULL 2
-
-#define TBRK          { *t->brkr = 1; break; }
-#define ASC_INCRAKEY  if (t->asc)  incrbyAobj(akey, 1);
-#define DESC_DECRAKEY if (!t->asc) decrbyAobj(akey, 1);
-#define DESC_CONT     {DESC_DECRAKEY continue; }
-static int rDelSimDrGen(bool  pk,   row_op *p, range_t *g,    uint32 dr,
-                        aobj *akey, rdsd_t *t, uint32   dlt) {
-    cswc_t *w = g->co.w; wob_t *wb = g->co.wb; qr_t *q = g->q;       DEBUG_RDSD
-    int i   = t->asc ? 0       : (int)dr - 1;
-    int fin = t->asc ? (int)dr : -1;          uint32 j = 0;
-    if (!t->asc)       incrbyAobj(akey, dlt ? dlt : dr); // REV PKs OK -> NOOP
-    if (t->asc && dlt) incrbyAobj(akey, dr - dlt);
-printf("i: %d fin: %d asc: %d dr: %d dlt: %d key: ", i, fin, t->asc, dr, dlt); dumpAobj(printf, akey);
-    while (i != fin) {
-        ASC_INCRAKEY
-printf("%d: key: ", i); dumpAobj(printf, akey);
-        if (aobjLT(akey, &w->wf.alow))  { if (t->asc) continue; else TBRK }
-        if (aobjGT(akey, &w->wf.ahigh)) { if (t->asc) TBRK      else DESC_CONT }
-        if (p) {
-            if (!pk_op_l(akey, VOID_1, g, p, wb, q,
-                         t->card, t->loops, t->brkr)) return RDSR_ERR;      j++;
-            if (*t->brkr) break;
-        } else {
-            nBT_RowOp(t->d, q, wb, t->missed, akey, t->brow, 0, t->ret, 1); j++;
-            if (*t->d->brkr) break;// PREV line (nBT_RowOp) can NOT fail -> NOOP
-        }
-        i = t->asc ? i + 1 : i - 1; // loop increment
-        DESC_DECRAKEY
-    }
-    return j;
-}
-static int rDelSimDrPK(range_t *g, row_op *p, uint32 dr, aobj *akey, rdsd_t *t,
-                       uint32   dlt) {
-    uint32 j = rDelSimDrGen(1, p, g, dr, akey, t, dlt);
-printf("END rDelSimDrPK: ret: %d\n", (j == dr) ? RDSR_FULL : RDSR_OK);
-    return (j == dr) ? RDSR_FULL : RDSR_OK;
-}
-static int rDelSimDrFK(range_t *g, uint32 dr, aobj *akey, rdsd_t *t) {
-    uint32  pdr   = btGetDR(t->d->g->co.btr, akey);
-    aobj   *opkey = pdr ? cloneAobj(akey) : //NEXT_LINE: NextPK GHOST_KEY w/ DR
-                          cloneAobj(btGetNext(t->d->g->co.btr, akey));//FREE 113
-printf("opkey: "); dumpAobj(printf, opkey);
-    uint32  j     = rDelSimDrGen(0, NULL, g, dr, akey, t, 0);
-             btDecrDR_PK(t->d->nbtr,      akey,  j); // INODE_BTREE
-    bool b = btDecrDR_PK(t->d->g->co.btr, opkey, j); // DATA__BTREE
-    if (b) { // Housekeeping: HARD_DELETE Empty GHOST KEY -- ECASE:5
-printf("EMPTY GHOST KEY DELETIION: key: "); dumpAobj(printf, opkey);
-        dellist_op(t->d->g, opkey, t->brow, g->q->qed, t->d->card);
-        DECR(*t->d->card) CurrCard = *t->d->card;// does not count towards total
-    }
-    destroyAobj(opkey);                                  // FREED 113
-    return (j == dr) ? RDSR_FULL : RDSR_OK;
-}
+#define DELETE_MISS(c) \
+        { addReply(c, shared.deletemiss); return -1; }
 
 // RANGE_PK RANGE_PK RANGE_PK RANGE_PK RANGE_PK RANGE_PK RANGE_PK RANGE_PK
 static long rangeOpPK(range_t *g, row_op *p) {                 //DEBUG_RANGE_PK
@@ -317,36 +202,17 @@ printf("rangeOpPK: iss: %d isu: %d isd: %d\n", iss, isu, isd);
 printf("rangeOpPK: bi: %p missed: %d\n", bi, bi->missed);
     if (iss && bi->missed) card = -1; //NOTE: MISSED only relevant for SELECT
     else {
-printf("isd: %d dr: %d missed: %d\n", isd, bi->be.dr, bi->missed);
-        bool ok = 1; bool ignore_first = 0;
-        rdsd_t t; bzero(&t, sizeof(rdsd_t));
-        t.card = &card; t.loops = &loops; t.brkr = &brkr; t.asc = g->asc;
-        if (isd && bi->be.dr && bi->missed) {// 1st ROW w/in 0th DR
-            int b = rDelSimDrPK(g, p, bi->be.dr, bi->be.key, &t, bi->mdelta);
-            if      (b == RDSR_ERR)  ok = 0; // NEXT_LINE: iter8ted ENTIRE DR
-            else if (b == RDSR_FULL) {
-                if (g->asc) btRangeNext(bi, g->asc); else ignore_first = 1;
-            }
-printf("post rDelSimDrPK: card: %ld brkr: %d\n", card, brkr);
-        }
-        if (ok && !brkr) while ((be = btRangeNext(bi, g->asc))) {
+//TODO this miss before is not working
+        if (isd && bi->be.dr && bi->missed) DELETE_MISS(g->co.c)
+        while ((be = btRangeNext(bi, g->asc))) {
 printf("rangeOpPK: LOOP: missed: %d dr: %u\n", bi->missed, be->dr);
             if (iss && bi->missed) { card = -1; break; }
-//TODO this skips the DESC rDelSimDrPK below, push into "if ! {pk_op_l}"
-            if (isu && bi->missed) continue; // RANGE UPDATE skips GHOSTs
-            if (!ignore_first && !g->asc && isd && be->dr) {
-                if (rDelSimDrPK(g, p, be->dr, be->key, &t, 0) == RDSR_ERR) CBRK
-                if (*t.brkr) break;
-            }
-            if (!(isd && isGhostRow(btr, be->x, be->i))) {// RangeDel SKIP GHOST
-                if (!pk_op_l(be->key, be->val, g, p, wb, q,
-                             &card, &loops, &brkr))                        CBRK
-            }
+            if (isu && bi->missed) continue; // RANGE UPDATE skips MISSes
+            if (isd && !g->asc && be->dr) DELETE_MISS(g->co.c)
+            if (!pk_op_l(be->key, be->val, g, p, wb, q,
+                         &card, &loops, &brkr))                        CBRK
             if (brkr) break;
-            if (g->asc && isd && be->dr) {
-                if (rDelSimDrPK(g, p, be->dr, be->key, &t, 0) == RDSR_ERR) CBRK
-                if (*t.brkr) break;
-            }
+            if (isd && g->asc && be->dr) DELETE_MISS(g->co.c)
         }
         if (!g->asc) bi->missed = bi->nim;
 printf("rangeOpPK: END: missed: %d card: %ld\n\n\n", bi->missed, card);
@@ -439,36 +305,17 @@ else     printf("nBT_Op: NO nbi: x: %d\n", x);
     if      (!nbi)               return ret;
     else if (iss && nbi->missed) ret = 0; // MISSED only relevant for SELECT
     else if (!nbi->empty){
-printf("GETITER: nbi: %p nbi.missed: %d isd: %d\n", nbi, nbi->missed, isd);
-        rdsd_t t; bzero(&t, sizeof(rdsd_t)); bool ignore_first = 0;
-        t.d = d; t.ret = &ret; t.bi = nbi; t.asc = nasc;
-printf("dr: %d\n", nbi->be.dr); printf("key: "); dumpAobj(printf, nbi->be.key); printf("low: "); dumpAobj(printf, &w->wf.alow);
-        if (isd && nbi->be.dr && nbi->missed) {
-            t.missed = nbi->missed; t.brow = nbi->be.val; // Start w/in 0th DR
-            int b    = rDelSimDrFK(d->g, nbi->be.dr, nbi->be.key, &t);
-            if      (b == RDSR_ERR)  goto nbte; // NEXT_LINE iter8ted ENTIRE DR
-            else if (b == RDSR_FULL) {
-                if (nasc) btRangeNext(nbi, nasc); else ignore_first = 1;
-            }
-        }
-        if (!*d->brkr) while ((nbe = btRangeNext(nbi, nasc))) {
+printf("GETITER: nbi: %p nbi.missed: %d isd: %d\n", (void *)nbi, nbi->missed, isd);
+        if (isd && nbi->be.dr && nbi->missed) DELETE_MISS(d->g->co.c)
+        while ((nbe = btRangeNext(nbi, nasc))) {
 printf("LOOP: nbi.missed: %d dr: %u nasc: %d\n", nbi->missed, nbe->dr, nasc);
-            if (!ignore_first && !nasc && isd && nbe->dr) {
-                t.missed = nbi->missed; t.brow = nbe->val;
-                if (rDelSimDrFK(d->g, nbe->dr, nbe->key, &t) == RDSR_ERR) break;
-            }
+            if (isd && !nasc && nbe->dr) DELETE_MISS(d->g->co.c)
             if (!nBT_RowOp(d, q, wb, nbi->missed, nbe->key, nbe->val,
                            iss, &ret, 0) || *d->brkr)                     break;
-            if (nasc && isd && nbe->dr) {
-                t.missed = nbi->missed; t.brow = nbe->val;
-                if (rDelSimDrFK(d->g, nbe->dr, nbe->key, &t) == RDSR_ERR) break;
-            }
+            if (isd && nasc && nbe->dr) DELETE_MISS(d->g->co.c)
         }
         if (iss && nbi->missed) ret = 0; // FULL Itr8r -> no DR after end
-    }
-
-nbte:
-    btReleaseRangeIterator(nbi);
+    } btReleaseRangeIterator(nbi);
     if (q->fk_lo)                         *d->ofst = 0; /* OFFSET fulfilled */
     if (q->fk_lim && wb->lim == *d->card) *d->brkr = 1; /* ORDERBY FK LIM*/
     return ret;
@@ -506,7 +353,7 @@ bt *btMCIFindVal(cswc_t *w, bt *nbtr, uint32 *nmatch, r_ind_t *ri) {
         while ((ln = listNext(li))) {
             f_t *flt  = ln->value;                          //DEBUG_MCI_FIND_MID
             if (flt->op == NONE) break; /* MCI Joins can have empty flt's */
-#if 0
+#if 0 //TODO this should probably be activated -> TEST
             if (flt->op != EQ) { // MCI Indexes only support EQ ops
                 do { // transfer rest of KLIST to FLIST
                     f_t *flt = ln->value;
@@ -837,7 +684,7 @@ static void opDeleteSort(list *ll,    cswc_t *w,      wob_t *wb,   bool  ofree,
         if (ofst > 0) { ofst--; continue; }
         obsl_t *ob  = v[i];
         aobj   *apk = ob->row;
-        if (deleteRow(w->wf.tmatch, apk, matches, inds, 0)) INCR(*sent)
+        if (deleteRow(w->wf.tmatch, apk, matches, inds, 0) == 1) INCR(*sent)
     }
     sortOBCleanup(v, listLength(ll), ofree);
     free(v); /* FREED 004 */
@@ -848,7 +695,7 @@ void ideleteAction(redisClient *c, cswc_t *w, wob_t *wb) {
     list *ll   = initOBsort(q.qed, wb, 1);
     if (!q.qed) ll->free = destroyAobj;
     init_range(&g, c, w, wb, &q, ll, OBY_FREE_AOBJ, NULL);
-    if (Tbl[w->wf.tmatch].dirty && g.co.w->flist) {
+    if (Tbl[w->wf.tmatch].dirty && g.co.w->flist) { //TODO and "LIMIT"
         addReply(c, shared.rangedeldirtyfilter); goto idel_end;
     }
     long  sent = 0;
@@ -863,7 +710,7 @@ void ideleteAction(redisClient *c, cswc_t *w, wob_t *wb) {
         while((ln = listNext(li))) {
             aobj *apk = ln->value;
 printf("ideleteAction: key: "); dumpAobj(printf, apk);
-            if (deleteRow(w->wf.tmatch, apk, matches, inds, 0)) sent++;
+            if (deleteRow(w->wf.tmatch, apk, matches, inds, 0) == 1) sent++;
         } listReleaseIterator(li);
     }
     if (sent < card) card = sent;
@@ -920,7 +767,7 @@ void iupdateAction(cli  *c,      cswc_t *w,       wob_t *wb,
     range_t g; qr_t q; setQueued(w, wb, &q);
     list *ll     = initOBsort(q.qed, wb, 1);
     init_range(&g, c, w, wb, &q, ll, OBY_FREE_AOBJ, NULL);
-    if (Tbl[w->wf.tmatch].dirty && g.co.w->flist) {
+    if (Tbl[w->wf.tmatch].dirty && g.co.w->flist) { //TODO and "LIMIT"
         addReply(c, shared.rangeupddirtyfilter); goto iup_end;
     }
     bt   *btr    = getBtr(w->wf.tmatch); g.up.btr = btr;

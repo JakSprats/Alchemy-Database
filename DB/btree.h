@@ -57,10 +57,10 @@ bool isGhostRow(struct btree *btr, struct btreenode *x, int i); // HELPER
 void bt_incr_dsize(struct btree *ibtr, size_t size);
 void bt_decr_dsize(struct btree *ibtr, size_t size);
 
-void *bt_malloc(        struct btree *btr,                       int size);
-void  bt_free(          struct btree *btr, void *v,              int size);
+void *bt_malloc        (struct btree *btr,                       int size);
+void  bt_free          (struct btree *btr, void *v,              int size);
 void  bt_free_btreenode(struct btree *btr, struct btreenode *x);
-void  bt_free_btree(    struct btree *btr);
+void  bt_free_btree    (struct btree *btr);
 
 // CONSTRUCTOR CONSTRUCTOR CONSTRUCTOR CONSTRUCTOR CONSTRUCTOR CONSTRUCTOR
 struct btree *bt_create(bt_cmp_t cmp, unsigned char trans, bts_t *s);
@@ -83,7 +83,6 @@ bt_data_t *bt_find_loc(struct btree *btr, bt_data_t k);
 // DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY
 uint32    getDR          (struct btree *btr, struct btreenode *x, int i);
 uint32    bt_get_dr      (struct btree *btr, bt_data_t k, aobj *akey);
-bool      bt_decr_dr_pk  (struct btree *btr, bt_data_t k, aobj *akey, uint32 y);
 bt_data_t bt_evict       (struct btree *btr, bt_data_t k);
 bool      bt_exist       (struct btree *btr, bt_data_t k, aobj *akey);
 void      bt_delete_d    (struct btree *btr, bt_data_t k, aobj *akey,

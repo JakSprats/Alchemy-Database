@@ -62,14 +62,13 @@ static int       real_log2 (unsigned int a, int nbits);
 
    7.) DS in rdbSave/Load
    8.) U128PK/FK CACHE:[EVICT,MISS] support
-   9.) record miss_delete state in Tbl[]
-       PK miss -> disable scion FK iterators
-       FK miss -> disable scion PK/FK iterators
   11.) DS as stream
   12.) slab allocator for ALL btn's
 
   14.) make sure btFind() and btFindD() are in the right places
   15.) test case3 "(s!=DK_NONE) decr_scion" w/ DEEP DR combos
+
+  16.) fully EVICTED index -> MISS ON SELECT & DELETE
 */
 
 // HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER
@@ -495,6 +494,15 @@ void bt_insert(bt *btr, bt_data_t k, uint32 dr, bool gst) {
 }
 
 // DELETE DELETE DELETE DELETE DELETE DELETE DELETE DELETE DELETE DELETE
+static bt_n *replaceKeyWithGhost(bt *btr, bt_n *x, int i, bt_data_t k,
+                                 uint32 dr, bt_n *p,   int   pi) {
+    aobj akey; convertStream2Key(k, &akey, btr);
+    uint32 ssize; DECLARE_BT_KEY(&akey, x)
+    char *stream = createStream(btr, NULL, btkey, ksize, &ssize); // DEST 027
+    x = overwriteDR(btr, x, i, dr, p, pi);
+    setBTKeyRaw(btr, x, i, stream);
+    return x;
+}
 
 /* NOTE: case_2c_ptr gets lost in recursion, so its stored as a global */
 void *case_2c_ptr = NULL;
@@ -547,9 +555,13 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
                 x = incrPrevDRCase1(btr, x, i, ++dwd.dr, p, pi, plist);
             } else decr_scion(x, 1 + dwd.dr); //NOTE: key FOR Case2A/B
         }                                                DEBUG_DEL_CASE_1_DIRTY
+        if (!drt && !gst && dwd.dr) { // DELETE KEY w/ DR -> REPLACE w/ GHOST
+            x = replaceKeyWithGhost(btr, x, i, kp, dwd.dr, p, pi);
+        } else {                      // OTHERWISE JUST REMOVE FROM BTREE
+            mvXKeys(btr, &x, i, &x, i + 1, (x->n - i - 1), ks, p, pi, p, pi);
+            x      = trimBTN(btr, x, drt, p, pi);
+        }
         if BIG_BT(btr) memcpy(BT_DelBuf, kp, btr->s.ksize);
-        mvXKeys(btr, &x, i, &x, i + 1, (x->n - i - 1), ks, p, pi, p, pi);
-        x      = trimBTN(btr, x, drt, p, pi);
         dwd.k  = BIG_BT(btr) ? BT_DelBuf : kp; return dwd;
     }
 
@@ -900,13 +912,17 @@ uint32 bt_get_dr(bt *btr, bt_data_t k, aobj *akey) {
     dwm_t  dwm  = findnodekey(btr, btr->root, k, akey);
     return getDR(btr, dwm.x, dwm.i);
 }
-bool bt_decr_dr_pk(bt *btr, bt_data_t k, aobj *akey, uint32 by) {
-    dwm_t  dwm  = findnodekey(btr, btr->root, k, akey);
-    uint32 dr   = getDR(btr, dwm.x, dwm.i);
-    if (dr) dr -= by;
-    if (dr) { setDR (btr, dwm.x, dwm.i, dr, dwm.p, dwm.pi); return 0; }
-    else    { zeroDR(btr, dwm.x, dwm.i,     dwm.p, dwm.pi); return 1; }
-    //TODO zeroDR leaves a dangling GHOST-KEY, it needs cleaning up
+
+// CLONE CLONE CLONE CLONE CLONE CLONE CLONE CLONE CLONE CLONE CLONE CLONE
+void bt_to_bt_insert(bt *nbtr, bt *obtr, bt_n *x) {
+    for (int i = 0; i < x->n; i++) {
+        void *be  = KEYS(obtr, x, i); uint32 odr = getDR(obtr, x, i);
+        bt_insert(nbtr, be, odr, 0);
+    }
+    if (!x->leaf) {
+        for (int i = 0; i <= x->n; i++) {
+            bt_to_bt_insert(nbtr, obtr, NODES(obtr, x)[i]);
+        }}
 }
 
 // DESTRUCTOR DESTRUCTOR DESTRUCTOR DESTRUCTOR DESTRUCTOR DESTRUCTOR
@@ -936,16 +952,4 @@ void bt_release(bt *btr, bt_n *x) { /* dont destroy data, just btree */
             bt_release(btr, NODES(btr, x)[i]);
         }}
     bt_free_btreenode(btr, x); /* memory management in btr */
-}
-
-// CLONE CLONE CLONE CLONE CLONE CLONE CLONE CLONE CLONE CLONE CLONE CLONE
-void bt_to_bt_insert(bt *nbtr, bt *obtr, bt_n *x) {
-    for (int i = 0; i < x->n; i++) {
-        void *be  = KEYS(obtr, x, i); uint32 odr = getDR(obtr, x, i);
-        bt_insert(nbtr, be, odr, 0);
-    }
-    if (!x->leaf) {
-        for (int i = 0; i <= x->n; i++) {
-            bt_to_bt_insert(nbtr, obtr, NODES(obtr, x)[i]);
-        }}
 }
