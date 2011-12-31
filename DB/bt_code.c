@@ -58,6 +58,8 @@ static bt_data_t findmaxkey(bt *btr, bt_n *x);
 static int       real_log2 (unsigned int a, int nbits);
 
 /* CACHE TODO LIST
+   0.) take out bt_delete_d ... it ghosts misses ... this is wrong
+
    1.) UU's have no gosts ... API for UU must be a "uuk" like all OBT
 
    7.) DS in rdbSave/Load

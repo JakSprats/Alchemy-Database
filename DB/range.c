@@ -58,7 +58,6 @@ extern uchar     OutputMode;
 
 ulong  CurrCard = 0; // TODO remove - after no update on MCI cols FIX
 
-
 /* NOTE: this struct contains pointers, it is to be used ONLY for derefs */
 typedef struct inner_bt_data {
     row_op  *p;    range_t *g;    qr_t    *q;
@@ -695,7 +694,7 @@ void ideleteAction(redisClient *c, cswc_t *w, wob_t *wb) {
     list *ll   = initOBsort(q.qed, wb, 1);
     if (!q.qed) ll->free = destroyAobj;
     init_range(&g, c, w, wb, &q, ll, OBY_FREE_AOBJ, NULL);
-    if (Tbl[w->wf.tmatch].dirty && g.co.w->flist) { //TODO and "LIMIT"
+    if (Tbl[w->wf.tmatch].dirty && g.co.w->flist && wb->lim != -1) {
         addReply(c, shared.rangedeldirtyfilter); goto idel_end;
     }
     long  sent = 0;
@@ -767,7 +766,7 @@ void iupdateAction(cli  *c,      cswc_t *w,       wob_t *wb,
     range_t g; qr_t q; setQueued(w, wb, &q);
     list *ll     = initOBsort(q.qed, wb, 1);
     init_range(&g, c, w, wb, &q, ll, OBY_FREE_AOBJ, NULL);
-    if (Tbl[w->wf.tmatch].dirty && g.co.w->flist) { //TODO and "LIMIT"
+    if (Tbl[w->wf.tmatch].dirty && g.co.w->flist && wb->lim != -1) {
         addReply(c, shared.rangeupddirtyfilter); goto iup_end;
     }
     bt   *btr    = getBtr(w->wf.tmatch); g.up.btr = btr;
