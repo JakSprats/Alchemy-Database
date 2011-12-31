@@ -70,6 +70,7 @@ typedef struct range_update {
     uchar    *cmiss;
     ue_t     *ue;
     lue_t    *le;
+    bool      upi;
 } rup_t;
 
 typedef struct range_common {
@@ -111,7 +112,7 @@ void ideleteAction(cli *c,         cswc_t *w,       wob_t *wb);
 void iupdateAction(cli  *c,        cswc_t *w,       wob_t *wb,
                    int   ncols,    int     matches, int    inds[],
                    char *vals[],   uint32  vlens[], uchar  cmiss[],
-                   ue_t  ue[],     lue_t  *le,      bool   upi);
+                   ue_t  ue[],     lue_t  *le);
 
 void setQueued (              cswc_t *w, wob_t *wb, qr_t *q);
 void dumpQueued(printer *prn, cswc_t *w, wob_t *wb, qr_t *q, bool debug);

@@ -341,7 +341,11 @@ void DXDB_createSharedObjects() {
         "-ERR NOT-FOUND: EXECUTE prepared statement not found\r\n"));
 
     shared.dirty_miss = createObject(REDIS_STRING,sdsnew(
-        "-MISS: row has been EVICTED\r\n"));
+        "-MISS: SELECT hit a MISSED row, unable to complete\r\n"));
+    shared.deletemiss             = createObject(REDIS_STRING,sdsnew(
+        "-MISS: DELETE hit a MISSED row, unable to complete\r\n"));
+    shared.updatemiss             = createObject(REDIS_STRING,sdsnew(
+        "-MISS: UPDATE hit a MISSED row, unable to complete\r\n"));
     shared.evict_other = createObject(REDIS_STRING,sdsnew(
         "-ERR: EVICT only supported on tables w/ [INT|LONG] PKs & 2+ columns\r\n"));
 
@@ -349,19 +353,9 @@ void DXDB_createSharedObjects() {
         "-ERR: REPLACE on a Table w/ SecondaryIndexes & EVICTIONS - PROHIBITED\r\n"));
     shared.insert_dirty_pkdecl = createObject(REDIS_STRING,sdsnew(
         "-ERR: INSERT on a Table w/ EVICTIONS can NOT declare PK values (auto-increment must be used)\r\n"));
-    shared.update_on_dirty_w_inds = createObject(REDIS_STRING,sdsnew(
-        "-ERR: UPDATE with IndexedColumn Updates on a Table w/ EVICTIONS - PROHIBITED\r\n"));
 
     shared.evictnotdirty          = createObject(REDIS_STRING,sdsnew(
         "-ERR: EVICT can not be called on NON-DIRTY tables -> call \"ALTER table SET DIRTY\"\r\n"));
-    shared.rangeseldirtyfilter    = createObject(REDIS_STRING,sdsnew(
-        "-ERR: PROHIBITED: DIRTY table RANGE SELECT with LIMIT AND non-indexed-column in where-clause\r\n"));
-    shared.rangedeldirtyfilter    = createObject(REDIS_STRING,sdsnew(
-        "-ERR: PROHIBITED: DIRTY table RANGE DELETE with LIMIT AND non-indexed-column in where-clause\r\n"));
-    shared.rangeupddirtyfilter    = createObject(REDIS_STRING,sdsnew(
-        "-ERR: PROHIBITED: DIRTY table RANGE UPDATE with LIMIT AND non-indexed-column in where-clause\r\n"));
-    shared.deletemiss             = createObject(REDIS_STRING,sdsnew(
-        "-MISS: DELETE hits a MISSED row, unable to complete\r\n"));
 
     shared.range_mciup            = createObject(REDIS_STRING,sdsnew(
         "-ERR: PROHIBITED: Range Updating a column that belongs to a compound index (Alchemy does NOT rollback)\r\n"));

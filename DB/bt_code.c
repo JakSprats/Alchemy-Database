@@ -482,6 +482,7 @@ void bt_insert(bt *btr, bt_data_t k, uint32 dr) {
 // DELETE DELETE DELETE DELETE DELETE DELETE DELETE DELETE DELETE DELETE
 static bt_n *replaceKeyWithGhost(bt *btr, bt_n *x, int i, bt_data_t k,
                                  uint32 dr, bt_n *p,   int   pi) {
+    printf("replaceKeyWithGhost\n");
     aobj akey; convertStream2Key(k, &akey, btr);
     uint32 ssize; DECLARE_BT_KEY(&akey, x)
     char *stream = createStream(btr, NULL, btkey, ksize, &ssize); // DEST 027
@@ -499,6 +500,11 @@ void *case_2c_ptr = NULL;
     bp->x = p; bp->i = pi;                                           \
     listAddNodeHead(plist, bp);                                      \
   }
+
+#define RETURN_DELETED_KEY(btr, kp, dr)               \
+  dwd_t dwd; bzero(&dwd, sizeof(dwd_t)); dwd.dr = dr; \
+  if BIG_BT(btr) memcpy(BT_DelBuf, kp, btr->s.ksize); \
+  dwd.k  = BIG_BT(btr) ? BT_DelBuf : kp; return dwd;
 
 #define DK_NONE 0
 #define DK_2A   1
@@ -520,11 +526,11 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
     if (s != DK_NONE) { /* min or max node deletion */
         if (x->leaf)             r =  0;
         else {
-            if      (s == DK_2A) r =  1;   /* max node */
-            else if (s == DK_2B) r = -1;   /* min node */
+            if      (s == DK_2A) r =  1;   // max node
+            else if (s == DK_2B) r = -1;   // min node
         }
-        if      (s == DK_2A) i = x->n - 1; /* max node/leaf */ 
-        else if (s == DK_2B) i = -1;       /* min node/leaf */
+        if      (s == DK_2A) i = x->n - 1; // max node/leaf
+        else if (s == DK_2B) i = -1;       // min node/leaf
     } else i = findkindex(btr, x, k, &r, NULL);                DEBUG_DEL_POST_S
 
     if (!drt) decr_scion(x, 1); // scion reduced by 1 every DELETE
@@ -532,30 +538,38 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
     /* Case 1:
      * If the key k is in node x and x is a leaf, delete the key k from x. */
     if (x->leaf) {
-        dwd_t dwd; bzero(&dwd, sizeof(dwd_t)); bool rgst = 0;
+        bool rgst = 0;
         if (s == DK_2B) i++;                                   DEBUG_DEL_CASE_1
-        kp     = KEYS (btr, x, i);
-        dwd.dr = getDR(btr, x, i);
-        if (drt) { // EVICT
-            if (s == DK_NONE) {               //NOTE: only place DR grows
-                x = incrPrevDR(btr, x, i, (dwd.dr + 1), p, pi, plist);
-            } else decr_scion(x, 1 + dwd.dr); //NOTE: key FOR Case2A/B
-        } else { // DELETE
-            if INODE(btr) {
-                if (dwd.dr) x = incrPrevDR(btr, x, i, dwd.dr, p, pi, plist);
-            } else if (dwd.dr) { // DELETE DATA_BT KEY w/ DR -> REPLACE w/ GHOST
-                x = replaceKeyWithGhost(btr, x, i, kp, dwd.dr, p, pi); rgst = 1;
+        kp        = KEYS (btr, x, i);
+        int  dr   = getDR(btr, x, i);
+        if (drt) {                                // CASE: EVICT
+            if (s == DK_NONE) {           //NOTE: only place DR grows
+                x = incrPrevDR(btr, x, i, (dr + 1), p, pi, plist);
+            } else decr_scion(x, 1 + dr); //NOTE: key FOR Case2A/B
+        } else if (s == DK_NONE) {                // CASE: DELETE NOT CASE2A/B
+            if (dr) {
+                if INODE(btr) x = incrPrevDR(btr, x, i, dr, p, pi, plist);
+                else { rgst = 1; // DELETE DataBT KEY w/ DR -> REPLACE w/ GHOST
+                    x = replaceKeyWithGhost(btr, x, i, kp, dr, p, pi);
+                }
             }
-        }
-        if (!rgst) { // IF NO REPLACE_W_GHOST -> REMOVE FROM BTREE
+        } else if (dr) decr_scion(x, dr); // CASE: DELETE CASE2A/B
+        if (!rgst) { // IF NO REPLACE_W_GHOST -> Remove from BTREE
             mvXKeys(btr, &x, i, &x, i + 1, (x->n - i - 1), ks, p, pi, p, pi);
             x      = trimBTN(btr, x, drt, p, pi);
         }
-        if BIG_BT(btr) memcpy(BT_DelBuf, kp, btr->s.ksize);
-        dwd.k  = BIG_BT(btr) ? BT_DelBuf : kp; return dwd;
+        RETURN_DELETED_KEY(btr, kp, dr)
     }
 
     if (r == 0) {                                             DEBUG_DEL_CASE_2
+        kp = KEYS(btr, x, i);
+        if (!drt) { // ON DELETE
+            int dr = getDR(btr, x, i);
+            if (dr) { // IF DR -> REPLACE_W_GHOST, no recursive delete 
+                x = replaceKeyWithGhost(btr, x, i, kp, dr, p, pi);
+                RETURN_DELETED_KEY(btr, kp, dr)
+            }
+        }
         /* Case 2:
          * if the key k is in the node x, and x is an internal node */
         if ((yn = NODES(btr, x)[i]->n) >= btr->t) {           DEBUG_DEL_CASE_2a
@@ -563,7 +577,6 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
              * if the node y that precedes k in node x has at least t keys,
              * then find the previous sequential key (kp) of k.
              * Recursively delete kp, and replace k with kp in x. */
-            kp         = KEYS (btr, x, i);
             xp         = NODES(btr, x)[i];
             ADD_BP(plist, x, i)
             printf("CASE2A recurse: key: "); printKey(btr, x, i);
@@ -580,7 +593,6 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
              * if the node z that follows k in node x has at * least t keys,
              * then find the next sequential key (kp) of k. Recursively delete
              * kp, and replace k with kp in x. */
-            kp         = KEYS (btr, x, i);
             xp         = NODES(btr, x)[i + 1];
             ADD_BP(plist, x, i + 1)
             printf("CASE2B recurse: key: "); printKey(btr, x, i);

@@ -151,16 +151,14 @@ typedef bool select_callback(erow_t* erow);
     *insert_lfu,              *kw_cname,                   \
     *dirty_miss,              *evict_other,                \
     *replace_dirty,           *insert_dirty_pkdecl,        \
-    *update_on_dirty_w_inds,                               \
     *u128_parse,             *update_u128_complex,         \
     *uniq_simp_index_nums,   *updateipos,                  \
     *join_type_err,          *supported_prepare,           \
     *prepare_syntax,         *execute_argc,                \
     *execute_miss,           *evictnotdirty,               \
-    *rangedeldirtyfilter,    *rangeupddirtyfilter,         \
-    *rangeseldirtyfilter,    *deletemiss,                  \
     *range_mciup,            *range_u_up,                  \
-    *uviol;
+    *deletemiss,             *uviol,                       \
+    *updatemiss;
 
 #define DEBUG_C_ARGV(c) \
   for (int i = 0; i < c->argc; i++) \
