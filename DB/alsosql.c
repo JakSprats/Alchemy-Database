@@ -554,18 +554,21 @@ static bool ovwrPKUp(cli    *c,        int    pkupc, char *mvals[],
     if (dwm.k || dwm.miss) { addReply(c, shared.update_pk_ovrw); return 1; }
     return 0;
 }
-static bool updatingIndex(int matches, int inds[], uchar cmiss[]) {
+static bool updatingIndex(int matches, int inds[], uchar cmiss[], 
+                          bool *mci_up, bool *u_up) {
+    bool ret = 0;
     for (int i = 0; i < matches; i++) {
         r_ind_t *ri = &Index[inds[i]];
         if (ri->clist) {
             for (int i = 0; i < ri->nclist; i++) {
-                if (!cmiss[ri->bclist[i]]) return 1;
-            }
-        } else if (!cmiss[ri->column]) return 1;
+                if (!cmiss[ri->bclist[i]]) { ret = 1; *mci_up = 1; }}
+        } else if (!cmiss[ri->column]) {
+            ret = 1; if (ri->btr && SIMP_UNIQ(ri->btr)) *u_up = 1;
+        }
     }
-    return 0;
+    return ret;
 }
-int updateInnards(cli *c, int tmatch, sds vallist, sds wclause,
+int updateInnards(cli *c,      int   tmatch, sds vallist, sds wclause,
                   bool fromup, aobj *u_apk) {
     list   *cmatchl = listCreate();
     list   *mvalsl  = listCreate(); list *mvlensl = listCreate();
@@ -604,20 +607,25 @@ int updateInnards(cli *c, int tmatch, sds vallist, sds wclause,
         if (!leftoverParsingReply(c, w.lvr))                   goto upc_end;
     } //dumpW(printf, &w); dumpWB(printf, &wb);
 
-    bool  upi = updatingIndex(matches, inds, cmiss);
-    bt   *btr = getBtr(w.wf.tmatch);
-    if (rt->dirty && upi) {// UPDATE IndexedColumns of DirtyTable - PROHIBITED
+    bool  u_up = 0, mci_up = 0;
+    bool  upi  = updatingIndex(matches, inds, cmiss, &mci_up, &u_up);
+    bt   *btr  = getBtr(w.wf.tmatch);
+    bool  isr  = (w.wtype != SQL_SINGLE_LKP);
+    if (mci_up && isr) { addReply(c, shared.range_mciup);      goto upc_end; }
+    if (u_up   && isr) { addReply(c, shared.range_u_up);       goto upc_end; }
+
+    if (rt->dirty && upi) { // UPDATE IndexedColumns of DirtyTable - PROHIBITED
         addReply(c, shared.update_on_dirty_w_inds);            goto upc_end;
     }
-    if (w.wtype != SQL_SINGLE_LKP) { /* FK, RQ, IN -> RANGE UPDATE */
+    if (isr) { /* FK, RQ, IN -> RANGE UPDATE */
         if (pkupc != -1) {
             addReply(c, shared.update_pk_range_query);         goto upc_end;
         }
         if (w.wf.imatch == -1) {
             addReply(c, shared.rangequery_index_not_found);    goto upc_end;
         }
-        iupdateAction(c, &w, &wb, ncols, matches, inds, vals, vlens, cmiss,
-                     ue, le);
+        iupdateAction(c,  &w, &wb, ncols, matches, inds, vals, vlens, cmiss,
+                      ue, le, upi);
     } else {                         /* SQL_SINGLE_UPDATE */
         uchar  pktyp = rt->col[0].type;
         if (pkupc != -1) { /* disallow pk updts that overwrite other rows */

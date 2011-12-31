@@ -60,8 +60,8 @@ static int       real_log2 (unsigned int a, int nbits);
 /* CACHE TODO LIST
    8.) U128PK/FK CACHE:[EVICT,MISS] support
 
-   7.) DS in rdbSave/Load
-  11.) DS as stream
+  11.) DS as stream         -\/
+   7.) DS in rdbSave/Load  (dependency on 11)
 
   12.) slab allocator for ALL btn's
 
@@ -79,11 +79,11 @@ static ulong getNumKey(bt *btr, bt_n *x, int i) { //TODO U128 support
     }
 }
 bool isGhostRow(bt *btr, bt_n *x, int i) {
-    if OTHER_BT(btr) return 0;
-    aobj akey;
-    uchar *stream = KEYS(btr, x, i); convertStream2Key(stream, &akey, btr);
+    if (!NORM_BT(btr)) return 0;
+    uchar *stream = KEYS(btr, x, i); 
+    aobj akey; convertStream2Key(stream, &akey, btr);
     void  *rrow   = parseStream(stream, btr);
-    return rrow && !(*((uchar *)(rrow)));
+    return IS_GHOST(btr, rrow);
 }
 
 // MEMORY_MANAGEMENT MEMORY_MANAGEMENT MEMORY_MANAGEMENT MEMORY_MANAGEMENT

@@ -60,7 +60,6 @@ int inet_aton(const char *cp, struct in_addr *inp);
 extern int       Num_tbls; extern r_tbl_t *Tbl;
 extern int       Num_indx; extern r_ind_t *Index;
 
-extern ulong     CurrCard; // TODO remove - after no update on MCI cols FIX
 
 extern char     *LuaCronFunc;
 extern ulong     Operations;
@@ -256,7 +255,6 @@ void DXDB_initServer() { //printf("DXDB_initServer\n");
     init_six_bit_strings();
     init_Tbl_and_Index(INIT_MAX_NUM_TABLES, INIT_MAX_NUM_INDICES);
     CurrClient     = NULL;
-    CurrCard       = 0;
     Operations     = 0;
 }
 
@@ -440,7 +438,6 @@ void initClient(redisClient *c) {       //printf("initClient\n");
     c->NumJTAlias      =  0;
     c->bindaddr        =  NULL;
     c->bindport        =  0;
-    CurrCard           =  0;
 }
 void DXDB_createClient(int fd, redisClient *c) {//printf("DXDB_createClient\n");
     initClient(c);

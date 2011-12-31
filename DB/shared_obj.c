@@ -362,4 +362,11 @@ void DXDB_createSharedObjects() {
         "-ERR: PROHIBITED: DIRTY table RANGE UPDATE with LIMIT AND non-indexed-column in where-clause\r\n"));
     shared.deletemiss             = createObject(REDIS_STRING,sdsnew(
         "-MISS: DELETE hits a MISSED row, unable to complete\r\n"));
+
+    shared.range_mciup            = createObject(REDIS_STRING,sdsnew(
+        "-ERR: PROHIBITED: Range Updating a column that belongs to a compound index (Alchemy does NOT rollback)\r\n"));
+    shared.range_u_up             = createObject(REDIS_STRING,sdsnew(
+        "-ERR: PROHIBITED: Range Updating a column that belongs to a UNIQUE index (Alchemy does NOT rollback)\r\n"));
+    shared.uviol                  = createObject(REDIS_STRING,sdsnew(
+        "-ERR: VIOLATION: UNIQUE INDEX CONSTRAINT FAILED\r\n"));
 }

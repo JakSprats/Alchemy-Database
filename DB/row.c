@@ -657,7 +657,7 @@ aobj getRawCol(bt  *btr,    uchar *orow, int cmatch, aobj *apk,
             float   f  = streamFloatToFloat(data, &clen);
             initFloatAobjFromVal(&a, f, force_s, cmatch);
         } else {//C_IS_S
-            a.type     = a.enc = COL_TYPE_STRING;
+            a.type     = a.enc = COL_TYPE_STRING; a.empty = 0;
             if        (rflag & RFLAG_6BIT_ZIP) {
                 a.s    = (char *)unpackSixBit(data, &clen);  a.freeme = 1;
             } else if (rflag & RFLAG_LZF_ZIP) {            // \/FREED 035

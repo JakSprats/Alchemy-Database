@@ -51,9 +51,6 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "index.h"
 
-// GLOBALS
-extern ulong    CurrCard;
-
 extern r_tbl_t *Tbl;
 extern uint32   Ind_HW; extern dict *IndD; extern list *DropI;
 
@@ -68,12 +65,6 @@ static void destroy_mci(bt *ibtr, bt_n *n, int imatch, int lvl);
   printf("fcol: "); dumpAobj(printf, &fcol);                             \
   printf("bt_dumptree(nbtr): %p\n", nbtr); bt_dumptree(printf, nbtr, 0);
 
-static void replyUniqConstrViol(cli *c) {
-    sds resp = sdscatprintf(sdsempty(),
-               "-ERR VIOLATION: UNIQUE INDEX CONSTRAINT - " \
-               "FAILED AFTER %ld SUCCESSFUL ROWS\r\n", CurrCard);
-    addReplySds(c, resp);
-}
 typedef struct delete_pair_t { /* used in iRemMCI() */
     bt   *ibtr;
     bt   *nbtr;
@@ -115,7 +106,7 @@ static bool iAdd(cli  *c,   bt    *ibtr,  aobj *acol,
                  aobj *apk, uchar  pktyp, aobj *ocol, int imatch) {//DEBUG_IADD
     r_ind_t *ri   = &Index[imatch];
     if (UNIQ(ri->cnstr)) { // SINGLE COLUMN UNIQUE INDEX
-        if (btFind(ibtr, acol)) { if (c) replyUniqConstrViol(c); return 0; }
+        if (btFind(ibtr, acol)) { if (c) addReply(c, shared.uviol); return 0; }
         iAddUniq(ibtr, pktyp, apk, acol);
     } else {               // SINGLE COLUMN NORMAL INDEX
         bt *nbtr = btIndFind(ibtr, acol);
@@ -204,11 +195,11 @@ static bool _iAddMCI(cli  *c,      bt   *btr,  aobj *apk,     uchar  pktyp,
     }
     if (destroy)                                          goto iaddmci_err;
     ulong size1 = nbtr->msize;
-    if UNIQ(ri->cnstr) {
+    if UNIQ(ri->cnstr) {                          //printf("_iAddMCI: UNIQ\n");
         aobj fcol = getCol(btr, rrow, ri->bclist[final], apk, ri->table);
         if (fcol.empty)                                   goto iaddmci_err;
         if (btFind(nbtr, &fcol)) {
-            if (c) replyUniqConstrViol(c); { ret = 0;     goto iaddmci_err; }
+            if (c) addReply(c, shared.uviol); { ret = 0;  goto iaddmci_err; }
         } /* Next ADD (FinFK|PK) 2 UUBT */
         iAddUniq(nbtr, pktyp, apk, &fcol);                 //DEBUG_IADDMCI_UNIQ
         releaseAobj(&fcol);

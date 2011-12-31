@@ -56,8 +56,6 @@ extern r_tbl_t  *Tbl;
 extern r_ind_t  *Index;
 extern uchar     OutputMode;
 
-ulong  CurrCard = 0; // TODO remove - after no update on MCI cols FIX
-
 /* NOTE: this struct contains pointers, it is to be used ONLY for derefs */
 typedef struct inner_bt_data {
     row_op  *p;    range_t *g;    qr_t    *q;
@@ -471,10 +469,9 @@ static long singleOpFK(range_t *g, row_op *p) {               //DEBUG_SINGLE_FK
     node_op  *nop    = UNIQ(ri->cnstr) ? uBT_Op : nBT_Op;
     uint32    nexpc  = ri->clist ? (ri->clist->len - 1) : 0;
     bool      singu  = SIMP_UNIQ(ibtr);
-    bool      exists = btIndExist(ibtr, afk);
     bt       *fibtr  = singu ? NULL : btIndFind(ibtr, afk);
-printf("singleOpFK: fibtr: %p exists: %d\n", (void *)fibtr, exists);
-    if (!singu && iss && exists && !fibtr) return -1;
+printf("singleOpFK: singu: %d ibtr: %p fibtr: %p\n", singu, ibtr, (void *)fibtr);
+    if (!singu && iss && !fibtr) { if (btIndExist(ibtr, afk)) return -1; }
     bt       *nbtr   = singu ? ibtr : btMCIFindVal(w, fibtr, &nmatch, ri);
 printf("singleOpFK: nbtr: %p\n", (void *)nbtr);
     long      ofst   = wb->ofst;
@@ -610,7 +607,7 @@ static bool select_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
         }
         if (!(EREDIS)) decrRefCount(r); //TODO MEMLEAK??? for EREDIS
     }
-    INCR(*card) CurrCard = *card; return ret;
+    INCR(*card) return ret;
 }
 bool opSelectSort(cli  *c,    list *ll,   wob_t *wb,
                   bool ofree, long *sent, int    tmatch) {
@@ -678,7 +675,7 @@ printf("dellist_op: adding: key: "); dumpAobj(printf, apk);
         list_adder *la = g->asc ? listAddNodeHead : listAddNodeTail;
         (*la)(g->co.ll, cln); /* UGLY: build list of PKs to delete */
     }
-    INCR(*card) CurrCard = *card; return 1;
+    INCR(*card) return 1;
 }
 static void opDeleteSort(list *ll,    cswc_t *w,      wob_t *wb,   bool  ofree,
                          long  *sent, int     matches, int   inds[]) {
@@ -738,7 +735,7 @@ printf("update_op: adding: key: "); dumpAobj(printf, apk);
         aobj *cln  = cloneAobj(apk);
         listAddNodeTail(g->co.ll, cln); /* UGLY: build list of PKs to update */
     }
-    INCR(*card) CurrCard = *card; return 1;
+    INCR(*card) return 1;
 }
 static bool opUpdateSort(cli   *c,   list *ll,    cswc_t  *w,
                          wob_t *wb,  bool  ofree, long    *sent,
@@ -768,7 +765,7 @@ static bool opUpdateSort(cli   *c,   list *ll,    cswc_t  *w,
 void iupdateAction(cli  *c,      cswc_t *w,       wob_t *wb,
                    int   ncols,  int     matches, int    inds[],
                    char *vals[], uint32  vlens[], uchar  cmiss[],
-                   ue_t  ue[],   lue_t  *le) {
+                   ue_t  ue[],   lue_t  *le,      bool   upi) {
     range_t g; qr_t q; setQueued(w, wb, &q);
     list *ll     = initOBsort(q.qed, wb, 1);
     init_range(&g, c, w, wb, &q, ll, OBY_FREE_AOBJ, NULL);
