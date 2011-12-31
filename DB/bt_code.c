@@ -69,7 +69,7 @@ static int       real_log2 (unsigned int a, int nbits);
   14.) btFind() in setUniqIndexVal() -> btFindD() + TESTING
   15.) test case3 "(s!=DK_NONE) decr_scion" w/ DEEP DR combos
 
-  16.) fully EVICTED index -> MISS ON SELECT & DELETE
+  16.) fully EVICTED index w/ ONLY GHOSTs -> MISS ON SELECT & DELETE
 */
 
 // HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER
@@ -823,15 +823,13 @@ bt_data_t bt_replace(bt *btr, bt_data_t k, bt_data_t val) {
     return findnodekeyreplace(btr, btr->root, k, val);
 }
 bool bt_exist(bt *btr, bt_data_t k, aobj *akey) {
-    int     r    = -1, i;
-    bool    miss =  0;
-    bt_n   *x    = btr->root;
+    int   r  = -1;
+    bt_n *x  = btr->root;
     while (x) {
-        i = findkindex(btr, x, k, &r, NULL);
-        if (i >= 0 && r == 0) return 1;
-        if (key_covers_miss(btr, x, i, akey)) miss = 1;
-        if (miss)             return 1;
-        if (x->leaf)          return 0;
+        int i = findkindex(btr, x, k, &r, NULL);
+        if (i >= 0 && r == 0)                 return 1;
+        if (key_covers_miss(btr, x, i, akey)) return 1;
+        if (x->leaf)                          return 0;
         x = NODES(btr, x)[i + 1];
     }
     return 0;

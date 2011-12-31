@@ -173,7 +173,7 @@ uchar insertCommit(cli  *c,      sds     uset,   sds     vals,
             }
             if (repl && rrow) { /* Delete repld row's Indexes - same PK */
                 for (int i = 0; i < matches; i++) {
-                    delFromIndex(btr, &apk, rrow, inds[i]);
+                    delFromIndex(btr, &apk, rrow, inds[i], 0);
             }}
         }
 

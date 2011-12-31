@@ -180,7 +180,7 @@ void  btIndAdd   (bt *ibtr, aobj *ikey, bt  *nbtr);
 bt   *btIndFind  (bt *ibtr, aobj *ikey);
 bool  btIndExist (bt *ibtr, aobj *ikey);
 int   btIndDelete(bt *ibtr, aobj *ikey);
-void  btIndNull  (bt *ibtr, aobj *ikey);
+int   btIndNull  (bt *ibtr, aobj *ikey);
 
 bool  btIndNodeAdd    (cli *c, bt *nbtr, aobj *apk, aobj *ocol);
 void *btIndNodeFind   (        bt *nbtr, aobj *apk);

@@ -300,7 +300,8 @@ bt   *btIndFind  (bt *ibtr, aobj *ikey) { return abt_find   (ibtr, ikey);      }
 bool  btIndExist (bt *ibtr, aobj *ikey) { return abt_exist  (ibtr, ikey);      }
 int   btIndDelete(bt *ibtr, aobj *ikey) {        abt_del    (ibtr, ikey); 
                                           return ibtr->numkeys;                }
-void btIndNull   (bt *ibtr, aobj *ikey) {        abt_replace(ibtr, ikey, NULL);}
+int   btIndNull  (bt *ibtr, aobj *ikey) {        abt_replace(ibtr, ikey, NULL);
+                                          return ibtr->numkeys;                }
 
 /* INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE INDEX_NODE */
 #define DEBUG_INODE_ADD                                                   \

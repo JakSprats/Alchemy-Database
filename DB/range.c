@@ -233,7 +233,7 @@ static bool uBT_Op(ibtd_t *d) { /* OTHER_BTs (no evictions)*/    //DEBUG_UBT_OP
         if      (q->fk_lo && *d->loops < *d->ofst)    return 1;
         else if (wb->lim == *d->card) { *d->brkr = 1; return 1; }
     }
-    // FK lookup must win, evictions not possible
+    // FK lookup must succeed, evictions not possible
     void *rrow = btFind(d->g->co.btr, &UniqueIndexVal);
     if (!(*d->p)(d->g, &UniqueIndexVal, rrow, d->g->q->qed, d->card)) return 0;
     return 1;

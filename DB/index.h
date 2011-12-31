@@ -49,7 +49,8 @@ long buildIndex (cli *c, bt *btr, int imatch, long limit);
 
 bool addToIndex (cli *c, bt *btr, aobj *apk,  void *rrow,   int imatch);
 
-void delFromIndex       (bt *btr, aobj *apk,  void *rrow,   int imatch);
+void delFromIndex       (bt *btr, aobj *apk,  void *rrow,   int imatch,
+                                                                     bool gost);
 void evictFromIndex     (bt *btr, aobj *apk,  void *rrow,   int imatch);
 
 bool upIndex    (cli *c, bt *btr, aobj *aopk,  aobj *ocol, 

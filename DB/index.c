@@ -145,7 +145,8 @@ static void destroy_index(bt *ibtr, bt_n *n, int imatch) {
         }
     }
 }
-static void iRem(bt *ibtr, aobj *acol, aobj *apk, aobj *ocol, int imatch) {
+static void iRem(bt   *ibtr, aobj *acol, aobj *apk, aobj *ocol, int imatch,
+                 bool  gost) {
     r_ind_t *ri   = &Index[imatch];
     if (UNIQ(ri->cnstr)) btDelete(ibtr, acol);
     else {
@@ -154,8 +155,9 @@ static void iRem(bt *ibtr, aobj *acol, aobj *apk, aobj *ocol, int imatch) {
         int  nkeys   = btIndNodeDelete(nbtr, apk, ocol);
         ibtr->msize -= (size1 - nbtr->msize);
         if (!nkeys) {
-            btIndDelete(ibtr, acol); ibtr->msize -= nbtr->msize;
-            bt_destroy(nbtr);
+            if (gost) btIndNull  (ibtr, acol);
+            else      btIndDelete(ibtr, acol);
+            ibtr->msize -= nbtr->msize; bt_destroy(nbtr);
         }
     }
 }
@@ -254,7 +256,8 @@ static void destroy_mci(bt *ibtr, bt_n *n, int imatch, int lvl) {
     }
     bt_destroy(ibtr);
 }
-static void iRemMCI(bt *btr, aobj *apk, int imatch, void *rrow, aobj *ocol) {
+static void iRemMCI(bt   *btr, aobj *apk, int imatch, void *rrow, aobj *ocol,
+                    bool  gost) {
     bt      *nbtr  = NULL; /* compiler warning */
     r_ind_t *ri    = &Index[imatch];
     dp_t     dpl[ri->nclist];
@@ -283,7 +286,8 @@ static void iRemMCI(bt *btr, aobj *apk, int imatch, void *rrow, aobj *ocol) {
     while (!nkeys && i >= 0) { /*previous DEL emptied BT->destroyBT,trickle-up*/
         ibtr         = dpl[i].ibtr;
         ulong isize1 = ibtr->msize;
-        nkeys        = btIndDelete(ibtr, &dpl[i].acol);
+        nkeys        = gost ? btIndNull  (ibtr, &dpl[i].acol) :
+                              btIndDelete(ibtr, &dpl[i].acol);
         ulong idiff  = nbtr->msize + (isize1 - ibtr->msize);
         bt_destroy(nbtr);
         for (int j = i; j >= 0; j--) dpl[j].ibtr->msize -= idiff;/*trickle-up*/
@@ -355,26 +359,26 @@ bool addToIndex(cli *c, bt *btr, aobj *apk, void *rrow, int imatch) {
     }
     return 1;
 }
-void delFromIndex(bt *btr, aobj *apk, void *rrow, int imatch) {
+void delFromIndex(bt *btr, aobj *apk, void *rrow, int imatch, bool gost) {
     r_ind_t *ri   = &Index[imatch];
     if (ri->virt)                                                     return;
     bt      *ibtr = getIBtr(imatch);
     if (ri->luat) { luatDel(btr,  (luat_t *)ibtr, apk, imatch, rrow); return; }
     if (ri->clist) {
-        if (ri->obc == -1) iRemMCI(btr, apk, imatch, rrow, NULL); // MCI NORMAL
+        if (ri->obc == -1) iRemMCI(btr, apk, imatch, rrow, NULL, gost);
         else {                                                    // MCI OBY
             aobj ocol = getCol(btr, rrow, ri->obc, apk, ri->table);
-            iRemMCI(btr, apk, imatch, rrow, &ocol); releaseAobj(&ocol);
+            iRemMCI(btr, apk, imatch, rrow, &ocol, gost); releaseAobj(&ocol);
         }
     } else {
         aobj acol = getCol(btr, rrow, ri->column, apk, ri->table);
         if (!acol.empty) {
             if (ri->obc == -1) { // NORMAL
                 if (ri->lfu) acol.l = (ulong)(floor(log2((dbl)acol.l))) + 1;
-                iRem(ibtr, &acol, apk, NULL, imatch);
+                iRem(ibtr, &acol, apk, NULL, imatch, gost);
             } else {             // OBY
                 aobj ocol = getCol(btr, rrow, ri->obc, apk, ri->table);
-                iRem(ibtr, &acol, apk, &ocol, imatch); releaseAobj(&ocol);
+                iRem(ibtr, &acol, apk, &ocol, imatch, gost); releaseAobj(&ocol);
             }
         } releaseAobj(&acol);
     }
@@ -414,7 +418,7 @@ bool upIndex(cli *c, bt *ibtr, aobj *aopk,  aobj *ocol,
     }
     if (aobjEQ(aopk, anpk) && aobjEQ(ncol, ocol))         return 1;// EQ -> NOOP
     if (!iAdd(c, ibtr, ncol, anpk, pktyp, nocol, imatch)) return 0;// ADD 1st
-    if (!ocol->empty) iRem(ibtr, ocol, aopk, oocol, imatch);
+    if (!ocol->empty) iRem(ibtr, ocol, aopk, oocol, imatch, 0);
     return 1;
 }
 bool updateIndex(cli *c, bt *btr, aobj *aopk, void *orow, 
@@ -431,12 +435,12 @@ bool updateIndex(cli *c, bt *btr, aobj *aopk, void *orow,
     if (ri->clist) {                                      /*ADD 1st can FAIL*/
         if (ri->obc == -1) {
             ok = iAddMCI(c, btr, anpk, pktyp, imatch, nrow, NULL);
-            if (ok) iRemMCI(btr, aopk, imatch, orow, NULL);
+            if (ok) iRemMCI(btr, aopk, imatch, orow, NULL, 0);
         } else {
             aobj oocol = getCol(btr, orow, ri->obc, aopk, ri->table);
             aobj nocol = getCol(btr, nrow, ri->obc, anpk, ri->table);
             ok = iAddMCI(c, btr, anpk, pktyp, imatch, nrow, &nocol);
-            if (ok) iRemMCI(btr, aopk, imatch, orow, &oocol);
+            if (ok) iRemMCI(btr, aopk, imatch, orow, &oocol, 0);
             releaseAobj(&oocol); releaseAobj(&nocol);
         }
     } else {
