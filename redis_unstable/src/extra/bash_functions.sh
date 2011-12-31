@@ -3042,7 +3042,8 @@ function test_prepare_execute() {
 # CACHE_SIMPLE CACHE_SIMPLE CACHE_SIMPLE CACHE_SIMPLE CACHE_SIMPLE
 function populate_simple() {
   $CLI DROP TABLE simple;
-  $CLI CREATE TABLE simple "(pk INT, fk INt, col2 INT)";
+  #$CLI CREATE TABLE simple "(pk LONG, fk LONG, col2 INT)";
+  $CLI CREATE TABLE simple "(pk INT, fk INT, col2 INT)";
   $CLI CREATE INDEX i_simple ON simple "(fk)"
   J=1; I=1; NUM=6000; FKMOD=10
   if [ -n "$1" ]; then NUM=$1;   fi

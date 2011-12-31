@@ -248,8 +248,7 @@ static bool streamToBTEntry(uchar *stream, btSIter *siter, bt_n *x, int i) {
     convertStream2Key(stream, siter->be.key, siter->x.btr);
     siter->be.val    = parseStream(stream, siter->x.btr);
     //TODO this btr needs to contain pointers
-    bool  gost       = !UU(siter->x.btr) && 
-                       siter->be.val && !(*((uchar *)(siter->be.val)));
+    bool  gost       = IS_GHOST(siter->x.btr, siter->be.val);
     if (gost) { siter->missed = 1; siter->nim = 0; } // GHOST key
     siter->be.dr = x ? getDR(siter->x.btr, x, i) : 0;
     siter->be.stream = stream;

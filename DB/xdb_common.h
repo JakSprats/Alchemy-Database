@@ -158,7 +158,7 @@ typedef bool select_callback(erow_t* erow);
     *prepare_syntax,         *execute_argc,                \
     *execute_miss,           *evictnotdirty,               \
     *rangedeldirtyfilter,    *rangeupddirtyfilter,         \
-    *deletemiss;
+    *rangeseldirtyfilter,    *deletemiss;
 
 #define DEBUG_C_ARGV(c) \
   for (int i = 0; i < c->argc; i++) \

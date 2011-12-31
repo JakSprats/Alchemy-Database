@@ -58,18 +58,15 @@ static bt_data_t findmaxkey(bt *btr, bt_n *x);
 static int       real_log2 (unsigned int a, int nbits);
 
 /* CACHE TODO LIST
-   1.) UU's have no gosts ... API for UU must be a "uuk" like all OBT
-     A.) findnodekey sets dwm.gost
+   8.) U128PK/FK CACHE:[EVICT,MISS] support
 
    7.) DS in rdbSave/Load
-   8.) U128PK/FK CACHE:[EVICT,MISS] support
   11.) DS as stream
+
   12.) slab allocator for ALL btn's
 
   14.) btFind() in setUniqIndexVal() -> btFindD() + TESTING
   15.) test case3 "(s!=DK_NONE) decr_scion" w/ DEEP DR combos
-
-  16.) fully EVICTED index w/ ONLY GHOSTs -> MISS ON SELECT & DELETE
 */
 
 // HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER
@@ -82,7 +79,7 @@ static ulong getNumKey(bt *btr, bt_n *x, int i) { //TODO U128 support
     }
 }
 bool isGhostRow(bt *btr, bt_n *x, int i) {
-    if UU(btr) return 0; //TODO UU's have no GHOSTS -> FIX
+    if OTHER_BT(btr) return 0;
     aobj akey;
     uchar *stream = KEYS(btr, x, i); convertStream2Key(stream, &akey, btr);
     void  *rrow   = parseStream(stream, btr);
@@ -311,8 +308,8 @@ static bt_n *overwriteDR(bt *btr, bt_n *x, int i, uint32 dr, bt_n *p, int pi) {
 }
 
 // DEL_CASE_DR DEL_CASE_DR DEL_CASE_DR DEL_CASE_DR DEL_CASE_DR DEL_CASE_DR
-static bt_n *incrPrevDRCase1(bt   *btr, bt_n *x,  int   i, uint32 dr,
-                             bt_n *p,   int   pi, list *plist) {
+static bt_n *incrPrevDR(bt   *btr, bt_n *x,  int   i, uint32 dr,
+                        bt_n *p,   int   pi, list *plist) {
     if (!dr)   return x;                                     DEBUG_INCR_PREV_DR
     if (i > 0) return incrDR(btr, x, i - 1, dr, p,  pi); // prev sibling
     else   {
@@ -488,7 +485,7 @@ static bt_n *replaceKeyWithGhost(bt *btr, bt_n *x, int i, bt_data_t k,
     aobj akey; convertStream2Key(k, &akey, btr);
     uint32 ssize; DECLARE_BT_KEY(&akey, x)
     char *stream = createStream(btr, NULL, btkey, ksize, &ssize); // DEST 027
-    x = overwriteDR(btr, x, i, dr, p, pi);
+    x            = overwriteDR(btr, x, i, dr, p, pi);
     setBTKeyRaw(btr, x, i, stream);
     return x;
 }
@@ -535,18 +532,22 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
     /* Case 1:
      * If the key k is in node x and x is a leaf, delete the key k from x. */
     if (x->leaf) {
-        dwd_t dwd; bzero(&dwd, sizeof(dwd_t));
+        dwd_t dwd; bzero(&dwd, sizeof(dwd_t)); bool rgst = 0;
         if (s == DK_2B) i++;                                   DEBUG_DEL_CASE_1
         kp     = KEYS (btr, x, i);
         dwd.dr = getDR(btr, x, i);
         if (drt) { // EVICT
             if (s == DK_NONE) {               //NOTE: only place DR grows
-                x = incrPrevDRCase1(btr, x, i, ++dwd.dr, p, pi, plist);
+                x = incrPrevDR(btr, x, i, (dwd.dr + 1), p, pi, plist);
             } else decr_scion(x, 1 + dwd.dr); //NOTE: key FOR Case2A/B
-        }                                                DEBUG_DEL_CASE_1_DIRTY
-        if (!drt && dwd.dr) { // DELETE KEY w/ DR -> REPLACE w/ GHOST
-            x = replaceKeyWithGhost(btr, x, i, kp, dwd.dr, p, pi);
-        } else {                      // OTHERWISE JUST REMOVE FROM BTREE
+        } else { // DELETE
+            if INODE(btr) {
+                if (dwd.dr) x = incrPrevDR(btr, x, i, dwd.dr, p, pi, plist);
+            } else if (dwd.dr) { // DELETE DATA_BT KEY w/ DR -> REPLACE w/ GHOST
+                x = replaceKeyWithGhost(btr, x, i, kp, dwd.dr, p, pi); rgst = 1;
+            }
+        }
+        if (!rgst) { // IF NO REPLACE_W_GHOST -> REMOVE FROM BTREE
             mvXKeys(btr, &x, i, &x, i + 1, (x->n - i - 1), ks, p, pi, p, pi);
             x      = trimBTN(btr, x, drt, p, pi);
         }
@@ -761,7 +762,6 @@ dwm_t findnodekey(bt *btr, bt_n *x, bt_data_t k, aobj *akey) {
     if (SIMP_UNIQ(btr) && Index[btr->s.num].iposon) Index[btr->s.num].cipos = 0;
     while (x) {
         i = findkindex(btr, x, k, &r, NULL);                DEBUG_FIND_NODE_KEY
-//TODO set dwm.gost here
         if (i >= 0 && !r) { SET_DWM_XIP dwm.k = KEYS(btr, x, i); return dwm; }
         if (key_covers_miss(btr, x, i, akey)) { SET_DWM_XIP dwm.miss = 1; }
         if (x->leaf)       {            dwm.k = NULL;            return dwm; }
@@ -769,7 +769,6 @@ dwm_t findnodekey(bt *btr, bt_n *x, bt_data_t k, aobj *akey) {
     }
     return dwm;
 }
-//TODO rename bt_find() -> bt_index_find()
 bt_data_t bt_find(bt *btr, bt_data_t k, aobj *akey) { //Indexes still use this
     dwm_t dwm = findnodekey(btr, btr->root, k, akey);
     return dwm.k;

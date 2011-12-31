@@ -354,6 +354,8 @@ void DXDB_createSharedObjects() {
 
     shared.evictnotdirty          = createObject(REDIS_STRING,sdsnew(
         "-ERR: EVICT can not be called on NON-DIRTY tables -> call \"ALTER table SET DIRTY\"\r\n"));
+    shared.rangeseldirtyfilter    = createObject(REDIS_STRING,sdsnew(
+        "-ERR: PROHIBITED: DIRTY table RANGE SELECT with LIMIT AND non-indexed-column in where-clause\r\n"));
     shared.rangedeldirtyfilter    = createObject(REDIS_STRING,sdsnew(
         "-ERR: PROHIBITED: DIRTY table RANGE DELETE with LIMIT AND non-indexed-column in where-clause\r\n"));
     shared.rangeupddirtyfilter    = createObject(REDIS_STRING,sdsnew(

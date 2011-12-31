@@ -857,7 +857,7 @@ robj *outputRow(bt   *btr,       void *rrow, int qcols,
 }
 
 /* DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW */
-#define DEBUG_DELR_1                                                       \
+#define DEBUG_DELETE_ROW                                                   \
   printf("deleteRow: miss: %d rrow: %p gost: %d\n", dwm.miss, rrow, gost);
 
 int deleteRow(int tmatch, aobj *apk, int matches, int inds[]) {
@@ -868,8 +868,7 @@ printf("\n\nSTART: deleteRow: key: "); dumpAobj(printf, apk);
     void  *rrow = dwm.k;
     if (!rrow)    return 0;
     bool   wgost = btGetDR(btr, apk); // Indexes need to know WillGhost
-    bool   gost  = !UU(btr) && rrow && !(*(uchar *)rrow) && wgost;
-                                                                   DEBUG_DELR_1
+    bool   gost  = IS_GHOST(btr, rrow) && wgost; DEBUG_DELETE_ROW
     if (gost)     return 0; // GHOST -> ECASE:6
     if (matches && !dwm.miss) { // delete indexes
         for (int i = 0; i < matches; i++) {

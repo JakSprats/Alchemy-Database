@@ -169,6 +169,8 @@ typedef struct u128_u128_key {
 #define BIG_BT(btr)   (btr->s.bflag >  BTFLAG_UINT_UINT)
 #define NORM_BT(btr)  (btr->s.bflag == BTFLAG_NONE)
 
+#define IS_GHOST(btr, rrow) (NORM_BT(btr) && rrow && !(*(uchar *)rrow))
+
 int    btAdd    (bt *btr, aobj *apk, void *val);
 void  *btFind   (bt *btr, aobj *apk);
 dwm_t  btFindD  (bt *btr, aobj *apk);

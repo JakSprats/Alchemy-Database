@@ -172,12 +172,12 @@ static long singleOpPK(range_t *g, row_op *p) {               //DEBUG_SINGLE_PK
     cswc_t  *w     = g->co.w; qr_t *q = g->q;
     aobj    *apk   = &w->wf.akey;
     g->co.btr      = getBtr(w->wf.tmatch);
-    dwm_t    dwm   = btFindD(g->co.btr, apk);         if (dwm.miss) return -1;
-    void    *rrow  = dwm.k;                           if (!rrow)    return  0;
-    bool     gost  = !UU(g->co.btr) && !(*(uchar *)rrow); if (gost) return -1;
+    dwm_t    dwm   = btFindD(g->co.btr, apk);   if (dwm.miss) return -1;
+    void    *rrow  = dwm.k;                     if (!rrow)    return  0;
+    bool     gost  = IS_GHOST(g->co.btr, rrow); if (gost)     return -1;
     long     card  =  0;
-    if (!pk_row_op(apk, rrow, g, p, q, &card))                      return -1;
-    else                                                            return card;
+    if (!pk_row_op(apk, rrow, g, p, q, &card))                return -1;
+    else                                                      return card;
 }
 
 #define DELETE_MISS(c) \
@@ -511,9 +511,9 @@ static long inOpPK(range_t *g, row_op *p) {                //printf("inOpPK\n");
     listIter *li      = listGetIterator(w->wf.inl, AL_START_HEAD);
     while((ln = listNext(li))) {
         aobj  *apk  = ln->value;
-        dwm_t  dwm  = btFindD(g->co.btr, apk); if (dwm.miss) return -1;
+        dwm_t  dwm  = btFindD(g->co.btr, apk);   if (dwm.miss) return -1;
         void  *rrow = dwm.k;
-        bool   gost = !UU(g->co.btr) && !(*(uchar *)rrow); if (gost) continue;
+        bool   gost = IS_GHOST(g->co.btr, rrow); if (gost)     continue;
         if (rrow && !pk_op_l(apk, rrow, g, p, wb, q, &card, &loops, &brkr)) CBRK
         if (brkr) break;
     } listReleaseIterator(li);
@@ -638,6 +638,9 @@ void iselectAction(cli *c,         cswc_t *w,     wob_t *wb,
     range_t g; qr_t q; setQueued(w, wb, &q);
     list *ll     = initOBsort(q.qed, wb, 0);
     init_range(&g, c, w, wb, &q, ll, OBY_FREE_ROBJ, NULL);
+    if (Tbl[w->wf.tmatch].dirty && g.co.w->flist && wb->lim != -1) {
+        addReply(c, shared.rangeseldirtyfilter);            goto isele;
+    }
     g.se.cstar   = cstar;
     g.se.qcols   = qcols;
     g.se.cmatchs = cmatchs;
@@ -649,7 +652,7 @@ printf("iselectAction: card: %ld\n", card);
     if (card) {
         if (q.qed) {
             if (!opSelectSort(c, ll, wb, g.co.ofree,
-                              &sent, w->wf.tmatch))          goto isele;
+                              &sent, w->wf.tmatch))         goto isele;
         } else sent = card;
     }
     if (wb->lim != -1 && sent < card) card = sent;

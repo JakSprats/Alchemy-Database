@@ -227,7 +227,7 @@ static void dump_tree_node(printer *prn, bt *btr, bt_n *x,
                 (*prn)("\t\tXX[%d]: KEY: ", i); DEBUG_U128(prn, xx->key);
                 (*prn)(" VAL: "); DEBUG_U128(prn, xx->val); (*prn)("\n");
             } else {
-                bool gost = !UU(btr) && rrow && !*((uchar *)rrow);
+                bool gost = IS_GHOST(btr, rrow);
                 if (gost) (*prn)("\t\tROW [%d]: %p \tGHOST-", i, rrow);
                 else      (*prn)("\t\tROW [%d]: %p\t",        i, rrow);
             }
