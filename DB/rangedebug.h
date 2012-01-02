@@ -30,6 +30,17 @@ ALL RIGHTS RESERVED
   printf("singleOpPK: tmatch: %d\n", g->co.w->wf.tmatch);
 #define DEBUG_RANGE_PK                                                     \
   printf("rangeOpPK: imatch: %d\n", g->co.w->wf.imatch);
+#define DEBUG_RANGEPK_PRE_LOOP                                             \
+  printf("rangeOpPK: bi: %p empty: %d missed: %d\n",                       \
+         (void *)bi, bi->empty, bi->missed);
+#define DEBUG_RANGEPK_LOOP                                                 \
+  printf("rangeOpPK: LOOP: missed: %d\n", bi->missed);
+#define DEBUG_RANGEPK_POST_LOOP                                            \
+  printf("rangeOpPK POST LOOP: pkl: %d lim: %ld card: %ld missed: %d\n",   \
+         q->pk_lim, wb->lim, card, bi->missed);
+#define DEBUG_NBT_ROP                                                      \
+  printf("nBT_ROp: fklim: %d lim: %ld card: %ld\n",                        \
+         q->fk_lim, wb->lim, *d->card);
 #define DEBUG_UBT_OP                                                       \
   printf("uBT_Op: btr: %p UniqueIndexVal: ", d->g->co.btr);                \
   dumpAobj(printf, &UniqueIndexVal);

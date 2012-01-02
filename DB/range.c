@@ -148,12 +148,14 @@ void setQueued(cswc_t *w, wob_t *wb, qr_t *q) { /* NOTE: NOT for JOINS */
 //TODO inline
 static bool pk_row_op(aobj  *apk, void *rrow, range_t *g,    row_op *p,
                       qr_t *q,    long    *card) {
+//TODO rrow is guaranteed -> no need to check
+assert(rrow);
     if (rrow && !(*p)(g, apk, rrow, q->qed, card)) return 0;
     else                                           return 1;
 }
 static bool pk_op_l(aobj *apk, void *rrow, range_t *g,     row_op *p, wob_t *wb,
                     qr_t *q,   long *card, long    *loops, bool   *brkr) {
-    *brkr = 0; INCR(*loops)
+    *brkr    = 0; INCR(*loops)
     long pkl = q->pk_lim;
     if (pkl && !q->pk_lo && wb->ofst != -1 && *loops < wb->ofst) return 1;
     bool ret = pk_row_op(apk, rrow, g, p, q, card);
@@ -184,39 +186,36 @@ static long singleOpPK(range_t *g, row_op *p) {               //DEBUG_SINGLE_PK
 static long rangeOpPK(range_t *g, row_op *p) {                 //DEBUG_RANGE_PK
     btEntry *be; btSIter *bi;
     cswc_t  *w     = g->co.w; wob_t *wb = g->co.wb; qr_t *q = g->q;
-    bool     iss   = g->se.qcols ? 1 : 0; bool isu = g->up.ncols ? 1 : 0;
-    bool     isd   = !iss && !isu; //TODO upx
-printf("rangeOpPK: iss: %d isu: %d isd: %d\n", iss, isu, isd);
+    bool     iss   = g->se.qcols ? 1 : 0;  bool isu  = g->up.ncols ? 1 : 0;
+    bool     isd   = !iss && !isu;         bool upx  = g->up.upx;
+printf("rangeOpPK: iss: %d isu: %d isd: %d upx: %d\n", iss, isu, isd, upx);
     bt      *btr   = getBtr(w->wf.tmatch); g->co.btr = btr;
     g->asc         = !q->pk_desc;
     bool     brkr  = 0; long loops = -1; long card =  0;
-    //TODO XthIter ONLY @ ZERO miss_delete state
     bi = (q->pk_lo) ? 
               btGetXthIter  (btr, &w->wf.alow, &w->wf.ahigh, wb->ofst, g->asc) :
               btGetRangeIter(btr, &w->wf.alow, &w->wf.ahigh, g->asc);
-    if (!bi) return card;
-printf("rangeOpPK: bi: %p missed: %d\n", (void *)bi, bi->missed);
-    if (iss && bi->missed) card = -1; //NOTE: MISSED only relevant for SELECT
-    else {
-        if (isd && bi->be.dr && bi->missed) { DELETE_MISS(g->co.c); card = -1;
-        } else while ((be = btRangeNext(bi, g->asc))) {
-printf("rangeOpPK: LOOP: missed: %d dr: %u\n", bi->missed, be->dr);
-            if (iss && bi->missed) { card = -1; break; }
-            if (isu && bi->missed) { UPDATE_MISS(g->co.c); card = -1; break; }
-            if (isu && bi->missed) continue; // RANGE UPDATE skips MISSes
-            if (isd && !g->asc && be->dr) {
-                DELETE_MISS(g->co.c); card = -1; break;
+    if (!bi) return card;                                DEBUG_RANGEPK_PRE_LOOP
+    if (!bi->empty) {
+        if (bi->missed && !upx) { card = -1; // iss error in iselectAction()
+            if      (isd) DELETE_MISS(g->co.c);
+            else if (isu) UPDATE_MISS(g->co.c);
+        } else while ((be = btRangeNext(bi, g->asc))) {      DEBUG_RANGEPK_LOOP
+            if (bi->missed && !upx) { card = -1;
+                if (isu) UPDATE_MISS(g->co.c);
+                if (isd) DELETE_MISS(g->co.c);
+                break;
             }
-            if (!pk_op_l(be->key, be->val, g, p, wb, q,
-                         &card, &loops, &brkr))                        CBRK
+            if (!pk_op_l(be->key, be->val, g, p, wb, q, &card, &loops, &brkr)) {
+                card = -1; break;
+            }
             if (brkr) break;
-            if (isd && g->asc && be->dr) {
-                DELETE_MISS(g->co.c); card = -1; break;
-            }
         }
-        if (!g->asc) bi->missed = bi->nim;
-printf("rangeOpPK: END: missed: %d card: %ld\n\n\n", bi->missed, card);
-        if (iss && bi->missed) card = -1;
+        if ((card != -1) && !upx) {// FULL Iter8r, (last row dr > 0)
+            DEBUG_RANGEPK_POST_LOOP
+            if (q->pk_lim) { if (wb->lim > card && bi->missed) card = -1; }
+            else if                               (bi->missed) card = -1;
+        }
     } btReleaseRangeIterator(bi);
     return card;
 }
@@ -245,11 +244,9 @@ static bool uBT_Op(ibtd_t *d) { /* OTHER_BTs (no evictions)*/    //DEBUG_UBT_OP
 // INODE_ITERATOR INODE_ITERATOR INODE_ITERATOR INODE_ITERATOR INODE_ITERATOR
 static bool nBT_ROp(ibtd_t *d,    qr_t *q,    wob_t *wb,
                     aobj   *bkey, void *brow, bool *ret) {
-printf("nBT_ROp\n");
     bt *nbtr = d->nbtr;
     INCR(*d->loops)
     if (q->fk_lim && !q->fk_lo && *d->loops < *d->ofst)         return 1;
-    //TODO push this logic into nBT_Op()
     void *key; aobj akey; initAobj(&akey);
     if (d->obc == -1) key = bkey;
     else {  /* ORDER BY INDEX query */                //DEBUG_NODE_BT_OBC_1
@@ -272,7 +269,7 @@ printf("nBT_ROp\n");
     // pk comes from Index, so it has not been evicted
     void *rrow = btFind(d->g->co.btr, key); releaseAobj(&akey);
     if (!(*d->p)(d->g, key, rrow, q->qed, d->card)) { *ret = 0; return 0; }
-printf("nBT_ROp: fklim: %d lim: %ld card: %ld\n", q->fk_lim, wb->lim, *d->card);
+    DEBUG_NBT_ROP
     if (q->fk_lim && wb->lim == *d->card) { *d->brkr = 1;           return 1; }
     return 1;
 }
@@ -288,7 +285,6 @@ static bool nBT_Op(ibtd_t *d) {                              //DEBUG_NODE_BT
     bool     ret  = 1;                      /* presume success */
     bool     iss  = d->g->se.qcols ? 1 : 0; bool isu = d->g->up.ncols ? 1 : 0;
     bool     isd  = !iss && !isu;           bool upx = d->g->up.upx;
-printf("nBT_Op: upx: %d\n", upx);
     *d->brkr      = 0;
     bool     x    = (q->fk_lo && *d->ofst > 0);
     bool     nasc = d->g->asc = !q->inr_desc;
@@ -297,7 +293,7 @@ printf("nBT_Op: upx: %d\n", upx);
                      btGetFullRangeIter(d->nbtr,           nasc, w);
     if (!nbi) return ret;                                          DEBUG_NBT_OP
     if (!nbi->empty){                                     DEBUG_NBT_OP_GOT_ITER
-        if (nbi->missed && !upx) { ret = 0; // iss error in iselectAction()
+        if (nbi->missed && !upx) {     ret = 0; // iss error in iselectAction()
             if      (isd) DELETE_MISS(d->g->co.c);
             else if (isu) UPDATE_MISS(d->g->co.c);
         } else while ((nbe = btRangeNext(nbi, nasc))) {       DEBUG_NBT_OP_LOOP

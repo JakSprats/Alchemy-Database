@@ -300,6 +300,7 @@ void alterCommand(cli *c) {
     TABLE_CHECK_OR_REPLY(tname,)
     if (OTHER_BT(getBtr(tmatch))) { addReply(c, shared.alter_other);    return;}
     if        (altdrt) {
+        //TODO check that the table has AUTO_INC NUM PK
         Tbl[tmatch].dirty = 1;
     } else if (altc) {
         if (c->argc < 7) { addReply(c, shared.altersyntax);             return;}

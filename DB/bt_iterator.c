@@ -286,6 +286,7 @@ printf("btRangeNext: DESC: l: %lu dr: %u\n", l, getDR(siter->x.btr, x, i));
             l += getDR(siter->x.btr, x, i);
         }
         bool over = asc ? (l > siter->x.high) : (l < siter->x.high);
+        if (over && siter->nim) { printf("OVER AND NIM\n"); siter->missed = 1; }
 printf("btRangeNext: over: %d l: %lu high: %lu\n", over, l, siter->x.high);
         return over ? NULL : &(siter->be);
     } else if (C_IS_X(siter->ktype)) {
