@@ -279,8 +279,7 @@ printf("nBT_ROp: fklim: %d lim: %ld card: %ld\n", q->fk_lim, wb->lim, *d->card);
 static bool nBT_Op(ibtd_t *d) {                              //DEBUG_NODE_BT
     cswc_t *w = d->g->co.w; wob_t *wb = d->g->co.wb; qr_t *q = d->g->q;
     if (d->g->se.cstar && !w->flist) { /* FK cstar w/o filters */
-        if (d->nbtr->dirty)                return 0; //TODO cstar works w/ dirty
-        INCRBY(*d->card, d->nbtr->numkeys) return 1;
+        if (d->nbtr->root) { INCRBY(*d->card, d->nbtr->root->scion) } return 1;
     }
     if (q->fk_lo && FK_RQ(w->wtype) && d->nbtr->numkeys <= *d->ofst) {
         DECRBY(*d->ofst, d->nbtr->numkeys) return 1; // skip IndexNode
