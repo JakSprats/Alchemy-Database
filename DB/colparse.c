@@ -39,6 +39,7 @@ char *strcasestr(const char *haystack, const char *needle); /*compiler warning*/
 #include "redis.h"
 #include "zmalloc.h"
 
+#include "debug.h"
 #include "parser.h"
 #include "bt_iterator.h"
 #include "find.h"

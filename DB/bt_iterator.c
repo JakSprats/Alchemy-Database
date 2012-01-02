@@ -29,6 +29,7 @@ ALL RIGHTS RESERVED
 #include <float.h>
 #include <assert.h>
 
+#include "debug.h"
 #include "bt.h"
 #include "stream.h"
 #include "aobj.h"
@@ -206,6 +207,7 @@ static void init_iter(btIterator  *iter, bt          *btr,
     iter->iLeaf       = itl;  iter->iNode     = itn;
     iter->finished    = 0;    iter->num_nodes = 0;
     iter->bln         = &(iter->nodes[0]);
+    iter->bln->ik     = iter->bln->in         = 0;
     iter->num_nodes++;
     iter->bln->self   = btr->root; iter->bln->parent = iter->bln->child  = NULL;
     iter->depth       = 0;
@@ -332,6 +334,7 @@ btSIter *btGetFullRangeIter(bt *btr, bool asc, cswc_t *w) {
     destroyBTKey(bkey, med);                             /* DESTROYED 030 */
     if (!stream && siter->missed)                         return siter;//IILMISS
     if (!streamToBTEntry(stream, siter, x, i))            return NULL;
+    if (btr->dirty_left) siter->missed = 1; // FULL means 100% FULL
     return siter;
 }
 
@@ -536,69 +539,86 @@ btSIter *btGetXthIter(bt *btr, aobj *alow, aobj *ahigh, long oofst, bool asc) {
     return siter;
 }
 
-#define DEBUG_SCION_FIND_1 \
-  printf("btScionFind: PRE__LOOP: asc: %d ofst: %ld" \
-         " x: %p i: %d leaf: %d key: ",              \
-          asc, ofst, (void *)x, i, x->leaf);         \
+#define DEBUG_SCION_PRE_LOOP1                                                 \
+  printf("btScionFind: PRE_1st_LOOP: asc: %d ofst: %ld"                       \
+         " x: %p i: %d leaf: %d key: ",                                       \
+          asc, ofst, (void *)x, i, x->leaf);                                  \
   btIterator *iter = &siter->x; DUMP_CURR_KEY
-#define DEBUG_SCION_FIND_2 \
-  printf("%d: ofst: %ld scion: %d\n", i, ofst, scion);
-#define DEBUG_SCION_FIND_END \
-  printf("btScionFind: POST_LOOP: ofst: %ld ik: %d\n", ofst, siter->x.bln->ik);
+#define DEBUG_SCION_LOOP_1                                                    \
+  printf("1st LOOP: %d: ofst: %ld scion: %d\n", i, ofst, scion);
+#define DEBUG_SCION_LOOP_1_KID                                                \
+  printf("MAKE CHILD: i: %d ik: %d in: %d\n",                                 \
+         i, siter->x.bln->ik, siter->x.bln->in);
+#define DEBUG_SCION_LOOP_1_GOT_KID                                            \
+  printf("kid: %p kidleaf: %d\n", (void *)kid, kid->leaf);
+#define DEBUG_SCION_PRE_LOOP2                                                 \
+  printf("PRE 2nd LOOP i: %d fin: %d ofst: %ld x->n: %d x: %p\n",             \
+         i, fin, ofst, n, (void *)x);
+#define DEBUG_SCION_LOOP2                                                     \
+  printf("2nd LOOP: i: %d: dr: %d cnt: %ld ofst: %ld\n", i, dr, cnt, ofst);
+#define DEBUG_SCION_OFFSET_TOO_BIG                                            \
+  printf("OFFSET TOO BIG: i: %d fin: %d last: %d cnt: %lu ofst: %ld"          \
+         " scion: %d\n",                                                      \
+         i, fin, last, cnt, ofst, x->scion);
+#define DEBUG_SCION_POST_LOOP2 \
+  printf("END btScionFind: asc: %d ik: %d ofst: %ld dr: %u cnt: %lu "         \
+         "btdl: %d missed: %d key: ",                                         \
+         asc, siter->x.bln->ik, ofst, dr, cnt, btdl, siter->missed);          \
+         DUMP_CURR_KEY
 
 static bool btScionFind(btSIter *siter, bt_n *x, ulong ofst, bt *btr, bool asc,
                         cswc_t  *w,     long  lim) {
-    uint32 i   = asc ? 0        : x->n;                      DEBUG_SCION_FIND_1
-    uint32 fin = asc ? x->n + 1 : -1;//LOOPS:(i=0,i<=x->n,i++)&(i=x->n,i>=0,i--)
+    int    i   = asc ? 0        : x->n;                   DEBUG_SCION_PRE_LOOP1
+    int    fin = asc ? x->n + 1 : -1;//LOOPS:(i=0,i<=x->n,i++)&(i=x->n,i>=0,i--)
     while (i != fin) {
         if (x->leaf) break;
-        uint32_t scion = NODES(btr, x)[i]->scion;            DEBUG_SCION_FIND_2
-        if (scion >= ofst) { //printf("MAKE CHILD: i: %d\n", i);
-            bool i_end_n = (i == (uint32)siter->x.bln->self->n);
+        uint32_t scion = NODES(btr, x)[i]->scion;             DEBUG_SCION_LOOP_1
+        if (scion >= ofst) {
+            bool i_end_n     = (i == siter->x.bln->self->n);
             siter->x.bln->in = i;
-            siter->x.bln->ik = (i_end_n) ? i - 1 : i;
+            siter->x.bln->ik = (i_end_n) ? i - 1 : i;    DEBUG_SCION_LOOP_1_KID
             if (scion == ofst) {
                 if (!asc) { siter->x.bln->in = siter->x.bln->ik = i - 1; }
                 return 1;
             }
             siter->x.bln->child = get_new_iter_child(&siter->x);
             to_child(&siter->x, NODES(btr, x)[i]);
-            bt_n *kid = NODES(btr, x)[i];
+            bt_n *kid = NODES(btr, x)[i];            DEBUG_SCION_LOOP_1_GOT_KID
             if (!kid->leaf) {
                 btScionFind(siter, kid, ofst, btr, asc, w, lim); return 1;
-            }
+            } else x = kid;
             break;
         } else ofst -= (scion + 1); // +1 for NODE itself
-        i = asc ? i + 1 : i - 1; // loop increment
+        i = asc ? i + 1 : i - 1;    // loop increment
     }
     // Now Find the rest of the OFFSET (respecting DRs)
-    uint32 n    = siter->x.bln->self->n;
-    uint32 last = asc ? n - 1 : 0;
-    i           = asc ? 0     : n - 1;
-    fin         = asc ? ofst  : n - 1 - ofst;
-    ulong  cnt  = 0; bool indr = 0;
-printf("i: %d fin: %d ofst: %ld x->n-1: %d\n", i, fin, ofst, siter->x.bln->self->n - 1);
+    uint32  n    = siter->x.bln->self->n;
+    i            = asc ? 0            : n - 1;
+    fin          = asc ? MIN(ofst, n) : MAX(-1, (n - ofst));
+    int last     = asc ? n - 1        : 0;
+    ulong   cnt  = 0;
+    //TODO findminnode() is too inefficient -> needs to be a part of btr
+    bt_n   *minx = findminnode(btr, btr->root);
+    int     btdl = btr->dirty_left;
+    int     dr   = 0;                                     DEBUG_SCION_PRE_LOOP2
     while (i != fin) {
-        cnt += getDR(btr, x, i);
-printf("%d: dr: %d cnt: %ld ofst: %ld\n", i, getDR(btr, x, i), cnt, ofst);
-        if (cnt >= ofst) { // LOW one higher -> forces rDelSimDr()
-            releaseAobj(&w->wf.alow); releaseAobj(&w->wf.ahigh); indr = 1;
-            uchar *stream = KEYS(btr, x, i);
-            convertStream2Key(stream, &w->wf.alow, btr);
-            incrbyAobj(&w->wf.alow, 1);           // alow++
-            aobjClone(&w->wf.ahigh, &w->wf.alow);
-            incrbyAobj(&w->wf.ahigh, lim);        // ahigh = alow + lim
-            break;
-        }
-        cnt++; if (cnt == ofst) { if (i == last) return 0; else break; }
+        dr   = getDR(btr, x, i);
+        cnt += dr;
+        if (!i && x == minx) cnt += btdl;                     DEBUG_SCION_LOOP2
+        if (cnt >= ofst) break;
+        cnt++;
         i = asc ? i + 1 : i - 1; // loop increment
-    }
-    siter->x.bln->ik = indr ? i : (asc ? i + 1 : i - 1);
+    }                                                DEBUG_SCION_OFFSET_TOO_BIG
+    if      (i == fin && i == last) { if (cnt >= x->scion) return 0; }
+    else if (cnt < ofst)                                   return 0; //OFST 2big
+    siter->x.bln->ik = i;
     INIT_ITER_BEENTRY(siter, btr, x, siter->x.bln->ik);
-    if ((!asc && (cnt == ofst) && getDR(btr, x, siter->x.bln->ik)) ||
-        (asc && indr))                                      siter->missed = 1;
-printf("END btScionFind: asc: %d indr: %d i: %d ofst: %ld ik: %d cnt: %lu dr: %u key: ", asc, indr, i, ofst, siter->x.bln->ik, cnt, getDR(btr, x, siter->x.bln->ik)); DUMP_CURR_KEY
-    return 1;                                            //DEBUG_SCION_FIND_END
+    if (asc)  { if ((ofst + dr) != cnt) siter->missed = 1; }
+    else      { 
+        if (!i && x == minx) { if (ofst != (cnt - btdl)) siter->missed = 1; }
+        else                 { if (ofst != cnt)          siter->missed = 1; } 
+    }                                                    DEBUG_SCION_POST_LOOP2
+    return 1;
 }
 btSIter *btGetFullXthIter(bt *btr, long oofst, bool asc, cswc_t *w, long lim) {
     ulong ofst = (ulong)oofst;

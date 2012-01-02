@@ -35,6 +35,7 @@ ALL RIGHTS RESERVED
 #include "adlist.h"
 #include "redis.h"
 
+#include "debug.h"
 #include "colparse.h"
 #include "filter.h"
 #include "row.h"

@@ -313,6 +313,7 @@ static bt_n *incrPrevDR(bt   *btr, bt_n *x,  int   i, uint32 dr,
     if (!dr)   return x;                                     DEBUG_INCR_PREV_DR
     if (i > 0) return incrDR(btr, x, i - 1, dr, p,  pi); // prev sibling
     else   {
+        //TODO findminnode() is too inefficient -> needs to be a part of btr
         if (x == findminnode(btr, btr->root)) { // MIN KEY
             btr->dirty_left += dr; btr->dirty = 1; return x;
         }
@@ -561,7 +562,7 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
         RETURN_DELETED_KEY(btr, kp, dr)
     }
 
-    if (r == 0) {                                             DEBUG_DEL_CASE_2
+    if (r == 0) { /* (r==0) means key found, but in node */   DEBUG_DEL_CASE_2
         kp = KEYS(btr, x, i);
         if (!drt) { // ON DELETE
             int dr = getDR(btr, x, i);
@@ -632,7 +633,7 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
             ADD_BP(plist, x, i)
             printf("CASE2C key: "); printKey(btr, x, i);
             return deletekey(btr, y, k, s, drt, x, i, plist);
-        }
+        } assert(!"deletekey CASE2 ERROR");
     }
     /* Case 3:
      * if k is not present in internal node x, determine the root xp of
@@ -719,8 +720,11 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
     } //printf("RECURSE CASE 3\n");
     ADD_BP(plist, x, i)                                   DEBUG_DEL_POST_CASE_3
     dwd_t dwd = deletekey(btr, xp, k, s, drt, x, i, plist);
-    //TODO test this decr_scion() w/ DEEP DR combos
-    if (s != DK_NONE) decr_scion(x, 1 + dwd.dr); //NOTE: key for Case2A/B
+    // CASE2A/B pull keys up from depths, scion must be decremented
+    if (s != DK_NONE) {
+        if (drt) decr_scion(x, 1 + dwd.dr);
+        else     decr_scion(x, dwd.dr);     // DELETE already decr_scion()ed 1
+    }
     return dwd;
 }
 

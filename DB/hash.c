@@ -5,6 +5,7 @@
 #include <strings.h>
 #include <unistd.h>
 
+#include "debug.h"
 #include "hash.h"
 
 #define ERR_OOM             -1

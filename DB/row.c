@@ -40,6 +40,7 @@ ALL RIGHTS RESERVED
 #include "redis.h"
 #include "lzf.h"
 
+#include "debug.h"
 #include "hash.h"
 #include "find.h"
 #include "sixbit.h"

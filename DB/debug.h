@@ -32,6 +32,9 @@ ALL RIGHTS RESERVED
 #include "query.h"
 #include "common.h"
 
+long MAX(long a, long b);
+long MIN(long a, long b);
+
 void explainRQ     (cli *c,     cswc_t *w, wob_t *wb, bool cstar,
                     int  qcols, int    *cmatchs);
 void explainJoin   (cli *c, jb_t *jb);

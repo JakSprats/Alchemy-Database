@@ -3107,3 +3107,19 @@ function illegal_dirty_table_ops() {
   echo OK INSERT
   $CLI INSERT INTO simple VALUES "(999,999,999)"
 }
+
+function test_dirty_scion_iterators() {
+  populate_simple |wc -l; $CLI ALTER TABLE simple SET DIRTY; $CLI EVICT simple 60 65 69 61 68
+  J=1; while [ $J -lt 10 ]; do echo -ne "J: $J\t"; $CLI SELECT \* FROM simple WHERE fk=7 ORDER BY pk LIMIT 1 OFFSET $J; J=$[${J}+1]; done
+  K=9; while [ $K -gt 0 ]; do echo -ne "K: $K\t"; $CLI SELECT \* FROM simple WHERE fk=7 ORDER BY pk DESC LIMIT 1 OFFSET $K; K=$[${K}-1]; done
+
+  echo MISS
+  J=9; $CLI SELECT \* FROM simple WHERE fk=7 ORDER BY pk LIMIT 1 OFFSET $J;
+  echo TOO FAR
+  J=10; $CLI SELECT \* FROM simple WHERE fk=7 ORDER BY pk LIMIT 1 OFFSET $J;
+  echo MISS DESC
+  J=9; $CLI SELECT \* FROM simple WHERE fk=7 ORDER BY pk DESC LIMIT 1 OFFSET $J;
+  echo TOO FAR DESC
+  J=10; $CLI SELECT \* FROM simple WHERE fk=7 ORDER BY pk DESC LIMIT 1 OFFSET $J;
+
+}

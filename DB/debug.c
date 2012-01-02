@@ -57,6 +57,10 @@ extern long JoinLim; extern long JoinOfst; extern bool JoinQed;
   (*prn)("\t\tJoinQed: %d JoinLim: %ld JoinOfst: %ld\n", \
          JoinQed, JoinLim, JoinOfst);
 
+//TODO move to helpers.c
+long MAX(long a, long b) { return (a > b) ? a : b; }
+long MIN(long a, long b) { return (a < b) ? a : b; }
+
 //TODO move to output.c
 // DEFERRED_ADD_REPLY_BULK DEFERRED_ADD_REPLY_BULK DEFERRED_ADD_REPLY_BULK
 void setDeferredMultiBulkError(redisClient *c, void *node, sds error) {

@@ -77,8 +77,6 @@ typedef int printer(const char *format, ...);
 #define LRUINDEX_DELIM  "lru"
 #define LFUINDEX_DELIM  "lfu"
 
-#define MIN(A,B) ((A > B) ? B : A)
-#define MAX(A,B) ((A > B) ? A : B)
 #define INCR(x)     {x = x + 1;}
 #define INCRBY(x,y) {x = x + y;}
 #define DECR(x)     {x = x - 1;}
