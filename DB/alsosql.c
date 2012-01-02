@@ -486,6 +486,7 @@ bool deleteInnards(cli *c, sds tlist, sds wclause) {
         if (wb.ovar) incrOffsetVar(c, &wb, 1);
     }
     ret = 1;
+fflush(NULL);
 
 delete_cmd_end:
     destroy_wob(&wb); destroy_check_sql_where_clause(&w); return ret;
@@ -561,10 +562,10 @@ static bool updatingIndex(int matches, int inds[], uchar cmiss[],
         r_ind_t *ri = &Index[inds[i]];
         if (ri->clist) {
             for (int i = 0; i < ri->nclist; i++) {
-                if (!cmiss[ri->bclist[i]])     { ret = 1; *mci_up = 1; }
+                if (!cmiss[ri->bclist[i]]) { ret = 1;       *mci_up = 1; }
             }
         } else if (!cmiss[ri->column]) {
-            if (ri->btr && SIMP_UNIQ(ri->btr)) { ret = 1; *u_up = 1;   }
+            if (ri->btr) { ret = 1; if (SIMP_UNIQ(ri->btr)) *u_up   = 1; }
         }
     }
     return ret;
@@ -623,7 +624,7 @@ int updateInnards(cli *c,      int   tmatch, sds vallist, sds wclause,
             addReply(c, shared.rangequery_index_not_found);    goto upc_end;
         }
         iupdateAction(c,  &w, &wb, ncols, matches, inds, vals, vlens, cmiss,
-                      ue, le, upi);
+                      ue, le, !upi);
     } else {                         /* SQL_SINGLE_UPDATE */
         uchar  pktyp = rt->col[0].type;
         if (pkupc != -1) { /* disallow pk updts that overwrite other rows */
@@ -645,6 +646,7 @@ int updateInnards(cli *c,      int   tmatch, sds vallist, sds wclause,
         if (!fromup) addReply(c, shared.cone);
         if (wb.ovar) incrOffsetVar(c, &wb, 1);
     }
+fflush(NULL);
 
 upc_end:
     destroy_wob(&wb); destroy_check_sql_where_clause(&w);

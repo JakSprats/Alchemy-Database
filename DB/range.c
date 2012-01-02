@@ -185,7 +185,7 @@ static long rangeOpPK(range_t *g, row_op *p) {                 //DEBUG_RANGE_PK
     btEntry *be; btSIter *bi;
     cswc_t  *w     = g->co.w; wob_t *wb = g->co.wb; qr_t *q = g->q;
     bool     iss   = g->se.qcols ? 1 : 0; bool isu = g->up.ncols ? 1 : 0;
-    bool     isd   = !iss && !isu;
+    bool     isd   = !iss && !isu; //TODO upx
 printf("rangeOpPK: iss: %d isu: %d isd: %d\n", iss, isu, isd);
     bt      *btr   = getBtr(w->wf.tmatch); g->co.btr = btr;
     g->asc         = !q->pk_desc;
@@ -287,29 +287,30 @@ static bool nBT_Op(ibtd_t *d) {                              //DEBUG_NODE_BT
     btEntry *nbe;
     bool     ret  = 1;                      /* presume success */
     bool     iss  = d->g->se.qcols ? 1 : 0; bool isu = d->g->up.ncols ? 1 : 0;
-    bool     isd  = !iss && !isu;
+    bool     isd  = !iss && !isu;           bool upx = d->g->up.upx;
+printf("nBT_Op: upx: %d\n", upx);
     *d->brkr      = 0;
     bool     x    = (q->fk_lo && *d->ofst > 0);
-    bool     nasc  = d->g->asc = !q->inr_desc;
+    bool     nasc = d->g->asc = !q->inr_desc;
     btSIter *nbi  = x ?
                      btGetFullXthIter  (d->nbtr, *d->ofst, nasc, w, wb->lim) :
                      btGetFullRangeIter(d->nbtr,           nasc, w);
     if (!nbi) return ret;                                          DEBUG_NBT_OP
     if (!nbi->empty){                                     DEBUG_NBT_OP_GOT_ITER
-        if (nbi->missed) { ret = 0; // iss error message in iselectAction()
+        if (nbi->missed && !upx) { ret = 0; // iss error in iselectAction()
             if      (isd) DELETE_MISS(d->g->co.c);
             else if (isu) UPDATE_MISS(d->g->co.c);
         } else while ((nbe = btRangeNext(nbi, nasc))) {       DEBUG_NBT_OP_LOOP
-            if (nbi->missed) { ret = 0;
+            if (nbi->missed && !upx) { ret = 0;
                 if (isu) UPDATE_MISS(d->g->co.c); 
                 if (isd) DELETE_MISS(d->g->co.c);
                 break;
             }
             if (!nBT_ROp(d, q, wb, nbe->key, nbe->val, &ret) || *d->brkr) break;
         }
-        if (ret) { // FULL Iterator, LIMIT not used up, last row must have dr(0)
+        if (ret && !upx) {// FULL Iter8r, LIMIT not used up & (last row dr > 0)
             if (q->fk_lim) { if (wb->lim > *d->card && nbi->be.dr) ret = 0; }
-            else if (nbi->be.dr)                                   ret = 0;
+            else if                                   (nbi->be.dr) ret = 0;
         }                                                DEBUG_NBT_OP_POST_LOOP
     } btReleaseRangeIterator(nbi);
     if (q->fk_lo)                         *d->ofst = 0; /* OFFSET fulfilled */
@@ -757,8 +758,8 @@ static bool opUpdateSort(cli   *c,   list *ll,    cswc_t  *w,
 void iupdateAction(cli  *c,      cswc_t *w,       wob_t *wb,
                    int   ncols,  int     matches, int    inds[],
                    char *vals[], uint32  vlens[], uchar  cmiss[],
-                   ue_t  ue[],   lue_t  *le,      bool   upi) {
-    printf("\n\niupdateAction: upi: %d\n", upi);
+                   ue_t  ue[],   lue_t  *le,      bool   upx) {
+    printf("\n\niupdateAction: upx: %d\n", upx);
     range_t g; qr_t q; setQueued(w, wb, &q);
     list *ll     = initOBsort(q.qed, wb, 1);
     init_range(&g, c, w, wb, &q, ll, OBY_FREE_AOBJ, NULL);
@@ -766,7 +767,7 @@ void iupdateAction(cli  *c,      cswc_t *w,       wob_t *wb,
     g.up.ncols   = ncols;
     g.up.matches = matches; g.up.indices = inds;
     g.up.vals    = vals;    g.up.vlens   = vlens; g.up.cmiss = cmiss;
-    g.up.ue      = ue;      g.up.le      = le;    g.up.upi   = upi;
+    g.up.ue      = ue;      g.up.le      = le;    g.up.upx   = upx;
     long card    = Op(&g, update_op);
     if (card == -1) goto iup_end; // MCI UNIQ Violation || DirtyMiss */
     long sent    = 0;

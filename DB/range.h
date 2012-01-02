@@ -70,7 +70,7 @@ typedef struct range_update {
     uchar    *cmiss;
     ue_t     *ue;
     lue_t    *le;
-    bool      upi;
+    bool      upx;
 } rup_t;
 
 typedef struct range_common {
