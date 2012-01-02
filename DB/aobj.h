@@ -47,9 +47,6 @@ void releaseAobj(void *a);
 void destroyAobj(void *a);
 
 void  aobjClone (aobj *dest, aobj *src);
-#define CREATE_CLONE(dest, src) \
-  aobj dest; aobjClone(&dest, src);
-
 aobj *cloneAobj (aobj *a);
 aobj *copyAobj  (aobj *a); //WARNING: do NOT double free
 

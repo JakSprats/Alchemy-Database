@@ -72,14 +72,26 @@ ALL RIGHTS RESERVED
 #define DEBUG_RUN_ON_NODE                                                  \
   printf("in runOnNode: ibtr: %p still: %u nop: %p\n", ibtr, still, nop);  \
   bt_dumptree(printf, ibtr, 0, 0);
+#define DEBUG_RUN_ON_NODE_UNIQ                                             \
+  printf("runOnNode: UNIQ: "); DEBUG_BT_TYPE(printf, ibtr)
+#define DEBUG_RUN_ON_NODE_UNIQ_END                                         \
+  printf("runOnNode: uv: "); dumpAobj(printf, uv);
 #define DEBUG_SINGLE_FK                                                    \
   printf("singleOpFK: imatch: %d key: ", g->co.w->wf.imatch);              \
   dumpAobj(printf, &g->co.w->wf.akey);
+#define DEBUG_SINGFK_INFO                                                  \
+  printf("singleOpFK: singu: %d ibtr: %p fibtr: %p\n",                     \
+         singu, (void *)ibtr, (void *)fibtr);
 #define DEBUG_RANGE_FK                                                     \
   printf("rangeOpFK: imatch: %d\n", g->co.w->wf.imatch);
+#define DEBUG_RANGE_FK_LOOP                                                \
+  printf("rangeOpFK: LOOP: bi->miss: %d be->val: %p\n",                    \
+         bi->missed, (void *)be->val);
+#define DEBUG_IN_OP_FK_LOOP                                                \
+  printf("inOpFK: beval: %p exists: %d\n", (void *)beval, exists);
 #define DEBUG_PASS_FILT_INL                                                \
-printf("PF: ret: %d a2: ", ret); dumpAobj(printf, a2);                     \
-printf("a: ");dumpAobj(printf, &a);
+  printf("PF: ret: %d a2: ", ret); dumpAobj(printf, a2);                   \
+  printf("a: ");dumpAobj(printf, &a);
 #define DEBUG_PASS_FILT_LOW                                                \
   printf("PassF: low:  "); dumpAobj(printf, &flt->alow);                   \
   printf("PassF: high: "); dumpAobj(printf, &flt->ahigh);                  \

@@ -479,6 +479,13 @@ printf("ik: %d fl->cnt: %ld cnt: %ld dr: %d ofst: %ld - (fcnt): %ld\n", iter->bl
 }
 
 // COMMON_SCION_ITERATOR COMMON_SCION_ITERATOR COMMON_SCION_ITERATOR
+#define DEBUG_XTH_ITER_FIND_POST_LOOP                                   \
+  printf("d: %d fl.over: %ld dr: %d\n",                                 \
+         d, fl.over, getDR(btr, siter->x.bln->self, siter->x.bln->ik));
+#define DEBUG_XTH_ITER_FIND_END                                         \
+  printf("END XthIterfind: over: %ld missed: %d key: ",                 \
+        fl.over, siter->missed); DUMP_CURR_KEY
+
 #define INIT_ITER_BEENTRY(siter, btr, x, i)  \
   { uchar *iistream = KEYS(btr, x, i); streamToBTEntry(iistream, siter, x, i); }
 
@@ -492,15 +499,7 @@ static bool XthIterFind(btSIter *siter, aobj *alow, aobj *ahigh,
     destroyBTKey(bkey, med);                                    // DESTROYED 031
     if (!streamToBTEntry(stream, siter, x, i)) return 0;
     fol_t fl; bzero(&fl, sizeof(fol_t)); fl.ofst = ofst; fl.over = -1;
-printf("NEED rDelSimDr: per ITERATION: missed: %d dr: %d\n", siter->missed, siter->be.dr);
-    if (asc && siter->missed && siter->be.dr) { // 0th DR covers (alow+ofst)
-        CREATE_CLONE(adr, siter->be.key) incrbyAobj(&adr, siter->be.dr);
-        CREATE_CLONE(aof, alow)          incrbyAobj(&aof, ofst);
-printf("POST: adr:   "); dumpAobj(printf, &adr); printf("POST: aof: "); dumpAobj(printf, &aof);
-        if (aobjGE(&adr, &aof)) {
-            dlt = subtractAobj(&adr, &aof) + 1; goto xthi_e;
-        }
-    } // NEXT_LINE: Switch to SCION ITERATORS
+    // NEXT_LINE: Switch to SCION ITERATORS
     iter->iLeaf = asc ? (d ? iter_leaf_dirty_scion     : iter_leaf_scion) : 
                         (d ? iter_leaf_dirty_scion_rev : iter_leaf_scion_rev);
     iter->iNode = asc ?      iter_node_scion           : iter_node_scion_rev;
@@ -520,13 +519,11 @@ printf("POST: adr:   "); dumpAobj(printf, &adr); printf("POST: aof: "); dumpAobj
                 }
             } break; }
     }
-
-xthi_e:
     INIT_ITER_BEENTRY(siter, btr, siter->x.bln->self, siter->x.bln->ik)
+    siter->nim = siter->missed = 0;               DEBUG_XTH_ITER_FIND_POST_LOOP
     if (d && fl.over > 0 && getDR(btr, siter->x.bln->self, siter->x.bln->ik)) {
-        siter->missed = 1; siter->mdelta = (uint32)fl.over;
-    } else siter->mdelta = dlt;
-printf("END XthIterfind: over: %ld missed: %d delta: %u key: ", fl.over, siter->missed, siter->mdelta); DUMP_CURR_KEY
+        siter->missed = 1;
+    }                                                   DEBUG_XTH_ITER_FIND_END
     iter->iLeaf = asc ? iter_leaf : iter_leaf_rev; // Back to NORMAL ITERATORS
     iter->iNode = asc ? iter_node : iter_node_rev;
     return 1;

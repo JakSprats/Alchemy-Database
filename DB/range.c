@@ -148,10 +148,8 @@ void setQueued(cswc_t *w, wob_t *wb, qr_t *q) { /* NOTE: NOT for JOINS */
 //TODO inline
 static bool pk_row_op(aobj  *apk, void *rrow, range_t *g,    row_op *p,
                       qr_t *q,    long    *card) {
-//TODO rrow is guaranteed -> no need to check
-assert(rrow);
-    if (rrow && !(*p)(g, apk, rrow, q->qed, card)) return 0;
-    else                                           return 1;
+    if (!(*p)(g, apk, rrow, q->qed, card)) return 0;
+    else                                   return 1;
 }
 static bool pk_op_l(aobj *apk, void *rrow, range_t *g,     row_op *p, wob_t *wb,
                     qr_t *q,   long *card, long    *loops, bool   *brkr) {
@@ -197,7 +195,7 @@ printf("rangeOpPK: iss: %d isu: %d isd: %d upx: %d\n", iss, isu, isd, upx);
               btGetRangeIter(btr, &w->wf.alow, &w->wf.ahigh, g->asc);
     if (!bi) return card;                                DEBUG_RANGEPK_PRE_LOOP
     if (!bi->empty) {
-        if (bi->missed && !upx) { card = -1; // iss error in iselectAction()
+        if (bi->missed && !upx) {     card = -1; // iss error in iselectAction()
             if      (isd) DELETE_MISS(g->co.c);
             else if (isu) UPDATE_MISS(g->co.c);
         } else while ((be = btRangeNext(bi, g->asc))) {      DEBUG_RANGEPK_LOOP
@@ -270,16 +268,18 @@ static bool nBT_ROp(ibtd_t *d,    qr_t *q,    wob_t *wb,
     void *rrow = btFind(d->g->co.btr, key); releaseAobj(&akey);
     if (!(*d->p)(d->g, key, rrow, q->qed, d->card)) { *ret = 0; return 0; }
     DEBUG_NBT_ROP
-    if (q->fk_lim && wb->lim == *d->card) { *d->brkr = 1;           return 1; }
+    if (q->fk_lim && wb->lim == *d->card) { *d->brkr = 1;       return 1; }
     return 1;
 }
 static bool nBT_Op(ibtd_t *d) {                              //DEBUG_NODE_BT
     cswc_t *w = d->g->co.w; wob_t *wb = d->g->co.wb; qr_t *q = d->g->q;
-    if (d->g->se.cstar && !w->flist) { /* FK cstar w/o filters */
-        if (d->nbtr->root) { INCRBY(*d->card, d->nbtr->root->scion) } return 1;
-    }
-    if (q->fk_lo && FK_RQ(w->wtype) && d->nbtr->numkeys <= *d->ofst) {
-        DECRBY(*d->ofst, d->nbtr->numkeys) return 1; // skip IndexNode
+    if (d->nbtr->root) {
+        if (d->g->se.cstar && !w->flist) { /* FK cstar w/o filters */
+            INCRBY(*d->card, d->nbtr->root->scion) return 1;
+        }
+        if (q->fk_lo && FK_RQ(w->wtype) && d->nbtr->root->scion <= *d->ofst) {
+            DECRBY(*d->ofst, d->nbtr->root->scion) return 1; // skip INODE
+        }
     }
     btEntry *nbe;
     bool     ret  = 1;                      /* presume success */
@@ -347,7 +347,7 @@ bt *btMCIFindVal(cswc_t *w, bt *nbtr, uint32 *nmatch, r_ind_t *ri) {
         while ((ln = listNext(li))) {
             f_t *flt  = ln->value;                          //DEBUG_MCI_FIND_MID
             if (flt->op == NONE) break; /* MCI Joins can have empty flt's */
-#if 0 //TODO this should probably be activated -> TEST
+#if 0 //TODO this should probably be activated -> TEST - may complicate QO logic
             if (flt->op != EQ) { // MCI Indexes only support EQ ops
                 do { // transfer rest of KLIST to FLIST
                     f_t *flt = ln->value;
@@ -387,8 +387,7 @@ static bool runOnNode(bt      *ibtr, uint32  still,
         if (still) { /* Recurse until node*/
             if (!runOnNode(d->nbtr, still, nop, d, ri)) { ret = 0; break; }
         } else {
-            if UNIQ(ri->cnstr) {
-                //printf("runOnNode: UNIQ: "); DEBUG_BT_TYPE(printf, ibtr)
+            if UNIQ(ri->cnstr) {                       //DEBUG_RUN_ON_NODE_UNIQ
                 d->nbtr        = ibtr; // Unique 1 step shorter
                 aobj *uv       = &UniqueIndexVal;
                 if        UU(d->nbtr) {
@@ -402,9 +401,8 @@ static bool runOnNode(bt      *ibtr, uint32  still,
                   else if LX(d->nbtr) OBT_RUNONNODE(COL_TYPE_U128, lxk, x)
                   else if XL(d->nbtr) OBT_RUNONNODE(COL_TYPE_LONG, xlk, l)
                   else if XX(d->nbtr) OBT_RUNONNODE(COL_TYPE_U128, xxk, x)
-                  else assert(!"runOnNode ERROR");
-                  //printf("runOnNode: uv: "); dumpAobj(printf, uv);
-            }  // NEXT LINE: When we get to NODE -> run [uBT_Op|nodeBT_Op]
+                  else assert(!"runOnNode ERROR"); //DEBUG_RUN_ON_NODE_UNIQ_END
+            }  // NEXT LINE: When we get to NODE -> run [uBT_Op|nBT_Op]
             if (!(*nop)(d)) { ret = 0; break; }
         }
         if (*d->brkr) break;
@@ -425,7 +423,6 @@ static long rangeOpFK(range_t *g, row_op *p) {                 //DEBUG_RANGE_FK
     long     ofst  = wb->ofst;
     g->asc         = !q->fk_desc;
     long     loops = -1; long card =  0; bool brkr =  0;
-
     bool     smplo = SIMP_UNIQ(ibtr) && q->fk_lo;
     if (!smplo) bi  = btGetRangeIter(ibtr, &w->wf.alow, &w->wf.ahigh, g->asc);
     else { // SIMPLE UNIQUE + OFFSET -> use SCION iter8trs
@@ -434,11 +431,10 @@ static long rangeOpFK(range_t *g, row_op *p) {                 //DEBUG_RANGE_FK
     }
     if (!bi) return card;
     init_ibtd(&d, p, g, q, NULL, &ofst, &card, &loops, &brkr, ri->obc);
-    while ((be = btRangeNext(bi, g->asc))) {
-printf("rangeOpFK: LOOP: bi->miss: %d be->val: %p\n", bi->missed, (void *)be->val);
+    while ((be = btRangeNext(bi, g->asc))) {                DEBUG_RANGE_FK_LOOP
         if (iss && !be->val) { card = -1; break; }
-        uint32  nmatch = 0;
-        d.nbtr         = singu ? ibtr : btMCIFindVal(w, be->val, &nmatch, ri);
+        uint32  nmatch  = 0;
+        d.nbtr          = singu ? ibtr : btMCIFindVal(w, be->val, &nmatch, ri);
         if (d.nbtr) {
             uint32 diff = nexpc - nmatch;
             if      (diff) { if (!runOnNode(d.nbtr, diff, nop, &d, ri)) CBRK }
@@ -463,11 +459,10 @@ static long singleOpFK(range_t *g, row_op *p) {               //DEBUG_SINGLE_FK
     node_op  *nop    = UNIQ(ri->cnstr) ? uBT_Op : nBT_Op;
     uint32    nexpc  = ri->clist ? (ri->clist->len - 1) : 0;
     bool      singu  = SIMP_UNIQ(ibtr);
-    bt       *fibtr  = singu ? NULL : btIndFind(ibtr, afk);
-printf("singleOpFK: singu: %d ibtr: %p fibtr: %p\n", singu, (void *)ibtr, (void *)fibtr);
+    bt       *fibtr  = singu ? NULL : btIndFind(ibtr, afk); DEBUG_SINGFK_INFO
+    // CHECK for a 100% Evicted Index
     if (!singu && iss && !fibtr) { if (btIndExist(ibtr, afk)) return -1; }
     bt       *nbtr   = singu ? ibtr : btMCIFindVal(w, fibtr, &nmatch, ri);
-printf("singleOpFK: nbtr: %p\n", (void *)nbtr);
     long      ofst   = wb->ofst;
     long      loops  = -1; long card =  0; bool brkr =  0;
     init_ibtd(&d, p, g, q, nbtr, &ofst, &card, &loops, &brkr, ri->obc);
@@ -526,17 +521,15 @@ static long inOpFK(range_t *g, row_op *p) {                //printf("inOpFK\n");
     while((ln = listNext(li))) {
         uint32  nmatch = 0;
         aobj   *afk    = ln->value;
-        bool    exists = btIndExist(ibtr, afk);
-        bt     *beval  = btIndFind (ibtr, afk);
-printf("inOpFK: beval: %p exists: %d\n", (void *)beval, exists);
-        if (iss && exists && !beval) return -1;
+        bt     *beval  = btIndFind (ibtr, afk); //DEBUG_IN_OP_FK_LOOP
+        if (iss && !beval) { if (btIndExist(ibtr, afk)) return -1; }
         d.nbtr         = btMCIFindVal(w, beval, &nmatch, ri);
         if (d.nbtr) {
             uint32 diff = nexpc - nmatch;
             if      (diff) { if (!runOnNode(d.nbtr, diff, nop, &d, ri)) CBRK }
             else if (!(*nop)(&d))                                       CBRK
+            if (brkr) break;
         }
-        if (brkr) break;
     } listReleaseIterator(li);
     return card;
 }

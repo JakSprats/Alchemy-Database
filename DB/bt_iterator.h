@@ -72,7 +72,6 @@ typedef struct btIterator { // 60B + 16*bt_ll_n(512) -> dont malloc
 typedef struct btSIter { // btIterator 500+ bytes -> STACK (globals) ALLOCATE
     btIterator x;
     bool       missed; // CURRENT iteration is miss
-    uint32     mdelta; // CURRENT iteration missed by how much (delta)
     bool       nim;    // NEXT    iteration is miss
     bool       empty;
     bool       scan;
