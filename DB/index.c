@@ -51,6 +51,11 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "index.h"
 
+/* INDEX TODO LIST:
+     1.) refactor iEvictMCI() into iRemMCI
+     2.) refactor iEvict() into iRem()
+*/
+
 extern r_tbl_t *Tbl;
 extern uint32   Ind_HW; extern dict *IndD; extern list *DropI;
 
@@ -332,7 +337,7 @@ static bool iAddStream(cli *c, bt *btr, uchar *stream, int imatch) {
 }
 bool addToIndex(cli *c, bt *btr, aobj *apk, void *rrow, int imatch) {
     r_ind_t *ri    = &Index[imatch];
-    if (ri->virt)    /* TODO: needed? */                             return 1;
+    if (ri->virt)                                                    return 1;
     bt      *ibtr  = getIBtr(imatch);
     if (ri->luat) { luatAdd(btr, (luat_t *)ibtr, apk, imatch, rrow); return 1; }
     int      pktyp = Tbl[ri->table].col[0].type;
@@ -425,7 +430,7 @@ bool upIndex(cli *c, bt *ibtr, aobj *aopk,  aobj *ocol,
 bool updateIndex(cli *c, bt *btr, aobj *aopk, void *orow, 
                                   aobj *anpk, void *nrow, int imatch) {
     r_ind_t *ri    = &Index[imatch];
-    if (ri->virt)   /* TODO: needed? */                   return 1;
+    if (ri->virt)                                         return 1;
     bt      *ibtr  = getIBtr(imatch);
     if (ri->luat) {
         luatAdd(btr, (luat_t *)ibtr, anpk, imatch, nrow); return 1;

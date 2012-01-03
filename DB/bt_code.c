@@ -66,7 +66,6 @@ static int       real_log2 (unsigned int a, int nbits);
   12.) slab allocator for ALL btn's
 
   14.) btFind() in setUniqIndexVal() -> btFindD() + TESTING
-  15.) test case3 "(s!=DK_NONE) decr_scion" w/ DEEP DR combos
 */
 
 // HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER

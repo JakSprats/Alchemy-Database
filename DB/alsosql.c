@@ -93,13 +93,17 @@ static void addRowSizeReply(cli *c, int tmatch, bt *btr, int len) {
     buf[127] = '\0';
     robj *r  = _createStringObject(buf); addReplyBulk(c, r); decrRefCount(r);
 }
-#define DEBUG_INSERT_DEBUG \
-  printf("DO update: %d (%s) tmatch: %d apk: ", \
+#define DEBUG_INSERT_DEBUG                                                   \
+  printf("DO update: %d (%s) tmatch: %d apk: ",                              \
           update, c->argv[update]->ptr, tmatch); dumpAobj(printf, &apk);
-
 #define DEBUG_REPLY_LIST \
   { listNode  *ln; listIter  *li = listGetIterator(c->reply, AL_START_HEAD); \
-   while((ln = listNext(li))) { robj *r = ln->value; printf("REPLY: %s\n", r->ptr); } listReleaseIterator(li); }
+    while((ln = listNext(li))) {                                             \
+        robj *r = ln->value; printf("REPLY: %s\n", r->ptr);                  \
+    } listReleaseIterator(li); }
+#define DEBUG_UPDATE_SNGL                                                    \
+  printf("SINGLE ROW UPDATE: exists: %d miss: %d upx: %d\n",                 \
+         exists, dwm.miss, upx);
 
 uchar insertCommit(cli  *c,      sds     uset,   sds     vals,
                    int   ncols,  int     tmatch, int     matches,
@@ -605,44 +609,46 @@ int updateInnards(cli *c,      int   tmatch, sds vallist, sds wclause,
     } else {      /* normal UPDATE -> parse WhereClause */
         init_check_sql_where_clause(&w, tmatch, wclause);/* ERR->GOTO */
         parseWCplusQO(c, &w, &wb, SQL_UPDATE);
-        if (w.wtype == SQL_ERR_LKP)                            goto upc_end;
-        if (!leftoverParsingReply(c, w.lvr))                   goto upc_end;
+        if (w.wtype == SQL_ERR_LKP)                              goto upc_end;
+        if (!leftoverParsingReply(c, w.lvr))                     goto upc_end;
     } //dumpW(printf, &w); dumpWB(printf, &wb);
 
     bool  u_up, mci_up; 
     bool  upi = updatingIndex(matches, inds, cmiss, &mci_up, &u_up);
     bt   *btr  = getBtr(w.wf.tmatch);
     bool  isr  = (w.wtype != SQL_SINGLE_LKP);
-    if (mci_up && isr) { addReply(c, shared.range_mciup);      goto upc_end; }
-    if (u_up   && isr) { addReply(c, shared.range_u_up);       goto upc_end; }
+    if (mci_up && isr) { addReply(c, shared.range_mciup);        goto upc_end; }
+    if (u_up   && isr) { addReply(c, shared.range_u_up);         goto upc_end; }
 
     if (isr) { /* FK, RQ, IN -> RANGE UPDATE */
         if (pkupc != -1) {
-            addReply(c, shared.update_pk_range_query);         goto upc_end;
+            addReply(c, shared.update_pk_range_query);           goto upc_end;
         }
         if (w.wf.imatch == -1) {
-            addReply(c, shared.rangequery_index_not_found);    goto upc_end;
+            addReply(c, shared.rangequery_index_not_found);      goto upc_end;
         }
         iupdateAction(c,  &w, &wb, ncols, matches, inds, vals, vlens, cmiss,
                       ue, le, upi);
     } else {                         /* SQL_SINGLE_UPDATE */
         uchar  pktyp = rt->col[0].type;
         if (pkupc != -1) { /* disallow pk updts that overwrite other rows */
-            if (ovwrPKUp(c, pkupc, mvals, mvlens, pktyp, btr)) goto upc_end;
+            if (ovwrPKUp(c, pkupc, mvals, mvlens, pktyp, btr))   goto upc_end;
         }
         aobj  *apk    = &w.wf.akey;
         dwm_t  dwm    = btFindD(btr, apk);
         void  *rrow   = dwm.k;
         bool   gost   = IS_GHOST(btr, rrow);
         bool   exists = (rrow || dwm.miss) && !gost;
-        if (!exists) { addReply(c, shared.czero);                goto upc_end; }
-        if (dwm.miss) { addReply(c, shared.cone); /* NOOP */     goto upc_end; }
+        bool   upx    = !upi && (wb.lim == -1) && !w.flist; //DEBUG_UPDATE_SNGL
+        if (!exists)  { addReply(c, shared.czero);               goto upc_end; }
+        if (dwm.miss) { if (upx) addReply(c, shared.cone);
+                        else     addReply(c, shared.updatemiss); goto upc_end; }
         uc_t uc;
         init_uc(&uc, btr, w.wf.tmatch, ncols, matches, inds, vals, vlens,
                 cmiss, ue, le);
         nsize        = updateRow(c, &uc, apk, rrow); release_uc(&uc);
         //NOTE: rrow is no longer valid, updateRow() can change it
-        if (nsize == -1)                                       goto upc_end;
+        if (nsize == -1)                                         goto upc_end;
         if (!fromup) addReply(c, shared.cone);
         if (wb.ovar) incrOffsetVar(c, &wb, 1);
     }
