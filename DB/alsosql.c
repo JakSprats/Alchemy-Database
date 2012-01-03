@@ -624,7 +624,7 @@ int updateInnards(cli *c,      int   tmatch, sds vallist, sds wclause,
             addReply(c, shared.rangequery_index_not_found);    goto upc_end;
         }
         iupdateAction(c,  &w, &wb, ncols, matches, inds, vals, vlens, cmiss,
-                      ue, le, !upi);
+                      ue, le, upi);
     } else {                         /* SQL_SINGLE_UPDATE */
         uchar  pktyp = rt->col[0].type;
         if (pkupc != -1) { /* disallow pk updts that overwrite other rows */

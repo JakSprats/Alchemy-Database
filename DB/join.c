@@ -65,6 +65,7 @@ bool JoinErr   =  0; bool JoinMiss  =  0;
 long JoinCard  =  0; long JoinLoops =  0;
 long JoinLim   = -1; long JoinOfst  = -1; bool JoinQed   =  0;
 
+//TODO take Jcols -> too complicated
 static aobj Resp;
 static sl_t Jcols[MAX_JOIN_COLS];
 
@@ -235,7 +236,7 @@ static bool popKlist(range_t *g,   int   imatch, list **klist,
 static bool join_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
     q = 0; /* compiler warning */
     if (JoinErr || JoinMiss)  return 0;
-    if (!JoinLim) return 1; /* this means LIMIT OFFSET has been fulfilled */
+    if (!JoinLim)             return 1; // LIMIT OFFSET has been fulfilled
     jb_t   *jb     = g->jb;   /* code compaction */
     cswc_t *w      = g->co.w; /* code compaction */
     int     tmatch = w->wf.tmatch; /* code compaction */

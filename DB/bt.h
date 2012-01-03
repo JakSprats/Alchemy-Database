@@ -197,4 +197,5 @@ bool    btDecrDR_PK(bt *btr, aobj *akey, uint32 by);
 
 // DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
 #define TEST_WITH_TRANS_ONE_ONLY
+
 #endif /* __ALSO_SQL_BT_H */

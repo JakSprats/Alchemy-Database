@@ -747,8 +747,7 @@ static bool opUpdateSort(cli   *c,   list *ll,    cswc_t  *w,
 void iupdateAction(cli  *c,      cswc_t *w,       wob_t *wb,
                    int   ncols,  int     matches, int    inds[],
                    char *vals[], uint32  vlens[], uchar  cmiss[],
-                   ue_t  ue[],   lue_t  *le,      bool   upx) {
-    printf("\n\niupdateAction: upx: %d\n", upx);
+                   ue_t  ue[],   lue_t  *le,      bool   upi) {
     range_t g; qr_t q; setQueued(w, wb, &q);
     list *ll     = initOBsort(q.qed, wb, 1);
     init_range(&g, c, w, wb, &q, ll, OBY_FREE_AOBJ, NULL);
@@ -756,7 +755,9 @@ void iupdateAction(cli  *c,      cswc_t *w,       wob_t *wb,
     g.up.ncols   = ncols;
     g.up.matches = matches; g.up.indices = inds;
     g.up.vals    = vals;    g.up.vlens   = vlens; g.up.cmiss = cmiss;
-    g.up.ue      = ue;      g.up.le      = le;    g.up.upx   = upx;
+    g.up.ue      = ue;      g.up.le      = le;    
+    g.up.upx     = !upi && (wb->lim == -1) && !w->flist;
+    printf("\n\niupdateAction: upx: %d upi: %d lim:% ld flist: %p\n", g.up.upx, upi, wb->lim, (void *)w->flist);
     long card    = Op(&g, update_op);
     if (card == -1) goto iup_end; // MCI UNIQ Violation || DirtyMiss */
     long sent    = 0;

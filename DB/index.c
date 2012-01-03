@@ -152,11 +152,17 @@ static void iRem(bt   *ibtr, aobj *acol, aobj *apk, aobj *ocol, int imatch,
         }
     }
 }
+//TODO test iEvict w/ SIMP_UNIQ()
+//TODO refactor iEvict() into iRem()
 static void iEvict(bt *ibtr, aobj *acol, aobj *apk, aobj *ocol) {
     printf("iEvict apk: "); dumpAobj(printf, apk);
-    bt  *nbtr  = btIndFind     (ibtr, acol);
-    int  nkeys = btIndNodeEvict(nbtr, apk, ocol);
-    if (!nkeys)  btIndNull     (ibtr, acol);
+    bt  *nbtr    = btIndFind     (ibtr, acol);
+    ulong  size1 = nbtr->msize;
+    int  nkeys   = btIndNodeEvict(nbtr, apk, ocol);
+    ibtr->msize -= (size1 - nbtr->msize);
+    if (!nkeys) {
+        btIndNull(ibtr, acol); ibtr->msize -= nbtr->msize; bt_destroy(nbtr);
+    }
 }
 static bool _iAddMCI(cli  *c,      bt   *btr,  aobj *apk,     uchar  pktyp,
                      int   imatch, void *rrow, bool  destroy, int    rec_ret,
@@ -279,12 +285,12 @@ static void iRemMCI(bt   *btr, aobj *apk, int imatch, void *rrow, aobj *ocol,
         ulong isize1 = ibtr->msize;
         nkeys        = gost ? btIndNull  (ibtr, &dpl[i].acol) :
                               btIndDelete(ibtr, &dpl[i].acol);
-        ulong idiff  = nbtr->msize + (isize1 - ibtr->msize);
-        bt_destroy(nbtr);
+        ulong idiff  = nbtr->msize + (isize1 - ibtr->msize); bt_destroy(nbtr);
         for (int j = i; j >= 0; j--) dpl[j].ibtr->msize -= idiff;/*trickle-up*/
         { i--; nbtr = ibtr; } /* go one step HIGHER in dpl[] - trickle-up */
     }
 }
+//TODO refactor iEvictMCI() into iRemMCI
 static void iEvictMCI(bt *btr, aobj *apk, int imatch, void *rrow, aobj *ocol) {
     printf("iEvictMCI\n");
     bt      *nbtr  = NULL; /* compiler warning */
@@ -310,7 +316,11 @@ static void iEvictMCI(bt *btr, aobj *apk, int imatch, void *rrow, aobj *ocol) {
     if (diff) for (int i = 0; i < depth; i++) dpl[i].ibtr->msize -= diff;
     int i = depth - 1;         /* start at end */
     while (!nkeys && i >= 0) { /*previous DEL emptied BT->destroyBT,trickle-up*/
-        ibtr = dpl[i].ibtr; btIndNull(ibtr, &dpl[i].acol);
+        ibtr         = dpl[i].ibtr;
+        ulong isize1 = ibtr->msize;
+        btIndNull(ibtr, &dpl[i].acol);
+        ulong idiff  = nbtr->msize + (isize1 - ibtr->msize); bt_destroy(nbtr);
+        for (int j = i; j >= 0; j--) dpl[j].ibtr->msize -= idiff;/*trickle-up*/
         { i--; nbtr = ibtr; } /* go one step HIGHER in dpl[] - trickle-up */
     }
 }

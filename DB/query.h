@@ -41,7 +41,7 @@ typedef struct r_col {
 
 //TODO many of r_tbl's elements are optional -> bitmap + malloc(elements)
 //TODO MM: many of r_tbl's elements are optional -> bitmap + malloc(elements)
-typedef struct r_tbl { // 115 bytes -> 120B
+typedef struct r_tbl { // 131 bytes -> 136B
     sds      name;
     bt      *btr;
     int      vimatch;
@@ -70,6 +70,8 @@ typedef struct r_tbl { // 115 bytes -> 120B
     int      lfuc;       /* LFU: column containing LFU */
     int      lfui;       /* LFU: index containing LFU */
     bool     dirty;      /* ALTER TABLE [UN]SET DIRTY */
+    ulong    nerows;     /* Number of Evicted Rows */
+    ulong    nebytes;    /* Number of Evicted Bytes */
 } r_tbl_t;
 
 //TODO bool's can all be in a bitmap

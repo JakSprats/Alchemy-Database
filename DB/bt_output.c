@@ -67,12 +67,12 @@ void bt_dump_info(printer *prn, bt *btr) {
     (*prn)("BT t: %d nbits: %d nbyte: %d kbyte: %d "               \
            "ksize: %d koff: %d noff: %d numkeys: %d numnodes: %d " \
            "height: %d btr: %p btype: %d ktype: %d bflag: %d "     \
-           "num: %d root: %p dirty_left: %u\n",
+           "num: %d root: %p dirty_left: %u msize: %ld dsize: %ld\n",
             btr->t, btr->nbits, btr->nbyte, btr->kbyte, btr->s.ksize,
             btr->keyofst, btr->nodeofst, btr->numkeys, btr->numnodes,
             treeheight(btr), (void *)btr,
             btr->s.btype, btr->s.ktype, btr->s.bflag, btr->s.num, btr->root,
-            btr->dirty_left);
+            btr->dirty_left, btr->msize, btr->dsize);
     DEBUG_BT_TYPE((*prn), btr);
 }
 

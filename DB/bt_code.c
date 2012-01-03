@@ -104,6 +104,7 @@ void *bt_malloc(bt *btr, int size) {                         //DEBUG_BT_MALLOC
     BT_MEM_PROFILE_MLC
     bt_incr_dsize(btr, size); return malloc(size);
 }
+//TODO memory management of DS (both alloc_ds & bt_free_btreenode)
 static void alloc_ds(bt *btr, bt_n *x, size_t size) {
     void   **dsp    = (void *)((char *)x + size); bzero(dsp, sizeof(bds_t));
     size_t   dssize = (x->leaf ? (btr->t * 2) : btr->t) * sizeof(uint32);

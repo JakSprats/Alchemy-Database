@@ -43,17 +43,20 @@ ALL RIGHTS RESERVED
 #include "cache.h"
 
 extern r_tbl_t  *Tbl;
+extern r_ind_t  *Index;
 
 void evictCommand(cli *c) {
-    int   len   = sdslen(c->argv[1]->ptr);
-    char *tname = rem_backticks(c->argv[1]->ptr, &len); // Mysql compliant
+    int      len   = sdslen(c->argv[1]->ptr);
+    char    *tname = rem_backticks(c->argv[1]->ptr, &len); // Mysql compliant
     TABLE_CHECK_OR_REPLY(tname,)
-    if (!Tbl[tmatch].dirty) { addReply(c, shared.evictnotdirty); return; }
+    r_tbl_t *rt    = &Tbl[tmatch];
+    if (!rt->dirty) { addReply(c, shared.evictnotdirty); return; }
     //TODO must be NUM PK & auto-inc
     bt   *btr   = getBtr(tmatch);
     if OTHER_BT(btr) { addReply(c, shared.evict_other); return; }
     if (!(C_IS_NUM(btr->s.ktype))) { addReply(c, shared.evict_other); return; }
-    long  card  = 0;
+    ulong nbytes = 0;
+    long  card   = 0;
     for (int i = 2; i < c->argc; i++) {
         sds    pk   = c->argv[i]->ptr;
         printf("\n\nEVICT: tbl: %s[%d] PK: %s\n", tname, tmatch, pk);
@@ -66,12 +69,21 @@ void evictCommand(cli *c) {
         MATCH_INDICES(tmatch)
         if (matches) { // EVICT indexes
             for (int i = 0; i < matches; i++) {
+                r_ind_t *ri  = &Index[inds[i]];
+                if (ri->virt || ri->luat || ri->lru || ri->lfu) continue;
+                ulong    pre = ri->btr->msize;
                 evictFromIndex(btr, &apk, rrow, inds[i]);
+                rt->nebytes += (pre - ri->btr->msize);
+printf("%d: ind: %d pre: %ld post: %ld nebytes: %ld\n", i, inds[i], pre, ri->btr->msize, rt->nebytes);
             }}
         printf("EVICT indexes done\n");
+        ulong pre = rt->btr->msize;
         btEvict(btr, &apk); card++; releaseAobj(&apk);
+        rt->nebytes += (pre - rt->btr->msize);
+printf("DATA: pre: %ld post: %ld nebytes: %ld\n", pre, rt->btr->msize, rt->nebytes);
         printf("\n\n"); fflush(NULL);
     }
-    printf("\n\n");
+    rt->nerows += card;
+    printf("nerows: %ld nebytes: %ld\n\n", rt->nerows, rt->nebytes);
     addReplyLongLong(c, card);
 }

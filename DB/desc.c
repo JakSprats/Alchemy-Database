@@ -334,8 +334,9 @@ void descCommand(redisClient *c) {
     aobj mink, maxk;
     ull   index_size = get_sum_all_index_size_for_table(tmatch);
     bt   *btr        = getBtr(tmatch);
-    if (btr->numkeys) { assignMinKey(btr, &mink); assignMaxKey(btr, &maxk); }
-    else              { initAobj(&mink);          initAobj(&maxk);          }
+    bool  mt         = 0;
+    if (btr->numkeys) { assignMinKey(btr, &mink); assignMaxKey(btr, &maxk);  }
+    else              { initAobj(&mink);          initAobj(&maxk);   mt = 1; }
 
     sds s = sdsempty();                                  // FREEME 102(1)
     if        (C_IS_S(mink.type)) {
@@ -359,12 +360,23 @@ void descCommand(redisClient *c) {
         } else s = sdscatprintf(s, "INFO: KEYS: [NUM: %d MIN: %lu MAX: %lu]",
                                btr->numkeys, (ulong)min, (ulong)max);
     }
-    s = sdscatprintf(s, " BYTES: [BT-TOTAL: %ld [BT-DATA: %ld] INDEX: %lld]]%s",
+    s = sdscatprintf(s, " BYTES: [BT-TOTAL: %ld [BT-DATA: %ld] INDEX: %lld]]%s"\
+                        " - AVG_BYTE_PER_ROW: %ld",
                         btr->msize, btr->dsize, index_size,
-                        rt->hashy ? " - HASHABILITY" : "");
+                        rt->hashy ? " - HASHABILITY" : "",
+                        mt ? 0 : (btr->msize + index_size) / btr->numkeys);
     robj *r = createObject(REDIS_STRING, s);             // FREEME 102(2)
     addReplyBulk(c, r); decrRefCount(r);                 // FREED 102
     card++;
+    
+    if (rt->dirty) {
+        sds   desc = sdscatprintf(sdsempty(),
+                      "EVICTED: [ROWS: %ld BYTES: %ld] - AVG_BYTE_PER_ROW: %ld",
+                           rt->nerows, rt->nebytes, 
+                           rt->nerows ? (rt->nebytes / rt->nerows) : 0);
+        robj *r    = createObject(REDIS_STRING, desc);
+        addReplyBulk(c, r); decrRefCount(r); card++;
+    }
 
     setDeferredMultiBulkLength(c, rlen, card);
     dump_bt_mem_profile(btr);
