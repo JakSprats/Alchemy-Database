@@ -57,25 +57,25 @@ void dump_bt_mem_profile(bt *btr) { btr = NULL; return; }
 #endif
 
 // MEMORY_MANAGEMENT MEMORY_MANAGEMENT MEMORY_MANAGEMENT MEMORY_MANAGEMENT
-#define DEBUG_INCR_MEM                                      \
-    printf("INCR MEM: osize: %ld plus: %lu nsize: %ld\n",   \
+#define DEBUG_INCR_MEM                                               \
+    printf("INCR MEM: osize: %ld plus: %lu nsize: %ld\n",            \
            btr->msize, size, (btr->msize + size));
-#define DEBUG_DECR_MEM                                      \
-    printf("DECR MEM: osize: %ld minus: %lu nsize: %ld\n",  \
+#define DEBUG_DECR_MEM                                               \
+    printf("DECR MEM: osize: %ld minus: %lu nsize: %ld\n",           \
            btr->msize, size, (btr->msize - size));
-#define DEBUG_BT_MALLOC                                     \
+#define DEBUG_BT_MALLOC                                              \
     printf("bt_MALLOC: %p size: %d\n", (void *)btr, size);
-#define DEBUG_ALLOC_BTN                                     \
-    printf("allocbtreeNODE: %p leaf: %d size: %d\n",        \
-           (void *)btr, leaf, size);
-#define DEBUG_ALLOC_BTREE                                   \
+#define DEBUG_ALLOC_BTN                                              \
+    printf("allocbtreeNODE: %p leaf: %d msize: %ld dirty: %d\n",     \
+           (void *)btr, leaf, msize, dirty);
+#define DEBUG_ALLOC_BTREE                                            \
     printf("allocBTREE: %p size: %d\n", (void *)btr, size);
-#define DEBUG_BT_FREE                                       \
+#define DEBUG_BT_FREE                                                \
     printf("bt_FREE: %p size: %d\n", (void *)btr, size);
-#define DEBUG_BTF_BTN_DIRTY                                 \
-  printf("bt_free_btreenode: dirty: dssize: %d\n",          \
+#define DEBUG_BTF_BTN_DIRTY                                          \
+  printf("release_dirty_stream: dirty: dssize: %d\n",                \
          get_dssize(btr, x->dirty));
-#define DEBUG_BTF_BTN                                       \
+#define DEBUG_BTF_BTN                                                \
   printf("bt_free_btreenode: msize: %d\n", msize);
 
 // DIRTY_STREAM DIRTY_STREAM DIRTY_STREAM DIRTY_STREAM DIRTY_STREAM
@@ -86,7 +86,8 @@ void dump_bt_mem_profile(bt *btr) { btr = NULL; return; }
   printf("alloc_ds: x: %p dsp: %p ds: %p dssize: %lu\n",                     \
          (void *)x, (void *)dsp, (void *)ds, dssize);
 #define DEBUG_RESIZE_DS_1                                                    \
-  printf("resize_ds: x: %p dirty: %d ndirty: %d\n", (void *)x, drt, ndirty);
+  printf("resize_ds: x: %p dirty: %d dirty++: %d\n",                         \
+         (void *)x, x->dirty, (x->dirty + 1));
 #define DEBUG_RESIZE_DS_2                                                    \
   printf("END resize_ds: dirty: %u\n", x->dirty);
 
@@ -142,7 +143,7 @@ void dump_bt_mem_profile(bt *btr) { btr = NULL; return; }
 
 // DR DR DR DR DR DR DR DR DR DR DR DR DR DR DR DR DR DR DR DR DR DR DR DR
 #define DEBUG_GET_DR \
-  printf("getDR: x: %p i: %d\n", (void *)x, i);
+  printf("getDR: x: %p i: %d drt: %d\n", (void *)x, i, drt);
 #define DEBUG_SET_DR \
   printf("setDR: drt: %d dr: %d dsp: %p x: %p\n", \
          drt, dr, (void *)dsp, (void *)x);

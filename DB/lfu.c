@@ -42,6 +42,10 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "lfu.h"
 
+/* TODO LIST LFU
+  1.) LFU indexes should be UNIQUE U128 indexes [lfu|pk]
+*/
+
 // GLOBALS
 extern r_tbl_t *Tbl;
 extern int      Num_indx; extern r_ind_t *Index;

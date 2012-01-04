@@ -70,8 +70,7 @@ typedef struct btree { // 60 Bytes -> 64B
     bts_t              s;          // 7 bytes
 
     unsigned int       dirty_left; // 4 bytes (num evicted before 1st key)
-    unsigned char      dirty;      // NOTE: if ANY btn in btr is dirty
-
+    unsigned char      dirty;      // NOTE: bool: if ANY btn in btr is dirty
 } __attribute__ ((packed)) bt;
 
 //#define BTREE_DEBUG
@@ -79,7 +78,9 @@ typedef struct btreenode { // 9 bytes -> 16 bytes
     unsigned int   scion;       /* 4 billion max scion */
     unsigned short n;           /* 16 thousand max entries (per bt_n)*/
     unsigned char  leaf;
-    unsigned char  dirty;
+    // DIRTY: -1->CLEAN,   0->TreeDirty but BTN_clean, 
+    //         1->ucharDR, 2->ushortDR,                3->uintDR
+    char           dirty;
     unsigned char  ndirty;
 #ifdef BTREE_DEBUG
     unsigned long num;
@@ -91,9 +92,9 @@ void *KEYS(bt *btr, bt_n *x, int i);
 #define NODES(btr, x) ((bt_n **)((char *)x + btr->nodeofst))
 
 #define GET_BTN_SIZE(leaf)   \
-  size_t nsize = leaf  ? btr->kbyte            : btr->nbyte; 
+  size_t nsize = leaf          ? btr->kbyte : btr->nbyte; 
 #define GET_BTN_MSIZE(dirty) \
-  size_t msize = dirty ? nsize + sizeof(void *) : nsize;
+  size_t msize = (dirty == -1) ? nsize      : nsize + sizeof(void *);
 #define GET_BTN_SIZES(leaf, dirty) \
     GET_BTN_SIZE(leaf) GET_BTN_MSIZE(dirty)
 #define GET_DS(x, nsize) (*((void **)((char *)x + nsize)))

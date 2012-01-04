@@ -67,6 +67,10 @@ static bt_data_t findmaxkey          (bt *btr, bt_n *x);
   12.) slab allocator for ALL btn's
 
   14.) btFind() in setUniqIndexVal() -> btFindD() + TESTING
+
+  18.) CREATE TABLE () DIRTY
+
+  19.) btreesplitchild dirty math (only set dirty if new split child has dirty)
 */
 
 // HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER
@@ -105,31 +109,34 @@ void *bt_malloc(bt *btr, int size) {                         //DEBUG_BT_MALLOC
     bt_incr_dsize(btr, size); return malloc(size);
 }
 // DIRTY_STREAM DIRTY_STREAM DIRTY_STREAM DIRTY_STREAM DIRTY_STREAM
-static uint32 get_dssize(bt *btr, uchar dirty) {
+static uint32 get_dssize(bt *btr, char dirty) {
+    assert(dirty > 0);
     uint32 drsize = (dirty == 3) ? sizeof(uint32)   :
-                    (dirty == 2) ? sizeof(ushort16) :
-                    (dirty == 1) ? sizeof(uchar)    : 0;      //DEBUG_GETDSSIZE
+                    (dirty == 2) ? sizeof(ushort16) : sizeof(uchar); // 1 
+    DEBUG_GETDSSIZE
     return (btr->t * 2) * drsize;
 }
-static void alloc_ds(bt *btr, bt_n *x, size_t size, uchar dirty) {
+static void alloc_ds(bt *btr, bt_n *x, size_t size, char dirty) {
+    assert(dirty != -1);
     void   **dsp    = (void *)((char *)x + size);
+    if (!dirty) { *dsp = NULL; return; }
     size_t   dssize = get_dssize(btr, dirty);
     void    *ds     = malloc(dssize); bzero(ds, dssize); // FREEME 108
     bt_increment_used_memory(btr, dssize);
     *dsp            = ds;                                        DEBUG_ALLOC_DS
 }
 void incr_ds(bt *btr, bt_n *x) {//USE: when a DR is too big for its DS (incr_ds)
-    uchar   drt    = x->dirty; GET_BTN_SIZE(x->leaf)
+    assert(x->dirty > 0);
+    GET_BTN_SIZE(x->leaf)
     void   *ods    = GET_DS(x, nsize);
-    uint32  osize  = get_dssize(btr, drt);
-    uint32  num    = (x->leaf ? (btr->t * 2) : btr->t);
-    uchar   ndirty = x->dirty + 1;                          //DEBUG_RESIZE_DS_1
-    alloc_ds(btr, x, nsize, ndirty);
+    uint32  osize  = get_dssize(btr, x->dirty);
+    uint32  num    = (x->leaf ? (btr->t * 2) : btr->t);       DEBUG_RESIZE_DS_1
+    alloc_ds(btr, x, nsize, x->dirty + 1);
     void   *nds    = GET_DS(x, nsize);
-    if        (drt == 1) {
+    if        (x->dirty == 1) {
         uchar    *s_ds = (uchar    *)ods; ushort16 *d_ds = (ushort16 *)nds;
         for (uint32 i = 0; i < num; i++) d_ds[i] = (ushort16)s_ds[i];
-    } else if (drt == 2) {
+    } else if (x->dirty == 2) {
         ushort16 *s_ds = (ushort16 *)ods; uint32   *d_ds = (uint32   *)nds;
         for (uint32 i = 0; i < num; i++) d_ds[i] = (uint32  )s_ds[i];
     } else assert(!"incr_ds ERROR");
@@ -137,14 +144,14 @@ void incr_ds(bt *btr, bt_n *x) {//USE: when a DR is too big for its DS (incr_ds)
     free(ods); bt_decrement_used_memory(btr, osize);
 }
 // BT_ALLOC_BTREE BT_ALLOC_BTREE BT_ALLOC_BTREE BT_ALLOC_BTREE BT_ALLOC_BTREE
-static bt_n *allocbtreenode(bt *btr, bool leaf, uchar dirty) {
+static bt_n *allocbtreenode(bt *btr, bool leaf, char dirty) {
     btr->numnodes++;
     GET_BTN_SIZES(leaf, dirty)   BT_MEM_PROFILE_NODE          //DEBUG_ALLOC_BTN
     bt_n   *x     = malloc(msize); bzero(x, msize);
     bt_increment_used_memory(btr, msize);
     x->leaf       = -1;
     x->dirty      = dirty;
-    if (dirty) alloc_ds(btr, x, nsize, dirty);
+    if (dirty != -1) alloc_ds(btr, x, nsize, dirty);
     return x;
 }
 static bt *allocbtree() {
@@ -159,20 +166,21 @@ void bt_free(bt *btr, void *v, int size) {                     //DEBUG_BT_FREE
     bt_decr_dsize(btr, size); free(v);
 }
 static void release_dirty_stream(bt *btr, bt_n *x) {      //DEBUG_BTF_BTN_DIRTY
+    assert(x->dirty > 0);
     GET_BTN_SIZE(x->leaf)
     bt_decrement_used_memory(btr, get_dssize(btr, x->dirty));
-    free(GET_DS(x, nsize));                              // FREED 108
-    x->dirty = x->ndirty = 0;
+    void **dsp = GET_DS(x, nsize); free(dsp);            // FREED 108
+    x->dirty   = x->ndirty = 0;
 }
 static void bt_free_btreenode(bt *btr, bt_n *x) {
     GET_BTN_SIZES(x->leaf, x->dirty) bt_decrement_used_memory(btr, msize);
-    if (x->dirty) release_dirty_stream(btr, x);
+    if (x->dirty > 0) release_dirty_stream(btr, x);
     free(x);                                             // FREED 035
 }
 static void bt_free_btree(bt *btr) { free(btr); }
 
 // BT_CREATE BT_CREATE BT_CREATE BT_CREATE BT_CREATE BT_CREATE BT_CREATE
-bt *bt_create(bt_cmp_t cmp, uchar trans, bts_t *s) {
+bt *bt_create(bt_cmp_t cmp, uchar trans, bts_t *s, char dirty) {
     int    n        = (trans == TRANS_ONE) ? 7 : 255;
     uchar  t        = (uchar)((int)(n + 1) / 2);
     int    kbyte    = sizeof(bt_n) + n * s->ksize;
@@ -189,8 +197,8 @@ bt *bt_create(bt_cmp_t cmp, uchar trans, bts_t *s) {
     btr->nbits      = (uchar)nbits;
     btr->nbyte      = nbyte;
     btr->kbyte      = kbyte;
-    //TODO if Tbl[].dirty -> allocate all w/ dirty-stream-pointers
-    btr->root       = allocbtreenode(btr, 1, 0);
+    btr->dirty      = dirty;
+    btr->root       = allocbtreenode(btr, 1, dirty ? 0: -1);
     btr->numnodes   = 1; //printf("bt_create\n"); bt_dump_info(printf, btr);
     return btr;
 }
@@ -289,7 +297,7 @@ static inline void move_scion(bt *btr, bt_n *y, bt_n *z, int n) {
     for (int i = 0; i < n; i++) { incr_scion(y, NODES(btr, z)[i]->scion); }
 }
 static inline int get_scion_range(bt *btr, bt_n *x, int beg, int end) {
-    if (!x->dirty) return end - beg;
+    if (x->dirty <= 0) return end - beg;
     int scion = 0;
     for (int i = beg; i < end; i++) scion += 1 + getDR(btr, x, i);
     return scion;
@@ -305,23 +313,26 @@ typedef struct two_bp_gens {
 static inline void free_bp(void *v) { free(v); }
 
 //TODO inline
-static bt_n *addDStoBTN(bt *btr, bt_n *x, bt_n *p, int pi) {
-    bt_n *y = allocbtreenode(btr, x->leaf, 1);
-    GET_BTN_SIZE(x->leaf) memcpy(y, x, nsize); y->dirty = btr->dirty = 1;
+bt_n *addDStoBTN(bt *btr, bt_n *x, bt_n *p, int pi, char dirty) {
+    bt_n *y = allocbtreenode(btr, x->leaf, dirty);
+    GET_BTN_SIZE(x->leaf) memcpy(y, x, nsize); 
+    y->dirty = dirty; btr->dirty = 1;
     if (x == btr->root) btr->root         = y;
     else                NODES(btr, p)[pi] = y; // update parent NODE bookkeeping
     bt_free_btreenode(btr, x);                              DEBUG_ADD_DS_TO_BTN
     return y;
 }
 uint32 getDR(bt *btr, bt_n *x, int i) {
-    if (!x->dirty) return 0;
+    if (x->dirty <= 0) return 0;
     GET_BTN_SIZE(x->leaf)
     void  *dsp = GET_DS(x, nsize);;
-    uchar  drt = x->dirty;                                       //DEBUG_GET_DR
-    if      (drt == 1) { uchar    *ds = (uchar    *)dsp; return (uint32)ds[i]; }
-    else if (drt == 2) { ushort16 *ds = (ushort16 *)dsp; return (uint32)ds[i]; }
-    else if (drt == 3) { uint32   *ds = (uint32   *)dsp; return         ds[i]; }
-    else               assert(!"getDR ERROR");
+    if        (x->dirty == 1) {
+        uchar    *ds = (uchar    *)dsp; return (uint32)ds[i];
+    } else if (x->dirty == 2) {
+        ushort16 *ds = (ushort16 *)dsp; return (uint32)ds[i];
+    } else if (x->dirty == 3) {
+        uint32   *ds = (uint32   *)dsp; return         ds[i];
+    } else assert(!"getDR ERROR");
 }
 #define INCR_DS_SET_DR                                 \
   { incr_ds(btr, x); __setDR(btr, x, i, dr); return; }
@@ -329,34 +340,33 @@ uint32 getDR(bt *btr, bt_n *x, int i) {
 static void __setDR(bt *btr, bt_n *x, int i, uint32 dr) {
     uint32 odr; GET_BTN_SIZE(x->leaf)
     void  *dsp = GET_DS(x, nsize);
-    uchar  drt = x->dirty;                                       //DEBUG_SET_DR
-    if        (drt == 1) {
+    if        (x->dirty == 1) {
         uchar    *ds = (uchar    *)dsp; if (dr > UCHAR_MAX) INCR_DS_SET_DR
         odr = ds[i]; ds[i] = dr;
-    } else if (drt == 2) {
+    } else if (x->dirty == 2) {
         ushort16 *ds = (ushort16 *)dsp; if (dr > USHRT_MAX) INCR_DS_SET_DR
         odr = ds[i]; ds[i] = dr;
-    } else if (drt == 3) { 
+    } else if (x->dirty == 3) { 
         uint32   *ds = (uint32   *)dsp;
         odr = ds[i]; ds[i] = dr;
     } else assert(!"setDR ERROR");
     if      (!odr && dr) x->ndirty++;
     else if (odr && !dr) x->ndirty--;
-    if (x->dirty && !x->ndirty) release_dirty_stream(btr, x);
+    if ((x->dirty > 0) && !x->ndirty) release_dirty_stream(btr, x);
 }
 static bt_n *setDR(bt *btr, bt_n *x, int i, uint32 dr, bt_n *p, int pi) {
     if (!dr)                return x;
-    if (!x->dirty) x = addDStoBTN(btr, x, p, pi);
+    if (x->dirty <= 0) x = addDStoBTN(btr, x, p, pi, 1);
     __setDR(btr, x, i, dr); return x;
 }
 static bt_n *zeroDR(bt *btr, bt_n *x, int i, bt_n *p, int pi) {
     p = NULL; pi = 0; /* compiler warnings - these will be used later */
-    if (!x->dirty)         return x;
+    if (x->dirty <= 0)     return x;
     __setDR(btr, x, i, 0); return x;
 }
 static bt_n *incrDR(bt *btr, bt_n *x, int i, uint32 dr, bt_n *p, int pi) {
     if (!dr) return x;
-    if (!x->dirty) x = addDStoBTN(btr, x, p, pi);
+    if (x->dirty <= 0) x = addDStoBTN(btr, x, p, pi, 1);
     uint32 odr  = getDR(btr, x, i);
     odr        += dr;
     return setDR(btr, x, i, odr, p, pi);
@@ -524,7 +534,7 @@ void bt_insert(bt *btr, bt_data_t k, uint32 dr) {
     bt_n *p  = r;
     int   pi = 0;
     if (r->n == GETN(btr)) { /* NOTE: tree increase height */
-        bt_n *s          = allocbtreenode(btr, 0, r->dirty); //TODO dirtymath
+        bt_n *s          = allocbtreenode(btr, 0, r->dirty);
         btr->root        = s;
         s->leaf          = 0;
         s->n             = 0;

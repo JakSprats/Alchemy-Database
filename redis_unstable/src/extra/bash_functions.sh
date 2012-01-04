@@ -3044,6 +3044,7 @@ function populate_simple() {
   $CLI DROP TABLE simple;
   #$CLI CREATE TABLE simple "(pk LONG, fk LONG, col2 INT)";
   $CLI CREATE TABLE simple "(pk INT, fk INT, col2 INT)";
+  $CLI ALTER TABLE simple SET DIRTY;
   $CLI CREATE INDEX i_simple ON simple "(fk)"
   J=1; I=1; NUM=6000; FKMOD=10
   if [ -n "$1" ]; then NUM=$1;   fi
@@ -3068,6 +3069,7 @@ function evict_random_from_simple() {
 function populate_join_to_simple() {
   $CLI DROP TABLE joinsimple;
   $CLI CREATE TABLE joinsimple "(pk INT, col6 INT, col7 INT)";
+  $CLI ALTER TABLE joinsimple SET DIRTY;
   NUM=6000; FKMOD=10 # from populate_simple
   N=$[${NUM}/${FKMOD}]
   I=1;
@@ -3079,6 +3081,7 @@ function populate_join_to_simple() {
 function populate_simple_mci() {
   $CLI DROP TABLE mcisimple;
   $CLI CREATE TABLE mcisimple "(pk LONG, fk1 INt, fk2 INT, col2 INT)";
+  $CLI ALTER TABLE mcisimple SET DIRTY;
   $CLI CREATE INDEX i_mcisimple ON mcisimple "(fk1, fk2)"
   J=1; K=1; FK1MOD=10; FK2MOD=5;
   I=1; NUM=600;
@@ -3109,7 +3112,7 @@ function illegal_dirty_table_ops() {
 }
 
 function test_dirty_scion_iterators() {
-  populate_simple |wc -l; $CLI ALTER TABLE simple SET DIRTY; $CLI EVICT simple 60 65 69 61 68
+  populate_simple |wc -l; $CLI EVICT simple 60 65 69 61 68
   J=1; while [ $J -lt 10 ]; do echo -ne "J: $J\t"; $CLI SELECT \* FROM simple WHERE fk=7 ORDER BY pk LIMIT 1 OFFSET $J; J=$[${J}+1]; done
   K=9; while [ $K -gt 0 ]; do echo -ne "K: $K\t"; $CLI SELECT \* FROM simple WHERE fk=7 ORDER BY pk DESC LIMIT 1 OFFSET $K; K=$[${K}-1]; done
 

@@ -361,7 +361,7 @@ void descCommand(redisClient *c) {
                                btr->numkeys, (ulong)min, (ulong)max);
     }
     s = sdscatprintf(s, " BYTES: [BT-TOTAL: %ld [BT-DATA: %ld] INDEX: %lld]]%s"\
-                        " - AVG_BYTE_PER_ROW: %ld",
+                        " - AVG_BYTE_PER_ROW: %lld",
                         btr->msize, btr->dsize, index_size,
                         rt->hashy ? " - HASHABILITY" : "",
                         mt ? 0 : (btr->msize + index_size) / btr->numkeys);

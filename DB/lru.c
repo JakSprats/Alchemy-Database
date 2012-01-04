@@ -46,6 +46,10 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "lru.h"
 
+/* TODO LIST LRU
+  1.) LRU indexes should be UNIQUE U128 indexes [lru|pk]
+*/
+
 // GLOBALS
 extern r_tbl_t *Tbl;
 extern int      Num_indx; extern r_ind_t *Index;

@@ -47,7 +47,7 @@ extern r_ind_t *Index;
 #define CREATE_OBT(kt, ks, bf, cmp)                                         \
     bts_t bts;           bts.ktype = kt;                 bts.btype = btype; \
     bts.ksize = ks;      bts.bflag = bf;                 bts.num   = num;   \
-    return bt_create(cmp, TRANS_ONE, &bts);
+    return bt_create(cmp, TRANS_ONE, &bts, 0);
 
 bt *createUUBT(int num, uchar btype) {                //printf("createUUBT\n");
     CREATE_OBT(COL_TYPE_INT, UU_SIZE, BTFLAG_UINT_UINT, uuCmp);
@@ -107,7 +107,7 @@ bt *createDBT(uchar ktype, int tmatch) {
     bts_t bts;
     bts.ktype = ktype;       bts.btype = BTREE_TABLE; bts.ksize = VOIDSIZE;
     bts.bflag = BTFLAG_NONE; bts.num   = tmatch; 
-    return bt_create(ASSIGN_CMP(ktype), TRANS_ONE, &bts);
+    return bt_create(ASSIGN_CMP(ktype), TRANS_ONE, &bts, rt->dirty);
 }
 bt *createIBT(uchar ktype, int imatch, uchar btype) {
     bt_cmp_t cmp; bts_t bts;
@@ -125,7 +125,7 @@ bt *createIBT(uchar ktype, int imatch, uchar btype) {
         bts.ksize = VOIDSIZE; cmp = ASSIGN_CMP(ktype);
         bts.bflag = BTFLAG_NONE;
     }
-    return bt_create(cmp, TRANS_ONE, &bts);
+    return bt_create(cmp, TRANS_ONE, &bts, 0);
 }
 static bt *_createUIBT(uchar ktype, int imatch, uchar pktyp, uchar bflag) {
     if (C_IS_I(ktype)) {
@@ -175,7 +175,7 @@ bt *createIndexNode(uchar ktype, uchar obctype) {                /* INODE_BT */
     } else {
         cmp = ASSIGN_CMP(ktype); bts.ksize = VOIDSIZE;  bts.bflag = BTFLAG_NONE;
     }
-    return bt_create(cmp, TRANS_ONE, &bts);
+    return bt_create(cmp, TRANS_ONE, &bts, 0);
 }
 bt *createIndexBT(uchar ktype, int imatch) {
     return createIBT(ktype, imatch, BTREE_INDEX);
@@ -266,10 +266,10 @@ static uint32 abt_insert(bt *btr, aobj *akey, void *val) {
     return ssize;
 }
 bt *abt_resize(bt *obtr, uchar trans) {              // printf("abt_resize\n");
-     bts_t bts;
-     memcpy(&bts, &obtr->s, sizeof(bts_t)); /* copy flags */
-     bt *nbtr    = bt_create(obtr->cmp, trans, &bts);
-     nbtr->dsize = obtr->dsize;
+    bts_t bts;
+    memcpy(&bts, &obtr->s, sizeof(bts_t)); /* copy flags */
+    bt *nbtr    = bt_create(obtr->cmp, trans, &bts, obtr->dirty);
+    nbtr->dsize = obtr->dsize;
     if (obtr->root) {
         bt_to_bt_insert(nbtr, obtr, obtr->root); /* 1.) copy from old to new */
         bt_release(obtr, obtr->root);            /* 2.) release old */

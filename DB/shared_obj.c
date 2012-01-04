@@ -363,4 +363,6 @@ void DXDB_createSharedObjects() {
         "-ERR: PROHIBITED: Range Updating a column that belongs to a UNIQUE index (Alchemy does NOT rollback)\r\n"));
     shared.uviol                  = createObject(REDIS_STRING,sdsnew(
         "-ERR: VIOLATION: UNIQUE INDEX CONSTRAINT FAILED\r\n"));
+    shared.dirtypk                = createObject(REDIS_STRING,sdsnew(
+        "-ERR: PROHIBITED: ONLY tables w/ [INT|LONG|U128] PKs can be set to DIRTY\r\n"));
 }

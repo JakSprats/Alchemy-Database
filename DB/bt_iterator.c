@@ -491,7 +491,7 @@ printf("ik: %d fl->cnt: %ld cnt: %ld dr: %d ofst: %ld - (fcnt): %ld\n", iter->bl
 
 static bool XthIterFind(btSIter *siter, aobj *alow, aobj *ahigh,
                         long     ofst,  bool  asc,  bt    *btr) {
-    bool med; uint32 ksize; btIterator *iter = &siter->x; uint32 dlt = 0;
+    bool med; uint32 ksize; btIterator *iter = &siter->x;
     char *bkey = createBTKey(asc ? alow : ahigh, &med, &ksize, btr); // DEST 031
     if (!bkey) return 0;
     bt_n *x  = NULL; int i = -1; bool d = btr->dirty;

@@ -300,8 +300,15 @@ void alterCommand(cli *c) {
     TABLE_CHECK_OR_REPLY(tname,)
     if (OTHER_BT(getBtr(tmatch))) { addReply(c, shared.alter_other);    return;}
     if        (altdrt) {
-        //TODO check that the table has AUTO_INC NUM PK
+        if (!C_IS_NUM(Tbl[tmatch].col[0].type)) {
+            addReply(c, shared.dirtypk);                                return;
+        }
+        //TODO check table -> AUTO_INC PK
         Tbl[tmatch].dirty = 1;
+        bt *btr           = Tbl[tmatch].btr;
+        btr->dirty        = 1; // allocbtreenode() w/ dirty-stream-ptrs
+        // If table was just created, add DS to it (will be inherited)
+        if (btr->numnodes == 1) addDStoBTN(btr, btr->root, btr->root, 0, 0);
     } else if (altc) {
         if (c->argc < 7) { addReply(c, shared.altersyntax);             return;}
         if (!checkRepeatCnames(c, tmatch, c->argv[5]->ptr))             return;

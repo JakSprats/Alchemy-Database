@@ -134,7 +134,7 @@ static void dump_tree_node(printer *prn, bt *btr, bt_n *x,
 #else
         (*prn)("%d: NODE: ",     depth);
 #endif
-        if (x->dirty) {
+        if (x->dirty > 0) {
             GET_BTN_SIZE(x->leaf) void *ds = GET_DS(x, nsize);
             (*prn)("slot: %d n: %d scion: %d -> " \
                    "(%p) ds: %p dirty: %u ndirty: %d\n",
@@ -144,7 +144,7 @@ static void dump_tree_node(printer *prn, bt *btr, bt_n *x,
                     slot, x->n, x->scion, (void *)x);
         }
     } else {
-        if (x->dirty) {
+        if (x->dirty > 0) {
             GET_BTN_SIZE(x->leaf) void *ds = GET_DS(x, nsize);
             (*prn)("%d: LEAF: slot: %d n: %d scion: %d -> " \
                    "(%p) ds: %p dirty: %u ndirty: %d\n",
@@ -236,7 +236,7 @@ static void dump_tree_node(printer *prn, bt *btr, bt_n *x,
                 else      (*prn)("\t\tROW [%d]: %p\t",        i, rrow);
             }
             if (!key_printed) { (*prn)("KEY: "); dumpAobj(prn, &akey); }
-            if (x->dirty) {
+            if (x->dirty > 0) {
 #ifdef PRINT_EVICTED_KEYS
                 uint32 dr = getDR(btr, x, i);
                 if (is_inode && dr) (*prn)("\t\t\t\tDR: %d\n", dr);

@@ -55,7 +55,6 @@ void evictCommand(cli *c) {
     bt   *btr   = getBtr(tmatch);
     if OTHER_BT(btr) { addReply(c, shared.evict_other); return; }
     if (!(C_IS_NUM(btr->s.ktype))) { addReply(c, shared.evict_other); return; }
-    ulong nbytes = 0;
     long  card   = 0;
     for (int i = 2; i < c->argc; i++) {
         sds    pk   = c->argv[i]->ptr;

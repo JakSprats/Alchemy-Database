@@ -1,11 +1,11 @@
 
 PROTOCOL
-  1.) First line of SQL responses should be comma-delimited list of columns
+  1.) First line of SQL SELECTs should be comma-delimited list of columns
   2.) ADD "SELECT col AS othername"
 
 PREPARED_STATEMENTS
   0.) Make Persistent -> add to DXDB_rdbSave/Load()
-  1.) PREPARE STATEMENT for joins is PRE QueryOptimisation -> do POST
+  1.) PREPARE STATEMENT for joins runs PRE QueryOptimisation -> do POST
   2.) Support CRUD
   3.) SELECTs -> support RangeQueries & IN()Queries
 
@@ -36,11 +36,11 @@ CLEANUP:
 
 MISC:
   1.) LOAD DATE FROM INFILE ... 1st rev as Lua routine reading in CSV file
+  2.) LRU/LFU indexes should be UNIQUE U128 indexes [lru|pk]
 
 INDEX.POS()
-  1.) ALLOW ONLY on SIMP_UNIQ()
+  1.) allow only on SIMP_UNIQ()
 
 CACHE:
-  1.) specify "AUTO INCREMENT" in "CREATE TABLE" declaration
-  2.) DIRTY STREAM as STREAM
+  1.) specify "PRIMARY KEY AUTO INCREMENT" in "CREATE TABLE" declaration
   3.) slab allocator for the myriad of different btree-node sizes

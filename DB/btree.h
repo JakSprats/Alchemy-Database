@@ -61,7 +61,7 @@ void *bt_malloc        (struct btree *btr,                       int size);
 void  bt_free          (struct btree *btr, void *v,              int size);
 
 // CONSTRUCTOR CONSTRUCTOR CONSTRUCTOR CONSTRUCTOR CONSTRUCTOR CONSTRUCTOR
-struct btree *bt_create(bt_cmp_t cmp, unsigned char trans, bts_t *s);
+struct btree *bt_create(bt_cmp_t cmp, uchar trans, bts_t *s, char dirty);
 
 // CRUD CRUD CRUD CRUD CRUD CRUD CRUD CRUD CRUD CRUD CRUD CRUD CRUD CRUD CRUD
 typedef struct data_with_dirt_t {
@@ -79,6 +79,9 @@ bt_data_t  bt_find    (struct btree *btr, bt_data_t k, aobj *akey);
 bt_data_t *bt_find_loc(struct btree *btr, bt_data_t k);
 
 // DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY DIRTY
+struct btreenode *addDStoBTN(struct btree *btr, struct btreenode *x, 
+                             struct btreenode *p, int pi, char dirty);
+
 uint32    getDR          (struct btree *btr, struct btreenode *x, int i);
 uint32    bt_get_dr      (struct btree *btr, bt_data_t k, aobj *akey);
 bt_data_t bt_evict       (struct btree *btr, bt_data_t k);
