@@ -53,9 +53,10 @@ ALL RIGHTS RESERVED
 extern r_ind_t *Index;
 
 /* PROTOYPES */
-static bt_data_t findminkey(bt *btr, bt_n *x);
-static bt_data_t findmaxkey(bt *btr, bt_n *x);
-static int       real_log2 (unsigned int a, int nbits);
+static void      release_dirty_stream(bt *btr, bt_n *x);
+static int       real_log2           (unsigned int a, int nbits);
+static bt_data_t findminkey          (bt *btr, bt_n *x);
+static bt_data_t findmaxkey          (bt *btr, bt_n *x);
 
 /* CACHE TODO LIST
    8.) U128PK/FK CACHE:[EVICT,MISS] support
@@ -157,15 +158,18 @@ static bt *allocbtree() {
 void bt_free(bt *btr, void *v, int size) {                     //DEBUG_BT_FREE
     bt_decr_dsize(btr, size); free(v);
 }
-void bt_free_btreenode(bt *btr, bt_n *x) {
+static void release_dirty_stream(bt *btr, bt_n *x) {      //DEBUG_BTF_BTN_DIRTY
+    GET_BTN_SIZE(x->leaf)
+    bt_decrement_used_memory(btr, get_dssize(btr, x->dirty));
+    free(GET_DS(x, nsize));                              // FREED 108
+    x->dirty = x->ndirty = 0;
+}
+static void bt_free_btreenode(bt *btr, bt_n *x) {
     GET_BTN_SIZES(x->leaf, x->dirty) bt_decrement_used_memory(btr, msize);
-    if (x->dirty) {                                       //DEBUG_BTF_BTN_DIRTY
-        bt_decrement_used_memory(btr, get_dssize(btr, x->dirty));
-        free(GET_DS(x, nsize));                // FREED 108
-    }                                                           //DEBUG_BTF_BTN
+    if (x->dirty) release_dirty_stream(btr, x);
     free(x);                                             // FREED 035
 }
-void bt_free_btree(bt *btr) { free(btr); }
+static void bt_free_btree(bt *btr) { free(btr); }
 
 // BT_CREATE BT_CREATE BT_CREATE BT_CREATE BT_CREATE BT_CREATE BT_CREATE
 bt *bt_create(bt_cmp_t cmp, uchar trans, bts_t *s) {
@@ -323,31 +327,32 @@ uint32 getDR(bt *btr, bt_n *x, int i) {
   { incr_ds(btr, x); __setDR(btr, x, i, dr); return; }
 
 static void __setDR(bt *btr, bt_n *x, int i, uint32 dr) {
-    GET_BTN_SIZE(x->leaf)
+    uint32 odr; GET_BTN_SIZE(x->leaf)
     void  *dsp = GET_DS(x, nsize);
     uchar  drt = x->dirty;                                       //DEBUG_SET_DR
     if        (drt == 1) {
         uchar    *ds = (uchar    *)dsp; if (dr > UCHAR_MAX) INCR_DS_SET_DR
-        ds[i]        = dr;
+        odr = ds[i]; ds[i] = dr;
     } else if (drt == 2) {
         ushort16 *ds = (ushort16 *)dsp; if (dr > USHRT_MAX) INCR_DS_SET_DR
-        ds[i]        = dr;
+        odr = ds[i]; ds[i] = dr;
     } else if (drt == 3) { 
         uint32   *ds = (uint32   *)dsp;
-        ds[i]        = dr;
+        odr = ds[i]; ds[i] = dr;
     } else assert(!"setDR ERROR");
+    if      (!odr && dr) x->ndirty++;
+    else if (odr && !dr) x->ndirty--;
+    if (x->dirty && !x->ndirty) release_dirty_stream(btr, x);
 }
 static bt_n *setDR(bt *btr, bt_n *x, int i, uint32 dr, bt_n *p, int pi) {
-    if (!dr) return x;
+    if (!dr)                return x;
     if (!x->dirty) x = addDStoBTN(btr, x, p, pi);
-    __setDR(btr, x, i, dr);
-    return x;
+    __setDR(btr, x, i, dr); return x;
 }
 static bt_n *zeroDR(bt *btr, bt_n *x, int i, bt_n *p, int pi) {
     p = NULL; pi = 0; /* compiler warnings - these will be used later */
-    if (!x->dirty) return x;
-    __setDR(btr, x, i, 0);
-    return x;
+    if (!x->dirty)         return x;
+    __setDR(btr, x, i, 0); return x;
 }
 static bt_n *incrDR(bt *btr, bt_n *x, int i, uint32 dr, bt_n *p, int pi) {
     if (!dr) return x;

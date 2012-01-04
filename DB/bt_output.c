@@ -71,8 +71,8 @@ void bt_dump_info(printer *prn, bt *btr) {
            "dirty: %u\n",
             btr->t, btr->nbits, btr->nbyte, btr->kbyte, btr->s.ksize,
             btr->keyofst, btr->nodeofst, btr->numkeys, btr->numnodes,
-            treeheight(btr), (void *)btr,
-            btr->s.btype, btr->s.ktype, btr->s.bflag, btr->s.num, btr->root,
+            treeheight(btr), (void *)btr, btr->s.btype, btr->s.ktype,
+            btr->s.bflag, btr->s.num, btr->root,
             btr->dirty_left, btr->msize, btr->dsize, btr->dirty);
     DEBUG_BT_TYPE((*prn), btr);
 }
@@ -136,8 +136,9 @@ static void dump_tree_node(printer *prn, bt *btr, bt_n *x,
 #endif
         if (x->dirty) {
             GET_BTN_SIZE(x->leaf) void *ds = GET_DS(x, nsize);
-            (*prn)("slot: %d n: %d scion: %d -> (%p) ds: %p dirty: %u\n",
-                    slot, x->n, x->scion, (void *)x, ds, x->dirty);
+            (*prn)("slot: %d n: %d scion: %d -> " \
+                   "(%p) ds: %p dirty: %u ndirty: %d\n",
+                    slot, x->n, x->scion, (void *)x, ds, x->dirty, x->ndirty);
         } else {
             (*prn)("slot: %d n: %d scion: %d -> (%p)\n",
                     slot, x->n, x->scion, (void *)x);
@@ -146,8 +147,9 @@ static void dump_tree_node(printer *prn, bt *btr, bt_n *x,
         if (x->dirty) {
             GET_BTN_SIZE(x->leaf) void *ds = GET_DS(x, nsize);
             (*prn)("%d: LEAF: slot: %d n: %d scion: %d -> " \
-                   "(%p) ds: %p dirty: %u\n",
-                    depth, slot, x->n, x->scion, (void *)x, ds, x->dirty);
+                   "(%p) ds: %p dirty: %u ndirty: %d\n",
+                    depth, slot, x->n, x->scion, (void *)x, ds,
+                    x->dirty, x->ndirty);
         } else {
             (*prn)("%d: LEAF: slot: %d n: %d scion: %d -> (%p)\n",
                     depth, slot, x->n, x->scion, (void *)x);

@@ -75,11 +75,12 @@ typedef struct btree { // 60 Bytes -> 64B
 } __attribute__ ((packed)) bt;
 
 //#define BTREE_DEBUG
-typedef struct btreenode { // 8 bytes
+typedef struct btreenode { // 9 bytes -> 16 bytes
     unsigned int   scion;       /* 4 billion max scion */
     unsigned short n;           /* 16 thousand max entries (per bt_n)*/
     unsigned char  leaf;
     unsigned char  dirty;
+    unsigned char  ndirty;
 #ifdef BTREE_DEBUG
     unsigned long num;
 #endif

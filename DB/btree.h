@@ -59,8 +59,6 @@ void bt_decr_dsize(struct btree *ibtr, size_t size);
 
 void *bt_malloc        (struct btree *btr,                       int size);
 void  bt_free          (struct btree *btr, void *v,              int size);
-void  bt_free_btreenode(struct btree *btr, struct btreenode *x);
-void  bt_free_btree    (struct btree *btr);
 
 // CONSTRUCTOR CONSTRUCTOR CONSTRUCTOR CONSTRUCTOR CONSTRUCTOR CONSTRUCTOR
 struct btree *bt_create(bt_cmp_t cmp, unsigned char trans, bts_t *s);
