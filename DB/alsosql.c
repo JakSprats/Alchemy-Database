@@ -629,7 +629,7 @@ int updateInnards(cli *c,      int   tmatch, sds vallist, sds wclause,
         }
         iupdateAction(c,  &w, &wb, ncols, matches, inds, vals, vlens, cmiss,
                       ue, le, upi);
-    } else {                         /* SQL_SINGLE_UPDATE */
+    } else {   /* SQL_SINGLE_UPDATE */
         uchar  pktyp = rt->col[0].type;
         if (pkupc != -1) { /* disallow pk updts that overwrite other rows */
             if (ovwrPKUp(c, pkupc, mvals, mvlens, pktyp, btr))   goto upc_end;

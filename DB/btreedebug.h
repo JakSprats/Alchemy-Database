@@ -57,25 +57,38 @@ void dump_bt_mem_profile(bt *btr) { btr = NULL; return; }
 #endif
 
 // MEMORY_MANAGEMENT MEMORY_MANAGEMENT MEMORY_MANAGEMENT MEMORY_MANAGEMENT
-#define DEBUG_INCR_MEM \
-    printf("INCR MEM: osize: %ld plus: %lu nsize: %ld\n", btr->msize, size, (btr->msize + size));
-#define DEBUG_DECR_MEM \
-    printf("DECR MEM: osize: %ld minus: %lu nsize: %ld\n", btr->msize, size, (btr->msize - size));
-#define DEBUG_BT_MALLOC \
+#define DEBUG_INCR_MEM                                      \
+    printf("INCR MEM: osize: %ld plus: %lu nsize: %ld\n",   \
+           btr->msize, size, (btr->msize + size));
+#define DEBUG_DECR_MEM                                      \
+    printf("DECR MEM: osize: %ld minus: %lu nsize: %ld\n",  \
+           btr->msize, size, (btr->msize - size));
+#define DEBUG_BT_MALLOC                                     \
     printf("bt_MALLOC: %p size: %d\n", (void *)btr, size);
-#define DEBUG_ALLOC_BTN \
-    printf("allocbtreeNODE: %p leaf: %d size: %d\n", (void *)btr, leaf, size);
-#define DEBUG_ALLOC_BTREE \
+#define DEBUG_ALLOC_BTN                                     \
+    printf("allocbtreeNODE: %p leaf: %d size: %d\n",        \
+           (void *)btr, leaf, size);
+#define DEBUG_ALLOC_BTREE                                   \
     printf("allocBTREE: %p size: %d\n", (void *)btr, size);
-#define DEBUG_BT_FREE \
+#define DEBUG_BT_FREE                                       \
     printf("bt_FREE: %p size: %d\n", (void *)btr, size);
-#define DEBUG_FREE_BTN \
-    printf("bt_free_btreeNODE: %p leaf: %d size: %lu\n", (void *)btr, x->leaf, size);
-#define DEBUG_ALLOC_DS \
-  printf("alloc_ds: leaf: %d n: %d t: %d\n", x->leaf, btr->t * 2, btr->t); \
-  printf("alloc_ds: x: %p dsp: %p ds: %p dssize: %lu\n",                   \
-         (void *)x, (void *)dsp, (void *)ds, dssize);
+#define DEBUG_BTF_BTN_DIRTY                                 \
+  printf("bt_free_btreenode: dirty: dssize: %d\n",          \
+         get_dssize(btr, x->dirty));
+#define DEBUG_BTF_BTN                                       \
+  printf("bt_free_btreenode: msize: %d\n", msize);
 
+// DIRTY_STREAM DIRTY_STREAM DIRTY_STREAM DIRTY_STREAM DIRTY_STREAM
+#define DEBUG_GETDSSIZE                                                      \
+  printf("drt: get_dssize: drsize: %d\n", drsize);
+#define DEBUG_ALLOC_DS                                                       \
+  printf("alloc_ds: leaf: %d n: %d t: %d\n", x->leaf, btr->t * 2, btr->t);   \
+  printf("alloc_ds: x: %p dsp: %p ds: %p dssize: %lu\n",                     \
+         (void *)x, (void *)dsp, (void *)ds, dssize);
+#define DEBUG_RESIZE_DS_1                                                    \
+  printf("resize_ds: x: %p dirty: %d ndirty: %d\n", (void *)x, drt, ndirty);
+#define DEBUG_RESIZE_DS_2                                                    \
+  printf("END resize_ds: dirty: %u\n", x->dirty);
 
 // INDEX.POS() INDEX.POS() INDEX.POS() INDEX.POS() INDEX.POS() INDEX.POS()
 #define DEBUG_ADD_TO_CIPOS \
@@ -127,8 +140,13 @@ void dump_bt_mem_profile(bt *btr) { btr = NULL; return; }
   if (p) printf("setBTKey: memcpy to v: %p\n", (void *)v);
 
 
-
 // DR DR DR DR DR DR DR DR DR DR DR DR DR DR DR DR DR DR DR DR DR DR DR DR
+#define DEBUG_GET_DR \
+  printf("getDR: x: %p i: %d\n", (void *)x, i);
+#define DEBUG_SET_DR \
+  printf("setDR: drt: %d dr: %d dsp: %p x: %p\n", \
+         drt, dr, (void *)dsp, (void *)x);
+
 #define DEBUG_INCR_PREV                                                        \
   printf("tbg.p.x: %p tbg.p.i: %d tbg.c.x: %p tbg.c.i: %d\n",                  \
           (void *)tbg.p.x, tbg.p.i, (void *)tbg.c.x, tbg.c.i);
@@ -137,24 +155,6 @@ void dump_bt_mem_profile(bt *btr) { btr = NULL; return; }
 #define DEBUG_ADD_DS_TO_BTN                                                    \
   printf("MMMMMMMMMMMM: addDStoBTN: to x: %p returning y: %p - p: %p pi: %d\n",\
           (void *)x, (void *)y, (void *)p, pi);
-#define DEBUG_GET_DR                                                           \
-  printf("getDR: x: %p i: %d ds: %p -> dr: %u\n", (void *)x, i, (void *)ds, dr);
-#define DEBUG_ZERO_DR                                                          \
-  printf("zeroDR: dirty: %d x: %p i: %d p: %p, pi: %d x.n: %d key: \n",        \
-         x->dirty, (void *)x, i, (void *)p, pi, x->n); printKey(btr, x, i);
-#define DEBUG_SET_DR_1                                                         \
-  printf("============setDR: dirty: %d x: %p i: %d dr: %u p: %p, pi: %d key: ",\
-         x->dirty, (void *)x, i, dr, (void *)p, pi); printKey(btr, x, i);
-#define DEBUG_SET_DR_2                                                         \
-  printf("ds: %p i: %d dr: %d ds[i]: %d\n", (void *)ds, i, dr, ds[i]);
-#define DEBUG_INCR_DR_1                                                        \
-  printf("++++++++++++incrDR: dirty: %d x: %p i: %d dr: %u p: %p, pi: %d key: ",          x->dirty, (void *)x, i, dr, (void *)p, pi); printKey(btr, x, i);
-#define DEBUG_INCR_DR_2                                                        \
-  uint32 odr = ds[i];
-#define DEBUG_INCR_DR_3                                                        \
-  printf("ds: %p i: %d dr: %d ds[i]: %d odr: %d\n",                            \
-         (void *)ds, i, dr, ds[i], odr);
-
 
 // GET_CHILD_RECURSE GET_CHILD_RECURSE GET_CHILD_RECURSE GET_CHILD_RECURSE
 #define DEBUG_GET_C_REC_1                                                     \

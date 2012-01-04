@@ -64,15 +64,16 @@ void printKey(bt *btr, bt_n *x, int i) {
 }
 
 void bt_dump_info(printer *prn, bt *btr) {
-    (*prn)("BT t: %d nbits: %d nbyte: %d kbyte: %d "               \
-           "ksize: %d koff: %d noff: %d numkeys: %d numnodes: %d " \
-           "height: %d btr: %p btype: %d ktype: %d bflag: %d "     \
-           "num: %d root: %p dirty_left: %u msize: %ld dsize: %ld\n",
+    (*prn)("BT t: %d nbits: %d nbyte: %d kbyte: %d "                \
+           "ksize: %d koff: %d noff: %d numkeys: %d numnodes: %d "  \
+           "height: %d btr: %p btype: %d ktype: %d bflag: %d "      \
+           "num: %d root: %p dirty_left: %u msize: %ld dsize: %ld " \
+           "dirty: %u\n",
             btr->t, btr->nbits, btr->nbyte, btr->kbyte, btr->s.ksize,
             btr->keyofst, btr->nodeofst, btr->numkeys, btr->numnodes,
             treeheight(btr), (void *)btr,
             btr->s.btype, btr->s.ktype, btr->s.bflag, btr->s.num, btr->root,
-            btr->dirty_left, btr->msize, btr->dsize);
+            btr->dirty_left, btr->msize, btr->dsize, btr->dirty);
     DEBUG_BT_TYPE((*prn), btr);
 }
 
@@ -134,18 +135,19 @@ static void dump_tree_node(printer *prn, bt *btr, bt_n *x,
         (*prn)("%d: NODE: ",     depth);
 #endif
         if (x->dirty) {
-            GET_DS_FROM_BTN(x)
-            (*prn)("slot: %d n: %d scion: %d -> (%p) ds: %p\n",
-                    slot, x->n, x->scion, (void *)x, ds);
+            GET_BTN_SIZE(x->leaf) void *ds = GET_DS(x, nsize);
+            (*prn)("slot: %d n: %d scion: %d -> (%p) ds: %p dirty: %u\n",
+                    slot, x->n, x->scion, (void *)x, ds, x->dirty);
         } else {
             (*prn)("slot: %d n: %d scion: %d -> (%p)\n",
                     slot, x->n, x->scion, (void *)x);
         }
     } else {
         if (x->dirty) {
-            GET_DS_FROM_BTN(x)
-            (*prn)("%d: LEAF: slot: %d n: %d scion: %d -> (%p) ds: %p\n",
-                    depth, slot, x->n, x->scion, (void *)x, ds);
+            GET_BTN_SIZE(x->leaf) void *ds = GET_DS(x, nsize);
+            (*prn)("%d: LEAF: slot: %d n: %d scion: %d -> " \
+                   "(%p) ds: %p dirty: %u\n",
+                    depth, slot, x->n, x->scion, (void *)x, ds, x->dirty);
         } else {
             (*prn)("%d: LEAF: slot: %d n: %d scion: %d -> (%p)\n",
                     depth, slot, x->n, x->scion, (void *)x);
@@ -248,7 +250,6 @@ static void dump_tree_node(printer *prn, bt *btr, bt_n *x,
             }
         }
     }
-
     if (!x->leaf) {
         depth++;
         for (int i = 0; i <= x->n; i++) {

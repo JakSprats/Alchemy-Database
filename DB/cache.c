@@ -74,13 +74,13 @@ void evictCommand(cli *c) {
                 ulong    pre = ri->btr->msize;
                 evictFromIndex(btr, &apk, rrow, inds[i]);
                 rt->nebytes += (pre - ri->btr->msize);
-printf("%d: ind: %d pre: %ld post: %ld nebytes: %ld\n", i, inds[i], pre, ri->btr->msize, rt->nebytes);
+printf("BBBBBBBBBBBBBBBBBBBBBB: %d: ind: %d pre: %ld post: %ld nebytes: %ld\n", i, inds[i], pre, ri->btr->msize, rt->nebytes);
             }}
         printf("EVICT indexes done\n");
         ulong pre = rt->btr->msize;
         btEvict(btr, &apk); card++; releaseAobj(&apk);
         rt->nebytes += (pre - rt->btr->msize);
-printf("DATA: pre: %ld post: %ld nebytes: %ld\n", pre, rt->btr->msize, rt->nebytes);
+printf("BBBBBBBBBBBBBBBBBBBBBB: DATA: pre: %ld post: %ld nebytes: %ld\n", pre, rt->btr->msize, rt->nebytes);
         printf("\n\n"); fflush(NULL);
     }
     rt->nerows += card;

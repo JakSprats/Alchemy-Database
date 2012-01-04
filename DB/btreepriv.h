@@ -67,47 +67,35 @@ typedef struct btree { // 60 Bytes -> 64B
 
     unsigned char      t;
     unsigned char      nbits;
-    bts_t              s;        // 7 bytes
+    bts_t              s;          // 7 bytes
 
-    unsigned int       dirty_left; // 4 bytes
+    unsigned int       dirty_left; // 4 bytes (num evicted before 1st key)
     unsigned char      dirty;      // NOTE: if ANY btn in btr is dirty
 
 } __attribute__ ((packed)) bt;
 
 //#define BTREE_DEBUG
 typedef struct btreenode { // 8 bytes
-    unsigned int  scion;       /* 4 billion scion possible */
-    int           n     : 30;  /* 1 billion entries (per bt_n)*/
-    int           leaf  : 1;
-    int           dirty : 1;
+    unsigned int   scion;       /* 4 billion max scion */
+    unsigned short n;           /* 16 thousand max entries (per bt_n)*/
+    unsigned char  leaf;
+    unsigned char  dirty;
 #ifdef BTREE_DEBUG
     unsigned long num;
 #endif
-} bt_n;
-
-#define KEYS_PER_BTN 128
-#define DIRTY_BITMAP_BYTES_PER_BTN ((int)(KEYS_PER_BTN/8))
-typedef struct btreenode_dirty_stream_section { // 24 Bytes
-    void *ds;
-    char  btmp[DIRTY_BITMAP_BYTES_PER_BTN];
-} __attribute__ ((packed)) bds_t;
-
+} __attribute__ ((packed)) bt_n;
 
 // BTREE access of KEYs & NODEs via position in bt_n
 void *KEYS(bt *btr, bt_n *x, int i);
 #define NODES(btr, x) ((bt_n **)((char *)x + btr->nodeofst))
 
 #define GET_BTN_SIZE(leaf)   \
-  size_t size  = leaf  ? btr->kbyte           : btr->nbyte; 
+  size_t nsize = leaf  ? btr->kbyte            : btr->nbyte; 
 #define GET_BTN_MSIZE(dirty) \
-  size_t msize = dirty ? size + sizeof(bds_t) : size;
+  size_t msize = dirty ? nsize + sizeof(void *) : nsize;
 #define GET_BTN_SIZES(leaf, dirty) \
-    GET_BTN_SIZE(leaf) \
-    GET_BTN_MSIZE(dirty)
-#define GET_DS(x, size) (*((void **)((char *)x + size)))
-#define GET_DS_FROM_BTN(x) \
-    GET_BTN_SIZE(x->leaf) \
-    uint32 *ds = GET_DS(x, size);
+    GET_BTN_SIZE(leaf) GET_BTN_MSIZE(dirty)
+#define GET_DS(x, nsize) (*((void **)((char *)x + nsize)))
 
 bt_n *findminnode(bt *btr, bt_n *x);
 

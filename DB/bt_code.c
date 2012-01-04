@@ -103,21 +103,47 @@ void *bt_malloc(bt *btr, int size) {                         //DEBUG_BT_MALLOC
     BT_MEM_PROFILE_MLC
     bt_incr_dsize(btr, size); return malloc(size);
 }
-//TODO memory management of DS (both alloc_ds & bt_free_btreenode)
-static void alloc_ds(bt *btr, bt_n *x, size_t size) {
-    void   **dsp    = (void *)((char *)x + size); bzero(dsp, sizeof(bds_t));
-    size_t   dssize = (x->leaf ? (btr->t * 2) : btr->t) * sizeof(uint32);
+// DIRTY_STREAM DIRTY_STREAM DIRTY_STREAM DIRTY_STREAM DIRTY_STREAM
+static uint32 get_dssize(bt *btr, uchar dirty) {
+    uint32 drsize = (dirty == 3) ? sizeof(uint32)   :
+                    (dirty == 2) ? sizeof(ushort16) :
+                    (dirty == 1) ? sizeof(uchar)    : 0;      //DEBUG_GETDSSIZE
+    return (btr->t * 2) * drsize;
+}
+static void alloc_ds(bt *btr, bt_n *x, size_t size, uchar dirty) {
+    void   **dsp    = (void *)((char *)x + size);
+    size_t   dssize = get_dssize(btr, dirty);
     void    *ds     = malloc(dssize); bzero(ds, dssize); // FREEME 108
+    bt_increment_used_memory(btr, dssize);
     *dsp            = ds;                                        DEBUG_ALLOC_DS
 }
-static bt_n *allocbtreenode(bt *btr, bool leaf, bool dirty) {
+void incr_ds(bt *btr, bt_n *x) {//USE: when a DR is too big for its DS (incr_ds)
+    uchar   drt    = x->dirty; GET_BTN_SIZE(x->leaf)
+    void   *ods    = GET_DS(x, nsize);
+    uint32  osize  = get_dssize(btr, drt);
+    uint32  num    = (x->leaf ? (btr->t * 2) : btr->t);
+    uchar   ndirty = x->dirty + 1;                          //DEBUG_RESIZE_DS_1
+    alloc_ds(btr, x, nsize, ndirty);
+    void   *nds    = GET_DS(x, nsize);
+    if        (drt == 1) {
+        uchar    *s_ds = (uchar    *)ods; ushort16 *d_ds = (ushort16 *)nds;
+        for (uint32 i = 0; i < num; i++) d_ds[i] = (ushort16)s_ds[i];
+    } else if (drt == 2) {
+        ushort16 *s_ds = (ushort16 *)ods; uint32   *d_ds = (uint32   *)nds;
+        for (uint32 i = 0; i < num; i++) d_ds[i] = (uint32  )s_ds[i];
+    } else assert(!"incr_ds ERROR");
+    x->dirty++;                                             //DEBUG_RESIZE_DS_2
+    free(ods); bt_decrement_used_memory(btr, osize);
+}
+// BT_ALLOC_BTREE BT_ALLOC_BTREE BT_ALLOC_BTREE BT_ALLOC_BTREE BT_ALLOC_BTREE
+static bt_n *allocbtreenode(bt *btr, bool leaf, uchar dirty) {
     btr->numnodes++;
     GET_BTN_SIZES(leaf, dirty)   BT_MEM_PROFILE_NODE          //DEBUG_ALLOC_BTN
     bt_n   *x     = malloc(msize); bzero(x, msize);
     bt_increment_used_memory(btr, msize);
-    x->leaf       = 1;
-    x->dirty      = dirty ? 1 : 0; //BT_ADD_NODE_NUM
-    if (dirty) alloc_ds(btr, x, size);
+    x->leaf       = -1;
+    x->dirty      = dirty;
+    if (dirty) alloc_ds(btr, x, nsize, dirty);
     return x;
 }
 static bt *allocbtree() {
@@ -127,16 +153,21 @@ static bt *allocbtree() {
     bt_increment_used_memory(btr, size);                    //DEBUG_ALLOC_BTREE
     return btr;
 }
+// BT_FREE BT_FREE BT_FREE BT_FREE BT_FREE BT_FREE BT_FREE BT_FREE BT_FREE
 void bt_free(bt *btr, void *v, int size) {                     //DEBUG_BT_FREE
     bt_decr_dsize(btr, size); free(v);
 }
 void bt_free_btreenode(bt *btr, bt_n *x) {
     GET_BTN_SIZES(x->leaf, x->dirty) bt_decrement_used_memory(btr, msize);
-    if (x->dirty) free(GET_DS(x, size));                 // FREED 108
+    if (x->dirty) {                                       //DEBUG_BTF_BTN_DIRTY
+        bt_decrement_used_memory(btr, get_dssize(btr, x->dirty));
+        free(GET_DS(x, nsize));                // FREED 108
+    }                                                           //DEBUG_BTF_BTN
     free(x);                                             // FREED 035
 }
 void bt_free_btree(bt *btr) { free(btr); }
 
+// BT_CREATE BT_CREATE BT_CREATE BT_CREATE BT_CREATE BT_CREATE BT_CREATE
 bt *bt_create(bt_cmp_t cmp, uchar trans, bts_t *s) {
     int    n        = (trans == TRANS_ONE) ? 7 : 255;
     uchar  t        = (uchar)((int)(n + 1) / 2);
@@ -154,6 +185,7 @@ bt *bt_create(bt_cmp_t cmp, uchar trans, bts_t *s) {
     btr->nbits      = (uchar)nbits;
     btr->nbyte      = nbyte;
     btr->kbyte      = kbyte;
+    //TODO if Tbl[].dirty -> allocate all w/ dirty-stream-pointers
     btr->root       = allocbtreenode(btr, 1, 0);
     btr->numnodes   = 1; //printf("bt_create\n"); bt_dump_info(printf, btr);
     return btr;
@@ -271,7 +303,7 @@ static inline void free_bp(void *v) { free(v); }
 //TODO inline
 static bt_n *addDStoBTN(bt *btr, bt_n *x, bt_n *p, int pi) {
     bt_n *y = allocbtreenode(btr, x->leaf, 1);
-    GET_BTN_SIZE(x->leaf) memcpy(y, x, size); y->dirty = btr->dirty = 1;
+    GET_BTN_SIZE(x->leaf) memcpy(y, x, nsize); y->dirty = btr->dirty = 1;
     if (x == btr->root) btr->root         = y;
     else                NODES(btr, p)[pi] = y; // update parent NODE bookkeeping
     bt_free_btreenode(btr, x);                              DEBUG_ADD_DS_TO_BTN
@@ -279,28 +311,50 @@ static bt_n *addDStoBTN(bt *btr, bt_n *x, bt_n *p, int pi) {
 }
 uint32 getDR(bt *btr, bt_n *x, int i) {
     if (!x->dirty) return 0;
-    GET_DS_FROM_BTN(x)
-    uint32 dr = ds[i];                                    //DEBUG_GET_DR
-    return dr;
+    GET_BTN_SIZE(x->leaf)
+    void  *dsp = GET_DS(x, nsize);;
+    uchar  drt = x->dirty;                                       //DEBUG_GET_DR
+    if      (drt == 1) { uchar    *ds = (uchar    *)dsp; return (uint32)ds[i]; }
+    else if (drt == 2) { ushort16 *ds = (ushort16 *)dsp; return (uint32)ds[i]; }
+    else if (drt == 3) { uint32   *ds = (uint32   *)dsp; return         ds[i]; }
+    else               assert(!"getDR ERROR");
+}
+#define INCR_DS_SET_DR                                 \
+  { incr_ds(btr, x); __setDR(btr, x, i, dr); return; }
+
+static void __setDR(bt *btr, bt_n *x, int i, uint32 dr) {
+    GET_BTN_SIZE(x->leaf)
+    void  *dsp = GET_DS(x, nsize);
+    uchar  drt = x->dirty;                                       //DEBUG_SET_DR
+    if        (drt == 1) {
+        uchar    *ds = (uchar    *)dsp; if (dr > UCHAR_MAX) INCR_DS_SET_DR
+        ds[i]        = dr;
+    } else if (drt == 2) {
+        ushort16 *ds = (ushort16 *)dsp; if (dr > USHRT_MAX) INCR_DS_SET_DR
+        ds[i]        = dr;
+    } else if (drt == 3) { 
+        uint32   *ds = (uint32   *)dsp;
+        ds[i]        = dr;
+    } else assert(!"setDR ERROR");
+}
+static bt_n *setDR(bt *btr, bt_n *x, int i, uint32 dr, bt_n *p, int pi) {
+    if (!dr) return x;
+    if (!x->dirty) x = addDStoBTN(btr, x, p, pi);
+    __setDR(btr, x, i, dr);
+    return x;
 }
 static bt_n *zeroDR(bt *btr, bt_n *x, int i, bt_n *p, int pi) {
     p = NULL; pi = 0; /* compiler warnings - these will be used later */
-    if (!x->dirty) return x;                              //DEBUG_ZERO_DR
-    GET_DS_FROM_BTN(x) ds[i] = 0; return x;
-}
-static bt_n *setDR(bt *btr, bt_n *x, int i, uint32 dr, bt_n *p, int pi) {
-    if (!dr) return x;                                    //DEBUG_SET_DR_1
-    if (!x->dirty) x = addDStoBTN(btr, x, p, pi);
-    GET_DS_FROM_BTN(x)
-    ds[i] = dr;                                             DEBUG_SET_DR_2
+    if (!x->dirty) return x;
+    __setDR(btr, x, i, 0);
     return x;
 }
 static bt_n *incrDR(bt *btr, bt_n *x, int i, uint32 dr, bt_n *p, int pi) {
-    if (!dr) return x;                                      DEBUG_INCR_DR_1
+    if (!dr) return x;
     if (!x->dirty) x = addDStoBTN(btr, x, p, pi);
-    GET_DS_FROM_BTN(x)                                      DEBUG_INCR_DR_2
-    ds[i] += dr;                                            DEBUG_INCR_DR_3
-    return x;
+    uint32 odr  = getDR(btr, x, i);
+    odr        += dr;
+    return setDR(btr, x, i, odr, p, pi);
 }
 static bt_n *overwriteDR(bt *btr, bt_n *x, int i, uint32 dr, bt_n *p, int pi) {
     if (dr) return setDR (btr, x, i, dr, p, pi);
@@ -398,7 +452,7 @@ static inline void mvXNodes(bt *btr, bt_n *x, int xofst,
   memmove(NODES(btr, x) + xofst, NODES(btr, z) + zofst, (num) * VOIDSIZE);
 }
 
-//NOTE: trimBTN*() do not ever dirty btn's
+//NOTE: trimBTN*() do not ever dirty btn's -- TODO they could UN-dirty
 static bt_n *trimBTN(bt *btr, bt_n *x, bool drt, bt_n *p, int pi) {
     DEBUG_TRIM_BTN
     if (drt) x = zeroDR(btr, x, x->n, p, pi);
@@ -410,7 +464,6 @@ static bt_n *trimBTN_n(bt *btr, bt_n *x, int n, bool drt, bt_n *p, int pi) {
     }
     x->n -= n; return x;
 }
-
 
 // INSERT INSERT INSERT INSERT INSERT INSERT INSERT INSERT INSERT INSERT
 static void btreesplitchild(bt *btr, bt_n *x, int i, bt_n *y, bt_n *p, int pi) {
