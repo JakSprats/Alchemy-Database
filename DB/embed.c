@@ -333,7 +333,7 @@ efasterr:
     CREATE_RESPONSE_ERROR
 }
 
-//TODO PREPARE/EXECUTE deprecates ???
+//TODO does PREPARE/EXECUTE deprecates ???
 eresp_t *e_alchemy_thin_select(uchar qtype,  int tmatch, int cmatch, int imatch,
                                enum OP op,   int qcols, 
                                uint128 keyx, long keyl,  int keyi,

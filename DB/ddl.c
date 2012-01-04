@@ -49,6 +49,10 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "ddl.h"
 
+/* DDL TODO LIST
+    1.) ALTER TABLE SET DIRTY -> check table has AUTO_INC PK
+*/
+
 extern uint32   Tbl_HW; extern dict *TblD; extern list *DropT;
 extern r_ind_t *Index;
 
@@ -266,7 +270,7 @@ void addColumn(int tmatch, char *cname, int ctype) {
 }
 
 //TODO ALTER TABLE DROP *
-//TODO ALTER TABLE UNSET DIRTY -> table must be 100% un-dirtied
+//TODO ALTER TABLE UNSET DIRTY -> [table,indexes] must be 100% un-dirtied
 /* SYNTAX
   SQL:
     1.) ALTER Tablename ADD Columnname Type

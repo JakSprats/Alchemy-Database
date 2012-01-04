@@ -40,6 +40,12 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "rdb_alsosql.h"
 
+/* RDB TODO LIST
+    1.) [sk, fk_cmatch, fk_otmatch, fk_ocmatch] -> PERSISTENT
+    2.) rdbLoadBT() refactor into newTable() & newIndex() calls
+    3.) DirtyStream needs to be saved/loaded w/ ROWs
+*/
+
 extern int Num_tbls; extern r_tbl_t *Tbl;   extern dict *TblD;
 extern int Num_indx; extern r_ind_t *Index; extern dict *IndD;
 

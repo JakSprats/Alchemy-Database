@@ -51,6 +51,11 @@ char *strcasestr(const char *haystack, const char *needle); /*compiler warning*/
 #include "common.h"
 #include "wc.h"
 
+/* WC TODO LIST
+    1.) doJoin(): prepareJoin AFTER optimiseJoinPlan
+    2.) parseWCTokRelation(): parse error on "WHERE x = 4 WTF AND -> WTF?"
+*/
+
 extern int      Num_tbls;
 extern r_tbl_t *Tbl;
 extern r_ind_t *Index;

@@ -43,6 +43,11 @@ ALL RIGHTS RESERVED
 #include "alsosql.h"
 #include "luatrigger.h"
 
+/* LUATRIGGER TODO LIST
+    1.) LuaCronFuncs should return the MS they want to be called again with
+    2.) add "fk" to luatrigger (similar to arg: "table") will enable fk-checks
+*/
+
 extern r_tbl_t *Tbl;
 extern r_ind_t *Index;
 
@@ -54,7 +59,6 @@ char  *LuaCronFunc = NULL;
 
 #define SLOW_LUA_TRIGGER //TODO TEST VALUE - slow things down
 
-//TODO LuaCronFuncs should return the MS they want to be called again with
 
 /* NOTE: this calls lua routines every second from a server cron -> an event */
 /*  luacronfunc(Operations) -> use Operations to estimate current load */

@@ -49,15 +49,6 @@ ALL RIGHTS RESERVED
 #include "redis.h"
 #include "common.h"
 
-// GLOBALS
-extern r_ind_t *Index;
-
-/* PROTOYPES */
-static void      release_dirty_stream(bt *btr, bt_n *x);
-static int       real_log2           (unsigned int a, int nbits);
-static bt_data_t findminkey          (bt *btr, bt_n *x);
-static bt_data_t findmaxkey          (bt *btr, bt_n *x);
-
 /* CACHE TODO LIST
    8.) U128PK/FK CACHE:[EVICT,MISS] support
 
@@ -72,6 +63,15 @@ static bt_data_t findmaxkey          (bt *btr, bt_n *x);
 
   19.) btreesplitchild dirty math (only set dirty if new split child has dirty)
 */
+
+// GLOBALS
+extern r_ind_t *Index;
+
+/* PROTOYPES */
+static void      release_dirty_stream(bt *btr, bt_n *x);
+static int       real_log2           (unsigned int a, int nbits);
+static bt_data_t findminkey          (bt *btr, bt_n *x);
+static bt_data_t findmaxkey          (bt *btr, bt_n *x);
 
 // HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER
 static ulong getNumKey(bt *btr, bt_n *x, int i) { //TODO U128 support

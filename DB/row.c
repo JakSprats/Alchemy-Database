@@ -55,6 +55,13 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "row.h"
 
+/* ROW TODO LIST
+    1.) pass only "aobj *" not aobj (which is now a big struct)
+    2.) RawCols[] is not worth the complexity, use malloc()
+    3.) in updateRow() all NUM()s are already error checked in getExprType()
+    4.) evalExpr() OVERFLOW and UNDERFLOW CHECKING
+*/
+
 bool GlobalZipSwitch = 1; // can GLOBALLY turn off [lzf] compression of rows
 
 extern r_tbl_t *Tbl;

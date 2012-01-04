@@ -211,8 +211,10 @@ void dumpQcols(printer *prn, int tmatch, bool cstar, int qcols, int *cmatchs) {
     else {
         for (int i = 0; i < qcols; i++) {
             int lc = cmatchs[i];
-            (*prn)("\t\t%d: c: %d (%s)\n", i, lc,
-                   (lc == -1) ? "" : Tbl[tmatch].col[lc].name);//TODO indx.pos()
+             if (lc < -1) (*prn)("\t\t%d: c: %d (%s.pos())\n", i, lc,
+                                 Index[getImatchFromOCmatch(lc)].name);
+             else         (*prn)("\t\t%d: c: %d (%s)\n", i, lc,
+                                 (lc == -1) ? "" : Tbl[tmatch].col[lc].name);
         }
     }
 }
@@ -295,11 +297,14 @@ void dumpJB(cli *c, printer *prn, jb_t *jb) {
     (*prn)("\t\tqcols:         %d\n", jb->qcols);
     for (int i = 0; i < jb->qcols; i++) {
         int lt = jb->js[i].t; int lc = jb->js[i].c; int jan = jb->js[i].jan;
-        (*prn)("\t\t\t%d: jan: %d t: %d c: %d (%s: %s.%s)\n",
-                 i, jan, lt, lc,
-                 getJoinAlias(jan),
-                 (lt == -1) ? "" : Tbl[lt].name, //TODO index.pos()
-                 (lc == -1) ? "" : Tbl[lt].col[lc].name); //TODO index.pos()
+        if (lc < -1) (*prn)("\t\t\t%d: jan: %d t: %d c: %d (%s: %s.%s.pos())\n",
+                            i, jan, lt, lc, getJoinAlias(jan),
+                            (lt == -1) ? "" : Tbl[lt].name,
+                            Index[getImatchFromOCmatch(lc)].name);
+        else         (*prn)("\t\t\t%d: jan: %d t: %d c: %d (%s: %s.%s)\n",
+                            i, jan, lt, lc, getJoinAlias(jan),
+                            (lt == -1) ? "" : Tbl[lt].name,
+                            (lc == -1) ? "" : Tbl[lt].col[lc].name);
     }
     if (c->Explain) {
         qr_t q; bzero(&q, sizeof(qr_t));

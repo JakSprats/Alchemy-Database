@@ -42,6 +42,9 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "cache.h"
 
+/* EVICT TODO LIST:
+     1.) Table must be NUM PK & auto-inc
+*/
 extern r_tbl_t  *Tbl;
 extern r_ind_t  *Index;
 

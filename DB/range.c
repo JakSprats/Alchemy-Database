@@ -51,6 +51,14 @@ ALL RIGHTS RESERVED
 #include "rangedebug.h"
 #include "range.h"
 
+/* RANGE TODO LIST
+    1.) SETUNIQIVAL should be btFindD() ... but this all needs to be TESTed
+    2.) btMCIFindVal logic for !EQ flts
+    3.) inOPs should use a BT not a LL -> do a bt_find()
+    4.) select_op() MEMLEAK??? for EREDIS
+    5.) non-FK/PK updates can be in update_op() (w/o Qing in the ll)
+*/
+
 extern aobj_cmp *OP_CMP[7];
 extern r_tbl_t  *Tbl;
 extern r_ind_t  *Index;
@@ -314,7 +322,7 @@ static bool nBT_Op(ibtd_t *d) {                              //DEBUG_NODE_BT
     return ret;
 }
 
-//TODO this should be btFindD() ... but this all needs to be TESTed
+//TODO SETUNIQIVAL should be btFindD() ... but this all needs to be TESTed
 #define SETUNIQIVAL(vt, vcast, aobjpart)                     \
   { uv->enc      = uv->type = vt;                            \
     vcast *vvar  = btFind(nbtr, akey); if (!vvar)  return 0; \

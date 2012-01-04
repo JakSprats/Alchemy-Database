@@ -48,14 +48,21 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "prep_stmt.h"
 
+/* PREPARED_STATEMENTS TODO LIST
+    0.) Make Persistent -> add to DXDB_rdbSave/Load()
+    1.) PREPARE STATEMENT for joins runs PRE QueryOptimisation -> do POST
+    2.) Support CRUD
+    3.) SELECTs -> support RangeQueries & IN()Queries
+    4.) "SHOW  STATEMENTS"
+    5.) "PRINT STATEMENT stmt_name"
+    6.) "DROP  STATEMENT stmt_name"
+*/
+
 extern dict *StmtD;
 extern bool  GlobalNeedCn;
 extern long  JoinLim; extern long JoinOfst; extern bool JoinQed;
 
 // PREPARED_STATEMENTS PREPARED_STATEMENTS PREPARED_STATEMENTS
-//TODO "SHOW  STATEMENTS"
-//TODO "PRINT STATEMENT stmt_name"
-//TODO "DROP  STATEMENT stmt_name"
 
 static bool has_prepare_arg(sds arg) {
     if (*arg == '$') {
