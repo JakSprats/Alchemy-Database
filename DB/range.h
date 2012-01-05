@@ -48,6 +48,7 @@ typedef struct queue_range_results {
     bool fk_lim;   /* fk LIMIT OFFSET */
     bool fk_lo;    /* WHERE fk = x ORDER BY fk LIMIT OFFSET */
     bool fk_desc;  /* FK DESC iterator */
+    bool xth;      // USE XthIterator
     bool inr_desc; /* ORDER BY FK DESC, PK DESC */
     bool qed;      /* an additional sort will be required -> queued */
 } qr_t;

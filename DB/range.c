@@ -117,6 +117,7 @@ static void setRangeQueued(cswc_t *w, wob_t *wb, qr_t *q) {
         q->pk       = (wb->nob > 1) || (wb->nob == 1 && wb->obc[0] != obc);
         q->pk_lim   = (!q->pk    && (wb->lim  != -1));
         q->pk_lo    = (q->pk_lim && (wb->ofst != -1));
+        q->xth      = q->pk_lo && !(w->flist && (wb->ofst != -1));
         q->qed      = q->pk;
     } else {
         q->fk_desc  = (wb->nob >= 1 && (!wb->asc[0] && wb->obc[0] == cmatch));
@@ -127,7 +128,7 @@ static void setRangeQueued(cswc_t *w, wob_t *wb, qr_t *q) {
             if (ri->nclist) q->fk = mci_fk_queued(wb, ri);
             else { // NO-Q: [OBY FK|OBY PK|OBY FK,PK|OBY PK,FK]
                 q->fk = (wb->nob > 2) ||
-                        (wb->nob == 1 &&  // [FK}&[PK]
+                        (wb->nob == 1 &&  // [FK]&[PK]
                          (wb->obc[0] != cmatch) && (wb->obc[0] != obc)) ||
                         (wb->nob == 2 &&  // [FK,PK]&[PK,FK]
                          (!((wb->obc[0] == cmatch) && (wb->obc[1] == obc)) &&
@@ -141,6 +142,7 @@ static void setRangeQueued(cswc_t *w, wob_t *wb, qr_t *q) {
         }
         q->fk_lim   = (!q->fk    && (wb->lim  != -1));
         q->fk_lo    = (q->fk_lim && (wb->ofst != -1));
+        q->xth      = q->fk_lo && !(w->flist && (wb->ofst != -1));
         q->qed      = q->fk;
     } //dumpQueued(printf, w, wb, q, 1);
 }
@@ -198,7 +200,7 @@ printf("rangeOpPK: iss: %d isu: %d isd: %d upx: %d\n", iss, isu, isd, upx);
     bt      *btr   = getBtr(w->wf.tmatch); g->co.btr = btr;
     g->asc         = !q->pk_desc;
     bool     brkr  = 0; long loops = -1; long card =  0;
-    bi = (q->pk_lo) ? 
+    bi = (q->xth) ? 
               btGetXthIter  (btr, &w->wf.alow, &w->wf.ahigh, wb->ofst, g->asc) :
               btGetRangeIter(btr, &w->wf.alow, &w->wf.ahigh, g->asc);
     if (!bi) return card;                                DEBUG_RANGEPK_PRE_LOOP
@@ -294,7 +296,7 @@ static bool nBT_Op(ibtd_t *d) {                              //DEBUG_NODE_BT
     bool     iss  = d->g->se.qcols ? 1 : 0; bool isu = d->g->up.ncols ? 1 : 0;
     bool     isd  = !iss && !isu;           bool upx = d->g->up.upx;
     *d->brkr      = 0;
-    bool     x    = (q->fk_lo && *d->ofst > 0);
+    bool     x    = (q->xth && *d->ofst > 0);
     bool     nasc = d->g->asc = !q->inr_desc;
     btSIter *nbi  = x ?
                      btGetFullXthIter  (d->nbtr, *d->ofst, nasc, w, wb->lim) :
@@ -431,7 +433,7 @@ static long rangeOpFK(range_t *g, row_op *p) {                 //DEBUG_RANGE_FK
     long     ofst  = wb->ofst;
     g->asc         = !q->fk_desc;
     long     loops = -1; long card =  0; bool brkr =  0;
-    bool     smplo = SIMP_UNIQ(ibtr) && q->fk_lo;
+    bool     smplo = SIMP_UNIQ(ibtr) && q->xth;
     if (!smplo) bi  = btGetRangeIter(ibtr, &w->wf.alow, &w->wf.ahigh, g->asc);
     else { // SIMPLE UNIQUE + OFFSET -> use SCION iter8trs
         bi   = btGetXthIter(ibtr, &w->wf.alow, &w->wf.ahigh, wb->ofst, g->asc);
@@ -808,15 +810,15 @@ void dumpQueued(printer *prn, cswc_t *w, wob_t *wb, qr_t *q, bool debug) {
                                                  &Index[w->wf.imatch];
         bool     virt   = (w->wf.imatch == -1) ? 0    : ri->virt;
         int      cmatch = (w->wf.imatch == -1) ? -1   : ri->column;
-        if (virt) (*prn)("\t\tqpk: %d pklim: %d pklo: %d desc: %d\n",
-                         q->pk, q->pk_lim, q->pk_lo, q->pk_desc);
-        else      (*prn)("\t\tqfk: %d fklim: %d fklo: %d desc: %d\n",
-                         q->fk, q->fk_lim, q->fk_lo, q->fk_desc);
+        if (virt) (*prn)("\t\tqpk: %d pklim: %d pklo: %d desc: %d xth: %d\n",
+                         q->pk, q->pk_lim, q->pk_lo, q->pk_desc, q->xth);
+        else      (*prn)("\t\tqfk: %d fklim: %d fklo: %d desc: %d xth: %d\n",
+                         q->fk, q->fk_lim, q->fk_lo, q->fk_desc, q->xth);
         (*prn)("\t\tvirt: %d asc: %d obc: %d lim: %ld" \
                     " ofst: %ld indcol: %d inner_desc: %d -> qed: %d\n",
             virt, wb->asc[0], wb->obc[0], wb->lim, wb->ofst,
             cmatch, q->inr_desc, q->qed);
     } else {
-        (*prn)("\t\tqed:\t%d\n", q->qed);
+        (*prn)("\t\tqed:\t%d xth: %d\n", q->qed, q->xth);
     }
 }
