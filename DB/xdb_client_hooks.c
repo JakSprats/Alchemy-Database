@@ -128,7 +128,8 @@ static void select_mod(int *argc, char **argv) {
     select_mod_where(argc, argv);
 }
 static void scan_mod_orderby(int *argc, char **argv) {
-    if (!strcasecmp(argv[4], "ORDER") && (*argc > 5)) {
+    if ((!strcasecmp(argv[4], "ORDER") ||
+         !strcasecmp(argv[4], "LIMIT"))   && (*argc > 5)) {
         merge_vals(argc, argv, 4, (*argc - 1), 1); /* WHERE */
     }
 }

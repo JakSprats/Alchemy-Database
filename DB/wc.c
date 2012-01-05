@@ -206,38 +206,43 @@ static bool parseOBYcol(redisClient  *c,
     *token = nextt;
     return 1;
 }
+static bool parseLimit(cli *c, char *token, int tmatch, wob_t *wb, char **fin) {
+    if (!strncasecmp(token, "LIMIT ", 6)) {
+        token  = next_token(token);
+        if (!token) { addReply(c, shared.oby_lim_needs_num); return 0; }
+        wb->lim = atol(token); /* OK: DELIM: [\ ,\0] */
+        token  = next_token(token);
+        if (token) {
+            if (!strncasecmp(token, "OFFSET", 6)) {
+                token  = next_token(token);
+                if (!token) {
+                    addReply(c, shared.oby_ofst_needs_num);  return 0;
+                }
+                if (!setOffsetReply(c, wb, token))           return 0;
+                token   = next_token(token);
+            }
+        }
+    }
+    if (token) *fin = token; /* still something to parse */
+    return 1;
+}
 static bool parseOrderBy(cli *c, char *by, int tmatch, wob_t *wb, char **fin) {
     if (strncasecmp(by, "BY ", 3)) {
         addReply(c, shared.wc_orderby_no_by);                    return 0;
     }
     char *token = next_token(by);
     if (!token) { addReply(c, shared.wc_orderby_no_by);          return 0; }
-    bool more = 1; /* more OBC to parse */
-    while (more) {
-        if (wb->nob == MAX_ORDER_BY_COLS) {
-            addReply(c, shared.toomany_nob);                     return 0;
-        }
-        if (!parseOBYcol(c, &token, tmatch, wb, fin, &more))     return 0;
-    }
-    if (token) {
-        if (!strncasecmp(token, "LIMIT ", 6)) {
-            token  = next_token(token);
-            if (!token) { addReply(c, shared.oby_lim_needs_num); return 0; }
-            wb->lim = atol(token); /* OK: DELIM: [\ ,\0] */
-            token  = next_token(token);
-            if (token) {
-                if (!strncasecmp(token, "OFFSET", 6)) {
-                    token  = next_token(token);
-                    if (!token) {
-                        addReply(c, shared.oby_ofst_needs_num);  return 0;
-                    }
-                    if (!setOffsetReply(c, wb, token))           return 0;
-                    token   = next_token(token);
-                }
+
+    if (strncasecmp(token, "LIMIT ", 6)) {
+        bool more = 1; /* more OBC to parse */
+        while (more) {
+            if (wb->nob == MAX_ORDER_BY_COLS) {
+                addReply(c, shared.toomany_nob);                 return 0;
             }
+            if (!parseOBYcol(c, &token, tmatch, wb, fin, &more)) return 0;
         }
     }
-    if (token) *fin = token; /* still something to parse */
+    if (token) return parseLimit(c, token, tmatch, wb, fin);
     return 1;
 }
 bool parseWCEnd(redisClient *c, char *token, cswc_t *w, wob_t *wb) {
@@ -249,6 +254,14 @@ bool parseWCEnd(redisClient *c, char *token, cswc_t *w, wob_t *wb) {
         }
         char *lfin    = NULL;
         if (!parseOrderBy(c, by, w->wf.tmatch, wb, &lfin)) {
+            w->lvr = NULL;                                       return 0;
+        }
+        if (lfin) token     = lfin;
+        else      w->lvr    = NULL; /* negate parse error */
+    }
+    if (!strncasecmp(token, "LIMIT ", 6)) {
+        char *lfin    = NULL;
+        if (!parseLimit(c, token, w->wf.tmatch, wb, &lfin)) {
             w->lvr = NULL;                                       return 0;
         }
         if (lfin) token     = lfin;

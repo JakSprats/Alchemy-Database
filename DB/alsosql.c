@@ -428,7 +428,6 @@ bool sqlSelectBinary(cli   *c, int tmatch, bool cstar, int *cmatchs, int qcols,
         decrRefCount(r);
         if (wb->ovar) incrOffsetVar(c, wb, 1);
     }
-fflush(NULL);
     return 1;
 }
 bool sqlSelectInnards(cli *c,       sds  clist, sds from, sds tlist, sds where,
@@ -455,7 +454,7 @@ bool sqlSelectInnards(cli *c,       sds  clist, sds from, sds tlist, sds where,
     if (!leftoverParsingReply(c, w.lvr))                            goto sel_e;
     ret = sqlSelectBinary(c, tmatch, cstar, cmatchs, qcols, &w, &wb, need_cn);
 
-sel_e:
+sel_e: fflush(NULL);
     if (!cstar) resetIndexPosOn(qcols, cmatchs);
     destroy_wob(&wb); destroy_check_sql_where_clause(&w);
     return ret;

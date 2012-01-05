@@ -230,9 +230,9 @@ void dumpWB(printer *prn, wob_t *wb) {
                          wb->obc[i]);
             (*prn)("\t\t\tasc[%d]: %d\n", i, wb->asc[i]);
         }
-        (*prn)("\t\tlim:    %ld\n", wb->lim);
-        (*prn)("\t\tofst:   %ld\n", wb->ofst);
     }
+    if (wb->lim  != -1) (*prn)("\t\tlim:    %ld\n", wb->lim);
+    if (wb->ofst != -1) (*prn)("\t\tofst:   %ld\n", wb->ofst);
     dumpSds(prn, wb->ovar,  "\t\tovar:    %s\n");
 }
 void dumpW(printer *prn, cswc_t *w) {

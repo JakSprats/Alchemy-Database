@@ -136,8 +136,9 @@ void tscanCommand(redisClient *c) { //printf("tscanCommand\n");
     init_check_sql_where_clause(&w, tmatch, wc); /* on error: GOTO tscan_end */
     init_wob(&wb);
 
-    if (nowc && c->argc > 4) { /* ORDER BY w/o WHERE CLAUSE */
-        if (!strncasecmp(where, "ORDER ", 6)) {
+    if (nowc && c->argc > 4) { /* "[ORDER BY or LIMIT] w/o WHERE CLAUSE */
+        if (!strncasecmp(where, "ORDER ", 6) ||
+            !strncasecmp(where, "LIMIT ", 6)) {
             if (!parseWCEnd(c, c->argv[4]->ptr, &w, &wb))      goto tscan_end;
             if (w.lvr) {
                 w.lvr = sdsnewlen(w.lvr, strlen(w.lvr));
@@ -145,7 +146,7 @@ void tscanCommand(redisClient *c) { //printf("tscanCommand\n");
             }
         }
     }
-    if (nowc && !wb.nob && c->argc > 4) { /* argv[4] parse error */
+    if (nowc && !wb.nob && (wb.lim == -1) && c->argc > 4) { // argv[4] parse err
         w.lvr = sdsdup(where); leftoverParsingReply(c, w.lvr); goto tscan_end;
     }
     if (!nowc && !wb.nob) { /* WhereClause exists and no ORDER BY */
@@ -180,7 +181,7 @@ void tscanCommand(redisClient *c) { //printf("tscanCommand\n");
         iselectAction(c, &w, &wb, cmatchs, qcols, cstar);
     }
 
-tscan_end:
+tscan_end: fflush(NULL);
     if (!cstar) resetIndexPosOn(qcols, cmatchs);
     listRelease(cmatchl); destroy_wob(&wb); destroy_check_sql_where_clause(&w);
 }

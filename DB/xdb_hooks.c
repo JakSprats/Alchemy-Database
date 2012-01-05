@@ -173,7 +173,7 @@ struct redisCommand DXDBCommandTable[] = {
     {"purge",      purgeCommand,       1, 0,                 GLOB_FUNC_END},
     {"dirty",      dirtyCommand,      -1, 0,                 GLOB_FUNC_END},
     // PROFILE/DEBUG
-    {"explain",    explainCommand,     7, 0,                 GLOB_FUNC_END},
+    {"explain",    explainCommand,    -6, 0,                 GLOB_FUNC_END},
     {"show",       showCommand,        2, 0,                 GLOB_FUNC_END},
 #ifdef CLIENT_BTREE_DEBUG
     {"btree",      btreeCommand,      -2, 0,                 GLOB_FUNC_END},
