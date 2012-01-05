@@ -109,9 +109,9 @@ static bool mci_fk_queued(wob_t *wb, r_ind_t *ri) { //printf("mci_fk_queued\n");
 static void setRangeQueued(cswc_t *w, wob_t *wb, qr_t *q) {
     bzero(q, sizeof(qr_t));
     r_ind_t *ri     = (w->wf.imatch == -1) ? NULL: &Index[w->wf.imatch];
-    int      obc    = (!ri || ri->obc == -1) ? 0 : ri->obc;
-    bool     virt   = ri ?  ri->virt : 0;
+    bool     virt   = ri ? ri->virt : 0;
     int      cmatch = ri ? ri->column ? ri->column : -1 : -1;
+    int      obc    = (!ri || ri->obc == -1) ? 0 : ri->obc;
     if (virt) { // NOTE: there is no inner_desc possible (no inner loop)
         q->pk_desc  = (wb->nob >= 1 && (!wb->asc[0] && wb->obc[0] == obc));
         q->pk       = (wb->nob > 1) || (wb->nob == 1 && wb->obc[0] != obc);
@@ -128,16 +128,16 @@ static void setRangeQueued(cswc_t *w, wob_t *wb, qr_t *q) {
             if (ri->nclist) q->fk = mci_fk_queued(wb, ri);
             else { // NO-Q: [OBY FK|OBY PK|OBY FK,PK|OBY PK,FK]
                 q->fk = (wb->nob > 2) ||
-                        (wb->nob == 1 &&  // [FK]&[PK]
+                        (wb->nob == 1 &&  // [FK|OBY]
                          (wb->obc[0] != cmatch) && (wb->obc[0] != obc)) ||
-                        (wb->nob == 2 &&  // [FK,PK]&[PK,FK]
+                        (wb->nob == 2 &&  // [FK,OBY]&[PK,OBY]
                          (!((wb->obc[0] == cmatch) && (wb->obc[1] == obc)) &&
                           !((wb->obc[1] == cmatch) && (wb->obc[0] == obc))));
             }
         } else { // FK RANGE QUERY (clist[MCI] not yet supported)
             q->fk   = (wb->nob > 2) || // NoQ: [OBY FK| OBY FK,PK]
                       (wb->nob == 1 && (wb->obc[0] != cmatch)) ||
-                      (wb->nob == 2 && 
+                      (wb->nob == 2 && // [FK&OBY]
                        !((wb->obc[0] == cmatch) && (wb->obc[1] == obc)));
         }
         q->fk_lim   = (!q->fk    && (wb->lim  != -1));

@@ -1,7 +1,7 @@
 --
 -- NOTE: DO NOT MOVE THIS FILE
 -- this file is loaded when the server starts and certain commands
--- (e.g. SELECT_STORE and CREATE_TABLE_AS_DUMP) use lua functions internally
+-- (e.g. CREATE_TABLE_AS_DUMP) use lua functions internally
 --
 
 -- SELECT_STORE SELECT_STORE SELECT_STORE SELECT_STORE SELECT_STORE

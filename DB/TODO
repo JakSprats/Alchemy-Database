@@ -17,12 +17,7 @@ FIX:
   1.) [shard-key & foreign-key] info not in RDB
       [sk, fk_cmatch, fk_otmatch, fk_ocmatch] -> MAKE PERSISTENT
   2.) bt_output(debug) of Compound Indexes does not recurse
-  3.) on ORDER BY INDEX lookups: "ORDER BY pk" requires q-ing & sorting
   4.) FLUSHDB & FLUSHALL should be "DROP DATABASE" in sqlappendfile
-
-PROHIBIT:
-  2.) Prohibit ORDER BY & Unique Indexes on LRU/LFU column
-      (they are NOT unique -> high overlap)
 
 CLEANUP:
   1.) GLOBAL VARIABLES -> Per Client Structures
@@ -31,16 +26,22 @@ CLEANUP:
         C.) JTAlias[MAX_JOIN_COLS]        -> push into JoinBlock
   2.) AddTable, AddIndex, AddColumn are NOT efficient - lots of copying
       |-> on array-grow: add in some extra space (10 slots)
-  3.) Compound Indexes scion's need to recurse from deepest index-btree
-      to highest index-btree, & scion iterators need to use these counts
+  3.) EXTEND: Compound Indexes scion's need to recurse from deepest index-btree
+              to highest index-btree, & scion iterators need to use these counts
 
 MISC:
   1.) LOAD DATE FROM INFILE ... 1st rev as Lua routine reading in CSV file
   2.) LRU/LFU indexes should be UNIQUE U128 indexes [lru|pk]
 
-INDEX.POS()
-  1.) allow only on SIMP_UNIQ()
 
 CACHE:
   1.) specify "PRIMARY KEY AUTO INCREMENT" in "CREATE TABLE" declaration
   3.) slab allocator for the myriad of different btree-node sizes
+
+
+
+PROHIBIT:
+  2.) Prohibit ORDER BY & Unique Indexes on LRU/LFU column
+      (they are NOT unique -> high overlap)
+INDEX.POS()
+  1.) allow only on SIMP_UNIQ()

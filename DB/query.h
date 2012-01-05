@@ -76,6 +76,7 @@ typedef struct r_tbl { // 131 bytes -> 136B
 
 //TODO bool's can all be in a bitmap
 //TODO MM: r_ind's elements [clist,ofst] are optional -> bitmap+malloc(elements)
+//TODO: luat should be type: "luat *"
 typedef struct r_ind { // 67 bytes -> 72B
     bt     *btr;     /* Btree of index                                     */
     sds     name;    /* Name of index                                      */

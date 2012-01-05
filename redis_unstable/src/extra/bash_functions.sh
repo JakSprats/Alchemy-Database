@@ -2557,6 +2557,7 @@ function create_1000_columns() {
 
 function test_fully_loaded_table() {
   $CLI DROP TABLE fullload > /dev/null
+  $CLI CONFIG ADD LUA example.lua # defines LUA hiya() & ltrig_cnt()
   $CLI CREATE TABLE fullload "(pk LONG, fk1 INT, fk2 INT, fk3 LONG, fkt TEXT, val TEXT)"
   $CLI CREATE UNIQUE INDEX i_flu ON fullload "(fk1,fk2)"
   $CLI CREATE INDEX i_flt ON fullload "(fkt)"
@@ -2576,11 +2577,11 @@ function test_fully_loaded_table() {
   $CLI SELECT \* FROM fullload WHERE "fk2 = 1 ORDER BY fk3 DESC"
 
   echo "test LRU"
-  $CLI SCAN id,LRU,LFU FROM fullload
+  $CLI SCAN pk,LRU,LFU FROM fullload
   echo sleep 10
   sleep 10
   $CLI SELECT \* FROM fullload WHERE "fkt = '1'"
-  $CLI SCAN id,LRU,LFU FROM fullload
+  $CLI SCAN pk,LRU,LFU FROM fullload
 }
 
 function test_drop_add_table_list() {

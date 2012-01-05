@@ -534,11 +534,9 @@ int newIndex(cli    *c,     sds   iname, int  tmatch, int   cmatch,
     ri->done         = prtl ? 0 : 1; 
     ri->ofst         = prtl ? 1: -1; // NOTE: PKs start at 1 (not 0)
     r_tbl_t *rt      = &Tbl[tmatch];
-    if (ri->column != -1) {
-        rt->col[ri->column].imatch = imatch;
-        if (!rt->ilist) rt->ilist  = listCreate();           // DESTROY 088
-        listAddNodeTail(rt->ilist, VOIDINT imatch);
-    }
+    if (ri->column != -1) rt->col[ri->column].imatch = imatch;
+    if (!rt->ilist) rt->ilist  = listCreate();           // DESTROY 088
+    listAddNodeTail(rt->ilist, VOIDINT imatch);
     if (ri->luat) rt->nltrgr++;   // this table now has LUA TRIGGERS
     if (ri->clist) {
         listNode *ln; rt->nmci++; // this table now has MCI

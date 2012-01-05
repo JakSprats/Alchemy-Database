@@ -121,7 +121,7 @@ static bool parseLuatCmd(cli *c, sds cmd, ltc_t *ltc, int tmatch) {
         while((ln = listNext(li))) {
             int cmatch      = (int)(long)ln->value;
             //NOTE: no support for U128 or index.pos()
-            if (C_IS_X(rt->col[cmatch].type) || cmatch < 1) { ok = 0; break; }
+            if (C_IS_X(rt->col[cmatch].type) || cmatch < 0) { ok = 0; break; }
             ltc->cmatchs[i] = cmatch; i++;
         } listReleaseIterator(li);
     }
