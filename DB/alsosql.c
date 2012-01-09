@@ -234,7 +234,7 @@ void insertParse(cli *c, robj **argv, bool repl, int tmatch,
     resetTCNames(tmatch); MATCH_INDICES(tmatch)
     r_tbl_t *rt      = &Tbl[tmatch];
     int      ncols   = rt->col_count; /* NOTE: need space for LRU */
-    CREATE_CS_LS_LIST(0)
+    CREATE_CS_LS_LIST(1)
     int      pcols   = 0;
     int      valc    = 3;
     if (strcasecmp(argv[valc]->ptr, "VALUES")) {//TODO break block into func
@@ -392,18 +392,19 @@ bool leftoverParsingReply(redisClient *c, char *x) {
 
 // LFCA LFCA LFCA LFCA LFCA LFCA LFCA LFCA LFCA LFCA LFCA LFCA LFCA LFCA
 void initLFCA(lfca_t *lfca, list *ls) {
-    int       n  = 0; listNode *lna;
-    lfca->l      = malloc(sizeof(lue_t) * lfca->n);      // FREE ME 117
+    bzero(lfca, sizeof(lfca_t));
+    if (!ls->len) return;
+    int       n  = 0; listNode *ln;
+    lfca->l      = malloc(sizeof(lue_t *) * ls->len);      // FREE ME 117
     listIter *li = listGetIterator(ls, AL_START_HEAD);
-    while((lna = listNext(li))) {
-        listNode *lnb = listNext(li);
-        initLUE(&lfca->l[n], (sds)lna->value, (list *)lnb->value);
+    while((ln = listNext(li))) {
+        lfca->l[n] = (lue_t *)ln->value;
         n++;
     } listReleaseIterator(li);
 }
 void releaseLFCA(lfca_t *lfca) {
-    for (int i = 0; i < lfca->n; i++) releaseLUE(&lfca->l[i]);
-    free(lfca->l);                                       // FREED 117
+    for (int i = 0; i < lfca->n; i++) destroyLUE(lfca->l[i]); // FREED 130
+    free(lfca->l);                                            // FREED 117
 }
 
 // SELECT SELECT SELECT SELECT SELECT SELECT SELECT SELECT SELECT SELECT
@@ -452,6 +453,7 @@ bool sqlSelectInnards(cli *c,       sds  clist, sds from, sds tlist, sds where,
     CREATE_CS_LS_LIST(1)
     bool  cstar   =  0; bool  join    =  0; bool ret = 0;
     int   qcols   =  0; int   tmatch  = -1;
+
     if (!parseSelect(c, 0, NULL, &tmatch, cmatchl, ls, &qcols, &join, &cstar,
                      clist, from, tlist, where, chk)) {
                 RELEASE_CS_LS_LIST                                  return 0;
@@ -460,9 +462,7 @@ bool sqlSelectInnards(cli *c,       sds  clist, sds from, sds tlist, sds where,
         return doJoin(c, clist, tlist, wclause); //TODO joinBinary() w/ need_cn
     }
     CMATCHS_FROM_CMATCHL
-    lfca_t lfca; bzero(&lfca, sizeof(lfca_t)); lfca.n = ls->len / 2;
-printf("lfca.n: %d\n", lfca.n);
-    if (lfca.n) initLFCA(&lfca, ls);
+    lfca_t lfca; initLFCA(&lfca, ls);
 
     c->LruColInSelect = initLRUCS(tmatch, cmatchs, qcols);
     c->LfuColInSelect = initLFUCS(tmatch, cmatchs, qcols);
@@ -538,7 +538,7 @@ static bool assignMisses(cli   *c,      int    tmatch,    int   ncols,
                          char *vals[],  uint32 vlens[],   ue_t  ue[],
                          char *mvals[], uint32 mvlens[],  lue_t le[]) {
     for (int i = 0; i < ncols; i++) {
-        ue[i].yes   = 0; bzero(&le[i], sizeof(lue_t));
+        ue[i].yes = 0; bzero(&le[i], sizeof(lue_t));
     }
     for (int i = 0; i < ncols; i++) {
         uchar miss  = 1;
@@ -570,7 +570,6 @@ static bool assignMisses(cli   *c,      int    tmatch,    int   ncols,
                 if (!parseLuaExpr(tmatch, cmatch, vals[i], vlens[i], &le[i])) {
                     addReply(c, shared.updatesyntax); return 0;
                 }
-printf("assignMisses: le[%d].yes: %d\n", i, le[i].yes);
                 break;
             }
         }

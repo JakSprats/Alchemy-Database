@@ -29,6 +29,7 @@ ALL RIGHTS RESERVED
 #include "redis.h"
 
 #include "btreepriv.h"
+#include "alsosql.h"
 #include "query.h"
 #include "common.h"
 
@@ -44,10 +45,10 @@ char *parseRowVals(sds vals,  char   **pk,        int    *pklen,
                    int pcols, int      cmatchs[], int     lncols, bool *ai);
 
 bool parseCommaSpaceList(cli  *c,         char  *tkn,
-                         bool  col_check, bool   tbl_check, bool  join_check,
+                         bool  col_check, bool   tbl_check, bool    join_check,
                          bool  exact,     bool   isi,
-        /* COL or TBL */ int   tmatch,    list  *cs,        list *ls,
-        /* JOIN */       list *ts,        list *jans,       list *js,
+        /* COL or TBL */ int   tmatch,    list  *cs,        list   *ls,
+        /* JOIN */       list *ts,        list *jans,       list   *js,
                          int  *qcols,     bool  *cstar);
 
 //TODO convert [fname+ls] to struct[fname,ls[]
@@ -74,10 +75,10 @@ bool parseCommaSpaceList(cli  *c,         char  *tkn,
     listRelease(cmatchl); listRelease(mvalsl); listRelease(mvlensl);
 
 
-bool parseSelect(cli  *c,     bool  is_scan, bool *no_wc, int  *tmatch,
-                 list *cs,    list *ls,      int  *qcols, bool *join,
-                 bool *cstar, char *cl,      char *from,  char *tlist, 
-                 char *where, bool  chk);
+bool parseSelect(cli  *c,     bool    is_scan, bool *no_wc, int  *tmatch,
+                 list *cs,    list   *ls,    int  *qcols, bool *join,
+                 bool *cstar, char   *cl,      char *from,  char *tlist, 
+                 char *where, bool    chk);
 
 // UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE
 int parseUpdateColListReply(cli  *c,  int   tmatch, char *vallist,
@@ -88,6 +89,7 @@ int parseExpr(cli *c, int tmatch, int cmatch, char *val, uint32 vlen, ue_t *ue);
 // LUA_UPDATE LUA_UPDATE LUA_UPDATE LUA_UPDATE LUA_UPDATE
 void initLUE   (lue_t *le, sds fname, list *lcs);
 void releaseLUE(lue_t *le);
+void destroyLUE(lue_t *le);
 bool parseLuaExpr(int tmatch, int cmatch, char *val, uint32 vlen, lue_t *le);
 
 bool parseColType(cli *c, sds type, uchar *col_type);

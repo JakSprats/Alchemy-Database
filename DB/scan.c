@@ -124,8 +124,7 @@ void tscanCommand(redisClient *c) { //printf("tscanCommand\n");
                      c->argv[3]->ptr, where, 1)) { 
                          RELEASE_CS_LS_LIST return; }
     CMATCHS_FROM_CMATCHL
-    lfca_t lfca; bzero(&lfca, sizeof(lfca_t)); lfca.n = ls->len / 2;
-    if (lfca.n) initLFCA(&lfca, ls);
+    lfca_t lfca; initLFCA(&lfca, ls);
 
     if (!nowc && !wc) { addReply(c, shared.scansyntax);        goto tscan_end; }
     if (join)         { scanJoin(c);                           goto tscan_end; }

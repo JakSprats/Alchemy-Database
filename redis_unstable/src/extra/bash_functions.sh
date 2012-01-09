@@ -955,6 +955,7 @@ function insert_string_pk_three() {
 }
 
 function pk_string_join_tests() {
+  echo "pk_string_join_tests"
   init_string_pk_one
   init_string_pk_two
   init_string_pk_three
@@ -1014,6 +1015,7 @@ function insert_float_pk_three() {
 }
 
 function pk_float_join_tests() {
+  echo "pk_float_join_tests"
   init_float_pk_one
   init_float_pk_two
   init_float_pk_three
@@ -1993,6 +1995,7 @@ function bulk_inserter() {
 }
 
 function test_partial() {
+  echo "test_partial"
   $CLI DROP TABLE partial > /dev/null
   $CLI CREATE TABLE partial "(pk INT, fk1 INT, fk2 INT, fk3 INT, fk4 INT, fk5 INT, fk6 INT, t1 TEXT, t2 TEXT)";
   $CLI CREATE INDEX i_p_2 ON partial "(fk2)"

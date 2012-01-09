@@ -565,7 +565,7 @@ static aobj getRC_OBT(bt *btr, void *orow, int cmatch, aobj *apk, bool fs) {
 static aobj getRC_LFunc(bt *btr, uchar *orow, int tmatch, aobj *apk, bool fs,
                         lfca_t *lfca) {
     aobj a; initAobj(&a);
-    lue_t *lue = &lfca->l[lfca->curr]; lfca->curr++;
+    lue_t *lue = lfca->l[lfca->curr]; lfca->curr++;
     CLEAR_LUA_STACK
     lua_getglobal(server.lua, lue->fname);
     for (int i = 0; i < lue->ncols; i++) {
@@ -724,11 +724,11 @@ aobj getRawCol(bt  *btr,    uchar *orow, int     cmatch, aobj *apk,
     }
     return a;
 }
-inline aobj getCol(bt   *btr, uchar *rrow, int cmatch, aobj *apk, int tmatch,
+inline aobj getCol(bt     *btr, uchar *rrow, int cmatch, aobj *apk, int tmatch,
                    lfca_t *lfca) {
     return getRawCol(btr, rrow, cmatch, apk, tmatch, 0, lfca);
 }
-inline aobj getSCol(bt   *btr, uchar *rrow, int cmatch, aobj *apk, int tmatch,
+inline aobj getSCol(bt     *btr, uchar *rrow, int cmatch, aobj *apk, int tmatch,
                     lfca_t *lfca) {
     return getRawCol(btr, rrow, cmatch, apk, tmatch, 1, lfca);
 }

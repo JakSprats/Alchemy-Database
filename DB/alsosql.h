@@ -38,7 +38,7 @@ ALL RIGHTS RESERVED
 
 // LUA_SEL_FUNCS LUA_SEL_FUNCS LUA_SEL_FUNCS LUA_SEL_FUNCS LUA_SEL_FUNCS
 typedef struct lfca {
-    int n;     lue_t *l;  int  curr;
+    int n;     lue_t **l;  int  curr;
 } lfca_t;
 
 //USED for PREPARE/EXECUTE
