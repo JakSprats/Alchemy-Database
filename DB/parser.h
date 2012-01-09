@@ -32,7 +32,7 @@ ALL RIGHTS RESERVED
 
 char *_strdup(char *s);
 char *_strnchr(char *s, int c, int len);
-bool is_int( char *s);
+bool is_int  (char *s);
 bool is_u128 (char *s);
 bool is_float(char *s);
 bool is_text (char *beg, int len);
@@ -82,6 +82,9 @@ int   get_tlen_delim3(char *nextp, char x, char z);
 char *next_token_delim3(char *p, char x, char z);
 char *get_next_token_nonparaned_comma(char *token);
 char *get_next_comma_ignore_quotes_n_parens(char *tkn);
+char *get_next_nonparaned_comma(char *token);
+
+char *new_unescaped(char *s, char x, uint32 len, uint32 *nlen);
 
 robj **parseScanCmdToArgv(char *as_cmd, int *argc);
 

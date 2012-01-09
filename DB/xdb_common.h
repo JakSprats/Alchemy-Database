@@ -53,6 +53,7 @@ typedef struct aobj { /* SIZE: 48 BYTES */ //TODO only pass aobj * to functions
     ulong    l;
     uint128  x;
     float    f;
+    bool     b;
     uchar    type;
     uchar    enc;
     uchar    freeme;
@@ -65,6 +66,9 @@ typedef struct embedded_row_t {
 } erow_t;
 
 typedef bool select_callback(erow_t* erow);
+
+#define NOP 9
+enum OP {NONE, EQ, NE, GT, GE, LT, LE, RQ, IN};
 
 //TODO move this into a single struct, that can be bzero'ed
 #define ALCHEMY_CLIENT_EXTENSIONS           \
@@ -158,7 +162,8 @@ typedef bool select_callback(erow_t* erow);
     *execute_miss,           *evictnotdirty,               \
     *range_mciup,            *range_u_up,                  \
     *deletemiss,             *uviol,                       \
-    *updatemiss,             *dirtypk;
+    *updatemiss,             *dirtypk,                     \
+    *update_luaobj_complex,  *unsupported_pk;
 
 #define DEBUG_C_ARGV(c) \
   for (int i = 0; i < c->argc; i++) \

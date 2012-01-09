@@ -3,21 +3,14 @@ PROTOCOL
   1.) First line of SQL SELECTs should be comma-delimited list of columns
   2.) ADD "SELECT col AS othername"
 
-PREPARED_STATEMENTS
-  0.) Make Persistent -> add to DXDB_rdbSave/Load()
-  1.) PREPARE STATEMENT for joins runs PRE QueryOptimisation -> do POST
-  2.) Support CRUD
-  3.) SELECTs -> support RangeQueries & IN()Queries
-
-EMBEDDED_API
-  1.) REPLACE & InsertOnDuplicateUpdate need FAST v2 API bindings
-  2.) ALL Redis commands (SET/GET/DEL already done) need FAST v2 API bindings
-
 FIX:
   1.) [shard-key & foreign-key] info not in RDB
       [sk, fk_cmatch, fk_otmatch, fk_ocmatch] -> MAKE PERSISTENT
   2.) bt_output(debug) of Compound Indexes does not recurse
   4.) FLUSHDB & FLUSHALL should be "DROP DATABASE" in sqlappendfile
+
+TEST:
+  1.) make sure IN_Ops are up to date w/ scion & so on
 
 CLEANUP:
   1.) GLOBAL VARIABLES -> Per Client Structures
@@ -30,18 +23,25 @@ CLEANUP:
               to highest index-btree, & scion iterators need to use these counts
 
 MISC:
-  1.) LOAD DATE FROM INFILE ... 1st rev as Lua routine reading in CSV file
+  1.) LOAD DATA FROM INFILE ... 1st rev as Lua routine reading in CSV file
   2.) LRU/LFU indexes should be UNIQUE U128 indexes [lru|pk]
-
+  3.) LuaTrigger takes fknames as first args (like "table") 
+      -> can be used for FK integrity checks
 
 CACHE:
   1.) specify "PRIMARY KEY AUTO INCREMENT" in "CREATE TABLE" declaration
   3.) slab allocator for the myriad of different btree-node sizes
 
 
+-----------LATER LATER LATER LATER LATER LATER LATER---------------
+-----------LATER LATER LATER LATER LATER LATER LATER---------------
+PREPARED_STATEMENTS
+  0.) Make Persistent -> add to DXDB_rdbSave/Load()
+  1.) PREPARE STATEMENT for joins runs PRE QueryOptimisation -> do POST
+  2.) Support CRUD
+  3.) SELECTs -> support RangeQueries & IN()Queries
+  4.) support SELECT lua-functions 
 
-PROHIBIT:
-  2.) Prohibit ORDER BY & Unique Indexes on LRU/LFU column
-      (they are NOT unique -> high overlap)
-INDEX.POS()
-  1.) allow only on SIMP_UNIQ()
+EMBEDDED_API
+  1.) REPLACE & InsertOnDuplicateUpdate need FAST v2 API bindings
+  2.) ALL Redis commands (SET/GET/DEL already done) need FAST v2 API bindings

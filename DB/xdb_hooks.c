@@ -259,18 +259,17 @@ void DXDB_initServer() { //printf("DXDB_initServer\n");
 }
 
 static bool loadLuaHelperFile(cli *c, char *fname) {
-    sds fwpath = sdscatprintf(sdsempty(), "%s%s", Basedir, fname);
+    sds  fwpath = sdscatprintf(sdsempty(), "%s%s", Basedir, fname);
+    bool ret    = 1;
     //printf("loadLuaHelperFile: %s\n", fwpath);
     if (luaL_loadfile(server.lua, fwpath) || lua_pcall(server.lua, 0, 0, 0)) {
         const char *lerr = lua_tostring(server.lua, -1);
         if (c) addReplySds(c, sdscatprintf(sdsempty(),
                            "-ERR luaL_loadfile: %s err: %s\r\n", fwpath, lerr));
         else fprintf(stderr, "loadLuaHelperFile: %s err: %s\r\n", fwpath, lerr);
-        lua_pop(server.lua, 1); /* pop error from stack */
-        return 0;
+        ret = 0;
     }
-    sdsfree(fwpath);
-    return 1;
+    CLEAR_LUA_STACK sdsfree(fwpath); return ret;
 }
 static bool initLua(cli *c) {
     lua_pushcfunction(server.lua, luaSetHttpResponseHeaderCommand);
@@ -519,12 +518,18 @@ int DXDB_configSetCommand(cli *c, robj *o) {
 
 static void configAddCommand(redisClient *c) {
     robj *o = getDecodedObject(c->argv[3]);
-    if (!strcasecmp(c->argv[2]->ptr, "lua")) {
+    if (!strcasecmp(c->argv[2]->ptr, "luafile")) {
         if (!loadLuaHelperFile(c, o->ptr)) {
             addReplySds(c,sdscatprintf(sdsempty(),
                "-ERR problem adding lua helper file: %s\r\n", (char *)o->ptr));
-            decrRefCount(o);
-            return;
+            decrRefCount(o); return;
+        }
+    } else if (!strcasecmp(c->argv[2]->ptr, "lua")) {
+        if (luaL_dostring(server.lua, o->ptr)) {
+            lua_pop(server.lua, 1);
+            addReplySds(c,sdscatprintf(sdsempty(),
+               "-ERR problem adding lua: %s\r\n", (char *)o->ptr));
+            decrRefCount(o); return;
         }
     }
     decrRefCount(o);
@@ -533,8 +538,7 @@ static void configAddCommand(redisClient *c) {
 unsigned char DXDB_configCommand(redisClient *c) {
     if (!strcasecmp(c->argv[1]->ptr, "ADD")) {
         if (c->argc != 4) return -1;
-        configAddCommand(c);
-        return 0;
+        configAddCommand(c); return 0;
     }
     return 1;
 }

@@ -65,11 +65,15 @@ char  *LuaCronFunc = NULL;
 int luaCronTimeProc(struct aeEventLoop *eventLoop, lolo id, void *clientData) {
     eventLoop = NULL; id = 0; clientData = 0; /* compiler warnings */
     if (LuaCronFunc) {
+        CLEAR_LUA_STACK
         lua_getfield(server.lua, LUA_GLOBALSINDEX, LuaCronFunc); /* func2call */
         lua_pushinteger(server.lua, Operations);             /* prepare param */
         struct timeval t1, t2; gettimeofday(&t1, NULL);
         CurrClient = server.lua_client;
-        lua_call(server.lua, 1, 0);
+        int ret = lua_pcall(server.lua, 1, 0, 0);
+        if (ret) redisLog(REDIS_WARNING, "Error running luaCron: %s",
+                           lua_tostring(server.lua, -1));
+        CLEAR_LUA_STACK
         gettimeofday(&t2, NULL);
     }
     Operations = 0;
@@ -111,7 +115,8 @@ static bool parseLuatCmd(cli *c, sds cmd, ltc_t *ltc, int tmatch) {
     if (!strlen(tkn)) return 1; // zero args is ok
     list *cmatchl = listCreate();
     bool  ok      = parseCommaSpaceList(c, tkn, 1, 0, 0, 1, 0, tmatch, cmatchl,
-                                        NULL, NULL, NULL, &ltc->ncols, NULL);
+                                        NULL, NULL, NULL, NULL, 
+                                        &ltc->ncols, NULL);
     if (ok) {
         ltc->cmatchs = malloc(sizeof(int) * ltc->ncols); // FREE ME 083
         listNode *ln;
@@ -193,7 +198,7 @@ static void luatDo(bt  *btr,    luat_t *luat, aobj *apk,
     }
 
     for (int i = 0; i < ltc->ncols; i++) {
-        aobj acol = getCol(btr, rrow, ltc->cmatchs[i], apk, ri->table);
+        aobj acol = getCol(btr, rrow, ltc->cmatchs[i], apk, ri->table, NULL);
         int ctype = rt->col[ltc->cmatchs[i]].type;
         //NOTE: C_IS_X is prohibited (need lua 128 bit num lib)
         if        C_IS_I(ctype) {

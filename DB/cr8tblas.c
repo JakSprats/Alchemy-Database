@@ -129,7 +129,7 @@ void createTableSelect(redisClient *c) {
         addReply(c, shared.create_table_err);
         return;
     }
-    list  *cmatchl = listCreate();
+    CREATE_CS_LS_LIST(0)
     bool   cstar   =  0;
     int    qcols   =  0;
     int    tmatch  = -1;
@@ -139,18 +139,17 @@ void createTableSelect(redisClient *c) {
     if (!rargv) { listRelease(cmatchl); return; }
     if (!strcasecmp(rargv[0]->ptr, "SCAN")) {//TODO CREATE TABLE AS SCAN
         addReply(c, shared.cr8tbl_scan);
-        listRelease(cmatchl); zfree(rargv); return;
+        RELEASE_CS_LS_LIST zfree(rargv); return;
     }
-    if (!parseSelect(c, 0, NULL, &tmatch, cmatchl, &qcols, &join,
+    if (!parseSelect(c, 0, NULL, &tmatch, cmatchl, ls, &qcols, &join,
                      &cstar,  rargv[1]->ptr, rargv[2]->ptr,
                      rargv[3]->ptr, rargv[4]->ptr, 1)) {
-        listRelease(cmatchl); zfree(rargv); return;
-    }
-    if (cstar) {
-        addReply(c, shared.create_table_as_count);
-        listRelease(cmatchl); zfree(rargv); return;
+        RELEASE_CS_LS_LIST zfree(rargv); return;
     }
     CMATCHS_FROM_CMATCHL
+    if (cstar) {
+        addReply(c, shared.create_table_as_count); goto cr8tblsel_end;
+    }
     sds          tname = c->argv[2]->ptr;
     sds          clist = rargv[1]->ptr;
     sds          tlist = rargv[3]->ptr;
@@ -181,21 +180,24 @@ void createTableSelect(redisClient *c) {
     resetFakeClient(rfc);
     if (ok) {
         lua_State *lua   = server.lua;
-        //TODO use luafunc_call()
-        lua_getfield(lua, LUA_GLOBALSINDEX, "internal_copy_table_from_select");
-        lua_pushlstring(lua, tname, sdslen(tname));
-        lua_pushlstring(lua, clist, sdslen(clist));
-        lua_pushlstring(lua, tlist, sdslen(tlist));
-        lua_pushlstring(lua, wc, sdslen(wc));
-        int ret = lua_pcall(lua, 4, 1, 0);
+        CLEAR_LUA_STACK
+        lua_getfield(server.lua, LUA_GLOBALSINDEX,
+                     "internal_copy_table_from_select");
+        lua_pushlstring(server.lua, tname, sdslen(tname));
+        lua_pushlstring(server.lua, clist, sdslen(clist));
+        lua_pushlstring(server.lua, tlist, sdslen(tlist));
+        lua_pushlstring(server.lua, wc, sdslen(wc));
+        int ret = lua_pcall(server.lua, 4, 1, 0);
         if (ret) {
-            addReplyErrorFormat(c,"Error running script (%s): %s\n",
-                "internal_copy_table_from_select", lua_tostring(lua,-1));
-            lua_pop(lua,1);
+            addReplyErrorFormat(c, "Error running script (%s): %s\n",
+                                   "internal_copy_table_from_select",
+                                   lua_tostring(server.lua, -1));
         } else addReply(c, shared.ok);
+        CLEAR_LUA_STACK
     }
 
-    listRelease(cmatchl); zfree(rargv);
+cr8tblsel_end:
+    RELEASE_CS_LS_LIST zfree(rargv);
 }
 int getAccessCommNum(char *cmd) {
     int   axs    = -1;

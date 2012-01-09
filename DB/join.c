@@ -222,10 +222,12 @@ static bool popKlist(range_t *g,   int   imatch, list **klist,
         if (!ln) continue;
         f_t  *flt     = ln->value;
         if (flt->op == NONE) {
-            flt->akey = getCol(g->co.btr, rrow, ri->bclist[i], apk, ri->table);
+            flt->akey = getCol(g->co.btr, rrow, ri->bclist[i], apk, ri->table,
+                               NULL); //TODO check what "ls" should be
             flt->op   = EQ;
         } else if (jcmatch == flt->cmatch) {
-            aobj akey = getCol(g->co.btr, rrow, ri->bclist[i], apk, ri->table);
+            aobj akey = getCol(g->co.btr, rrow, ri->bclist[i], apk, ri->table,
+                               NULL);
             bool ok = aobjEQ(&flt->akey, &akey);
             releaseAobj(&akey);
             if (!ok) return 0;
@@ -247,7 +249,7 @@ static bool join_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
     for (int i = 0; i < g->se.qcols; i++) { // Extract queried columns
         if (jb->js[i].jan == w->wf.jan) {
             int tm = jb->js[i].t; int cm = jb->js[i].c; 
-            Resp = getSCol(g->co.btr, rrow, cm, apk, tm);//037
+            Resp = getSCol(g->co.btr, rrow, cm, apk, tm, g->se.lfca);//FREE 037
             Jcols[i].len    = Resp.len;
             Jcols[i].freeme = 0; /* freed via freeme[] */
             Jcols[i].type   = (cm == -1) ? COL_TYPE_NONE : Tbl[tm].col[cm].type;
@@ -303,7 +305,7 @@ static bool join_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
         bool ok = 1;
         if (nkl) ok = popKlist(g, nimatch, &nkl, apk, rrow, jcmatch);
         else     nk = getCol(g->co.btr, rrow, ij->lhs.cmatch,
-                             apk, ij->lhs.tmatch);
+                             apk, ij->lhs.tmatch, g->se.lfca);
         cswc_t w2; range_t g2; qr_t q2;                            //JOP_DEBUG_3
         r_ind_t *ri = &Index[nimatch];                             //JOP_DEBUG_4
         init_check_sql_where_clause(&w2, ri->table, NULL);

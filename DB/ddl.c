@@ -62,10 +62,6 @@ extern char *RangeType[5];
 int      Num_tbls;
 r_tbl_t *Tbl = NULL; /* ALCHEMY_DATABASE table info stored here */
 
-// CONSTANT GLOBALS
-char *Col_type_defs[]       =
-  {"NONE", "INT UNSIGNED", "BIGINT UNSIGNED", "TEXT", "FLOAT", "U128"};
-
 // PROTOTYPES
 // from redis.c
 unsigned int dictSdsCaseHash(const void *key);

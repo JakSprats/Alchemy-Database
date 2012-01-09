@@ -184,7 +184,7 @@ static bool _iAddMCI(cli  *c,      bt   *btr,  aobj *apk,     uchar  pktyp,
     bool     ret   = 1; /* assume success */
     for (int i = 0; i < depth; i++) {
         ibl[i]     = ibtr;
-        aobj acol  = getCol(btr, rrow, ri->bclist[i], apk, ri->table);
+        aobj acol  = getCol(btr, rrow, ri->bclist[i], apk, ri->table, NULL);
         if (acol.empty)                                   goto iaddmci_err;
         nbtr       = btIndFind(ibtr, &acol);
         if (!nbtr) {
@@ -207,7 +207,7 @@ static bool _iAddMCI(cli  *c,      bt   *btr,  aobj *apk,     uchar  pktyp,
     if (destroy)                                          goto iaddmci_err;
     ulong size1 = nbtr->msize;
     if UNIQ(ri->cnstr) {                          //printf("_iAddMCI: UNIQ\n");
-        aobj fcol = getCol(btr, rrow, ri->bclist[final], apk, ri->table);
+        aobj fcol = getCol(btr, rrow, ri->bclist[final], apk, ri->table, NULL);
         if (fcol.empty)                                   goto iaddmci_err;
         if (btFind(nbtr, &fcol)) {
             if (c) addReply(c, shared.uviol); { ret = 0;  goto iaddmci_err; }
@@ -267,7 +267,7 @@ static void iRemMCI(bt   *btr, aobj *apk, int imatch, void *rrow, aobj *ocol,
     int      depth = UNIQ(ri->cnstr) ? ri->nclist - 1 : ri->nclist;
     bt      *ibtr  = getIBtr(imatch);
     for (int i = 0; i < depth; i++) { /* find NODEBT, build DEL list */
-        aobj acol = getCol(btr, rrow, ri->bclist[i], apk, ri->table);
+        aobj acol = getCol(btr, rrow, ri->bclist[i], apk, ri->table, NULL);
         if (acol.empty) return; /* NOTE: no rollback, iAddMCI does rollback */
         nbtr      = btIndFind(ibtr, &acol);
         dpl[i]    = init_dp(ibtr, &acol, nbtr);
@@ -276,7 +276,7 @@ static void iRemMCI(bt   *btr, aobj *apk, int imatch, void *rrow, aobj *ocol,
     int nkeys;
     ulong size1 = nbtr->msize;
     if UNIQ(ri->cnstr) {
-        aobj dcol = getCol(btr, rrow, ri->bclist[final], apk, ri->table);
+        aobj dcol = getCol(btr, rrow, ri->bclist[final], apk, ri->table, NULL);
         nkeys     = btIndNodeDelete(nbtr, &dcol, NULL); // DEL FinalCol from UBT
         releaseAobj(&dcol); /* NOTE: I or L so not really needed */
     } else {
@@ -305,7 +305,7 @@ static void iEvictMCI(bt *btr, aobj *apk, int imatch, void *rrow, aobj *ocol) {
     int      depth = UNIQ(ri->cnstr) ? ri->nclist - 1 : ri->nclist;
     bt      *ibtr  = getIBtr(imatch);
     for (int i = 0; i < depth; i++) { /* find NODEBT, build DEL list */
-        aobj acol = getCol(btr, rrow, ri->bclist[i], apk, ri->table);
+        aobj acol = getCol(btr, rrow, ri->bclist[i], apk, ri->table, NULL);
         if (acol.empty) return; /* NOTE: no rollback, iAddMCI does rollback */
         nbtr      = btIndFind(ibtr, &acol);
         dpl[i]    = init_dp(ibtr, &acol, nbtr);
@@ -314,7 +314,7 @@ static void iEvictMCI(bt *btr, aobj *apk, int imatch, void *rrow, aobj *ocol) {
     int   nkeys ;
     ulong size1 = nbtr->msize;
     if UNIQ(ri->cnstr) {
-        aobj dcol = getCol(btr, rrow, ri->bclist[final], apk, ri->table);
+        aobj dcol = getCol(btr, rrow, ri->bclist[final], apk, ri->table, NULL);
         nkeys     = btIndNodeEvict(nbtr, &dcol, NULL); releaseAobj(&dcol);
     } else nkeys  = btIndNodeEvict(nbtr, apk,   ocol);
     ulong diff  = (size1 - nbtr->msize);
@@ -345,18 +345,18 @@ bool addToIndex(cli *c, bt *btr, aobj *apk, void *rrow, int imatch) {
         if (ri->obc == -1) {
             if (!iAddMCI(c, btr, apk, pktyp, imatch, rrow, NULL))    return 0;
         } else {
-            aobj ocol = getCol(btr, rrow, ri->obc, apk, ri->table);
+            aobj ocol = getCol(btr, rrow, ri->obc, apk, ri->table, NULL);
             if (!iAddMCI(c, btr, apk, pktyp, imatch, rrow, &ocol))   return 0;
             releaseAobj(&ocol);
         }
     } else {
-        aobj acol = getCol(btr, rrow, ri->column, apk, ri->table);
+        aobj acol = getCol(btr, rrow, ri->column, apk, ri->table, NULL);
         if (!acol.empty) {
             if (ri->obc == -1) { // NORMAL
                 if (ri->lfu) acol.l = (ulong)(floor(log2((dbl)acol.l))) + 1;
                 if (!iAdd(c, ibtr, &acol, apk, pktyp, NULL, imatch)) return 0;
             } else {             // OBY
-                aobj ocol = getCol(btr, rrow, ri->obc, apk, ri->table);
+                aobj ocol = getCol(btr, rrow, ri->obc, apk, ri->table, NULL);
                 bool ret  = iAdd(c, ibtr, &acol, apk, pktyp, &ocol, imatch);
                 releaseAobj(&ocol); if (!ret)                        return 0;
             }
@@ -373,17 +373,17 @@ void delFromIndex(bt *btr, aobj *apk, void *rrow, int imatch, bool gost) {
     if (ri->clist) {
         if (ri->obc == -1) iRemMCI(btr, apk, imatch, rrow, NULL, gost);
         else {                                                    // MCI OBY
-            aobj ocol = getCol(btr, rrow, ri->obc, apk, ri->table);
+            aobj ocol = getCol(btr, rrow, ri->obc, apk, ri->table, NULL);
             iRemMCI(btr, apk, imatch, rrow, &ocol, gost); releaseAobj(&ocol);
         }
     } else {
-        aobj acol = getCol(btr, rrow, ri->column, apk, ri->table);
+        aobj acol = getCol(btr, rrow, ri->column, apk, ri->table, NULL);
         if (!acol.empty) {
             if (ri->obc == -1) { // NORMAL
                 if (ri->lfu) acol.l = (ulong)(floor(log2((dbl)acol.l))) + 1;
                 iRem(ibtr, &acol, apk, NULL, imatch, gost);
             } else {             // OBY
-                aobj ocol = getCol(btr, rrow, ri->obc, apk, ri->table);
+                aobj ocol = getCol(btr, rrow, ri->obc, apk, ri->table, NULL);
                 iRem(ibtr, &acol, apk, &ocol, imatch, gost); releaseAobj(&ocol);
             }
         } releaseAobj(&acol);
@@ -397,18 +397,18 @@ void evictFromIndex(bt *btr, aobj *apk, void *rrow, int imatch) {
     bt      *ibtr = getIBtr(imatch);
     if (ri->clist) {
         if (ri->obc == -1) iEvictMCI(btr, apk, imatch, rrow, NULL);//MCI NORMAL
-        else {
-            aobj ocol = getCol(btr, rrow, ri->obc, apk, ri->table);//MCI OBY
+        else { // MCI OBY
+            aobj ocol = getCol(btr, rrow, ri->obc, apk, ri->table, NULL);
             iEvictMCI(btr, apk, imatch, rrow, &ocol); releaseAobj(&ocol);
         }
     } else {
-        aobj acol = getCol(btr, rrow, ri->column, apk, ri->table);
+        aobj acol = getCol(btr, rrow, ri->column, apk, ri->table, NULL);
         if (!acol.empty) {
             if (ri->obc == -1) { // NORMAL
                 if (ri->lfu) acol.l = (ulong)(floor(log2((dbl)acol.l))) + 1;
                 iEvict(ibtr, &acol, apk, NULL);
             } else {             // OBY
-                aobj ocol = getCol(btr, rrow, ri->obc, apk, ri->table);
+                aobj ocol = getCol(btr, rrow, ri->obc, apk, ri->table, NULL);
                 iEvict(ibtr, &acol, apk, &ocol); releaseAobj(&ocol);
             }
         } releaseAobj(&acol);
@@ -443,21 +443,21 @@ bool updateIndex(cli *c, bt *btr, aobj *aopk, void *orow,
             ok = iAddMCI(c, btr, anpk, pktyp, imatch, nrow, NULL);
             if (ok) iRemMCI(btr, aopk, imatch, orow, NULL, 0);
         } else {
-            aobj oocol = getCol(btr, orow, ri->obc, aopk, ri->table);
-            aobj nocol = getCol(btr, nrow, ri->obc, anpk, ri->table);
+            aobj oocol = getCol(btr, orow, ri->obc, aopk, ri->table, NULL);
+            aobj nocol = getCol(btr, nrow, ri->obc, anpk, ri->table, NULL);
             ok = iAddMCI(c, btr, anpk, pktyp, imatch, nrow, &nocol);
             if (ok) iRemMCI(btr, aopk, imatch, orow, &oocol, 0);
             releaseAobj(&oocol); releaseAobj(&nocol);
         }
     } else {
-        aobj  ocol = getCol(btr, orow, ri->column, aopk, ri->table);
-        aobj  ncol = getCol(btr, nrow, ri->column, anpk, ri->table);
+        aobj  ocol = getCol(btr, orow, ri->column, aopk, ri->table, NULL);
+        aobj  ncol = getCol(btr, nrow, ri->column, anpk, ri->table, NULL);
         if (ri->obc == -1) { // NORMAL
             ok = upIndex(c, ibtr, aopk, &ocol, anpk, &ncol, pktyp,
                          NULL, NULL, imatch);
         } else {             // OBC
-            aobj oocol = getCol(btr, orow, ri->obc, aopk, ri->table);
-            aobj nocol = getCol(btr, nrow, ri->obc, anpk, ri->table);
+            aobj oocol = getCol(btr, orow, ri->obc, aopk, ri->table, NULL);
+            aobj nocol = getCol(btr, nrow, ri->obc, anpk, ri->table, NULL);
             ok = upIndex(c, ibtr, aopk, &ocol, anpk, &ncol, pktyp,
                          &oocol, &nocol, imatch);
             releaseAobj(&oocol); releaseAobj(&nocol);

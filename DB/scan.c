@@ -110,25 +110,25 @@ sj_end:
    3.) SCAN * FROM tbl WHERE clause [ORDER_BY_CLAUSE]
 */
 void tscanCommand(redisClient *c) { //printf("tscanCommand\n");
-    list *cmatchl = listCreate();
+    CREATE_CS_LS_LIST(1)
     bool  nowc    =  0; /* NO WHERE CLAUSE */
     bool  cstar   =  0; int   qcols   =  0;
     bool  join    =  0; int   tmatch  = -1;
     sds   where   = (c->argc > 4) ? c->argv[4]->ptr : NULL;
     sds   wc      = (c->argc > 5) ? c->argv[5]->ptr : NULL;
     if ((where && !*where) || (wc && !*wc)) {
-        addReply(c, shared.scansyntax);  listRelease(cmatchl); return;
+        addReply(c, shared.scansyntax);  RELEASE_CS_LS_LIST return;
     }
-    if (!parseSelect(c, 1, &nowc, &tmatch, cmatchl, &qcols, &join,
+    if (!parseSelect(c, 1, &nowc, &tmatch, cmatchl, ls, &qcols, &join,
                      &cstar, c->argv[1]->ptr, c->argv[2]->ptr,
-                     c->argv[3]->ptr, where, 1)) {
-                         listRelease(cmatchl);                 return;
-    }
-    if (!nowc && !wc) {
-        addReply(c, shared.scansyntax); listRelease(cmatchl);  return;
-    }
-    if (join) { scanJoin(c); listRelease(cmatchl);             return; }
+                     c->argv[3]->ptr, where, 1)) { 
+                         RELEASE_CS_LS_LIST return; }
     CMATCHS_FROM_CMATCHL
+    lfca_t lfca; bzero(&lfca, sizeof(lfca_t)); lfca.n = ls->len / 2;
+    if (lfca.n) initLFCA(&lfca, ls);
+
+    if (!nowc && !wc) { addReply(c, shared.scansyntax);        goto tscan_end; }
+    if (join)         { scanJoin(c);                           goto tscan_end; }
 
     c->LruColInSelect = initLRUCS(tmatch, cmatchs, qcols);
     c->LfuColInSelect = initLFUCS(tmatch, cmatchs, qcols);
@@ -178,10 +178,11 @@ void tscanCommand(redisClient *c) { //printf("tscanCommand\n");
     else if (c->Explain) explainRQ(c, &w, &wb, cstar, qcols, cmatchs);
     else {
         if (EREDIS) embeddedSaveSelectedColumnNames(tmatch, cmatchs, qcols);
-        iselectAction(c, &w, &wb, cmatchs, qcols, cstar);
+        iselectAction(c, &w, &wb, cmatchs, qcols, cstar, &lfca);
     }
 
 tscan_end: fflush(NULL);
     if (!cstar) resetIndexPosOn(qcols, cmatchs);
-    listRelease(cmatchl); destroy_wob(&wb); destroy_check_sql_where_clause(&w);
+    RELEASE_CS_LS_LIST releaseLFCA(&lfca);
+    destroy_wob(&wb); destroy_check_sql_where_clause(&w);
 }

@@ -307,6 +307,18 @@ char *get_next_token_nonparaned_comma(char *token) {
    return token;
 }
 
+//NOTE: does not support nesting (e.g. "x,y,foo(bar(a)),z"
+char *get_next_nonparaned_comma(char *token) {
+   char *z = strchr(token, ',');
+   if (!z) return NULL;
+   char *p = strchr(token, '(');
+   if (p && p < z) {
+       char *y = strchr(p, ')');
+       if (y) return strchr(y, ',');
+       else   return NULL;
+   } else return z;
+}
+
 char *get_next_comma_ignore_quotes_n_parens(char *tkn) {
    while (1) {
        char c = *tkn;
@@ -322,6 +334,37 @@ char *get_next_comma_ignore_quotes_n_parens(char *tkn) {
    }
    return NULL;
 }
+
+char *new_unescaped(char *s, char x, uint32 len, uint32 *nlen) {
+    if (!len) { *nlen = 0; return NULL; }
+    char *news  = malloc(len + 1);
+    char *onews = news;
+    char *beg   = s;
+    while (*s && len) {
+        char *nextc = _strnchr(s, x, len);
+        if (!nextc) break;
+        bool xcpd = 0;
+        if  (nextc != beg && *(nextc - 1) == '\\') {
+            char *backslash = nextc - 1;
+            while (backslash >= beg) {
+                if (*backslash != '\\') break;
+                backslash--;
+            }
+            int num_backslash = nextc - backslash - 1;
+            if (num_backslash % 2 == 1) xcpd = 1;
+        }
+        int plen = (nextc - s + 1);
+        int tlen = xcpd ? (nextc - s - 1) : plen;
+        memcpy(news, s, tlen); news += tlen; len -= plen;
+        if (xcpd) { *news = '\''; news++; } // add in the escaped quote
+        s     = nextc + 1;
+    }
+    memcpy(news, s, len); news += len;
+    *nlen = news - onews;
+    *news = '\0'; news++; // NULL TERMINTATE
+    return onews;
+}
+
 
 /* PIPE_PARSING PIPE_PARSING PIPE_PARSING PIPE_PARSING PIPE_PARSING */
 robj **parseScanCmdToArgv(char *as_cmd, int *argc) {

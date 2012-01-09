@@ -35,11 +35,14 @@ ALL RIGHTS RESERVED
 
 void initAobj        (aobj *a);
 void initAobjZeroNum (aobj *a, uchar ctype);
+
 bool initAobjInt     (aobj *a, ulong l);
 void initAobjLong    (aobj *a, ulong l);
 void initAobjString  (aobj *a, char *s, int len);
-void initAobjU128    (aobj *a, uint128 x);
 void initAobjFloat   (aobj *a, float f);
+void initAobjU128    (aobj *a, uint128 x);
+void initAobjBool    (aobj *a, bool b);
+
 void initAobjFromStr (aobj *a, char *s, int len, uchar ctype);
 void initAobjFromLong(aobj *a, ulong l,          uchar ctype);
 
@@ -53,6 +56,7 @@ aobj *copyAobj  (aobj *a); //WARNING: do NOT double free
 void  convertSdsToAobj(sds s, aobj *a, uchar ctype);
 aobj *createAobjFromString(char *s, int len, uchar ctype);
 aobj *createAobjFromLong  (ulong l);
+aobj *createAobjFromInt   (uint32 i);
 
 void convertFilterSDStoAobj(f_t *flt);
 

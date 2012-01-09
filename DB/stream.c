@@ -30,10 +30,13 @@ ALL RIGHTS RESERVED
 #include <strings.h>
 
 #include "bt.h"
+#include "parser.h"
 #include "colparse.h"
 #include "aobj.h"
 #include "common.h"
 #include "stream.h"
+
+extern r_tbl_t *Tbl;
 
 #define TWO_POW_7                 128
 #define TWO_POW_14              16384
@@ -223,7 +226,7 @@ ulong  streamLongToULong(uchar *data, uint32 *clen) {
 }
 
 // STREAM_U128_COL STREAM_U128_COL STREAM_U128_COL STREAM_U128_COL
-//TODO U128's can be packed as 2 StreamUlongs
+//TODO U128's can be packed as 2 StreamUlongs - probably not needed
 void writeU128Col(uchar **row, uint128 xcol) {
     memcpy(*row, &xcol, 16); INCRBY(*row, 16);
 }
@@ -239,6 +242,42 @@ uint128 streamToU128(uchar *data, uint32 *clen) {
     uint128 val = (*(uint128 *)data); return val;
 }
 int cr8Xcol(uint128 x, uint128 *col) { *col = x; return 16; }
+
+// LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ
+#define DEBUG_WRITE_LUAOBJ                                          \
+  printf("writeLuaObjCol: VNAME: %s Lua: (%s) apk: ", vname, luac); \
+  dumpAobj(printf, apk);
+
+sds getLuaVarName(aobj *apk, int tmatch, int cmatch) {
+    r_tbl_t *rt    = &Tbl[tmatch];
+    uchar    pktyp = rt->col[0].type;
+    char pkbuf[64];
+    if      C_IS_I(pktyp)   sprintf    (pkbuf, "%u",      apk->i);
+    else if C_IS_L(pktyp)   sprintf    (pkbuf, "%lu",     apk->l);
+    else if C_IS_X(pktyp) { SPRINTF_128(pkbuf, 64,        apk->x); }
+    else if C_IS_F(pktyp)   sprintf    (pkbuf, FLOAT_FMT, apk->f);
+    return  sdscatprintf(sdsempty(), "SQL_%s_%s_%s",                //FREEME123
+                                      rt->name, rt->col[cmatch].name, 
+                                      C_IS_S(pktyp) ? apk->s : pkbuf);
+}
+bool writeLuaObjCol(cli *c,    aobj   *apk, int tmatch, int cmatch,
+                    char *val, uint32  vlen) {
+    uint32  nlen;
+    char   *xcpd  = new_unescaped(val, '\'', vlen, &nlen);
+    if (!xcpd) return 0;
+    sds     luac  = sdsnewlen(xcpd, nlen);
+    sds     vname = getLuaVarName(apk, tmatch, cmatch);  // FREE ME 124
+    CLEAR_LUA_STACK                                          DEBUG_WRITE_LUAOBJ
+    lua_getfield(server.lua, LUA_GLOBALSINDEX, "luaobj_assign");
+    lua_pushstring(server.lua, vname); sdsfree(vname);          // FREED 124
+    lua_pushstring(server.lua, luac);
+    int ret = lua_pcall(server.lua, 2, 0, 0);
+    if (ret) {
+        addReplyErrorFormat(c, "Error running script (luaobj_assign): %s\n",
+                                lua_tostring(server.lua, -1));
+    }
+    CLEAR_LUA_STACK return ret ? 0 : 1;
+}
 
 /* COMPARE COMPARE COMPARE COMPARE COMPARE COMPARE COMPARE COMPARE */
 // INDEX_COMP INDEX_COMP INDEX_COMP INDEX_COMP INDEX_COMP INDEX_COMP INDEX_COMP

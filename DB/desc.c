@@ -45,14 +45,17 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "desc.h"
 
-extern char    *Col_type_defs[];
-
 extern int      Num_tbls;
 extern r_tbl_t *Tbl;
 extern int      Num_indx;
 extern r_ind_t *Index;
 
 extern uchar    OutputMode;
+
+// CONSTANT GLOBALS
+char *Col_type_defs[]       =
+  {"NONE", "INT UNSIGNED", "BIGINT UNSIGNED", "TEXT", "FLOAT", "U128",
+   "FUNCTION", "LUAOBJ", "BOOL", "COLUMN_NAME"};
 
 #define ADD_REPLY_BULK(r, buf)    \
     r = _createStringObject(buf); \
@@ -179,7 +182,8 @@ void sqlDumpCommand(redisClient *c) {
         while ((be = btRangeNext(bi, 1))) {
             aobj *apk  = be->key;
             void *rrow = be->val;
-            robj *r    = outputRow(btr, rrow, qcols, cmatchs, apk, tmatch);
+            robj *r    = outputRow(btr, rrow, qcols, cmatchs,
+                                   apk, tmatch, NULL);
             if (toms) {
                 snprintf(buf, 191, "INSERT INTO `%s` VALUES (", mtname);
                 buf[191]  = '\0';

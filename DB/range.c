@@ -560,7 +560,8 @@ bool passFilters(bt *btr, aobj *akey, void *rrow, list *flist, int tmatch) {
     while ((ln = listNext(li))) {
         f_t *flt  = ln->value;
         if (tmatch != flt->tmatch) continue;
-        aobj a    = getCol(btr, rrow, flt->cmatch, akey, tmatch);
+        aobj a    = getCol(btr, rrow, flt->cmatch, akey, tmatch, NULL);
+        //TODO "ls" should be "selectfilterfuncs()"
         if        (flt->inl) {
             listIter *li2 = listGetIterator(flt->inl, AL_START_HEAD);
             while((ln2 = listNext(li2))) {
@@ -592,7 +593,8 @@ static bool select_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
     bool ret    = 1;
     if (!g->se.cstar) {
         robj *r = outputRow(g->co.btr, rrow, g->se.qcols, g->se.cmatchs,
-                            apk, tmatch);
+                            apk, tmatch, g->se.lfca);
+        if (!r) return 1; // from LUA_SEL_FUNC returning BOOL
         if (q) {
             addRow2OBList(g->co.ll, g->co.wb, g->co.btr, r, g->co.ofree,
                           rrow, apk);
@@ -628,14 +630,13 @@ bool opSelectSort(cli  *c,    list *ll,   wob_t *wb,
     return ret;
 }
 void iselectAction(cli *c,         cswc_t *w,     wob_t *wb,
-                   int  cmatchs[], int     qcols, bool   cstar) {
+                   int  cmatchs[], int     qcols, bool   cstar, lfca_t *lfca) {
     printf("\n\niselectAction\n");
     range_t g; qr_t q; setQueued(w, wb, &q);
     list *ll     = initOBsort(q.qed, wb, 0);
     init_range(&g, c, w, wb, &q, ll, OBY_FREE_ROBJ, NULL);
-    g.se.cstar   = cstar;
-    g.se.qcols   = qcols;
-    g.se.cmatchs = cmatchs;
+    g.se.cstar   = cstar;   g.se.qcols   = qcols;
+    g.se.cmatchs = cmatchs; g.se.lfca    = lfca;
     void *rlen   = cstar || EREDIS ? NULL : addDeferredMultiBulkLength(c);
     long  card   = Op(&g, select_op);
 printf("iselectAction: card: %ld\n", card);

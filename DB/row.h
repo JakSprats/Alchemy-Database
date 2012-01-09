@@ -30,15 +30,18 @@ ALL RIGHTS RESERVED
 
 #include "btreepriv.h"
 #include "query.h"
+#include "alsosql.h"
 #include "common.h"
 
-void *createRow(cli    *c,    bt     *btr,      int tmatch, int  ncols,
-                char   *vals, twoint  cofsts[]);
+void *createRow(cli *c,     aobj *apk,  bt     *btr,      int tmatch,
+                int  ncols, char *vals, twoint  cofsts[]);
 uint32 getRowMallocSize(uchar *stream);
 
-uchar *getColData(         uchar *orow, int cmatch, uint32 *clen, uchar *rflag);
-aobj   getCol    (bt *btr, uchar *rrow, int cmatch, aobj *apk, int tmatch);
-aobj   getSCol   (bt *btr, uchar *rrow, int cmatch, aobj *apk, int tmatch);
+uchar *getColData(uchar *orow, int cmatch, uint32 *clen, uchar *rflag);
+aobj   getCol    (bt   *btr, uchar *rrow, int cmatch, aobj *apk, int tmatch, 
+                  lfca_t *lfca);
+aobj   getSCol   (bt   *btr, uchar *rrow, int cmatch, aobj *apk, int tmatch,
+                  lfca_t *lfca);
 
 robj *cloneRobjErow(robj *r);   // EMBEDDED
 void decrRefCountErow(robj *r); // EMBEDDED
@@ -50,7 +53,7 @@ int   output_start    (char *buf, uint32 blen, int qcols);
 robj *write_output_row(int   qcols,   uint32  prelen, char *pbuf,
                        uint32 totlen, sl_t   *outs);
 robj *outputRow(bt   *btr,       void *row,  int qcols,
-                int   cmatchs[], aobj *aopk, int tmatch);
+                int   cmatchs[], aobj *aopk, int tmatch, lfca_t *lfca);
 
 int   deleteRow(int tmatch, aobj *apk, int matches, int inds[]);
 

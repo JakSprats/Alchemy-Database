@@ -106,11 +106,16 @@ typedef struct update_expression {
     int   plen;
 } ue_t;
 
+#define LE_COL      1
+#define LE_TEXT     2
+#define LE_LONG     3
+#define LE_FLOAT    4
+#define LE_VARIABLE 5
 typedef struct lua_update_expression {
-    bool  yes;
-    sds   fname;
-    int   ncols;
-    int  *cmatchs;
+    bool   yes;
+    sds    fname;
+    int    ncols;
+    aobj **as;
 } lue_t;
 
 typedef struct filter {

@@ -49,6 +49,9 @@ typedef int printer(const char *format, ...);
 #define COL_TYPE_FLOAT        4
 #define COL_TYPE_U128         5
 #define COL_TYPE_FUNC         6
+#define COL_TYPE_LUAO         7
+#define COL_TYPE_BOOL         8
+#define COL_TYPE_CNAME        9
 
 #define PTR_SIZE    sizeof(char *)
 #define USHORT_SIZE sizeof(unsigned short)
@@ -89,10 +92,10 @@ typedef int printer(const char *format, ...);
 #define C_IS_F(ctype)    (ctype == COL_TYPE_FLOAT)
 #define C_IS_X(ctype)    (ctype == COL_TYPE_U128)
 #define C_IS_P(ctype)    (ctype == COL_TYPE_FUNC)
+#define C_IS_O(ctype)    (ctype == COL_TYPE_LUAO)
+#define C_IS_B(ctype)    (ctype == COL_TYPE_BOOL)
+#define C_IS_C(ctype)    (ctype == COL_TYPE_CNAME)
 #define C_IS_NUM(ctype) (C_IS_I(ctype) || C_IS_L(ctype) || C_IS_X(ctype))
-
-#define NOP 9
-enum OP {NONE, EQ, NE, GT, GE, LT, LE, RQ, IN};
 
 #define UETYPE_ERR  0
 #define UETYPE_INT  1 /* also LONG */
@@ -162,4 +165,17 @@ typedef struct twoint {
   SPLICE_128(num)                                       \
   (*prn)("DEBUG_U128: high: %llu low: %llu", ubh, ubl); }
 
+#define LUA_SEL_FUNC INT_MIN
+#define IS_LSF(cmatch) (cmatch == LUA_SEL_FUNC)
+
+#define CREATE_CS_LS_LIST(lsalso)               \
+  list *cmatchl = listCreate();                 \
+  list *ls      = lsalso ? listCreate() : NULL;
+
+#define RELEASE_CS_LS_LIST    \
+  listRelease      (cmatchl); \
+  luasellistRelease(ls);
+
+#define CLEAR_LUA_STACK                                  \
+  while (lua_gettop(server.lua) > 0) lua_pop(server.lua, 1);
 #endif /* __ALSOSQL_COMMON__H */

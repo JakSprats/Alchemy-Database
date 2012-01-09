@@ -293,7 +293,7 @@ void end_http_session(cli *c) {
 // LUA_SCRIPT_TO_HTTP_RESPONSE LUA_SCRIPT_TO_HTTP_RESPONSE
 static robj *luaReplyToHTTPReply(lua_State *lua) {
     robj *r = createObject(REDIS_STRING, NULL);
-    int   t = lua_type(lua,1);
+    int   t = lua_type(lua, 1);
     switch(t) {
     case LUA_TSTRING:
         r->ptr = sdsnewlen((char*)lua_tostring(lua, 1), lua_strlen(lua, 1));
@@ -451,8 +451,6 @@ bool luafunc_call(redisClient *c, int argc, robj **argv) {
         } else {
             addReplyErrorFormat(c, "%s", err);
         }
-        lua_pop(server.lua, 1);
-        return 1;
     }
-    return 0;
+    CLEAR_LUA_STACK return ret ? 1 : 0;
 }

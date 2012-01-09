@@ -59,7 +59,9 @@ inline int getImatchFromOCmatch(int cmatch) {
 }
 inline void resetIndexPosOn(int qcols, int *cmatchs) {
     for (int i = 0; i < qcols; i++) { // Turn Index[].iposon -> OFF
-        if (cmatchs[i] < -1) Index[getImatchFromOCmatch(cmatchs[i])].iposon = 0;
+        if (cmatchs[i] < -1 && !IS_LSF(cmatchs[i])) {
+            Index[getImatchFromOCmatch(cmatchs[i])].iposon = 0;
+        }
     }   
 }   
 
@@ -150,22 +152,19 @@ static int check_special_column(int tmatch, sds cname) {
     }
     return -1; // MISS on special also
 }
-int find_column(int tmatch, char *c) {
+static int find_column_sds(int tmatch, sds cname) {
     r_tbl_t *rt    = &Tbl[tmatch];
-    sds      cname = sdsnew(c); //DEST 091
     void    *ptr   = dictFetchValue(rt->cdict, cname);
-    int      ret   = ptr ? ((int)(long)ptr) - 1 : 
-                           check_special_column(tmatch, cname);
-    sdsfree(cname); // DESTD 092
+    return ptr ? ((int)(long)ptr) - 1 : check_special_column(tmatch, cname);
+}
+int find_column(int tmatch, char *c) {
+    sds      cname = sdsnew(c);                                     // DEST 091
+    int      ret   = find_column_sds(tmatch, cname); sdsfree(cname);// DESTD 091
     return ret;
 }
 int find_column_n(int tmatch, char *c, int len) {
-    r_tbl_t *rt    = &Tbl[tmatch];
-    sds      cname = sdsnewlen(c, len); //DEST 092
-    void    *ptr   = dictFetchValue(rt->cdict, cname);
-    int      ret   = ptr ? ((int)(long)ptr) - 1 : 
-                           check_special_column(tmatch, cname);
-    sdsfree(cname); // DESTD 092
+    sds      cname = sdsnewlen(c, len);                             // DEST 092
+    int      ret   = find_column_sds(tmatch, cname); sdsfree(cname);// DESTD 092
     return ret;
 }
 int get_all_cols(int tmatch, list *cs, bool lru2, bool lfu2) {

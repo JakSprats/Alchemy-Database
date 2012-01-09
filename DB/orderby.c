@@ -179,7 +179,9 @@ void assignObEmptyKey(obsl_t *ob, uchar ctype, int i) {
 void assignObKey(wob_t *wb, bt *btr, void *rrow, aobj *apk, int i, obsl_t *ob) {
     void  *key;
     uchar  ctype = Tbl[wb->obt[i]].col[wb->obc[i]].type;
-    aobj   ao    = getCol(btr, rrow, wb->obc[i], apk, wb->obt[i]);
+    //TODO this is a repetitive getCol() call & w/ LUAOBJ's non-deterministic
+    aobj   ao    = getCol(btr, rrow, wb->obc[i], apk, wb->obt[i], NULL);
+    //TODO "ls" would make for interesting ORDER BY's
     if      C_IS_I(ctype) key = VOIDINT ao.i;
     else if C_IS_L(ctype) key = (void *)ao.l;
     else if C_IS_X(ctype) { uint128 *x = malloc(16); *x = ao.x; key = x; }

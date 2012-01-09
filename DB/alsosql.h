@@ -36,6 +36,11 @@ ALL RIGHTS RESERVED
 #define getBtr(tmatch) Tbl[tmatch].btr
 #define getIBtr(imatch) Index[imatch].btr;
 
+// LUA_SEL_FUNCS LUA_SEL_FUNCS LUA_SEL_FUNCS LUA_SEL_FUNCS LUA_SEL_FUNCS
+typedef struct lfca {
+    int n;     lue_t *l;  int  curr;
+} lfca_t;
+
 //USED for PREPARE/EXECUTE
 int    getSizeWB    (          wob_t *wb);
 uchar *serialiseWB  (          wob_t *wb);
@@ -60,6 +65,9 @@ bool leftoverParsingReply(redisClient *c, char *x);
 bool initLRUCS(int tmatch, int cmatchs[], int qcols);
 bool initLRUCS_J(jb_t *jb);
 
+void initLFCA   (lfca_t *lfca, list *ls);
+void releaseLFCA(lfca_t *lfca);
+
 void insertParse(cli *c,     robj **argv, bool repl, int tmatch,
                  bool parse, sds   *key);
 void insertCommand   (redisClient *c);
@@ -79,7 +87,7 @@ uchar insertCommit(cli  *c,      sds     uset,   sds     vals,
                    bool  parse,  sds    *key);
 
 bool sqlSelectBinary (cli   *c, int tmatch, bool cstar, int *cmatchs, int qcols,
-                      cswc_t *w, wob_t *wb, bool need_cn);
+                      cswc_t *w, wob_t *wb, bool need_cn, lfca_t *lfca);
 bool sqlSelectInnards(cli *c, sds clist, sds from, sds tbl_list, sds where,
                       sds  wclause, bool chk, bool need_cn);
 

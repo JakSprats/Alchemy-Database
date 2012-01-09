@@ -159,7 +159,8 @@ static bool SQLappendOnlyDumpTable(FILE *fp, bt *btr, int tmatch) {
             if (fwrite(cvals ,sizeof(cvals) - 1, 1, fp) == 0)     A_BRK
             aobj *apk  = be->key;
             void *rrow = be->val;
-            robj *r    = outputRow(btr, rrow, qcols, cmatchs, apk, tmatch);
+            robj *r    = outputRow(btr, rrow, qcols, cmatchs,
+                                   apk, tmatch, NULL);
             sds   srow = sdscatprintf(sdsempty(), "(%s);\n", (char *)r->ptr);
             if (fwrite(srow, strlen(srow), 1, fp) == 0)           A_BRK
             sdsfree(srow);
@@ -206,7 +207,8 @@ bool appendOnlyDumpTable(FILE *fp, bt *btr, int tmatch) {
             if (fwrite(cvals ,sizeof(cvals) - 1, 1, fp) == 0)     A_BRK
             aobj *apk  = be->key;
             void *rrow = be->val;
-            robj *r    = outputRow(btr, rrow, qcols, cmatchs, apk, tmatch);
+            robj *r    = outputRow(btr, rrow, qcols, cmatchs,
+                                   apk, tmatch, NULL);
             sds   srow = sdscatprintf(sdsempty(), "(%s)", (char *)r->ptr);
             if (fwriteBulkString(fp, srow, sdslen(srow)) == -1)   A_BRK
             sdsfree(srow);
