@@ -77,8 +77,6 @@ static char CNE = '!';
 #define TOK_TYPE_RANGE  1
 #define TOK_TYPE_IN     2
 
-static bool Bdum; /* dummy variable */
-
 #define IN_RCMD_ERR_MSG \
   "-ERR SELECT FROM WHERE col IN(Redis_cmd) - inner command had error: "
 
@@ -206,7 +204,7 @@ static bool parseOBYcol(redisClient  *c,
     *token = nextt;
     return 1;
 }
-static bool parseLimit(cli *c, char *token, int tmatch, wob_t *wb, char **fin) {
+static bool parseLimit(cli *c, char *token, wob_t *wb, char **fin) {
     if (!strncasecmp(token, "LIMIT ", 6)) {
         token  = next_token(token);
         if (!token) { addReply(c, shared.oby_lim_needs_num); return 0; }
@@ -242,7 +240,7 @@ static bool parseOrderBy(cli *c, char *by, int tmatch, wob_t *wb, char **fin) {
             if (!parseOBYcol(c, &token, tmatch, wb, fin, &more)) return 0;
         }
     }
-    if (token) return parseLimit(c, token, tmatch, wb, fin);
+    if (token) return parseLimit(c, token, wb, fin);
     return 1;
 }
 bool parseWCEnd(redisClient *c, char *token, cswc_t *w, wob_t *wb) {
@@ -261,7 +259,7 @@ bool parseWCEnd(redisClient *c, char *token, cswc_t *w, wob_t *wb) {
     }
     if (!strncasecmp(token, "LIMIT ", 6)) {
         char *lfin    = NULL;
-        if (!parseLimit(c, token, w->wf.tmatch, wb, &lfin)) {
+        if (!parseLimit(c, token, wb, &lfin)) {
             w->lvr = NULL;                                       return 0;
         }
         if (lfin) token     = lfin;
@@ -407,7 +405,7 @@ static bool parseInumCol(cli *c, char *token, int tlen, f_t *flt) {
     return 1;
 }
 
-static uchar parseWCTokRelation(cli *c,   cswc_t *w,   char  *token, char **fin,
+static uchar parseWCTokRelation(cli *c,   cswc_t *w,   sds    token, char **fin,
                                 f_t *flt, bool    isj, uchar  ttype) {
     uchar ctype; int two_toklen;
     parse_inum *pif   = (isj) ? parseInumTblCol : parseInumCol;
@@ -418,6 +416,11 @@ static uchar parseWCTokRelation(cli *c,   cswc_t *w,   char  *token, char **fin,
         else       two_toklen = (tok2 - token) + get_token_len(tok2);
         char *spot    = NULL;
         flt->op       = findOperator(token, two_toklen, &spot);
+        if (flt->op == NONE) { // maybe a lua function filter
+            bool ret = checkOrCreateLuaFunc(flt->tmatch, -1, &flt->le, token);
+            if (!ret)                                return PARSE_GEN_ERR;
+            else      { flt->op = LFUNC;             return PARSE_OK; }
+        }
         if (flt->op == NONE)                         return PARSE_GEN_ERR;
         char *end     = spot - OP_len[flt->op];;
         REV_SKIP_SPACES(end)
@@ -606,11 +609,10 @@ bool parseJoin(cli *c, jb_t *jb, char *clist, char *tlist, char *wc) {
     list *tl = listCreate();   list *ls = listCreate();
     list *janl = listCreate(); list *jl = listCreate();
     /* Check tbls in "FROM tbls,,,," */
-    if (!parseCommaSpaceList(c, tlist, 0, 1, 0, 0, 0, -1, NULL, ls, tl, janl,
-                             NULL, NULL, &Bdum))          goto prs_join_end;
+    if (!parseCSLJoinTable(c, tlist, tl, janl)) goto prs_join_end;
     /* Check all tbl.cols in "SELECT tbl1.col1, tbl2.col2,,,,," */
-    if (!parseCommaSpaceList(c, clist, 0, 0, 1, 0, 0, -1, NULL, NULL, tl, janl,
-                             jl, &jb->qcols, &jb->cstar)) goto prs_join_end;
+    if (!parseCSLJoinColumns(c, clist, 0, tl, janl, jl, &jb->qcols, &jb->cstar))
+                                                goto prs_join_end;
     jb->js = malloc(sizeof(jc_t) * jl->len);
     listNode *lnjs; int ijs  = 0;
     listIter *lijs = listGetIterator(jl, AL_START_HEAD);
@@ -618,7 +620,7 @@ bool parseJoin(cli *c, jb_t *jb, char *clist, char *tlist, char *wc) {
         memcpy(&jb->js[ijs], lnjs->value, sizeof(jc_t)); ijs++;
     } listReleaseIterator(lijs);
     ret = joinParseWC(c, jb, wc);
-    if (!leftoverParsingReply(c, jb->lvr))                goto prs_join_end;
+    if (!leftoverParsingReply(c, jb->lvr))      goto prs_join_end;
     if (EREDIS) embeddedSaveJoinedColumnNames(jb);
 
 prs_join_end:

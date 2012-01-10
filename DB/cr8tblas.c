@@ -179,7 +179,6 @@ void createTableSelect(redisClient *c) {
     }
     resetFakeClient(rfc);
     if (ok) {
-        lua_State *lua   = server.lua;
         CLEAR_LUA_STACK
         lua_getfield(server.lua, LUA_GLOBALSINDEX,
                      "internal_copy_table_from_select");

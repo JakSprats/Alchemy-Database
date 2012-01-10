@@ -64,6 +64,7 @@ static void releaseFilterInnards(f_t *flt) {
     if (flt->high) { sdsfree(flt->high);    flt->high = NULL; }
     releaseAobj(&flt->akey); releaseAobj(&flt->alow); releaseAobj(&flt->ahigh);
     destroyINLlist(&flt->inl);
+    releaseLUE    (&flt->le);
 }
 void releaseFilterD_KL(f_t *flt) {             //printf("releaseFilterD_KL\n");
     releaseFilterInnards(flt);
@@ -209,6 +210,10 @@ void dumpFilter(printer *prn, f_t *flt, char *prfx) {
             aobj *a = ln->value;
             (*prn)("\t%s\t\t", prfx); dumpAobj(prn, a);
         } listReleaseIterator(li);
+    }
+    if (flt->le.yes) {
+        (*prn)("\t%s\tlua_function: fname: %s args: %d\n",
+               prfx, flt->le.fname, flt->le.ncols);
     }
     dumpFL(prn, "\t\t\t", "KLIST", flt->klist);
 }

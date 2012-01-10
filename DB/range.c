@@ -552,7 +552,33 @@ long Op(range_t *g, row_op *p) {
 }
 
 // FILTERS FILTERS FILTERS FILTERS FILTERS FILTERS FILTERS FILTERS FILTERS
-bool passFilters(bt *btr, aobj *akey, void *rrow, list *flist, int tmatch) {
+static bool runLuaFilter(lue_t *le, bt *btr, aobj *apk, void *rrow, int tmatch){
+    CLEAR_LUA_STACK
+    lua_getglobal(server.lua, le->fname);
+    for (int i = 0; i < le->ncols; i++) {
+        pushColumnLua(btr, rrow, tmatch, le->as[i], apk);
+    }
+printf("runLuaFilter: fname: %s ncols: %d\n", le->fname, le->ncols);
+    bool ret = 1;
+    int  r   = lua_pcall(server.lua, le->ncols, 1, 0);
+    if (r) { ret = 0;
+        redisLog(REDIS_WARNING, "Error running LUA FILTER (%s): %s",
+                 le->fname, lua_tostring(server.lua, -1));
+    } else {
+        int t = lua_type(server.lua, -1);
+        if        (t == LUA_TNUMBER)  {
+            ret = lua_tonumber(server.lua, -1) ? 1: 0;
+        } else if (t == LUA_TBOOLEAN) {
+            ret = lua_toboolean(server.lua, -1);
+        } else { ret = 0;
+            redisLog(REDIS_WARNING,
+                 "LUA FILTER (%s): should return BOOLEAN or NUMBER", le->fname);
+        }
+    }
+    CLEAR_LUA_STACK
+    return ret;
+}
+bool passFilters(bt *btr, aobj *apk, void *rrow, list *flist, int tmatch) {
     if (!flist) return 1; /* no filters always passes */
     listNode *ln, *ln2;
     bool      ret = 1;
@@ -560,8 +586,7 @@ bool passFilters(bt *btr, aobj *akey, void *rrow, list *flist, int tmatch) {
     while ((ln = listNext(li))) {
         f_t *flt  = ln->value;
         if (tmatch != flt->tmatch) continue;
-        aobj a    = getCol(btr, rrow, flt->cmatch, akey, tmatch, NULL);
-        //TODO "ls" should be "selectfilterfuncs()"
+        aobj a    = getCol(btr, rrow, flt->cmatch, apk, tmatch, NULL);
         if        (flt->inl) {
             listIter *li2 = listGetIterator(flt->inl, AL_START_HEAD);
             while((ln2 = listNext(li2))) {
@@ -577,11 +602,13 @@ bool passFilters(bt *btr, aobj *akey, void *rrow, list *flist, int tmatch) {
             ret = (*OP_CMP[LE])(&flt->ahigh, &a);
             releaseAobj(&a);
             if (!ret) break;                      /* break OUTER-LOOP on miss */
-        } else {
+        } else if (flt->akey.type != COL_TYPE_NONE) {
             ret = (*OP_CMP[flt->op])(&flt->akey, &a);     //DEBUG_PASS_FILT_KEY
             releaseAobj(&a);
             if (!ret) break;                      /* break OUTER-LOOP on miss */
-        }
+        } else if (flt->le.yes) {
+            ret = runLuaFilter(&flt->le, btr, apk, rrow, tmatch);
+        } else assert(!"passFilters ERROR");
     } listReleaseIterator(li);
     return ret;
 }

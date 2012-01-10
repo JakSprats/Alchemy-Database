@@ -307,16 +307,28 @@ char *get_next_token_nonparaned_comma(char *token) {
    return token;
 }
 
-//NOTE: does not support nesting (e.g. "x,y,foo(bar(a)),z"
-char *get_next_nonparaned_comma(char *token) {
-   char *z = strchr(token, ',');
-   if (!z) return NULL;
-   char *p = strchr(token, '(');
-   if (p && p < z) {
-       char *y = strchr(p, ')');
-       if (y) return strchr(y, ',');
-       else   return NULL;
-   } else return z;
+inline char *get_after_parens(char *p) {
+    int parens = 0;
+    while (*p) {
+        if      (*p == '(')  parens++;
+        else if (*p == ')')  parens--;
+        else if (*p == '\'') p = str_next_unescaped_chr(p, p, '\'');
+        if (!parens) return p;
+        p++;
+    }
+    return NULL;
+}
+char *get_next_nonparaned_comma(char *tkn) {
+    SKIP_SPACES(tkn)
+    if (*tkn == '\'') tkn = str_next_unescaped_chr(tkn, tkn, '\'');
+    char *z = strchr(tkn, ',');
+    if (!z) return NULL;
+    char *p = strchr(tkn, '(');
+    if (p && p < z) {
+        char *y = get_after_parens(p);
+        if (y) return strchr(y, ',');
+        else   return NULL;
+    } else return z;
 }
 
 char *get_next_comma_ignore_quotes_n_parens(char *tkn) {

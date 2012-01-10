@@ -67,8 +67,8 @@ typedef struct embedded_row_t {
 
 typedef bool select_callback(erow_t* erow);
 
-#define NOP 9
-enum OP {NONE, EQ, NE, GT, GE, LT, LE, RQ, IN};
+#define NOP 10 
+enum OP {NONE, EQ, NE, GT, GE, LT, LE, RQ, IN, LFUNC};
 
 //TODO move this into a single struct, that can be bzero'ed
 #define ALCHEMY_CLIENT_EXTENSIONS           \

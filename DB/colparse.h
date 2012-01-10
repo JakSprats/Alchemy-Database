@@ -40,16 +40,22 @@ void incrOffsetVar(redisClient *c, wob_t *wb, long incr);
 bool parseU128 (char *s,             uint128 *x);
 bool parseU128n(char *s, uint32 len, uint128 *x);
 
-char *parseRowVals(sds vals,  char   **pk,        int    *pklen,
-                   int ncols, twoint   cofsts[],  int     tmatch,
-                   int pcols, int      cmatchs[], int     lncols, bool *ai);
+// INSERT
+char *parseRowVals(sds vals,  char   **pk,        int  *pklen,
+                   int ncols, twoint   cofsts[],  int   tmatch,
+                   int pcols, int      cmatchs[], int   lncols, bool *ai);
 
-bool parseCommaSpaceList(cli  *c,         char  *tkn,
-                         bool  col_check, bool   tbl_check, bool    join_check,
-                         bool  exact,     bool   isi,
-        /* COL or TBL */ int   tmatch,    list  *cs,        list   *ls,
-        /* JOIN */       list *ts,        list *jans,       list   *js,
-                         int  *qcols,     bool  *cstar);
+// SELECT
+bool parseCSLSelect(cli  *c,         char  *tkn, 
+                    bool  exact,     bool   isi, 
+                    int   tmatch,    list  *cs,    list   *ls,
+                    int  *qcols,     bool  *cstar);
+
+bool parseCSLJoinTable(cli *c, char *tkn, list *ts, list  *jans);
+
+bool parseCSLJoinColumns(cli  *c,     char  *tkn,  bool  exact,
+                         list *ts,    list  *jans, list *js,
+                         int  *qcols, bool  *cstar);
 
 //TODO convert [fname+ls] to struct[fname,ls[]
 #define CMATCHS_FROM_CMATCHL                                                   \
@@ -74,29 +80,31 @@ bool parseCommaSpaceList(cli  *c,         char  *tkn,
     listReleaseIterator(lic);                                      \
     listRelease(cmatchl); listRelease(mvalsl); listRelease(mvlensl);
 
-
 bool parseSelect(cli  *c,     bool    is_scan, bool *no_wc, int  *tmatch,
                  list *cs,    list   *ls,    int  *qcols, bool *join,
                  bool *cstar, char   *cl,      char *from,  char *tlist, 
                  char *where, bool    chk);
 
-// UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE
+// UPDATE
 int parseUpdateColListReply(cli  *c,  int   tmatch, char *vallist,
                             list *cs, list *vals,   list *vlens);
 
 uchar getExprType(char *pred, int plen);
 int parseExpr(cli *c, int tmatch, int cmatch, char *val, uint32 vlen, ue_t *ue);
-// LUA_UPDATE LUA_UPDATE LUA_UPDATE LUA_UPDATE LUA_UPDATE
+
+// LUA_UPDATE
+bool checkOrCreateLuaFunc(int tmatch, int cmatch, lue_t *le, sds expr);
 void initLUE   (lue_t *le, sds fname, list *lcs);
 void releaseLUE(lue_t *le);
 void destroyLUE(lue_t *le);
 bool parseLuaExpr(int tmatch, int cmatch, char *val, uint32 vlen, lue_t *le);
 
+// CREATE_TABLE
 bool parseColType(cli *c, sds type, uchar *col_type);
 bool parseCreateTable(cli  *c,      list *ctypes, list  *cnames,
                       int  *ccount, sds   as_line);
 
-// PREPARE_EXECUTE PREPARE_EXECUTE PREPARE_EXECUTE PREPARE_EXECUTE
+// PREPARE_EXECUTE
 int    getJTASize();
 uchar *serialiseJTA  (int jtsize);
 int    deserialiseJTA(uchar *x);

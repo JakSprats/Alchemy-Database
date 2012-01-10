@@ -90,8 +90,7 @@ sds override_getKeysFromComm(rcommand *cmd, robj **argv, int argc, bool *err) {
             listNode *ln;
             list *tl   = listCreate(); //TODO combine: [tl & janl] //FREE 105
             list *janl = listCreate();                             //FREE 106
-            if (!parseCommaSpaceList(c, argv[3]->ptr, 0, 1, 0, 0, 0, -1, NULL,
-                                     NULL, tl, janl, NULL, NULL, &Bdum)) {
+            if (!parseCSLJoinTable(c, argv[3]->ptr, tl, janl)) {
                 goto ovrd_sel_end;
             }
             uint32    n_clstr = 0, n_shrd = 0;

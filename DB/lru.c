@@ -158,6 +158,17 @@ inline bool initLRUCS(int tmatch, int cmatchs[], int qcols) {
     }
     return 0;
 }
+inline bool initL_LRUCS(int tmatch, list *cs) {
+    r_tbl_t *rt = &Tbl[tmatch];
+    if (rt->lrud) { listNode *ln;
+        listIter *li = listGetIterator(cs, AL_START_HEAD);
+        while((ln = listNext(li))) {
+            int cm = (int)(long)ln->value;
+            if (cm == rt->lruc) return 1;
+        } listReleaseIterator(li);
+    }
+    return 0;
+}
 inline bool initLRUCS_J(jb_t *jb) {
     for (int i = 0; i < jb->qcols; i++) {
         if (Tbl[jb->js[i].t].lruc == jb->js[i].c) return 1;

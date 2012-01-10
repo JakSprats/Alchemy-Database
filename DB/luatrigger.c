@@ -114,9 +114,8 @@ static bool parseLuatCmd(cli *c, sds cmd, ltc_t *ltc, int tmatch) {
     }
     if (!strlen(tkn)) return 1; // zero args is ok
     list *cmatchl = listCreate();
-    bool  ok      = parseCommaSpaceList(c, tkn, 1, 0, 0, 1, 0, tmatch, cmatchl,
-                                        NULL, NULL, NULL, NULL, 
-                                        &ltc->ncols, NULL);
+    bool  ok      = parseCSLSelect(c, tkn, 1, 0, tmatch, cmatchl,
+                                   NULL, &ltc->ncols, NULL);
     if (ok) {
         ltc->cmatchs = malloc(sizeof(int) * ltc->ncols); // FREE ME 083
         listNode *ln;

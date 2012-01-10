@@ -53,6 +53,18 @@ typedef int printer(const char *format, ...);
 #define COL_TYPE_BOOL         8
 #define COL_TYPE_CNAME        9
 
+#define C_IS_N(ctype)    (ctype == COL_TYPE_NONE)
+#define C_IS_I(ctype)    (ctype == COL_TYPE_INT)
+#define C_IS_L(ctype)    (ctype == COL_TYPE_LONG)
+#define C_IS_S(ctype)    (ctype == COL_TYPE_STRING)
+#define C_IS_F(ctype)    (ctype == COL_TYPE_FLOAT)
+#define C_IS_X(ctype)    (ctype == COL_TYPE_U128)
+#define C_IS_P(ctype)    (ctype == COL_TYPE_FUNC)
+#define C_IS_O(ctype)    (ctype == COL_TYPE_LUAO)
+#define C_IS_B(ctype)    (ctype == COL_TYPE_BOOL)
+#define C_IS_C(ctype)    (ctype == COL_TYPE_CNAME)
+#define C_IS_NUM(ctype) (C_IS_I(ctype) || C_IS_L(ctype) || C_IS_X(ctype))
+
 #define PTR_SIZE    sizeof(char *)
 #define USHORT_SIZE sizeof(unsigned short)
 #define UINT_SIZE   sizeof(unsigned int)
@@ -84,18 +96,6 @@ typedef int printer(const char *format, ...);
 #define INCRBY(x,y) {x = x + y;}
 #define DECR(x)     {x = x - 1;}
 #define DECRBY(x,y) {x = x - y;}
-
-#define C_IS_N(ctype)    (ctype == COL_TYPE_NONE)
-#define C_IS_I(ctype)    (ctype == COL_TYPE_INT)
-#define C_IS_L(ctype)    (ctype == COL_TYPE_LONG)
-#define C_IS_S(ctype)    (ctype == COL_TYPE_STRING)
-#define C_IS_F(ctype)    (ctype == COL_TYPE_FLOAT)
-#define C_IS_X(ctype)    (ctype == COL_TYPE_U128)
-#define C_IS_P(ctype)    (ctype == COL_TYPE_FUNC)
-#define C_IS_O(ctype)    (ctype == COL_TYPE_LUAO)
-#define C_IS_B(ctype)    (ctype == COL_TYPE_BOOL)
-#define C_IS_C(ctype)    (ctype == COL_TYPE_CNAME)
-#define C_IS_NUM(ctype) (C_IS_I(ctype) || C_IS_L(ctype) || C_IS_X(ctype))
 
 #define UETYPE_ERR  0
 #define UETYPE_INT  1 /* also LONG */

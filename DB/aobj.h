@@ -54,6 +54,7 @@ aobj *cloneAobj (aobj *a);
 aobj *copyAobj  (aobj *a); //WARNING: do NOT double free
 
 void  convertSdsToAobj(sds s, aobj *a, uchar ctype);
+aobj *createEmptyAobj();
 aobj *createAobjFromString(char *s, int len, uchar ctype);
 aobj *createAobjFromLong  (ulong l);
 aobj *createAobjFromInt   (uint32 i);

@@ -136,6 +136,8 @@ typedef struct filter {
 
     list    *inl;    /* WHERE ..... AND x IN (1,2,3)                      */
     list    *klist;  /* MCI list of matching (ordered) keys (as f_t) */
+
+    lue_t    le;
 } f_t;
 
 typedef struct lua_trigger_command {

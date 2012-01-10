@@ -33,6 +33,8 @@ ALL RIGHTS RESERVED
 #include "alsosql.h"
 #include "common.h"
 
+void pushColumnLua(bt *btr, uchar *orow, int tmatch, aobj *a, aobj *apk);
+
 void *createRow(cli *c,     aobj *apk,  bt     *btr,      int tmatch,
                 int  ncols, char *vals, twoint  cofsts[]);
 uint32 getRowMallocSize(uchar *stream);

@@ -119,8 +119,6 @@ static bool evalLuaExpr(cli  *c,    int cmatch, uc_t *uc, aobj *apk,
 static void initLOFromCM(aobj *a, aobj *apk, int cmatch, int tmatch, bool fs);
 static void initAobjFromLuaString(lua_State *lua, aobj *a, bool stkd);
 static void initAobjFromLuaNumber(lua_State *lua, aobj *a, bool stkd, bool fs);
-static void pushColumnLua(bt   *btr, uchar *orow, int  tmatch,
-                          aobj *a,   aobj  *apk);
 
 /* CREATE_ROW CREATE_ROW CREATE_ROW CREATE_ROW CREATE_ROW CREATE_ROW */
 typedef struct create_row_ctrl {
@@ -770,9 +768,9 @@ static void initFloatAobjFromVal(aobj *a, float f, bool fs, int cmatch) {
 static void initAobjFromLuaString(lua_State *lua, aobj *a, bool stkd) {
     int        i    = stkd ? 1 : -1;
     int        len  = lua_strlen(lua, i);
-    char      *varr = malloc(len + 1);
+    char      *varr = malloc(len + 1); // +1 not needed but nice for debugging
     memcpy(varr, (char*)lua_tostring(lua, i), len);
-    varr[len]       = '\0';                         printf("varr: %s\n", varr);
+    varr[len]       = '\0';                       //printf("varr: %s\n", varr);
     a->len          = len; a->s = varr; a->type = a->enc = COL_TYPE_STRING;
 }
 static void initAobjFromLuaNumber(lua_State *lua, aobj *a, bool stkd, bool fs) {
@@ -1228,8 +1226,7 @@ up_end:
 }
 
 /* UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR */
-static void pushColumnLua(bt  *btr, uchar *orow, int  tmatch,
-                          aobj *a,  aobj  *apk) {
+void pushColumnLua(bt *btr, uchar *orow, int tmatch, aobj *a, aobj *apk) {
         aobj acol; int ctype = COL_TYPE_NONE;
 printf("pushColumnLua: a: "); dumpAobj(printf, a);
         if        C_IS_C(a->type) {

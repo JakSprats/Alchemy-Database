@@ -27,6 +27,7 @@ ALL RIGHTS RESERVED
 #ifndef __ALCHEMY_LRU__H
 #define __ALCHEMY_LRU__H
 
+#include "adlist.h"
 #include "redis.h"
 
 #include "row.h"
@@ -40,7 +41,8 @@ uint32 getLru(int tmatch);
 void createLruIndex(cli *c);
 void updateLru     (cli *c, int tmatch, aobj *apk, uchar *lruc, bool lrud);
 
-bool initLRUCS(int tmatch, int cmatchs[], int qcols);
+bool initLRUCS  (int tmatch, int   cmatchs[], int qcols);
+bool initL_LRUCS(int tmatch, list *cs);
 bool initLRUCS_J(jb_t *jb);
 
 #define GET_LRUC                                                \

@@ -133,10 +133,20 @@ inline bool initLFUCS(int tmatch, int cmatchs[], int qcols) {
     }
     return 0;
 }
+inline bool initL_LFUCS(int tmatch, list *cs) {
+    r_tbl_t *rt = &Tbl[tmatch];
+    if (rt->lfu) { listNode *ln;
+        listIter *li = listGetIterator(cs, AL_START_HEAD);
+        while((ln = listNext(li))) {
+            int cm = (int)(long)ln->value;
+            if (cm == rt->lfuc) return 1;
+        } listReleaseIterator(li);
+    }
+    return 0;
+}   
 inline bool initLFUCS_J(jb_t *jb) {
     for (int i = 0; i < jb->qcols; i++) {
         if (Tbl[jb->js[i].t].lfuc == jb->js[i].c) return 1;
     }
     return 0;
 }
-

@@ -114,6 +114,9 @@ void initAobjFromLong(aobj *a, ulong l, uchar ctype) {
         a->x    = l;         a->enc = a->type = COL_TYPE_U128;
     } else { assert(!"initAobjFromLong must be INT|LONG"); }
 }
+aobj *createEmptyAobj() {
+    aobj *a = (aobj *)malloc(sizeof(aobj)); initAobj(a); return a;
+}
 aobj *createAobjFromString(char *s, int len, uchar ctype) {
     aobj *a = (aobj *)malloc(sizeof(aobj));
     initAobjFromStr(a, s, len, ctype); return a;

@@ -71,11 +71,11 @@ char  OUTPUT_DELIM = ',';
 
 /* enum OP              {NONE,   EQ,     NE,     GT,     GE,     LT,    LE}; */
 char *OP_Desc   [NOP] = {"",    "=",    "!=",   ">",    ">=",   "<",   "<=", 
-                            "RangeQuery", "IN"};
+                            "RangeQuery", "IN", "LuaFunction"};
 uchar OP_len    [NOP] = {0,      1,      2,      1,      2,      1,     2,
-                            -1,           -1};
+                            -1,           -1,    -1};
 aobj_cmp *OP_CMP[NOP] = {NULL, aobjEQ, aobjNE, aobjLT, aobjLE, aobjGT, aobjGE,
-                            NULL,         NULL};
+                            NULL,         NULL,  NULL};
 /* NOTE ranges (<,<=,>,>=) comparison functions are opposite of intuition */
 
 char *RangeType[5] = {"ERROR", "SINGLE_PK", "RANGE", "IN", "SINGLE_FK"};
@@ -213,21 +213,38 @@ static bool checkRepeatHashCnames(cli *c, int tmatch) {
             }}}
     return 1;
 }
-static bool checkRepeatInsertCnames(cli *c, int *cmatchs, int matches) {
-    if (matches < 2) return 1;
-    for (int i = 0; i < matches; i++) {
-        for (int j = 0; j < matches; j++) { if (i == j) continue;
-            if (cmatchs[i] > 0 && cmatchs[i] == cmatchs[j]) {
-                addReply(c, shared.nonuniquecolumns); return 0;
-            }}}
-    return 1;
-
-}
 static void resetTCNames(int tmatch) {
     r_tbl_t *rt  = &Tbl[tmatch]; if (!rt->tcols) return;
     for (uint32 i = 0; i < rt->tcols; i++) sdsfree(rt->tcnames[i]); //FREED 107
     free(rt->tcnames);                                              //FREED 106
     rt->tcnames = NULL; rt->tcols = 0; rt->ctcol = 0;
+}
+static bool insertColDeclParse(cli *c,       robj **argv, int tmatch, int *valc,
+                              list *cmatchl, list *ls,    int *pcols) {
+    r_tbl_t *rt   = &Tbl[tmatch];
+    bool     ok   = 0;
+    sds      cols = argv[*valc]->ptr;
+    if (cols[0] == '(' && cols[sdslen(cols) - 1] == ')' ) { /* COL DECL */
+        STACK_STRDUP(clist, (cols + 1), (sdslen(cols) - 2));
+        if (!parseCSLSelect(c, clist, 0, 1, tmatch, cmatchl,
+                                       ls, pcols, NULL))   return 0;
+        if (rt->tcols && !checkRepeatHashCnames(c, tmatch)) return 0;
+        if (*pcols) {
+            if (initL_LRUCS(tmatch, cmatchl)) { /* LRU in ColDecl */
+                addReply(c, shared.insert_lru);             return 0;
+            }
+            if (initL_LFUCS(tmatch, cmatchl)) { /* LFU in ColDecl */
+                addReply(c, shared.insert_lfu);             return 0;
+            }
+            int cm0 = (int)(long)cmatchl->head->value;
+            if (OTHER_BT(getBtr(tmatch)) && *pcols != 2 && !cm0) {
+                addReply(c, shared.part_insert_other);      return 0;
+            }
+            INCR(*valc); if (!strcasecmp(argv[*valc]->ptr, "VALUES")) ok = 1;
+        }
+    }
+    if (!ok) addReply(c, shared.insertsyntax_no_values);
+    return ok;
 }
 void insertParse(cli *c, robj **argv, bool repl, int tmatch,
                  bool parse, sds *key) {
@@ -238,31 +255,8 @@ void insertParse(cli *c, robj **argv, bool repl, int tmatch,
     int      pcols   = 0;
     int      valc    = 3;
     if (strcasecmp(argv[valc]->ptr, "VALUES")) {//TODO break block into func
-        bool ok   = 0;
-        sds  cols = argv[valc]->ptr;
-        if (cols[0] == '(' && cols[sdslen(cols) - 1] == ')' ) { /* COL DECL */
-            STACK_STRDUP(clist, (cols + 1), (sdslen(cols) - 2));
-            if (!parseCommaSpaceList(c, clist, 1, 0, 0, 0, 1, tmatch, cmatchl,
-                                     ls, NULL, NULL, NULL,
-                                     &pcols, NULL))             goto insprserr;
-            if (rt->tcols && !checkRepeatHashCnames(c, tmatch)) goto insprserr;
-            CMATCHS_FROM_CMATCHL //TODO unneeded work, need: initLRUCS(cmatchl)
-            if (!checkRepeatInsertCnames(c, cmatchs, matches))  goto insprserr;
-            if (pcols) {
-                if (initLRUCS(tmatch, cmatchs, pcols)) { /* LRU in ColDecl */
-                    addReply(c, shared.insert_lru);             goto insprserr;
-                }
-                if (initLFUCS(tmatch, cmatchs, pcols)) { /* LFU in ColDecl */
-                    addReply(c, shared.insert_lfu);             goto insprserr;
-                }
-                if (OTHER_BT(getBtr(tmatch)) && pcols != 2 && !cmatchs[0]) {
-                    addReply(c, shared.part_insert_other);      goto insprserr;
-                }
-                valc++; if (!strcasecmp(argv[valc]->ptr, "VALUES")) ok = 1;
-            }
-        }
-        if (!ok) { addReply(c, shared.insertsyntax_no_values);  goto insprserr;}
-
+        if (!insertColDeclParse(c, argv, tmatch, &valc, cmatchl, ls, &pcols))
+                                                   goto insprserr;
     }
     bool print = 0; uint32 upd = 0; int largc = c->argc;
     if (largc > 5) {
@@ -276,7 +270,7 @@ void insertParse(cli *c, robj **argv, bool repl, int tmatch,
         }}
     }
     if (upd && repl) {
-        addReply(c, shared.insert_replace_update);             goto insprserr;
+        addReply(c, shared.insert_replace_update); goto insprserr;
     }
     uchar ret    = INS_ERR; uint32 tsize = 0;
     ncols       += rt->tcols; // ADD in HASHABILITY columns
@@ -285,7 +279,7 @@ void insertParse(cli *c, robj **argv, bool repl, int tmatch,
         ret = insertCommit(c, uset, argv[i]->ptr, ncols, tmatch, matches, inds,
                            pcols, cmatchl, repl, upd, print ? &tsize : NULL,
                            parse, key);
-        if (ret == INS_ERR)                                    goto insprserr;
+        if (ret == INS_ERR)                        goto insprserr;
     }
     if (print) addRowSizeReply(c, tmatch, getBtr(tmatch), tsize);
     else       addReply(c, shared.ok);
@@ -451,9 +445,7 @@ bool sqlSelectBinary(cli   *c, int tmatch, bool cstar, int *cmatchs, int qcols,
 bool sqlSelectInnards(cli *c,       sds  clist, sds from, sds tlist, sds where,
                       sds  wclause, bool chk,   bool need_cn) {
     CREATE_CS_LS_LIST(1)
-    bool  cstar   =  0; bool  join    =  0; bool ret = 0;
-    int   qcols   =  0; int   tmatch  = -1;
-
+    bool cstar = 0; bool join = 0; int qcols = 0; int tmatch  = -1;
     if (!parseSelect(c, 0, NULL, &tmatch, cmatchl, ls, &qcols, &join, &cstar,
                      clist, from, tlist, where, chk)) {
                 RELEASE_CS_LS_LIST                                  return 0;
@@ -462,7 +454,7 @@ bool sqlSelectInnards(cli *c,       sds  clist, sds from, sds tlist, sds where,
         return doJoin(c, clist, tlist, wclause); //TODO joinBinary() w/ need_cn
     }
     CMATCHS_FROM_CMATCHL
-    lfca_t lfca; initLFCA(&lfca, ls);
+    lfca_t lfca; initLFCA(&lfca, ls); bool ret = 0;
 
     c->LruColInSelect = initLRUCS(tmatch, cmatchs, qcols);
     c->LfuColInSelect = initLFUCS(tmatch, cmatchs, qcols);

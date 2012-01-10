@@ -69,6 +69,11 @@ char *str_matching_end_paren(char *beg);
 #define ISBLANK(c) (c == 32 || c == 9)
 #define SKIP_SPACES(tok)     while (ISBLANK(*tok)) tok++;
 #define REV_SKIP_SPACES(tok) while (ISBLANK(*tok) || !*tok) tok--;
+#define ISLPAREN(c) (c == '(')
+#define SKIP_LPAREN(tok)     while (ISLPAREN(*tok) || ISBLANK(*tok)) tok++;
+#define ISRPAREN(c) (c == ')')
+#define REV_SKIP_RPAREN(tok) \
+  while (ISRPAREN(*tok) || !*tok || ISBLANK(*tok)) tok--;
 
 #define S_CR8_SOBJ(s) createStringObject(s, sdslen(s))
 
@@ -82,6 +87,8 @@ int   get_tlen_delim3(char *nextp, char x, char z);
 char *next_token_delim3(char *p, char x, char z);
 char *get_next_token_nonparaned_comma(char *token);
 char *get_next_comma_ignore_quotes_n_parens(char *tkn);
+
+char *get_after_parens(char *p);
 char *get_next_nonparaned_comma(char *token);
 
 char *new_unescaped(char *s, char x, uint32 len, uint32 *nlen);
