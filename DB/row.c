@@ -562,18 +562,15 @@ static aobj getRC_OBT(bt *btr, void *orow, int cmatch, aobj *apk, bool fs) {
 //TODO aobj *
 static aobj getRC_LFunc(bt *btr, uchar *orow, int tmatch, aobj *apk, bool fs,
                         lfca_t *lfca) {
-    aobj a; initAobj(&a);
-    lue_t *lue = lfca->l[lfca->curr]; lfca->curr++;
-    CLEAR_LUA_STACK
-    lua_getglobal(server.lua, lue->fname);
-    for (int i = 0; i < lue->ncols; i++) {
-        pushColumnLua(btr, orow, tmatch, lue->as[i], apk);
+    aobj a; initAobj(&a); lue_t *le = lfca->l[lfca->curr]; lfca->curr++;
+    CLEAR_LUA_STACK lua_getglobal(server.lua, le->fname);
+    for (int i = 0; i < le->ncols; i++) {
+        pushColumnLua(btr, orow, tmatch, le->as[i], apk);
     }
-printf("getRC_LFunc: top: %d ncols: %d\n", lua_gettop(server.lua), lue->ncols);
-    int ret = lua_pcall(server.lua, lue->ncols, 1, 0);
+    int ret = lua_pcall(server.lua, le->ncols, 1, 0);
     if (ret) {
         redisLog(REDIS_WARNING, "Error running SELECT FUNCTION (%s): %s",
-                 lue->fname, lua_tostring(server.lua, -1));
+                 le->fname, lua_tostring(server.lua, -1));
         initAobjZeroNum(&a, COL_TYPE_INT);
     } else {
         int t = lua_type(server.lua, -1);
@@ -585,7 +582,7 @@ printf("getRC_LFunc: top: %d ncols: %d\n", lua_gettop(server.lua), lue->ncols);
             initAobjBool(&a, lua_toboolean(server.lua, -1));
         } else {
             redisLog(REDIS_WARNING, "Unsupported return type for script (%s):",
-                     lue->fname);
+                     le->fname);
         }
     }
     CLEAR_LUA_STACK return a;

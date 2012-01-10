@@ -152,11 +152,13 @@ typedef struct lua_trigger {
     ushort16  num; /* Index[num] */
 } luat_t;
 
+//TODO make all the [MAX_ORDER_BY_COLS] stack allocated
 typedef struct where_clause_order_by {
     uint32  nob;                       /* number ORDER BY columns             */
     int     obc[MAX_ORDER_BY_COLS];    /* ORDER BY col                        */
     int     obt[MAX_ORDER_BY_COLS];    /* ORDER BY tbl -> JOINS               */
     bool    asc[MAX_ORDER_BY_COLS];    /* ORDER BY ASC/DESC                   */
+    lue_t   le [MAX_ORDER_BY_COLS];    /* ORDER BY LuaFunction                */
     long    lim;                       /* ORDER BY LIMIT                      */
     long    ofst;                      /* ORDER BY OFFSET                     */
     sds     ovar;                      /* OFFSET varname - used by cursors    */

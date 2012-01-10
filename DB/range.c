@@ -553,12 +553,10 @@ long Op(range_t *g, row_op *p) {
 
 // FILTERS FILTERS FILTERS FILTERS FILTERS FILTERS FILTERS FILTERS FILTERS
 static bool runLuaFilter(lue_t *le, bt *btr, aobj *apk, void *rrow, int tmatch){
-    CLEAR_LUA_STACK
-    lua_getglobal(server.lua, le->fname);
+    CLEAR_LUA_STACK lua_getglobal(server.lua, le->fname);
     for (int i = 0; i < le->ncols; i++) {
         pushColumnLua(btr, rrow, tmatch, le->as[i], apk);
-    }
-printf("runLuaFilter: fname: %s ncols: %d\n", le->fname, le->ncols);
+    } printf("runLuaFilter: fname: %s ncols: %d\n", le->fname, le->ncols);
     bool ret = 1;
     int  r   = lua_pcall(server.lua, le->ncols, 1, 0);
     if (r) { ret = 0;
@@ -575,8 +573,7 @@ printf("runLuaFilter: fname: %s ncols: %d\n", le->fname, le->ncols);
                  "LUA FILTER (%s): should return BOOLEAN or NUMBER", le->fname);
         }
     }
-    CLEAR_LUA_STACK
-    return ret;
+    CLEAR_LUA_STACK return ret;
 }
 bool passFilters(bt *btr, aobj *apk, void *rrow, list *flist, int tmatch) {
     if (!flist) return 1; /* no filters always passes */
@@ -623,8 +620,8 @@ static bool select_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
                             apk, tmatch, g->se.lfca);
         if (!r) return 1; // from LUA_SEL_FUNC returning BOOL
         if (q) {
-            addRow2OBList(g->co.ll, g->co.wb, g->co.btr, r, g->co.ofree,
-                          rrow, apk);
+            if (!addRow2OBList(g->co.ll, g->co.wb, g->co.btr, r, g->co.ofree,
+                          rrow, apk)) ret = 0;
         } else {
             GET_LRUC GET_LFUC
             if (!addReplyRow(g->co.c, r, tmatch, apk, lruc, lrud, lfuc, lfu)) {
@@ -687,18 +684,19 @@ isele:
 typedef list *list_adder(list *list, void *value);
 static bool dellist_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
 printf("START: dellist_op: asc: %d\n", g->asc);
+    bool ret = 1;
     if (!passFilters(g->co.btr, apk, rrow,
                      g->co.w->flist, g->co.w->wf.tmatch)) return 1;
     if (q) {
-        addRow2OBList(g->co.ll, g->co.wb, g->co.btr, apk, g->co.ofree,
-                      rrow, apk);
+        if (!addRow2OBList(g->co.ll, g->co.wb, g->co.btr, apk, g->co.ofree,
+                      rrow, apk)) ret = 0;
     } else {
 printf("dellist_op: adding: key: "); dumpAobj(printf, apk);
         aobj *cln  = cloneAobj(apk); //NOTE: next line builds BACKWARDS list
         list_adder *la = g->asc ? listAddNodeHead : listAddNodeTail;
         (*la)(g->co.ll, cln); /* UGLY: build list of PKs to delete */
     }
-    INCR(*card) return 1;
+    INCR(*card) return ret;
 }
 static void opDeleteSort(list *ll,    cswc_t *w,      wob_t *wb,   bool  ofree,
                          long  *sent, int     matches, int   inds[]) {
@@ -746,16 +744,17 @@ idel_end:
 static bool update_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
     if (!passFilters(g->co.btr, apk, rrow,
                      g->co.w->flist, g->co.w->wf.tmatch)) return 1;
+    bool ret = 1;
     if (q) {
-        addRow2OBList(g->co.ll, g->co.wb, g->co.btr, apk, g->co.ofree,
-                      rrow, apk);
+        if (!addRow2OBList(g->co.ll, g->co.wb, g->co.btr, apk, g->co.ofree,
+                      rrow, apk)) ret = 0;
     } else {
 printf("update_op: adding: key: "); dumpAobj(printf, apk);
         //TODO non-FK/PK updates can be done HERE inline (w/o Qing in the ll)
         aobj *cln  = cloneAobj(apk);
         listAddNodeTail(g->co.ll, cln); /* UGLY: build list of PKs to update */
     }
-    INCR(*card) return 1;
+    INCR(*card) return ret;
 }
 static bool opUpdateSort(cli   *c,   list *ll,    cswc_t  *w,
                          wob_t *wb,  bool  ofree, long    *sent,

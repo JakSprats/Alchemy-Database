@@ -29,6 +29,7 @@ ALL RIGHTS RESERVED
 #include <strings.h>
 #include <unistd.h>
 #include <float.h>
+#include <assert.h>
 
 #include "redis.h"
 #include "adlist.h"
@@ -98,12 +99,13 @@ static int stringOrderByRevSort(const void *s1, const void *s2) {
 
 typedef int ob_cmp(const void *, const void *);
 /* slot = OB_ctype[j] * 2 + OB_asc[j] */
-ob_cmp (*OB_cmp[12]) = { NULL,                 NULL,               // CTYPE: 0
+ob_cmp (*OB_cmp[14]) = { NULL,                 NULL,               // CTYPE: 0
                          intOrderByRevSort,    intOrderBySort,     // CTYPE: 1
                          ulongOrderByRevSort,  ulongOrderBySort,   // CTYPE: 2
                          stringOrderByRevSort, stringOrderBySort,  // CTYPE: 3
                          floatOrderByRevSort,  floatOrderBySort,   // CTYPE: 4
-                         u128OrderByRevSort,   u128OrderBySort  }; // CTYPE: 4
+                         u128OrderByRevSort,   u128OrderBySort,    // CTYPE: 5
+                         ulongOrderByRevSort,  ulongOrderBySort};  // CTYPE: 6
 
 int genOBsort(const void *s1, const void *s2) {
     int     ret = 0;
@@ -121,7 +123,8 @@ list *initOBsort(bool qed, wob_t *wb, bool rcrud) {
     if (OB_nob) {
         for (uint32 i = 0; i < OB_nob; i++) {
             OB_asc[i]   = wb->asc[i];
-            OB_ctype[i] = Tbl[wb->obt[i]].col[wb->obc[i]].type;
+            OB_ctype[i] = wb->le[i].yes ? COL_TYPE_LUAO :
+                                          Tbl[wb->obt[i]].col[wb->obc[i]].type;
         }}                                                    // \/ DESTROY 009
     if (qed) {                                           return listCreate();
     } else if (rcrud) {
@@ -129,8 +132,7 @@ list *initOBsort(bool qed, wob_t *wb, bool rcrud) {
     } else                                               return NULL;
 }
 void releaseOBsort(list *ll) {
-    if (ll) listRelease(ll);                             /* DESTROYED 009 */
-    OB_nob = 0;
+    OB_nob = 0; if (ll) listRelease(ll);                 // DESTROYED 009
 }
 
 obsl_t *create_obsl(void *row, uint32 nob) {
@@ -174,38 +176,77 @@ void assignObEmptyKey(obsl_t *ob, uchar ctype, int i) {
     if      C_IS_X  (ctype) ob->keys[i] = NULL;
     if      C_IS_NUM(ctype) ob->keys[i] = 0; // I or L
     else if C_IS_F  (ctype) memcpy(&ob->keys[i], &Fmin, FSIZE);
-    else /* C_IS_S()   */   ob->keys[i] = NULL;
+    else if C_IS_S  (ctype) ob->keys[i] = NULL;
+    else            assert(!"assignObEmptyKey ERROR");
 }
-void assignObKey(wob_t *wb, bt *btr, void *rrow, aobj *apk, int i, obsl_t *ob) {
+
+static bool assignObKeyLuaFunc(wob_t *wb, bt     *btr, void *rrow, aobj *apk,
+                               int    i,  obsl_t *ob,  int   tmatch) {
+printf("assignObKey LE: fname: %s ncols: %d\n", wb->le[i].fname, wb->le[i].ncols);
+    void  *key;
+    CLEAR_LUA_STACK lua_getglobal(server.lua, wb->le[i].fname);
+    for (int i = 0; i < wb->le[i].ncols; i++) {
+        pushColumnLua(btr, rrow, tmatch, wb->le[i].as[i], apk);
+    }
+    bool ret = 1;
+    int  r   = lua_pcall(server.lua, wb->le[i].ncols, 1, 0);
+    if (r) { ret = 0; //TODO pass info on to client
+        redisLog(REDIS_WARNING, "Error running ORDER BY FUNCTION (%s): %s",
+                 wb->le[i].fname, lua_tostring(server.lua, -1));
+    } else {
+        int t = lua_type(server.lua, -1);
+        if        (t == LUA_TNUMBER) {
+            key = (void *)(long)lua_tonumber (server.lua, -1);
+        } else if (t == LUA_TBOOLEAN) {
+            key = (void *)(long)lua_toboolean(server.lua, -1);
+        } else { ret = 0; //TODO pass info on to client
+            redisLog(REDIS_WARNING, "Error ORDER BY FUNCTION (%s): %s",
+                     wb->le[i].fname, "use NUMBER or BOOLEAN return types");
+        }
+    }
+    ob->keys[i] = key; CLEAR_LUA_STACK return ret;
+}
+bool assignObKey(wob_t *wb, bt     *btr, void *rrow, aobj *apk,
+                 int    i,  obsl_t *ob,  int   tmatch) {
+    if (wb->le[i].yes) {
+        return assignObKeyLuaFunc(wb, btr, rrow, apk, i, ob, tmatch);
+    }
     void  *key;
     uchar  ctype = Tbl[wb->obt[i]].col[wb->obc[i]].type;
-    //TODO this is a repetitive getCol() call & w/ LUAOBJ's non-deterministic
+    //TODO this is a repetitive getCol() call
     aobj   ao    = getCol(btr, rrow, wb->obc[i], apk, wb->obt[i], NULL);
-    //TODO "ls" would make for interesting ORDER BY's
     if      C_IS_I(ctype) key = VOIDINT ao.i;
     else if C_IS_L(ctype) key = (void *)ao.l;
     else if C_IS_X(ctype) { uint128 *x = malloc(16); *x = ao.x; key = x; }
     else if C_IS_F(ctype) memcpy(&(key), &ao.f, FSIZE);
-    else {//C_IS_S
+    else if C_IS_S(ctype) {
         char *s   = malloc(ao.len + 1);                  /* FREE ME 003 */
         memcpy(s, ao.s, ao.len); /* memcpy needed ao.s maybe decoded(freeme) */
         s[ao.len] = '\0';   key       = s;
-    } releaseAobj(&ao);
+    } else assert(!"assignObKey ERROR");
+    releaseAobj(&ao);
     ob->keys[i] = key;
+    return 1;
 }
 /* Range Query API */
-void addRow2OBList(list   *ll,    wob_t  *wb,   bt     *btr, void   *r,
+bool addRow2OBList(list   *ll,    wob_t  *wb,   bt     *btr, void   *r,
                    bool    ofree, void   *rrow, aobj   *apk) {
     void   *row;
     int     tmatch = wb->obt[0]; /* function ONLY FOR RANGE_QEURIES */
     if (ofree == OBY_FREE_ROBJ)   row = cloneRobj((robj *)r); /* DEST 005 */
     else /*      OBY_FREE_AOBJ */ row = cloneAobj((aobj *)r); /* DEST 029 */
     obsl_t *ob  = create_obsl(row, wb->nob);             /* FREE ME 001 */
-    for (uint32 i = 0; i < wb->nob; i++) assignObKey(wb, btr, rrow, apk, i, ob);
+    for (uint32 i = 0; i < wb->nob; i++) {
+        if (!assignObKey(wb, btr, rrow, apk, i, ob, tmatch)) goto addrow2oberr;
+    }
     ob->apk = cloneAobj(apk);                           /* DESTROY ME 071 */
     GET_LRUC ob->lruc = lruc; ob->lrud = lrud; // updateLRU (SELECT ORDER BY)
     GET_LFUC ob->lfuc = lfuc; ob->lfu  = lfu;  // updateLFU (SELECT ORDER BY)
     listAddNodeTail(ll, ob);
+    return 1;
+
+addrow2oberr:
+    destroy_obsl(ob, ofree); return 0;
 }
 obsl_t **sortOB2Vector(list *ll) {
     listNode  *ln;
@@ -214,8 +255,7 @@ obsl_t **sortOB2Vector(list *ll) {
     int        j      = 0;
     listIter *li      = listGetIterator(ll, AL_START_HEAD);
     while((ln = listNext(li))) {
-        vector[j] = (obsl_t *)ln->value;
-        j++;
+        vector[j] = (obsl_t *)ln->value; j++;
     } listReleaseIterator(li);
     qsort(vector, vlen, sizeof(obsl_t *), genOBsort);
     return vector;

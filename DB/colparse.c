@@ -62,8 +62,6 @@ uint32   Num_Ignore_KW    = 5;
 // PROTOTYPES
 // from ddl.h
 void addColumn(int tmatch, char *cname, int ctype);
-// local
-static bool parseCommaListToAobjs(char *tkn, int tmatch, list *as);
 
 // CURSORS CURSORS CURSORS CURSORS CURSORS CURSORS CURSORS CURSORS
 /* set "OFFSET var" for next cursor iteration */
@@ -266,7 +264,7 @@ printf("parseSelCol: clen: %d cname: %s cmatch: %d\n", clen, cname, cmatch);
         lue_t *le   = malloc(sizeof(lue_t));             // FREE ME 130
         bzero(le, sizeof(lue_t));
         sds    expr = sdsnewlen(cname, clen);            // FREE ME 129
-        bool   ret  = checkOrCreateLuaFunc(tmatch, ls->len, le, expr);
+        bool   ret  = checkOrCreateLuaFunc(tmatch, ls->len, le, expr, NULL);
         sdsfree(expr);                                   // FREED 129
         if (ret) {
             listAddNodeTail(ls, le);
@@ -561,7 +559,7 @@ void releaseLUE(lue_t *le) {
 }
 void destroyLUE(lue_t *le) { releaseLUE(le); free(le); }
 
-static bool parseCommaListToAobjs(char *tkn, int tmatch, list *as) {
+bool parseCommaListToAobjs(char *tkn, int tmatch, list *as) {
 printf("parseCommaListToAobjs: tkn: %s\n", tkn);
     while (1) {
         int   len; SKIP_SPACES(tkn)
@@ -600,54 +598,36 @@ printf("parseCommaListToAobjs: a: "); dumpAobj(printf, a);
         listAddNodeTail(as, a);
         if (!nextc) break;
         tkn = nextc + 1;
+printf("parseCommaListToAobjs: nextc: %p tkn: %p\n", nextc, tkn);
     }
     return 1;
 }
-static bool checkExprIsFunc(char *expr, lue_t *le, int tmatch) {
-printf("checkExprIsFunc: expr: %s\n", expr);
-    bool  isfunc = 0;
+
+bool isLuaFunc(char *expr, sds *fname, sds *argt, char **fin) {
     char *lparen = strchr(expr ,'(');
     if (lparen && lparen != expr) { 
         char *olparen = lparen;
         char *rparen  = get_after_parens(lparen);
         if (rparen) {
-            char *orparen = rparen;
+            char *orparen = rparen; char *corparen = rparen;
             rparen++; SKIP_SPACES(rparen);
-            if ((rparen - expr) == (uint32)sdslen(expr)) {
-                char *sfunc = NULL; uint32 flen = 0;
-                isfunc = 1; // e.g. SET c4=update_func(,,)
-                char *sexpr = expr; SKIP_SPACES(sexpr)
-                if (!ISALPHA(*sexpr)) isfunc = 0;
+            if (fin || (rparen - expr) == (uint32)sdslen(expr)) {
+                char *sexpr  = expr; SKIP_SPACES(sexpr)
+                if (!ISALPHA(*sexpr)) return 0;
                 else {
                     char *begfn = sexpr; char *endfn = sexpr;
                     lparen--; REV_SKIP_SPACES(lparen)
                     while (sexpr <= lparen) {
                         bool isan = ISALNUM(*sexpr); bool isb = ISBLANK(*sexpr);
                         bool isun = (*sexpr == '_');
-                        if (!isan && !isb && !isun) { isfunc = 0; break; }
+                        if (!isan && !isb && !isun) return 0;
                         if (isan || !isun) endfn = sexpr;
                         sexpr++;
                     }
-                    if (isfunc) { sfunc = begfn; flen = endfn - begfn + 1; }
-                }
-                if (isfunc) { le->yes = 1;
-                    sds fname = sdsnewlen(sfunc, flen);
-                    lua_getglobal(server.lua, fname);
-                    int t = lua_type(server.lua, 1); CLEAR_LUA_STACK
-                    if (t != LUA_TFUNCTION) { 
-                        le->yes = 0; sdsfree(fname); return 0;
-                    }
-                    SKIP_LPAREN(olparen) REV_SKIP_RPAREN(orparen)
-                    sds   argt = sdsnewlen(olparen, ((orparen - olparen) + 1));
-                    list *lcs  = listCreate();
-                    int   ret  = parseCommaListToAobjs(argt, tmatch, lcs);
-                    sdsfree(argt);
-                    if (!ret) {
-                        le->yes   = 0; sdsfree(fname);
-                        lcs->free = destroyAobj; listRelease(lcs); return 0;
-                    }
-                    initLUE(le, fname, lcs);
-                    sdsfree(fname); lcs->free = destroyAobj; listRelease(lcs);
+                    *fname = sdsnewlen(begfn, endfn - begfn + 1); //FREE 133
+                    SKIP_LPAREN(olparen) REV_SKIP_RPAREN(orparen) //FREE 134
+                    *argt = sdsnewlen(olparen, ((orparen - olparen) + 1));
+                    if (fin) *fin = corparen + 1;
                     return 1;
                 }
             }
@@ -655,10 +635,33 @@ printf("checkExprIsFunc: expr: %s\n", expr);
     }
     return 0;
 }
-bool checkOrCreateLuaFunc(int tmatch, int cmatch, lue_t *le, sds expr) {
+bool luaFuncDefined(sds fname) {
+    lua_getglobal(server.lua, fname);
+    int t = lua_type(server.lua, 1); CLEAR_LUA_STACK
+    return (t == LUA_TFUNCTION);
+}
+static bool checkExprIsFunc(char *expr, lue_t *le, int tmatch, char **fin) {
+printf("checkExprIsFunc: expr: %s\n", expr);
+    char *cfin  = fin ? *fin : NULL;
+    sds   fname = NULL; sds argt = NULL; list *lcs = NULL; bool ret = 0;
+    if (isLuaFunc(expr, &fname, &argt, fin) && luaFuncDefined(fname)) {
+        lcs   = listCreate();                                  // FREE 135
+        int r = parseCommaListToAobjs(argt, tmatch, lcs);
+        if (!r)                     { ret = 0; goto check_expr_end; }
+        initLUE(le, fname, lcs); ret = 1;
+    }
+
+check_expr_end:
+    if (!ret && fin) *fin = cfin;
+    if (argt)  sdsfree(argt); if (fname) sdsfree(fname);      // FREED 133,134
+    if (lcs)   { lcs->free = destroyAobj; listRelease(lcs); } // FREED 135
+    return ret;
+}
+bool checkOrCreateLuaFunc(int tmatch, int cmatch, lue_t *le, sds expr,
+                          char **fin) {
 printf("checkOrCreateLuaFunc\n");
     if (!Inited_LuaDlms) { init_LuaDlms(); Inited_LuaDlms = 1; }
-    if (checkExprIsFunc(expr, le, tmatch)) return 1;
+    if (checkExprIsFunc(expr, le, tmatch, fin)) return 1;
     r_tbl_t *rt    = &Tbl[tmatch];
     char    *beg   = expr, *s = expr;
     sds      mexpr = sdsempty();                              // FREE ME 098
@@ -716,7 +719,7 @@ prs_lua_expr_end:
 }
 bool parseLuaExpr(int tmatch, int cmatch, char *val, uint32 vlen, lue_t *le) {
     sds  expr = sdsnewlen(val, vlen);                    // FREE ME 097
-    bool ret  = checkOrCreateLuaFunc(tmatch, cmatch, le, expr);
+    bool ret  = checkOrCreateLuaFunc(tmatch, cmatch, le, expr, NULL);
     sdsfree(expr);                                       // FREED 097
     return ret;
 }

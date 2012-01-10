@@ -310,6 +310,9 @@ void init_wob(wob_t *wb) {
 }
 void destroy_wob(wob_t *wb) {
     if (wb->ovar) sdsfree(wb->ovar);
+    for (uint32 i = 0; i < wb->nob; i++) {
+        if (wb->le[i].yes) releaseLUE(&wb->le[i]); 
+    }
 }
 
 // SERIALISE_WB SERIALISE_WB SERIALISE_WB SERIALISE_WB SERIALISE_WB

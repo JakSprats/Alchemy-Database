@@ -48,8 +48,8 @@ typedef int printer(const char *format, ...);
 #define COL_TYPE_STRING       3
 #define COL_TYPE_FLOAT        4
 #define COL_TYPE_U128         5
-#define COL_TYPE_FUNC         6
-#define COL_TYPE_LUAO         7
+#define COL_TYPE_LUAO         6
+#define COL_TYPE_FUNC         7
 #define COL_TYPE_BOOL         8
 #define COL_TYPE_CNAME        9
 

@@ -37,8 +37,6 @@ ALL RIGHTS RESERVED
 extern r_tbl_t *Tbl;
 extern cli     *CurrClient;
 
-static bool Bdum;
-
 //TODO when parsing work is done in these functions
 //      it does not need to be done AGAIN (store globally)
 

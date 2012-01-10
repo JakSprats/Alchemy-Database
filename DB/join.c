@@ -266,7 +266,7 @@ static bool join_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
             if (jb->wb.obt[i] == tmatch) {
                 int tm = jb->wb.obt[i]; int cm = jb->wb.obc[i];
                 uchar ctype = (cm == -1) ? COL_TYPE_NONE : Tbl[tm].col[cm].type;
-                assignObKey(&jb->wb, g->co.btr, rrow, apk, i, jb->ob);
+                assignObKey(&jb->wb, g->co.btr, rrow, apk, i, jb->ob, tm);
                 if (C_IS_S(ctype)) obfreei[obnfree++] = i;
             }
         }
