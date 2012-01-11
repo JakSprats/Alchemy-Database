@@ -243,7 +243,9 @@ static bool join_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
     cswc_t *w      = g->co.w; /* code compaction */
     int     tmatch = w->wf.tmatch; /* code compaction */
     list   *flist  = jb->ij[g->co.lvl].flist;                      //JOP_DEBUG_0
-    if (!passFilters(g->co.btr, apk, rrow, flist, tmatch)) return 1;
+    bool    hf     = 0;
+    bool  pret     = passFilts(g->co.btr, apk, rrow, flist, tmatch, &hf);
+    if (hf) return 0; if (!pret) return 1;
     char *freeme[g->se.qcols];                                     //JOP_DEBUG_1
     int   nfree = 0;
     for (int i = 0; i < g->se.qcols; i++) { // Extract queried columns
@@ -266,23 +268,23 @@ static bool join_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
             if (jb->wb.obt[i] == tmatch) {
                 int tm = jb->wb.obt[i]; int cm = jb->wb.obc[i];
                 uchar ctype = (cm == -1) ? COL_TYPE_NONE : Tbl[tm].col[cm].type;
-                assignObKey(&jb->wb, g->co.btr, rrow, apk, i, jb->ob, tm);
+                bool aret = assignObKey(&jb->wb, g->co.btr, rrow, apk, i,
+                                        jb->ob,  tm);
                 if (C_IS_S(ctype)) obfreei[obnfree++] = i;
+                if (!aret) return 0; // MEMLEAK? need a "goto" cleanup
             }
         }
     }
     if (g->co.lvl == (uint32)jb->hw) { // Deepest Join Step        //JOP_DEBUG_6
-        bool lret = 1;
-        if (passFilters(g->co.btr, apk, rrow, jb->fflist, tmatch)) {
+        bool lhf  = 0;
+        bool lret = passFilts(g->co.btr, apk, rrow, jb->fflist, tmatch, &lhf);
+        if (!lhf && lret) {
             if (jb->cstar) { INCR(JoinCard); INCR(*card); }
-            else if (checkOfst()) {
-                if (checkLimit()) lret = join_reply(g, card);
-            }
+            else if (checkOfst() && checkLimit()) lret = join_reply(g, card);
         }
-        if (lret) { //NOTE only update rows that MATCH join -> updateLRU (JOIN)
-            GET_LRUC updateLru(g->co.c, tmatch, apk, lruc, lrud);
-            //NOTE rrow is no longer valid, updateLru() can change it
-        }
+        GET_LRUC updateLru(g->co.c, tmatch, apk, lruc, lrud);
+        GET_LFUC updateLfu(g->co.c, tmatch, apk, lfuc, lfu);
+        //NOTE rrow is no longer valid, updateLru() can change it
         for (int i = 0; i < obnfree; i++) {
             free(jb->ob->keys[obfreei[i]]); jb->ob->keys[obfreei[i]] = NULL;
         }
@@ -330,11 +332,9 @@ static bool join_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
             else {
                 long rcard = keyOp(&g2, join_op); /* RECURSE */
                 if      (rcard == -1) { JoinMiss = 1; ret = 0; }
-                else if (rcard > 0) { //NOTE: updateLRU (JOIN)
-                    GET_LRUC updateLru(g->co.c, tmatch, apk, lruc, lrud);
-                    GET_LFUC updateLfu(g->co.c, tmatch, apk, lfuc, lfu);
-                    //NOTE rrow is no longer valid, updateLru() can change it
-                }
+                GET_LRUC updateLru(g->co.c, tmatch, apk, lruc, lrud);
+                GET_LFUC updateLfu(g->co.c, tmatch, apk, lfuc, lfu);
+                //NOTE rrow is no longer valid, updateLru() can change it
                 INCRBY(*card, rcard);
             }
         }
@@ -370,8 +370,7 @@ bool joinGeneric(redisClient *c, jb_t *jb) {
     cswc_t w; setupFirstJoinStep(&w, jb, &q);
     if (w.wf.imatch == -1) { addReply(c, shared.join_qo_err); return 0; }
     bool ret          = 0;
-    c->LruColInSelect = initLRUCS_J(jb);
-    c->LfuColInSelect = initLFUCS_J(jb);
+    c->LruColInSelect = initLRUCS_J(jb); c->LfuColInSelect = initLFUCS_J(jb);
     list *ll          = initOBsort(JoinQed, &jb->wb, 0);
     range_t g; init_range(&g, c, &w, &jb->wb, &q, ll, OBY_FREE_ROBJ, jb);
     g.se.qcols        = jb->qcols;
@@ -379,8 +378,8 @@ bool joinGeneric(redisClient *c, jb_t *jb) {
     void *rlen        = jb->cstar ? NULL : addDeferredMultiBulkLength(c);
     long  card        = 0;
     if (Op(&g, join_op) == -1) JoinMiss = 1;
-    if (JoinMiss) { replaceDMB_WithDirtyMissErr(c, rlen); goto join_gen_err; }
-    if (JoinErr)  { replaceDMB_With_QO_Err     (c, rlen); goto join_gen_err; }
+    if (JoinMiss) { replaceDMB(c, rlen, shared.dirty_miss); goto join_gen_err; }
+    if (JoinErr)  { replaceDMB(c, rlen, shared.join_qo_err); goto join_gen_err;}
     card              = JoinCard;
     long sent         =  0;
     if (card) {

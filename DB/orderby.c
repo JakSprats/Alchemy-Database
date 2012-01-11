@@ -45,6 +45,9 @@ ALL RIGHTS RESERVED
 #include "orderby.h"
 
 extern r_tbl_t *Tbl;
+extern robj    *CurrError;  // NOTE: for deeply nested errors
+extern long     CurrCard;   // NOTE: to report when nested errors happened
+
 
 //GLOBALS
 uint32 OB_nob   = 0;                 // TODO push into cswc_t
@@ -180,7 +183,7 @@ void assignObEmptyKey(obsl_t *ob, uchar ctype, int i) {
     else            assert(!"assignObEmptyKey ERROR");
 }
 
-static bool assignObKeyLuaFunc(wob_t *wb, bt     *btr, void *rrow, aobj *apk,
+static bool assignObKeyLuaFunc(wob_t *wb, bt     *btr, void *rrow,   aobj *apk,
                                int    i,  obsl_t *ob,  int   tmatch) {
 printf("assignObKey LE: fname: %s ncols: %d\n", wb->le[i].fname, wb->le[i].ncols);
     void  *key;
@@ -190,23 +193,25 @@ printf("assignObKey LE: fname: %s ncols: %d\n", wb->le[i].fname, wb->le[i].ncols
     }
     bool ret = 1;
     int  r   = lua_pcall(server.lua, wb->le[i].ncols, 1, 0);
-    if (r) { ret = 0; //TODO pass info on to client
-        redisLog(REDIS_WARNING, "Error running ORDER BY FUNCTION (%s): %s",
-                 wb->le[i].fname, lua_tostring(server.lua, -1));
+    if (r) { ret = 0;
+        CURR_ERR_CREATE_OBJ
+        "-ERR: running ORDER BY FUNCTION (%s): %s [CARD: %ld]\r\n",
+         wb->le[i].fname, lua_tostring(server.lua, -1), CurrCard));
     } else {
         int t = lua_type(server.lua, -1);
         if        (t == LUA_TNUMBER) {
             key = (void *)(long)lua_tonumber (server.lua, -1);
         } else if (t == LUA_TBOOLEAN) {
             key = (void *)(long)lua_toboolean(server.lua, -1);
-        } else { ret = 0; //TODO pass info on to client
-            redisLog(REDIS_WARNING, "Error ORDER BY FUNCTION (%s): %s",
-                     wb->le[i].fname, "use NUMBER or BOOLEAN return types");
+        } else { ret = 0;
+            CURR_ERR_CREATE_OBJ
+            "-ERR: ORDER BY FUNCTION (%s): %s [CARD: %ld]\r\n",
+             wb->le[i].fname, "use NUMBER or BOOLEAN return types", CurrCard));
         }
     }
     ob->keys[i] = key; CLEAR_LUA_STACK return ret;
 }
-bool assignObKey(wob_t *wb, bt     *btr, void *rrow, aobj *apk,
+bool assignObKey(wob_t *wb, bt     *btr, void *rrow,   aobj *apk,
                  int    i,  obsl_t *ob,  int   tmatch) {
     if (wb->le[i].yes) {
         return assignObKeyLuaFunc(wb, btr, rrow, apk, i, ob, tmatch);
@@ -229,23 +234,23 @@ bool assignObKey(wob_t *wb, bt     *btr, void *rrow, aobj *apk,
     return 1;
 }
 /* Range Query API */
-bool addRow2OBList(list   *ll,    wob_t  *wb,   bt     *btr, void   *r,
+bool addRow2OBList(list   *ll,    wob_t  *wb,   bt     *btr, void  *r,
                    bool    ofree, void   *rrow, aobj   *apk) {
     void   *row;
     int     tmatch = wb->obt[0]; /* function ONLY FOR RANGE_QEURIES */
+printf("addRow2OBList: wb: %p tmatch: %d\n", (void *)wb, tmatch);
     if (ofree == OBY_FREE_ROBJ)   row = cloneRobj((robj *)r); /* DEST 005 */
     else /*      OBY_FREE_AOBJ */ row = cloneAobj((aobj *)r); /* DEST 029 */
-    obsl_t *ob  = create_obsl(row, wb->nob);             /* FREE ME 001 */
+    obsl_t *ob  = create_obsl(row, wb->nob);                  /* FREE ME 001 */
     for (uint32 i = 0; i < wb->nob; i++) {
-        if (!assignObKey(wb, btr, rrow, apk, i, ob, tmatch)) goto addrow2oberr;
+        if (!assignObKey(wb, btr, rrow, apk, i, ob, tmatch)) goto adr2oberr;
     }
-    ob->apk = cloneAobj(apk);                           /* DESTROY ME 071 */
+    ob->apk = cloneAobj(apk);                                 /* FREED ME 071 */
     GET_LRUC ob->lruc = lruc; ob->lrud = lrud; // updateLRU (SELECT ORDER BY)
     GET_LFUC ob->lfuc = lfuc; ob->lfu  = lfu;  // updateLFU (SELECT ORDER BY)
-    listAddNodeTail(ll, ob);
-    return 1;
+    listAddNodeTail(ll, ob); return 1;
 
-addrow2oberr:
+adr2oberr:
     destroy_obsl(ob, ofree); return 0;
 }
 obsl_t **sortOB2Vector(list *ll) {

@@ -10,8 +10,8 @@ function luaobj_assign(var, luaexpr)
   print ('Lua: assign: var: ' .. var .. ' luaexpr: ' .. luaexpr);
   local assign_cmd = var .. '=' .. luaexpr .. ';';
   assert(loadstring(assign_cmd))()
-  local debug_cmd = 'dump(' .. var .. ')';
-  assert(loadstring(debug_cmd))()
+  --local debug_cmd = 'dump(' .. var .. ')';
+  --assert(loadstring(debug_cmd))()
 end
 
 -- SELECT_STORE SELECT_STORE SELECT_STORE SELECT_STORE SELECT_STORE

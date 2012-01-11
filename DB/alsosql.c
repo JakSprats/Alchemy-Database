@@ -134,7 +134,7 @@ uchar insertCommit(cli  *c,      sds     uset,   sds     vals,
         return ret;
     }
     int      pktyp  = rt->col[0].type;
-    apk.type        = apk.enc = pktyp;
+    apk.type        = apk.enc = pktyp; apk.empty = 0;
     if        C_IS_I(pktyp) {
         long l      = atol(pk);                              /* OK: DELIM: \0 */
         if (l >= TWO_POW_32) { addReply(c, shared.uint_pkbig); goto insc_e; }
@@ -434,8 +434,16 @@ bool sqlSelectBinary(cli   *c, int tmatch, bool cstar, int *cmatchs, int qcols,
         if (cstar)    { addReply(c, shared.cone);                   return 1; }
         void  *rrow  = dwm.k;
         bool   gost  = IS_GHOST(btr, rrow);
-        if (gost || !rrow) { addReply(c, shared.nullbulk);          return 1; }
-        robj *r = outputRow(btr, rrow, qcols, cmatchs, apk, tmatch, lfca);
+printf("rrow: %p gost: %d\n", (void *)rrow, gost);
+        if (gost || !rrow) { addReply(c, shared.czero);             return 1; }
+        bool   hf    = 0;
+        bool   ret   = passFilts(btr, apk, rrow, w->flist, tmatch, &hf);
+        if (hf)                                                     return 0;
+        if (!ret) { addReply(c, shared.czero);                      return 1; }
+        uchar ost = OR_NONE;
+        robj *r = outputRow(btr, rrow, qcols, cmatchs, apk, tmatch, lfca, &ost);
+        if (ost == OR_ALLB_OK)   { addReply(c, shared.cone);        return 1; }
+        if (ost == OR_ALLB_NO)   { addReply(c, shared.czero);       return 1; }
         if (!r)            { addReply(c, shared.nullbulk);          return 1; }
         addReply(c, shared.singlerow);
         GET_LRUC GET_LFUC

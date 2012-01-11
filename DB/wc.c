@@ -59,6 +59,7 @@ char *strcasestr(const char *haystack, const char *needle); /*compiler warning*/
 extern int      Num_tbls;
 extern r_tbl_t *Tbl;
 extern r_ind_t *Index;
+extern cli     *CurrClient;
 
 extern ja_t     JTAlias[MAX_JOIN_COLS];
 
@@ -149,32 +150,29 @@ static bool setOffsetReply(cli *c, wob_t *wb, char *nextp) {
   }
 
 static bool isOrderByLuaFunc(char **token, int tmatch, wob_t *wb, char **fin) {
-    sds fname = NULL; sds argt = NULL; int r = 0;
-    if (isLuaFunc(*token, &fname, &argt, fin) && luaFuncDefined(fname)){
-        list *lcs = listCreate();                  // FREE 136
-        r         = parseCommaListToAobjs(argt, tmatch, lcs);
-        if (r) initLUE(&wb->le[wb->nob], fname, lcs);
-        sdsfree(argt); sdsfree(fname);             // FREED 133,134
-        lcs->free = destroyAobj; listRelease(lcs); // FREED 136
-    }
-    return r ? 1 : 0;
+    char *desc = strstr_not_quoted(*token, " DESC");
+    sds s      = *token; // Do NOT include DESC -> UGLY need tokenizer
+    if (desc) { s = sdsnewlen(*token, (desc - *token)); *fin = desc; }
+    bool  ret = checkOrCreateLuaFunc(tmatch, -1, &wb->le[wb->nob], s, fin);
+    if (desc) sdsfree(s);
+    return ret;
 }
 /* SYNTAX: ORDER BY {col [DESC],}+ [LIMIT n [OFFSET m]] */
-//TODO disallow sorting by LUAOBJ columns
 static bool parseOBYcol(cli   *c,  char  **token, int   tmatch,
                         wob_t *wb, char  **fin,   bool *more) {
-printf("parseOBYcol\n");
+printf("parseOBYcol wb->nob: %d tmatch: %d\n", wb->nob, tmatch);
     int   tlen  = get_tlen_delim2(*token, ',');
     if (!tlen) tlen = (int)strlen(*token);
     char *prd   = _strnchr(*token, '.', tlen);
+    wb->obt[wb->nob] = tmatch; wb->obc[wb->nob] = -1; // DEFAULT VALUES
     if (prd) { /* JOIN */
-        bool parsed = 0;
+        bool lua_parsed = 0;
         if ((wb->obt[wb->nob] = find_table_n(*token, prd - *token)) == -1) {
             if (!isOrderByLuaFunc(token, tmatch, wb, fin)) {
                 addReply(c, shared.join_order_by_tbl);          return 0;
-            } else parsed = 1;
+            } else { lua_parsed = 1; wb->obt[wb->nob] = tmatch; } // DEFAULT
         }
-        if (!parsed) {
+        if (!lua_parsed) {
             char *cname = prd + 1;
             int   clen  = get_tlen_delim2(cname, ',');
             if (!clen) clen = (int)strlen(cname);
@@ -191,7 +189,10 @@ printf("parseOBYcol\n");
                 addReply(c, shared.order_by_col_not_found);     return 0;
             }
         }
-        wb->obt[wb->nob] = tmatch;
+    }
+    if (wb->obt[wb->nob] != -1 && wb->obc[wb->nob] != -1 &&
+        C_IS_O(Tbl[wb->obt[wb->nob]].col[wb->obc[wb->nob]].type)) {
+            addReply(c, shared.order_by_luaobj);     return 0;
     }
     wb->asc[wb->nob] = 1; /* ASC by default */
     *more          = (*(*token + tlen) == ',') ? 1: 0;
@@ -323,7 +324,7 @@ static void addSelectToINL(void *v, lolo val, char *x, lolo xlen, long *card) {
     }
     INCR(*card);
 }
-static bool parseWC_IN_CMD(redisClient *c, list **inl, char *s, int slen) {
+static bool pWC_IN_CMD(redisClient *c, list **inl, char *s, int slen) {
     int axs = getAccessCommNum(s);
     if (axs == -1) { addReply(c, shared.accesstypeunknown); return 0; }
     int     argc;
@@ -349,7 +350,7 @@ static char *checkIN_Clause(redisClient *c, char *token) {
     return end;
 }
 /* SYNTAX: IN (a,b,c) OR IN($redis_command arg1 arg2) */
-static bool parseWC_IN(cli *c, char *tok, list **inl, uchar ctype, char **fin) {
+static bool pWC_IN(cli *c, char *tok, list **inl, uchar ctype, char **fin) {
     char *end = checkIN_Clause(c, tok);
     if (!end) return 0;
     *inl       = listCreate();
@@ -360,7 +361,7 @@ static bool parseWC_IN(cli *c, char *tok, list **inl, uchar ctype, char **fin) {
     if (piped) {
         char *s    = tok;
         int   slen = end - s;
-        if (!parseWC_IN_CMD(c, inl, s, slen)) return 0;
+        if (!pWC_IN_CMD(c, inl, s, slen)) return 0;
     } else {
         char *s   = tok;
         char *beg = s;
@@ -400,26 +401,43 @@ static bool parseWC_IN(cli *c, char *tok, list **inl, uchar ctype, char **fin) {
     return 1;
 }
 
-typedef bool parse_inum(cli *c, char *token, int tlen, f_t *flt);
-static bool parseInumTblCol(cli *c, char *token, int tlen, f_t *flt) {
+typedef robj *parse_inum(char *token, int tlen, f_t *flt);
+static robj *parseInumTblCol(char *token, int tlen, f_t *flt) {
     char *nextp = _strnchr(token, '.', tlen);
-    if (!nextp) { addReply(c, shared.badindexedcolumnsyntax);      return 0; }
+    if (!nextp)            return shared.badindexedcolumnsyntax;
     flt->tmatch = find_table_n(token, nextp - token);
-    flt->jan    = c->LastJTAmatch;
-    if (flt->tmatch == -1) { addReply(c, shared.nonexistenttable); return 0; }
+    flt->jan    = CurrClient->LastJTAmatch;
+    if (flt->tmatch == -1) return shared.nonexistenttable;
     nextp++;
     flt->cmatch = find_column_n(flt->tmatch, nextp, tlen - (nextp - token));
-    if (flt->cmatch == -1) { addReply(c,shared.nonexistentcolumn); return 0; }
+    if (flt->cmatch == -1) return shared.nonexistentcolumn;
     flt->imatch = find_index(flt->tmatch, flt->cmatch);
-    return 1;
+    return NULL;
 }
-static bool parseInumCol(cli *c, char *token, int tlen, f_t *flt) {
+static robj *parseInumCol(char *token, int tlen, f_t *flt) {
     flt->jan    = -1;
     flt->cmatch = find_column_n(flt->tmatch, token, tlen);
-    if (flt->cmatch == -1) { addReply(c, shared.wc_col_not_found); return 0; }
+    if (flt->cmatch == -1) return shared.wc_col_not_found;
     else                   flt->imatch = find_index(flt->tmatch, flt->cmatch);
-    return 1;
+    return NULL;
 }
+
+static uchar pWC_checkLuaFunc(cli *c, f_t *flt, sds tkn, char **fin, robj *ro) {
+    char *oby =              strstr_not_quoted(tkn, " ORDER BY ");
+    char *lim = oby ? NULL : strstr_not_quoted(tkn, " LIMIT ");
+    sds s = tkn; // Do NOT include ORDERBY or LIMIT -> UGLY need tokenizer
+    if      (oby) { s = sdsnewlen(tkn, (oby - tkn)); *fin = oby; }
+    else if (lim) { s = sdsnewlen(tkn, (oby - lim)); *fin = lim; }
+    bool ret = checkOrCreateLuaFunc(flt->tmatch, -1, &flt->le, s, fin);
+    if (oby || lim) sdsfree(s);
+    if (ret) { flt->op = LFUNC;    return PARSE_OK;       }
+    else     {
+        if (ro) { addReply(c, ro); return PARSE_NEST_ERR; }
+        else                       return PARSE_GEN_ERR;
+    }
+}
+#define PARSE_WC_CHECK_LUA                       \
+  return pWC_checkLuaFunc(c, flt, tkn, fin, ro);
 
 static uchar parseWCTokRelation(cli *c,   cswc_t *w,   sds    tkn, char **fin,
                                 f_t *flt, bool    isj, uchar  ttype) {
@@ -427,24 +445,21 @@ static uchar parseWCTokRelation(cli *c,   cswc_t *w,   sds    tkn, char **fin,
     parse_inum *pif   = (isj) ? parseInumTblCol : parseInumCol;
     flt->tmatch       = w->wf.tmatch; /* Non-joins need tmatch in pif() */
     if (ttype == TOK_TYPE_KEY) {
+        robj *ro      = NULL;
         char *tok2    = next_token(tkn);
         if (!tok2) two_toklen = strlen(tkn);
         else       two_toklen = (tok2 - tkn) + get_token_len(tok2);
         char *spot    = NULL;
         flt->op       = findOperator(tkn, two_toklen, &spot);
-        if (flt->op == NONE) { // maybe a lua function filter
-            bool ret = checkOrCreateLuaFunc(flt->tmatch, 0, &flt->le, tkn, fin);
-            if (!ret)                                return PARSE_GEN_ERR;
-            else      { flt->op = LFUNC;             return PARSE_OK; }
-        }
-        if (flt->op == NONE)                         return PARSE_GEN_ERR;
+        if (flt->op == NONE)                              PARSE_WC_CHECK_LUA
         char *end     = spot - OP_len[flt->op];;
         REV_SKIP_SPACES(end)
-        if (!(*pif)(c, tkn, end - tkn + 1, flt)) return PARSE_NEST_ERR;
+        ro            = (*pif)(tkn, end - tkn + 1, flt);
+        if (ro)                                           PARSE_WC_CHECK_LUA
         ctype         = CTYPE_FROM_FLT(flt)
         char *start   = spot + 1;
         SKIP_SPACES(start)
-        if (!*start)                                 return PARSE_GEN_ERR;
+        if (!*start)                                      PARSE_WC_CHECK_LUA
         char *tfin    = next_token_wc_key(start, ctype);
         int   len     = tfin ? tfin - start : (uint32)strlen(start);
         if (*start == '\'') flt->iss = 1; // TODO COL_STRING must be iss
@@ -454,24 +469,24 @@ static uchar parseWCTokRelation(cli *c,   cswc_t *w,   sds    tkn, char **fin,
         *fin       = tfin;
         if (!tfin) w->lvr = NULL; //TODO WHERE x = 4 WTF AND -> WTF?
     } else { /* RANGE_QUERY or IN_QUERY */
+        robj *ro      = NULL;
         char *nextp   = strchr(tkn, ' ');
-        if (!nextp)                                  return PARSE_GEN_ERR;
-        if (!(*pif)(c, tkn, nextp - tkn, flt))   return PARSE_NEST_ERR;
+        if (!nextp)                                       PARSE_WC_CHECK_LUA
+        ro            = (*pif)(tkn, nextp - tkn, flt);
+        if (ro)                                           PARSE_WC_CHECK_LUA
         ctype         = CTYPE_FROM_FLT(flt)
         SKIP_SPACES(nextp)
         if (!strncasecmp(nextp, "IN ", 3)) {
             nextp     = next_token(nextp);
-            if (!nextp)                              return PARSE_GEN_ERR;
-            if (!parseWC_IN(c, nextp, &flt->inl, ctype, fin))
-                                                     return PARSE_NEST_ERR;
+            if (!nextp)                                   PARSE_WC_CHECK_LUA
+            if (!pWC_IN(c, nextp, &flt->inl, ctype, fin)) PARSE_WC_CHECK_LUA
             flt->op = IN;
         } else if (!strncasecmp(nextp, "BETWEEN ", 8)) { /* RANGE QUERY */
             nextp     = next_token(nextp);
-            if (!nextp)                              return PARSE_GEN_ERR;
-            if (!pRangeReply(c, nextp, fin, ctype, flt))
-                                                     return PARSE_NEST_ERR;
+            if (!nextp)                                   PARSE_WC_CHECK_LUA
+            if (!pRangeReply(c, nextp, fin, ctype, flt))  PARSE_WC_CHECK_LUA
             flt->op = RQ;
-        } else { return PARSE_GEN_ERR; }
+        } else                                            PARSE_WC_CHECK_LUA
     }
     return PARSE_OK;
 }
@@ -481,7 +496,7 @@ static bool addIndexes2Join(redisClient *c, f_t *flt, jb_t *jb, list *ijl) {
     if (flt->key && !flt->iss && ISALPHA(*flt->key)) {   /* JOIN INDEX */
         if (flt->op != EQ) { addReply(c, shared.join_noteq);      return 0; }
         f_t f2; initFilter(&f2); /* NOTE f2 does not need to be released */
-        if (!parseInumTblCol(c, flt->key, sdslen(flt->key), &f2)) return 0;
+        if (!parseInumTblCol(flt->key, sdslen(flt->key), &f2)) return 0;
         uchar ctype1 = CTYPE_FROM_FLT(flt) uchar ctype2 = CTYPE_FROM_FLT(flt)
         if (ctype1 != ctype2) {
             addReply(c, shared.join_coltypediff);                 return 0;

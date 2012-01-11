@@ -163,7 +163,8 @@ enum OP {NONE, EQ, NE, GT, GE, LT, LE, RQ, IN, LFUNC};
     *range_mciup,            *range_u_up,                  \
     *deletemiss,             *uviol,                       \
     *updatemiss,             *dirtypk,                     \
-    *update_luaobj_complex,  *unsupported_pk;
+    *update_luaobj_complex,  *unsupported_pk,              \
+    *order_by_luaobj;
 
 #define DEBUG_C_ARGV(c) \
   for (int i = 0; i < c->argc; i++) \

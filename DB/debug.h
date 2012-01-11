@@ -50,8 +50,7 @@ void resetDeferredMultiBulk_ToError(cli *c, void *node, sds error);
 void setDeferredMultiBulkLong      (cli *c, void *node, long card);
 void prependDeferredMultiBulkError (cli *c, void *node, sds error);
 
-void replaceDMB_WithDirtyMissErr(cli *c, void *node);
-void replaceDMB_With_QO_Err     (cli *c, void *node);
+void replaceDMB                    (cli *c, void *node, robj *err);
 
 // DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
 void dumpIJ(cli *c, printer *prn, int i, ijp_t *ij, ijp_t *nij);

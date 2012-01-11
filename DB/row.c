@@ -68,6 +68,8 @@ bool GlobalZipSwitch = 1; // can GLOBALLY turn off [lzf] compression of rows
 extern r_tbl_t *Tbl;
 extern r_ind_t *Index;
 
+extern robj    *CurrError;  // NOTE: for deeply nested errors
+extern long     CurrCard;   // NOTE: to report when nested errors happened
 extern uchar    OutputMode; // NOTE: used by OREDIS
 
 // CONSTANT GLOBALS
@@ -96,8 +98,8 @@ extern char POWER; extern char MODULO;
 static char *EmptyStringCol = "''";
 static char *EmptyCol       = "";
 
-typedef robj *row_outputter(bt  *btr,     void *rrow, int qcols,
-                            int *cmatchs, aobj *apk,  int tmatch, lfca_t *lfca);
+typedef robj *row_outputter(bt   *btr, void *rrow, int     qcols, int  *cmatchs,
+                            aobj *apk, int tmatch, lfca_t *lfca,  bool *ost);
 
 /* PROTOYPES */
 static void initAobjCol2S(aobj *a, ulong l, uint128 x, float f, int cmatch,
@@ -117,8 +119,7 @@ static bool evalLuaExpr(cli  *c,    int cmatch, uc_t *uc, aobj *apk,
 
 // PROTOTYPES: LUA_SELECT_FUNCS
 static void initLOFromCM(aobj *a, aobj *apk, int cmatch, int tmatch, bool fs);
-static void initAobjFromLuaString(lua_State *lua, aobj *a, bool stkd);
-static void initAobjFromLuaNumber(lua_State *lua, aobj *a, bool stkd, bool fs);
+static void initAobjFromLuaString(lua_State *lua, aobj *a, bool stkd, bool fs);
 
 /* CREATE_ROW CREATE_ROW CREATE_ROW CREATE_ROW CREATE_ROW CREATE_ROW */
 typedef struct create_row_ctrl {
@@ -563,27 +564,20 @@ static aobj getRC_OBT(bt *btr, void *orow, int cmatch, aobj *apk, bool fs) {
 static aobj getRC_LFunc(bt *btr, uchar *orow, int tmatch, aobj *apk, bool fs,
                         lfca_t *lfca) {
     aobj a; initAobj(&a); lue_t *le = lfca->l[lfca->curr]; lfca->curr++;
-    CLEAR_LUA_STACK lua_getglobal(server.lua, le->fname);
+    CLEAR_LUA_STACK 
+    lua_getglobal(server.lua, "DataDumperWrapper");
+    lua_getglobal(server.lua, le->fname);
+    printf("lua select function: fname: %s ncols: %d\n", le->fname, le->ncols);
     for (int i = 0; i < le->ncols; i++) {
         pushColumnLua(btr, orow, tmatch, le->as[i], apk);
     }
-    int ret = lua_pcall(server.lua, le->ncols, 1, 0);
+    int ret = lua_pcall(server.lua, le->ncols + 1, 1, 0); // +1 for Wrapper
     if (ret) {
-        redisLog(REDIS_WARNING, "Error running SELECT FUNCTION (%s): %s",
-                 le->fname, lua_tostring(server.lua, -1));
-        initAobjZeroNum(&a, COL_TYPE_INT);
-    } else {
-        int t = lua_type(server.lua, -1);
-        if        (t == LUA_TSTRING) {
-            initAobjFromLuaString(server.lua, &a, 0);
-        } else if (t == LUA_TNUMBER) {
-            initAobjFromLuaNumber(server.lua, &a, 0, fs);
-        } else if (t == LUA_TBOOLEAN) {
-            initAobjBool(&a, lua_toboolean(server.lua, -1));
-        } else {
-            redisLog(REDIS_WARNING, "Unsupported return type for script (%s):",
-                     le->fname);
-        }
+        CURR_ERR_CREATE_OBJ
+             "-ERR: Error running SELECT FUNCTION (%s): %s CARD: %ld\r\n",
+               le->fname, lua_tostring(server.lua, -1), CurrCard));
+    } else { // DataDumperWrapper returns only strings
+        initAobjFromLuaString(server.lua, &a, 0, fs);
     }
     CLEAR_LUA_STACK return a;
 }
@@ -686,8 +680,8 @@ aobj getRawCol(bt  *btr,    uchar *orow, int     cmatch, aobj *apk,
     r_tbl_t *rt    = &Tbl[tmatch];
     uchar    ctype = rt->col[cmatch].type;
     if (!cmatch) { /* PK stored ONLY in KEY not in ROW, echo it */
-        if (ctype != COL_TYPE_STRING && !fs)    return *apk;
-        else { initStringAobjFromAobj(&a, apk); return  a; }
+        if (!C_IS_S(ctype) && !fs) return *apk;
+        else                     { initStringAobjFromAobj(&a, apk); return  a; }
     }
     uint32 clen; uchar rflag;
     uchar *data  = getColData(orow, cmatch, &clen, &rflag);
@@ -762,21 +756,33 @@ static void initFloatAobjFromVal(aobj *a, float f, bool fs, int cmatch) {
     else         { a->f = f; a->enc = COL_TYPE_FLOAT; }
 }
 
-static void initAobjFromLuaString(lua_State *lua, aobj *a, bool stkd) {
-    int        i    = stkd ? 1 : -1;
+static void initAobjFromLuaString(lua_State *lua, aobj *a, bool stkd, bool fs) {
+    int        i    = stkd ? 1 : -1;                              a->empty = 0;
     int        len  = lua_strlen(lua, i);
     char      *varr = malloc(len + 1); // +1 not needed but nice for debugging
     memcpy(varr, (char*)lua_tostring(lua, i), len);
     varr[len]       = '\0';                       //printf("varr: %s\n", varr);
-    a->len          = len; a->s = varr; a->type = a->enc = COL_TYPE_STRING;
+    if        (is_int(varr)) {
+        a->type = a->enc = COL_TYPE_LONG;
+        if (fs) {a->len = len; a->s = varr; }
+        else     a->l = strtoul(varr, NULL, 10); // OK: DELIM: \0
+    } else if (is_float(varr)) {
+        a->type = a->enc = COL_TYPE_FLOAT;
+        if (fs) {a->len = len; a->s = varr; }
+        else    a->f = atof(varr);               // OK: DELIM: \0
+    } else {
+        a->len = len; a->s = varr; a->type = a->enc = COL_TYPE_STRING;
+    }
 }
+char *UnprintableLuaObject = "ERR: UNPRINTABLE_LUA_OBJECT";
+int   lenUnplo             = 27;
+
 static void initAobjFromLuaNumber(lua_State *lua, aobj *a, bool stkd, bool fs) {
-    int i   = stkd ? 1 : -1;
+    int i   = stkd ? 1 : -1;                                      a->empty = 0;
     ulong l = (ulong)lua_tonumber(lua, i); initAobjLong(a, l);
     if (fs) {
-        sds s = createSDSFromAobj(a);
-        initAobjString(a, s, sdslen(s));
-         sdsfree(s);
+        sds s = createSDSFromAobj(a); initAobjString(a, s, sdslen(s));
+        sdsfree(s);
     }
     a->type = a->enc = COL_TYPE_LONG;
 }
@@ -785,29 +791,23 @@ static void initLOFromCM(aobj *a, aobj *apk, int cmatch, int tmatch, bool fs) {
     lua_getglobal(server.lua, vname);
     int t     = lua_type(server.lua, 1);
     printf("initLOFromCM: vname: %s t: %d top: %d\n", vname, t, lua_gettop(server.lua));
-    if (t == LUA_TTABLE) {
+    if (t == LUA_TTABLE || t == LUA_TBOOLEAN || t == LUA_TNIL) {
         CLEAR_LUA_STACK
         lua_getglobal(server.lua, "DataDumper");
         lua_getglobal(server.lua, vname);
         int ret = lua_pcall(server.lua, 1, 1, 0);
-        if (ret) { lua_pop(server.lua, 1); return; } // should not happen
-        t = lua_type(server.lua, -1);
-        if        (t == LUA_TSTRING) {
-            initAobjFromLuaString(server.lua, a, 1);
-        } else if (t == LUA_TNUMBER) {
-            initAobjFromLuaNumber(server.lua, a, 1, fs);
-        } else {
-            redisLog(REDIS_WARNING, "Unsupported return type for table (%s):",
-                     vname);
+        if (ret) {
+            initAobjString(a, UnprintableLuaObject, lenUnplo);
+        } else { // DataDumper only returns STRINGs
+            initAobjFromLuaString(server.lua, a, 1, fs);
         }
     } else {
         if (t == LUA_TSTRING) {
-            initAobjFromLuaString(server.lua, a, 1);
+            initAobjFromLuaString(server.lua, a, 1, fs);
         } else if (t == LUA_TNUMBER) {
             initAobjFromLuaNumber(server.lua, a, 1, fs);
         } else {
-            redisLog(REDIS_WARNING, "Unsupported return type for var (%s):",
-                                     vname);
+            initAobjString(a, UnprintableLuaObject, lenUnplo);
         }
     }
     CLEAR_LUA_STACK sdsfree(vname);                      // FREE ME 123
@@ -877,8 +877,8 @@ bool addReplyRow(cli   *c,    robj *r,    int    tmatch, aobj *apk,
     return 1;
 }
 // OUTPUT_ROW OUTPUT_ROW OUTPUT_ROW OUTPUT_ROW OUTPUT_ROW OUTPUT_ROW
-static robj *orow_embedded(bt   *btr,  void *rrow,   int    qcols, int *cmatchs,
-                           aobj *apk,  int   tmatch, lfca_t *lfca) {
+static robj *orow_embedded(bt   *btr, void *rrow,   int    qcols, int  *cmatchs,
+                           aobj *apk, int   tmatch, lfca_t *lfca, bool *ost) {
     robj   *r  = createObject(REDIS_STRING, NULL);
     erow_t *er = malloc(sizeof(erow_t));
     er->ncols  = qcols;
@@ -922,53 +922,53 @@ robj *write_output_row(int   qcols,   uint32  prelen, char *pbuf,
     if (obuf != OutBuff) free(obuf);                     /* FREED 072 */
     return r;
 }
-static robj *orow_redis(bt  *btr,     void *rrow, int   qcols,
-                        int *cmatchs, aobj *apk,  int   tmatch, lfca_t *lfca) {
+static robj *orow_redis(bt   *btr, void *rrow,   int     qcols, int  *cmatchs,
+                        aobj *apk, int   tmatch, lfca_t *lfca,  bool *ost) {
     char pbuf[128];
     sl_t outs[qcols];
     uint32 prelen   = output_start(pbuf, 128, qcols);
     uint32 totlen   = prelen;
-    bool   allbools = 1; // allbools means dont print row
+    bool   allbools = 1; bool bool_ok = 0; // allbools means dont print row
     for (int i = 0; i < qcols; i++) {
         aobj  acol  = getCol(btr, rrow, cmatchs[i], apk, tmatch, lfca);
         outs[i]     = outputReformat(&acol);
         releaseAobj(&acol);
-        if C_IS_B(acol.type) continue; allbools = 0;
+        if C_IS_B(acol.type) { if (acol.b) bool_ok = 1; continue; }
+        allbools        = 0;
         totlen     += outs[i].len;
     }
-    if (allbools) return NULL;
+    if (allbools) { *ost = bool_ok ? OR_ALLB_OK : OR_ALLB_NO; return NULL; }
     return write_output_row(qcols, prelen, pbuf, totlen, outs);
 }
-static robj *orow_normal(bt  *btr,       void *rrow, int   qcols,
-                         int *cmatchs, aobj *apk,  int   tmatch, lfca_t *lfca) {
+static robj *orow_normal(bt  *btr, void *rrow,   int     qcols, int  *cmatchs,
+                        aobj *apk, int   tmatch, lfca_t *lfca,  bool *ost) {
     sl_t   outs[qcols];
     uint32 totlen   = 0;
-    bool   allbools = 1; // allbools means dont print row
+    bool   allbools = 1; bool bool_ok = 0; // allbools means dont print row
     for (int i = 0; i < qcols; i++) {
-        aobj  col       = getSCol(btr, rrow, cmatchs[i], apk, tmatch, lfca);
-        outs[i].freeme  = col.freeme;
-        outs[i].s       = col.s;
-        outs[i].len     = col.len;
-        outs[i].type    = (cmatchs[i] == -1) ? COL_TYPE_NONE :
-                          (cmatchs[i]  < -1) ? COL_TYPE_FUNC :
-                                               Tbl[tmatch].col[cmatchs[i]].type;
-        if C_IS_B(col.type) continue; allbools = 0;
-        totlen         += col.len;
+        aobj  acol       = getSCol(btr, rrow, cmatchs[i], apk, tmatch, lfca);
+        outs[i].freeme  = acol.freeme;
+        outs[i].s       = acol.s;
+        outs[i].len     = acol.len;
+        outs[i].type    = acol.type;
+        if C_IS_B(acol.type) { if (acol.b) bool_ok = 1; continue; }
+        allbools        = 0;
+        totlen         += acol.len;
         if ((C_IS_S(outs[i].type) || C_IS_O(outs[i].type)) && outs[i].len) {
             totlen += 2;/* 2 \'s per col */
         }
     }
-    if (allbools) return NULL;
+    if (allbools) { *ost = bool_ok ? OR_ALLB_OK : OR_ALLB_NO; return NULL; }
     totlen += (uint32)qcols - 1; /* one comma per COL, except final */
     return write_output_row(qcols, 0, NULL, totlen, outs);
 }
-robj *outputRow(bt   *btr,       void *rrow, int qcols,
-                int   cmatchs[], aobj *apk,  int tmatch, lfca_t *lfca) {
+robj *outputRow(bt  *btr, void *rrow,   int     qcols, int   cmatchs[], 
+               aobj *apk, int   tmatch, lfca_t *lfca,  bool *ost) {
     if (lfca) lfca->curr = 0; //RESET queue
     row_outputter *rop =  (EREDIS) ? orow_embedded :
                          ((OREDIS) ? orow_redis    :
                                      orow_normal);
-    return (*rop)(btr, rrow, qcols, cmatchs, apk, tmatch, lfca);
+    return (*rop)(btr, rrow, qcols, cmatchs, apk, tmatch, lfca, ost);
 }
 
 // DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW
@@ -1224,10 +1224,10 @@ up_end:
 
 /* UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR */
 void pushColumnLua(bt *btr, uchar *orow, int tmatch, aobj *a, aobj *apk) {
-        aobj acol; int ctype = COL_TYPE_NONE;
+        aobj acol; initAobj(&acol); int ctype = COL_TYPE_NONE;
 printf("pushColumnLua: a: "); dumpAobj(printf, a);
         if        C_IS_C(a->type) {
-            int  cmatch = a->i;
+            int  cmatch = a->i;           assert(tmatch != -1 && cmatch != -1);
             ctype = Tbl[tmatch].col[cmatch].type;
             if (C_IS_O(ctype)) {
                 sds vname = getLuaVarName(apk, tmatch, cmatch);
@@ -1250,16 +1250,16 @@ printf("pushColumnLua: a: "); dumpAobj(printf, a);
 printf("pushColumnLua: acol: "); dumpAobj(printf, &acol);
         //NOTE: C_IS_X() disallowed
         if        C_IS_I(ctype) {
-            if (acol.empty) lua_pushnil    (server.lua);
-            else            lua_pushinteger(server.lua, acol.i);
+            if (acol.empty) lua_pushnil     (server.lua);
+            else            lua_pushinteger (server.lua, acol.i);
         } else if C_IS_L(ctype) {
-            if (acol.empty) lua_pushnil    (server.lua);
-            else            lua_pushinteger(server.lua, acol.l);
+            if (acol.empty) lua_pushnil     (server.lua);
+            else            lua_pushinteger (server.lua, acol.l);
         } else if C_IS_F(ctype) {
-            if (acol.empty) lua_pushnil   (server.lua);
-            else            lua_pushnumber(server.lua, acol.f);
+            if (acol.empty) lua_pushnil    (server.lua);
+            else            lua_pushnumber (server.lua, acol.f);
         } else if C_IS_S(ctype) {
-            if (acol.empty) lua_pushnil   (server.lua);
+            if (acol.empty) lua_pushnil    (server.lua);
             else            lua_pushlstring(server.lua, acol.s, acol.len);
         } else assert(!"pushColumnLua ERROR");
         releaseAobj(&acol);
@@ -1275,14 +1275,13 @@ printf("evalLuaExpr: fname: %s ncols: %d\n", le->fname, le->ncols);
         pushColumnLua(uc->btr, orow, uc->tmatch, le->as[i], apk);
     }
     int ret = lua_pcall(server.lua, le->ncols, 1, 0);
-printf("evalLuaExpr: lua_pcall: ret: %d top: %d\n", ret, lua_gettop(server.lua));
+printf("evalLuaExpr: lua_pcall: ret: %d\n", ret);
     if (ret) {
         sds err = sdscatprintf(sdsempty(),
                                "Error running LUA UPDATE (%s): %s\n",
                                 le->fname, lua_tostring(server.lua, -1));
         addReplyErrorFormat(c, "%s", err);
-        CLEAR_LUA_STACK
-        return 0;
+        CLEAR_LUA_STACK return 0;
     }
     int  ctype = rt->col[cmatch].type;
     //NOTE: C_IS_X() disallowed

@@ -65,6 +65,9 @@ typedef int printer(const char *format, ...);
 #define C_IS_C(ctype)    (ctype == COL_TYPE_CNAME)
 #define C_IS_NUM(ctype) (C_IS_I(ctype) || C_IS_L(ctype) || C_IS_X(ctype))
 
+#define LUA_SEL_FUNC INT_MIN
+#define IS_LSF(cmatch) (cmatch == LUA_SEL_FUNC)
+
 #define PTR_SIZE    sizeof(char *)
 #define USHORT_SIZE sizeof(unsigned short)
 #define UINT_SIZE   sizeof(unsigned int)
@@ -165,9 +168,6 @@ typedef struct twoint {
   SPLICE_128(num)                                       \
   (*prn)("DEBUG_U128: high: %llu low: %llu", ubh, ubl); }
 
-#define LUA_SEL_FUNC INT_MIN
-#define IS_LSF(cmatch) (cmatch == LUA_SEL_FUNC)
-
 #define CREATE_CS_LS_LIST(lsalso)               \
   list *cmatchl = listCreate();                 \
   list *ls      = lsalso ? listCreate() : NULL;
@@ -178,4 +178,8 @@ typedef struct twoint {
 
 #define CLEAR_LUA_STACK                                  \
   while (lua_gettop(server.lua) > 0) lua_pop(server.lua, 1);
+
+#define CURR_ERR_CREATE_OBJ \
+  CurrError = createObject(REDIS_STRING, sdscatprintf(sdsempty(),
+
 #endif /* __ALSOSQL_COMMON__H */

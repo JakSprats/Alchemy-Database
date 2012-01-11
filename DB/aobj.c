@@ -81,7 +81,7 @@ void initAobjBool(aobj *a, bool b) {
 }
 //NOTE: does not throw errors
 void initAobjFromStr(aobj *a, char *s, int len, uchar ctype) {
-    initAobj(a);
+    initAobj(a);                                                  a->empty = 0;
     if (       C_IS_S(ctype)) {
         a->enc    = a->type   = COL_TYPE_STRING;
         a->freeme = 1;
@@ -102,10 +102,10 @@ void initAobjFromStr(aobj *a, char *s, int len, uchar ctype) {
         a->enc    = COL_TYPE_FUNC;      a->type = COL_TYPE_FUNC;
         a->i      = (uint32)strtoul(s, NULL, 10);             // OK: DELIM: \0
     } else assert(!"initAobjFromStr ERROR\n");
-    a->empty = 0;
+    
 }
 void initAobjFromLong(aobj *a, ulong l, uchar ctype) {
-    initAobj(a);
+    initAobj(a);                                                  a->empty = 0;
     if        C_IS_I(ctype) {
         a->i    = (uint32)l; a->enc = a->type = COL_TYPE_INT;
     } else if C_IS_L(ctype) {
@@ -125,7 +125,7 @@ aobj *createAobjFromLong(ulong l) {
     aobj *a = (aobj *)malloc(sizeof(aobj)); initAobjLong(a, l); return a;
 }
 aobj *createAobjFromInt(uint32 i) {
-    aobj *a = (aobj *)malloc(sizeof(aobj)); initAobjInt(a, i); return a;
+    aobj *a = (aobj *)malloc(sizeof(aobj)); initAobjInt(a, i);  return a;
 }
 
 // COPY/CLONE COPY/CLONE COPY/CLONE COPY/CLONE COPY/CLONE COPY/CLONE
@@ -147,7 +147,7 @@ aobj *copyAobj (aobj *a) { //WARNING: do not double-free a->s
 
 // CONVERSION CONVERSION CONVERSION CONVERSION CONVERSION CONVERSION
 void convertSdsToAobj(sds s, aobj *a, uchar ctype) {//NOTE: NO thrown errors
-    initAobj(a);
+    initAobj(a);                                                  a->empty = 0;
     if        (C_IS_S(ctype)) {
         a->enc    = a->type   = COL_TYPE_STRING;
         a->freeme = 1;
@@ -168,7 +168,6 @@ void convertSdsToAobj(sds s, aobj *a, uchar ctype) {//NOTE: NO thrown errors
         a->enc    = COL_TYPE_FUNC;    a->type   = COL_TYPE_FUNC;
         a->i      = (uint32)strtoul(s, NULL, 10); /* OK: DELIM: \0 */
     } else assert(!"convertSdsToAobj ERROR");
-    a->empty = 0;
 }
 static aobj *cloneSDSToAobj(sds s, uchar ctype) {
     aobj *a = (aobj *)malloc(sizeof(aobj));
@@ -230,11 +229,10 @@ static char *strFromAobj(aobj *a, int *len) {
     return s;
 }
 void initStringAobjFromAobj(aobj *a, aobj *a2) {
-    initAobj(a);
+    initAobj(a);                                                 a->empty  = 0;
     a->enc    = COL_TYPE_STRING; a->type   = COL_TYPE_STRING;
     a->freeme = 1;
     a->s      = strFromAobj(a2, (int *)&a->len);
-    a->empty  = 0;
 }
 
 sds createSDSFromAobj(aobj *a) {
@@ -297,6 +295,7 @@ static char *outputAobj(aobj *a, int *rlen) {
     else if (C_IS_F(a->type)) return outputFloat(a->f,         rlen);
     else if (C_IS_S(a->type)) return outputS    (a->s, a->len, rlen);
     else if (C_IS_X(a->type)) return outputX    (a->x,         rlen);
+    //TODO C_IS_O
     else                      assert(!"outputAobj ERROR");
 }
 sl_t outputReformat(aobj *a) { //NOTE: used by orow_redis()
@@ -373,10 +372,12 @@ static void memcpyAobjStoDumpBuf(aobj *a) {
 }
 void dumpAobj(printer *prn, aobj *a) {
     if        (C_IS_S(a->type) || C_IS_O(a->type)) {
+        if (a->empty) { (*prn)("\tSTRING aobj: EMPTY\n"); return; }
         memcpyAobjStoDumpBuf(a);
         (*prn)("\tSTRING aobj: mt: %d len: %d -> (%s) type: %d\n",
                 a->empty, a->len, DumpBuf, a->type);
     } else if (C_IS_C(a->type)) {
+        if (a->empty) { (*prn)("\tCNAME aobj: EMPTY\n"); return; }
         memcpyAobjStoDumpBuf(a);
         (*prn)("\tCNAME aobj: mt: %d len: %d -> (%s) cmatch: %d\n",
                 a->empty, a->len, DumpBuf, a->i);
@@ -406,6 +407,6 @@ void dumpAobj(printer *prn, aobj *a) {
             (*prn)("\tFLOAT(S) aobj: mt: %d val: %s\n", a->empty, DumpBuf);
         }
     } else {
-        (*prn)("\tEMPTY aobj mt: %d\n", a->empty);
+        (*prn)("\tUNINITIALISED aobj mt: %d\n", a->empty);
     }
 }

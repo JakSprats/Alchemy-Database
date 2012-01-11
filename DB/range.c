@@ -64,6 +64,11 @@ extern r_tbl_t  *Tbl;
 extern r_ind_t  *Index;
 extern uchar     OutputMode;
 
+// GLOBALS
+ulong            CurrCard    = 0;
+ulong            CurrUpdated = 0;
+robj            *CurrError   = NULL;
+
 /* NOTE: this struct contains pointers, it is to be used ONLY for derefs */
 typedef struct inner_bt_data {
     row_op  *p;    range_t *g;    qr_t    *q;
@@ -552,33 +557,38 @@ long Op(range_t *g, row_op *p) {
 }
 
 // FILTERS FILTERS FILTERS FILTERS FILTERS FILTERS FILTERS FILTERS FILTERS
-static bool runLuaFilter(lue_t *le, bt *btr, aobj *apk, void *rrow, int tmatch){
+static bool runLuaFilter(lue_t *le, bt *btr, aobj *apk, void *rrow, int tmatch,
+                         bool  *hf) {
     CLEAR_LUA_STACK lua_getglobal(server.lua, le->fname);
+    printf("runLuaFilter: fname: %s ncols: %d\n", le->fname, le->ncols);
     for (int i = 0; i < le->ncols; i++) {
         pushColumnLua(btr, rrow, tmatch, le->as[i], apk);
-    } printf("runLuaFilter: fname: %s ncols: %d\n", le->fname, le->ncols);
+    }
     bool ret = 1;
     int  r   = lua_pcall(server.lua, le->ncols, 1, 0);
-    if (r) { ret = 0;
-        redisLog(REDIS_WARNING, "Error running LUA FILTER (%s): %s",
-                 le->fname, lua_tostring(server.lua, -1));
+    if (r) { *hf = 1; ret = 0;
+        CURR_ERR_CREATE_OBJ "-ERR: running LUA FILTER (%s): %s [CARD: %ld]\r\n",
+                 le->fname, lua_tostring(server.lua, -1), CurrCard));
     } else {
         int t = lua_type(server.lua, -1);
         if        (t == LUA_TNUMBER)  {
             ret = lua_tonumber(server.lua, -1) ? 1: 0;
         } else if (t == LUA_TBOOLEAN) {
             ret = lua_toboolean(server.lua, -1);
-        } else { ret = 0;
-            redisLog(REDIS_WARNING,
-                 "LUA FILTER (%s): should return BOOLEAN or NUMBER", le->fname);
+        } else { *hf = 1; ret = 0;
+            CURR_ERR_CREATE_OBJ
+            "-ERR: LUA FILTER (%s): %s [CARD: %ld]\r\n",
+             le->fname, "use NUMBER or BOOLEAN return types", CurrCard));
         }
     }
     CLEAR_LUA_STACK return ret;
 }
-bool passFilters(bt *btr, aobj *apk, void *rrow, list *flist, int tmatch) {
+bool passFilts(bt   *btr, aobj *apk, void *rrow, list *flist, int tmatch, 
+               bool *hf) {
     if (!flist) return 1; /* no filters always passes */
     listNode *ln, *ln2;
     bool      ret = 1;
+printf("passFilts: nfliters: %d\n", flist->len);
     listIter *li  = listGetIterator(flist, AL_START_HEAD);
     while ((ln = listNext(li))) {
         f_t *flt  = ln->value;
@@ -604,24 +614,30 @@ bool passFilters(bt *btr, aobj *apk, void *rrow, list *flist, int tmatch) {
             releaseAobj(&a);
             if (!ret) break;                      /* break OUTER-LOOP on miss */
         } else if (flt->le.yes) {
-            ret = runLuaFilter(&flt->le, btr, apk, rrow, tmatch);
-        } else assert(!"passFilters ERROR");
+            ret = runLuaFilter(&flt->le, btr, apk, rrow, tmatch, hf);
+        } else assert(!"passFilts ERROR");
     } listReleaseIterator(li);
     return ret;
 }
 
+#define OP_FILTER_CHECK \
+  int  tmatch = g->co.w->wf.tmatch; bool hf = 0; \
+  bool ret    = passFilts(g->co.btr, apk, rrow, g->co.w->flist, tmatch, &hf); \
+  if (hf) return 0; if (!ret) return 1;
+
 /* SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS SQL_CALLS */
 static bool select_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
-    int  tmatch = g->co.w->wf.tmatch;
-    if (!passFilters(g->co.btr, apk, rrow, g->co.w->flist, tmatch)) return 1;
-    bool ret    = 1;
+    OP_FILTER_CHECK
     if (!g->se.cstar) {
-        robj *r = outputRow(g->co.btr, rrow, g->se.qcols, g->se.cmatchs,
-                            apk, tmatch, g->se.lfca);
-        if (!r) return 1; // from LUA_SEL_FUNC returning BOOL
+        uchar ost = OR_NONE;
+        robj *r = outputRow(g->co.btr, rrow,   g->se.qcols, g->se.cmatchs,
+                            apk,       tmatch, g->se.lfca,  &ost);
+printf("select_op: ost: %d\n", ost);
+        if (ost == OR_ALLB_OK) { CurrUpdated++; return 1; }
+        if (ost == OR_ALLB_NO)                  return 1;
         if (q) {
             if (!addRow2OBList(g->co.ll, g->co.wb, g->co.btr, r, g->co.ofree,
-                          rrow, apk)) ret = 0;
+                               rrow,     apk)) return 0;
         } else {
             GET_LRUC GET_LFUC
             if (!addReplyRow(g->co.c, r, tmatch, apk, lruc, lrud, lfuc, lfu)) {
@@ -630,7 +646,7 @@ static bool select_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
         }
         if (!(EREDIS)) decrRefCount(r); //TODO MEMLEAK??? for EREDIS
     }
-    INCR(*card) return ret;
+    INCR(*card) CurrCard++; return ret;
 }
 bool opSelectSort(cli  *c,    list *ll,   wob_t *wb,
                   bool ofree, long *sent, int    tmatch) {
@@ -663,8 +679,9 @@ void iselectAction(cli *c,         cswc_t *w,     wob_t *wb,
     g.se.cmatchs = cmatchs; g.se.lfca    = lfca;
     void *rlen   = cstar || EREDIS ? NULL : addDeferredMultiBulkLength(c);
     long  card   = Op(&g, select_op);
-printf("iselectAction: card: %ld\n", card);
-    if (card == -1) { replaceDMB_WithDirtyMissErr(c, rlen); goto isele; }
+
+printf("iselectAction: card: %ld CurrCard: %ld CurrUpdated: %ld\n", card, CurrCard, CurrUpdated);
+    if (card == -1) { replaceDMB(c, rlen, CurrError); goto isele; }
     long sent    = 0;
     if (card) {
         if (q.qed) {
@@ -672,9 +689,12 @@ printf("iselectAction: card: %ld\n", card);
                               &sent, w->wf.tmatch))         goto isele;
         } else sent = card;
     }
-    if (wb->lim != -1 && sent < card) card = sent;
-    if      (cstar)   addReplyLongLong(c, card);
-    else if (!EREDIS) setDeferredMultiBulkLength(c, rlen, card);
+    if (!card && CurrUpdated) setDeferredMultiBulkLong(c, rlen, CurrUpdated);
+    else {
+        if (wb->lim != -1 && sent < card) card = sent;
+        if      (cstar)   addReplyLongLong(c, card);
+        else if (!EREDIS) setDeferredMultiBulkLength(c, rlen, card);
+    }
 
 isele:
     if (wb->ovar) incrOffsetVar(c, wb, card);
@@ -684,19 +704,17 @@ isele:
 typedef list *list_adder(list *list, void *value);
 static bool dellist_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
 printf("START: dellist_op: asc: %d\n", g->asc);
-    bool ret = 1;
-    if (!passFilters(g->co.btr, apk, rrow,
-                     g->co.w->flist, g->co.w->wf.tmatch)) return 1;
+    OP_FILTER_CHECK
     if (q) {
         if (!addRow2OBList(g->co.ll, g->co.wb, g->co.btr, apk, g->co.ofree,
-                      rrow, apk)) ret = 0;
+                            rrow,     apk)) return 0;
     } else {
 printf("dellist_op: adding: key: "); dumpAobj(printf, apk);
         aobj *cln  = cloneAobj(apk); //NOTE: next line builds BACKWARDS list
         list_adder *la = g->asc ? listAddNodeHead : listAddNodeTail;
         (*la)(g->co.ll, cln); /* UGLY: build list of PKs to delete */
     }
-    INCR(*card) return ret;
+    INCR(*card) CurrCard++; return ret;
 }
 static void opDeleteSort(list *ll,    cswc_t *w,      wob_t *wb,   bool  ofree,
                          long  *sent, int     matches, int   inds[]) {
@@ -742,19 +760,17 @@ idel_end:
 }
 
 static bool update_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
-    if (!passFilters(g->co.btr, apk, rrow,
-                     g->co.w->flist, g->co.w->wf.tmatch)) return 1;
-    bool ret = 1;
+    OP_FILTER_CHECK
     if (q) {
         if (!addRow2OBList(g->co.ll, g->co.wb, g->co.btr, apk, g->co.ofree,
-                      rrow, apk)) ret = 0;
+                           rrow, apk)) return 0;
     } else {
 printf("update_op: adding: key: "); dumpAobj(printf, apk);
         //TODO non-FK/PK updates can be done HERE inline (w/o Qing in the ll)
         aobj *cln  = cloneAobj(apk);
         listAddNodeTail(g->co.ll, cln); /* UGLY: build list of PKs to update */
     }
-    INCR(*card) return ret;
+    INCR(*card) CurrCard++; return ret;
 }
 static bool opUpdateSort(cli   *c,   list *ll,    cswc_t  *w,
                          wob_t *wb,  bool  ofree, long    *sent,

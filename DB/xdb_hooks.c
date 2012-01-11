@@ -68,6 +68,10 @@ extern uchar     OutputMode;
 extern dictType  sdsDictType;
 extern dictType  dbDictType;
 
+extern long      CurrCard;
+extern long      CurrUpdated;
+extern robj     *CurrError;
+
 // GLOBALS
 cli            *CurrClient         = NULL;
 
@@ -447,7 +451,10 @@ void DXDB_createClient(int fd, redisClient *c) {//printf("DXDB_createClient\n");
 int   DXDB_processCommand(redisClient *c) { //printf("DXDB_processCommand\n");
     if (c->http.mode == HTTP_MODE_ON) return continue_http_session(c);
     Operations++;
-    CurrClient = c;
+    CurrClient  = c;
+    CurrCard    = 0;
+    CurrUpdated = 0;
+    CurrError   = NULL;
     initClient(c);
     sds arg0       = c->argv[0]->ptr;
     sds arg2       = c->argc > 2 ? c->argv[2]->ptr : NULL;

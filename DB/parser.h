@@ -88,6 +88,7 @@ char *next_token_delim3(char *p, char x, char z);
 char *get_next_token_nonparaned_comma(char *token);
 char *get_next_comma_ignore_quotes_n_parens(char *tkn);
 
+char *strstr_not_quoted(char *h, char *n);
 char *get_after_parens(char *p);
 char *get_next_nonparaned_comma(char *token);
 

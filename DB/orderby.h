@@ -40,7 +40,7 @@ void    destroy_obsl(obsl_t *ob, bool ofree);
 obsl_t *cloneOb     (obsl_t *ob, uint32 nob);
 
 void assignObEmptyKey(obsl_t *ob, uchar ctype, int i);
-bool assignObKey(wob_t  *wb, bt *btr, void *rrow, aobj *apk, int i,
+bool assignObKey(wob_t  *wb, bt *btr,    void *rrow, aobj *apk, int i,
                  obsl_t *ob, int tmatch);
 bool addRow2OBList(list *ll,      wob_t *wb,   bt   *btr, void *r,
                    bool  is_robj, void  *rrow, aobj *apk);

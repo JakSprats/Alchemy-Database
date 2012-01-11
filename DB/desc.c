@@ -183,7 +183,7 @@ void sqlDumpCommand(redisClient *c) {
             aobj *apk  = be->key;
             void *rrow = be->val;
             robj *r    = outputRow(btr, rrow, qcols, cmatchs,
-                                   apk, tmatch, NULL);
+                                   apk, tmatch, NULL, NULL);
             if (toms) {
                 snprintf(buf, 191, "INSERT INTO `%s` VALUES (", mtname);
                 buf[191]  = '\0';
@@ -340,7 +340,10 @@ void descCommand(redisClient *c) {
     bt   *btr        = getBtr(tmatch);
     bool  mt         = 0;
     if (btr->numkeys) { assignMinKey(btr, &mink); assignMaxKey(btr, &maxk);  }
-    else              { initAobj(&mink);          initAobj(&maxk);   mt = 1; }
+    else              {
+        initAobjZeroNum(&mink, COL_TYPE_INT);
+        initAobjZeroNum(&maxk, COL_TYPE_INT); mt = 1;
+   }
 
     sds s = sdsempty();                                  // FREEME 102(1)
     if        (C_IS_S(mink.type)) {

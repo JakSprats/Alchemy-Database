@@ -507,8 +507,9 @@ static uint32 sortFLCheap(list **flist,   list **klist,
         f_t *flt = ln->value;
         if (flt->imatch != -1) {
             r_ind_t *ri = &Index[flt->imatch];
-            if (ri->clist) continue;                /* logic here for NON-MCI */
+            if (ri->clist)                               continue;
             if (jcmatch != -1 && flt->cmatch != jcmatch) continue;
+            if (flt->op == LFUNC)                        continue;
             if (flt->op == EQ || flt->op == RQ || flt->op == IN) {/*KEY,RQ,INL*/
                 uint32 cnt = getNumRow4Filter(flt);
                 if (cnt < lowc) {
@@ -772,12 +773,12 @@ bool optimiseRangeQueryPlan(cli *c, cswc_t *w, wob_t *wb) {
     }
     if (w->wf.op != EQ && w->wf.op != RQ && w->wf.op != IN) {
         addReply(c, shared.key_query_mustbe_eq);       return 0;
-    } //dumpW(printf, w);
+    }
     if (C_IS_P(w->wf.akey.type) || C_IS_P(w->wf.alow.type)) {
         if (!rewriteFuncToLimOfstQuery(w, wb)) {
             addReply(c, shared.nullbulk);              return 0;
         }
-    }
+    }                                   //dumpW(printf, w); dumpWB(printf, wb);
     return 1;
 }
 

@@ -54,8 +54,12 @@ bool addReplyRow(cli   *c,    robj *r,    int    tmatch, aobj *apk,
 int   output_start    (char *buf, uint32 blen, int qcols);
 robj *write_output_row(int   qcols,   uint32  prelen, char *pbuf,
                        uint32 totlen, sl_t   *outs);
-robj *outputRow(bt   *btr,       void *row,  int qcols,
-                int   cmatchs[], aobj *aopk, int tmatch, lfca_t *lfca);
+
+#define OR_NONE      0
+#define OR_ALLB_OK   1
+#define OR_ALLB_NO   2
+robj *outputRow(bt  *btr, void *rrow,   int     qcols, int   cmatchs[], 
+               aobj *apk, int   tmatch, lfca_t *lfca,  bool *ostt);
 
 int   deleteRow(int tmatch, aobj *apk, int matches, int inds[]);
 

@@ -2012,10 +2012,14 @@ function test_partial() {
   $CLI DUMP partial
   echo
   echo UNDEFINED UPDATE
-  $CLI UPDATE partial SET "fk1= fk1 + 1" WHERE pk = 3; $CLI SELECT \* FROM partial WHERE pk=3
-  $CLI UPDATE partial SET "fk1=1" WHERE pk = 3; $CLI SELECT \* FROM partial WHERE pk=3
-  $CLI UPDATE partial SET "fk1= fk1 + 1" WHERE pk = 3; $CLI SELECT \* FROM partial WHERE pk=3
-  $CLI UPDATE partial SET "fk3=333" WHERE pk = 3; $CLI SELECT \* FROM partial WHERE pk=3
+  $CLI UPDATE partial SET "fk1= fk1 + 1" WHERE pk = 3;
+  $CLI SELECT \* FROM partial WHERE pk=3
+  $CLI UPDATE partial SET "fk1=1" WHERE pk = 3;
+  $CLI SELECT \* FROM partial WHERE pk=3
+  $CLI UPDATE partial SET "fk1= fk1 + 1" WHERE pk = 3;
+  $CLI SELECT \* FROM partial WHERE pk=3
+  $CLI UPDATE partial SET "fk3=333" WHERE pk = 3;
+  $CLI SELECT \* FROM partial WHERE pk=3
   echo INDEXES 2 rows
   $CLI SELECT \* FROM partial WHERE fk2 = 22
   $CLI UPDATE partial SET fk2=22 WHERE pk=1
@@ -3128,5 +3132,50 @@ function test_dirty_scion_iterators() {
   J=9; $CLI SELECT \* FROM simple WHERE fk=7 ORDER BY pk DESC LIMIT 1 OFFSET $J;
   echo TOO FAR DESC
   J=10; $CLI SELECT \* FROM simple WHERE fk=7 ORDER BY pk DESC LIMIT 1 OFFSET $J;
+}
+
+function test_lua_sql_integration() {
+  $CLI DROP   TABLE lo >/dev/null
+  $CLI CREATE TABLE lo "(pk INT, fk LONG, lo LUAOBJ)";
+  $CLI INSERT INTO lo VALUES "(1, 111, '{name = \'RUSS\', age=35}')";
+  $CLI INSERT INTO lo VALUES "(2, 222, '{name = \'JIM\', age=55}')";
+  $CLI INSERT INTO lo VALUES "(3, 333, '{name = \'Jane\', age=22}')"
+
+  $CLI CONFIG ADD LUA "function giveage(lo) return lo.age; end"
+  $CLI SELECT "giveage(lo)" FROM lo WHERE "pk BETWEEN 1 AND 3"
+  $CLI CONFIG ADD LUA "function incr_age(lo) lo.age = lo.age + 1; return true; end"
+  echo 3
+  $CLI SELECT "incr_age(lo)" FROM lo WHERE "pk BETWEEN 1 AND 3"
+  echo 1
+  $CLI SELECT "incr_age(lo)" FROM lo WHERE "pk =2"
+  $CLI SELECT "giveage(lo)" FROM lo WHERE "pk BETWEEN 1 AND 3"
+
+  $CLI CONFIG ADD LUA "function update_fail(pk) return false; end"
+  echo "ZERO UPDATES"
+  $CLI SELECT "update_fail(pk)" FROM lo WHERE "pk BETWEEN 1 AND 3 "
+  echo "ZERO UPDATES"
+  $CLI SELECT "update_fail(pk)" FROM lo WHERE "pk = 1"
+
+  $CLI CONFIG ADD LUA "function variable_fail(pk) if ((pk%2) == 0) then return true; else return false; end; end"
+  echo "UPDATES ONLY 1"
+  $CLI SELECT "variable_fail(pk)" FROM lo WHERE "pk BETWEEN 1 AND 3"
+
+  $CLI CONFIG ADD LUA "function variable_return_num_table(pk) if ((pk%2) == 0) then return pk; else return {pk=pk;} end; end"
+  echo "FAIL ON 0"
+  $CLI SELECT "variable_return_num_table(pk)" FROM lo WHERE "pk BETWEEN 1 AND 3"
+  echo "FAIL ON 1"
+  $CLI SELECT "variable_return_num_table(pk)" FROM lo WHERE "pk BETWEEN 2 AND 3"
+
+  echo FAIL 0
+  $CLI SELECT \* FROM lo WHERE "pk BETWEEN 1 AND 2 ORDER BY variable_return_num_table(pk)"
+  echo 1 ROW
+  $CLI SELECT \* FROM lo WHERE "pk BETWEEN 2 AND 2 ORDER BY variable_return_num_table(pk)"
+  echo FAIL 1
+  $CLI SELECT \* FROM lo WHERE "pk BETWEEN 2 AND 3 ORDER BY variable_return_num_table(pk)"
+
+  $CLI CONFIG ADD LUA "function foo() print ('foo'); end"
+  $CLI INSERT INTO lo VALUES "(11, 111111, 'coroutine.create(foo)')"
+  $CLI INSERT INTO lo VALUES "(12, 121212, '{x=4;y=coroutine.create(foo);}')"
+  $CLI DUMP lo
 
 }

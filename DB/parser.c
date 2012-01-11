@@ -307,6 +307,15 @@ char *get_next_token_nonparaned_comma(char *token) {
    return token;
 }
 
+inline char *strstr_not_quoted(char *h, char *n) {
+    int nlen = strlen(n);
+    while (*h) {
+        if (*h == '\'') h = str_next_unescaped_chr(h, h, '\'');
+        if (!strncmp(h, n, nlen)) return h;
+        h++;
+    }
+    return NULL;
+}
 inline char *get_after_parens(char *p) {
     int parens = 0;
     while (*p) {

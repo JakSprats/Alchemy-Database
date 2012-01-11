@@ -569,7 +569,7 @@ printf("parseCommaListToAobjs: tkn: %s\n", tkn);
         } else len = strlen(tkn);
         char  c = *tkn;
         aobj *a = NULL;
-        if (!len) { a = createEmptyAobj();
+        if (!len) { return 1;
         } else if (c == '\'') {
             if (tkn[len - 1] != '\'') return 0;
             tkn++; len -=2; // skip \'s
@@ -645,23 +645,32 @@ printf("checkExprIsFunc: expr: %s\n", expr);
     char *cfin  = fin ? *fin : NULL;
     sds   fname = NULL; sds argt = NULL; list *lcs = NULL; bool ret = 0;
     if (isLuaFunc(expr, &fname, &argt, fin) && luaFuncDefined(fname)) {
-        lcs   = listCreate();                                  // FREE 135
-        int r = parseCommaListToAobjs(argt, tmatch, lcs);
-        if (!r)                     { ret = 0; goto check_expr_end; }
-        initLUE(le, fname, lcs); ret = 1;
+        lcs    = listCreate();                                // FREE 135
+        bool r = parseCommaListToAobjs(argt, tmatch, lcs);
+        if (r) { initLUE(le, fname, lcs); ret = 1; }
+        else ret = 0;
     }
-
-check_expr_end:
     if (!ret && fin) *fin = cfin;
     if (argt)  sdsfree(argt); if (fname) sdsfree(fname);      // FREED 133,134
     if (lcs)   { lcs->free = destroyAobj; listRelease(lcs); } // FREED 135
     return ret;
+}
+
+#define NEXT_FUNCTION_NUM_START 100000
+static inline long getFuncNum(int cmatch) {
+    static long Nfuncn = NEXT_FUNCTION_NUM_START;
+    long        funcn  = cmatch;
+    if      ((long)cmatch > Nfuncn) Nfuncn = cmatch + 1;
+    else if (cmatch == -1)          funcn  = Nfuncn++;
+    if (Nfuncn < NEXT_FUNCTION_NUM_START) Nfuncn = NEXT_FUNCTION_NUM_START;
+    return funcn;
 }
 bool checkOrCreateLuaFunc(int tmatch, int cmatch, lue_t *le, sds expr,
                           char **fin) {
 printf("checkOrCreateLuaFunc\n");
     if (!Inited_LuaDlms) { init_LuaDlms(); Inited_LuaDlms = 1; }
     if (checkExprIsFunc(expr, le, tmatch, fin)) return 1;
+    long     funcn = getFuncNum(cmatch);
     r_tbl_t *rt    = &Tbl[tmatch];
     char    *beg   = expr, *s = expr;
     sds      mexpr = sdsempty();                              // FREE ME 098
@@ -690,7 +699,7 @@ printf("checkOrCreateLuaFunc\n");
     }
     le->yes   = 1; le->ncols = cl->len;
     if (le->ncols) le->as = malloc(le->ncols * sizeof(aobj **)); //FREE 096
-    le->fname = sdscatprintf(sdsempty(), "luf_%d", cmatch);      //FREE 118
+    le->fname = sdscatprintf(sdsempty(), "luf_%d", funcn);       //FREE 118
     sds lfunc = sdsnew("return (function (...) ");               //FREE 100
     if (cl->len) { listNode *ln;
         uint32    i     = 0;
@@ -701,13 +710,14 @@ printf("checkOrCreateLuaFunc\n");
                                           rt->col[cm].name, (i + 1));
             le->as[i]       = createAobjFromInt(cm);
             le->as[i]->type = COL_TYPE_CNAME;
+            printf("CREATE COMPLEX LUA: a: "); dumpAobj(printf, le->as[i]);
             i++;
         } listReleaseIterator(li);
     }
     lfunc = sdscatprintf(lfunc, " return (%s); end)(...)", expr);
     CLEAR_LUA_STACK
     int ret = luaL_loadstring(server.lua, lfunc);
-    printf("ret: %d lfunc: %s\n", ret, lfunc);
+    printf("ret: %d fname: %s ncols: %d lfunc: %s\n", ret, le->fname, le->ncols, lfunc);
     sdsfree(lfunc);                                      // FREED 100
     if (ret) { le->yes = 0; sdsfree(le->fname); }        // FREED 096
     else     lua_setglobal(server.lua, le->fname);

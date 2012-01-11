@@ -98,7 +98,8 @@ typedef bool row_op(range_t *g, aobj *apk, void *rrow, bool q, long *card);
 long keyOp(range_t *g, row_op *p); // Also Used in JOINs
 long Op(range_t *g, row_op *p);    // Also Used in JOINs
 
-bool passFilters(bt *btr, aobj *akey, void *rrow, list *flist, int tmatch);
+bool passFilts(bt   *btr, aobj *akey, void *rrow, list *flist, int tmatch,
+               bool *hf);
 
 bool opSelectSort(cli  *c,    list *ll,   wob_t *wb,
                   bool ofree, long *sent, int    tmatch);

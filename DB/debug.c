@@ -105,18 +105,10 @@ void setDeferredMultiBulkLong(redisClient *c, void *node, long card) {
     sds rep_int = sdscatprintf(sdsempty(), ":%ld\r\n", card);
     prependDeferredMultiBulkError(c, node, rep_int);
 }
-void replaceDMB_WithDirtyMissErr(cli *c, void *node) {
-    if (!node) addReply(c, shared.dirty_miss); // SELECT "COUNT(*)"
+void replaceDMB(cli *c, void *node, robj *rerr) {
+    if (!node) addReply(c, rerr); // SELECT "COUNT(*)"
     else {
-        sds err = sdsdup(shared.dirty_miss->ptr); // FREE ME 111
-        resetDeferredMultiBulk_ToError(c, node, err);
-        sdsfree(err);                             // FREED 111
-    }
-}
-void replaceDMB_With_QO_Err(cli *c, void *node) {
-    if (!node) addReply(c, shared.join_qo_err); // SELECT "COUNT(*)"
-    else {
-        sds err = sdsdup(shared.join_qo_err->ptr); // FREE ME 111
+        sds err = sdsdup(rerr->ptr);              // FREE 111
         resetDeferredMultiBulk_ToError(c, node, err);
         sdsfree(err);                             // FREED 111
     }

@@ -469,7 +469,7 @@ uchar *parseStream(uchar *stream, bt *btr) {               //DEBUG_PARSE_STREAM
   {  key->type = key->enc = t;  key->aobjpart = (*(cast *)(stream)).key; }
 
 void convertStream2Key(uchar *stream, aobj *key, bt *btr) {
-    initAobj(key);
+    initAobj(key); key->empty = 0;
     if        INODE_I(btr) {
         key->type = key->enc = COL_TYPE_INT;
         key->i    = INTVOID stream;
