@@ -3141,6 +3141,7 @@ function test_lua_sql_integration() {
   $CLI INSERT INTO lo VALUES "(2, 222, '{name = \'JIM\', age=55}')";
   $CLI INSERT INTO lo VALUES "(3, 333, '{name = \'Jane\', age=22}')"
 
+  $CLI CONFIG ADD LUA "function foo() print ('foo'); end"
   $CLI CONFIG ADD LUA "function giveage(lo) return lo.age; end"
   $CLI SELECT "giveage(lo)" FROM lo WHERE "pk BETWEEN 1 AND 3"
   $CLI CONFIG ADD LUA "function incr_age(lo) lo.age = lo.age + 1; return true; end"
@@ -3160,22 +3161,20 @@ function test_lua_sql_integration() {
   echo "UPDATES ONLY 1"
   $CLI SELECT "variable_fail(pk)" FROM lo WHERE "pk BETWEEN 1 AND 3"
 
-  $CLI CONFIG ADD LUA "function variable_return_num_table(pk) if ((pk%2) == 0) then return pk; else return {pk=pk;} end; end"
+  $CLI CONFIG ADD LUA "function variable_return_num_coroutine(pk) if ((pk%2) == 0) then return pk; else return coroutine.create(foo) end; end"
   echo "FAIL ON 0"
-  $CLI SELECT "variable_return_num_table(pk)" FROM lo WHERE "pk BETWEEN 1 AND 3"
+  $CLI SELECT "variable_return_num_coroutine(pk)" FROM lo WHERE "pk BETWEEN 1 AND 3"
   echo "FAIL ON 1"
-  $CLI SELECT "variable_return_num_table(pk)" FROM lo WHERE "pk BETWEEN 2 AND 3"
+  $CLI SELECT "variable_return_num_coroutine(pk)" FROM lo WHERE "pk BETWEEN 2 AND 3"
 
   echo FAIL 0
-  $CLI SELECT \* FROM lo WHERE "pk BETWEEN 1 AND 2 ORDER BY variable_return_num_table(pk)"
+  $CLI SELECT \* FROM lo WHERE "pk BETWEEN 1 AND 2 ORDER BY variable_return_num_coroutine(pk)"
   echo 1 ROW
-  $CLI SELECT \* FROM lo WHERE "pk BETWEEN 2 AND 2 ORDER BY variable_return_num_table(pk)"
+  $CLI SELECT \* FROM lo WHERE "pk BETWEEN 2 AND 2 ORDER BY variable_return_num_coroutine(pk)"
   echo FAIL 1
-  $CLI SELECT \* FROM lo WHERE "pk BETWEEN 2 AND 3 ORDER BY variable_return_num_table(pk)"
+  $CLI SELECT \* FROM lo WHERE "pk BETWEEN 2 AND 3 ORDER BY variable_return_num_coroutine(pk)"
 
-  $CLI CONFIG ADD LUA "function foo() print ('foo'); end"
   $CLI INSERT INTO lo VALUES "(11, 111111, 'coroutine.create(foo)')"
   $CLI INSERT INTO lo VALUES "(12, 121212, '{x=4;y=coroutine.create(foo);}')"
   $CLI DUMP lo
-
 }

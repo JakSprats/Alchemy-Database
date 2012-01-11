@@ -19,7 +19,6 @@
 #define cli redisClient
 #define rcommand struct redisCommand
 
-
 #define bool     unsigned char
 #define uchar    unsigned char
 #define ushort16 unsigned short
@@ -69,6 +68,8 @@ typedef bool select_callback(erow_t* erow);
 
 #define NOP 10 
 enum OP {NONE, EQ, NE, GT, GE, LT, LE, RQ, IN, LFUNC};
+
+#define LUA_OBJ_TABLE "ASQL"
 
 //TODO move this into a single struct, that can be bzero'ed
 #define ALCHEMY_CLIENT_EXTENSIONS           \

@@ -756,6 +756,8 @@ static void initFloatAobjFromVal(aobj *a, float f, bool fs, int cmatch) {
     else         { a->f = f; a->enc = COL_TYPE_FLOAT; }
 }
 
+//TODO this is inefficient for [INT,FLOAT,BOOL]
+//       ... need slimmer API w/ DataDumper
 static void initAobjFromLuaString(lua_State *lua, aobj *a, bool stkd, bool fs) {
     int        i    = stkd ? 1 : -1;                              a->empty = 0;
     int        len  = lua_strlen(lua, i);
@@ -770,6 +772,10 @@ static void initAobjFromLuaString(lua_State *lua, aobj *a, bool stkd, bool fs) {
         a->type = a->enc = COL_TYPE_FLOAT;
         if (fs) {a->len = len; a->s = varr; }
         else    a->f = atof(varr);               // OK: DELIM: \0
+    } else if (!strcmp(varr, "true")) {
+        a->b = 1; a->type = a->enc = COL_TYPE_BOOL;
+    } else if (!strcmp(varr, "false")) {
+        a->b = 0; a->type = a->enc = COL_TYPE_BOOL;
     } else {
         a->len = len; a->s = varr; a->type = a->enc = COL_TYPE_STRING;
     }
@@ -787,19 +793,19 @@ static void initAobjFromLuaNumber(lua_State *lua, aobj *a, bool stkd, bool fs) {
     a->type = a->enc = COL_TYPE_LONG;
 }
 static void initLOFromCM(aobj *a, aobj *apk, int cmatch, int tmatch, bool fs) {
-    sds vname = getLuaVarName(apk, tmatch, cmatch);      // FREE ME 123
-    lua_getglobal(server.lua, vname);
+    CLEAR_LUA_STACK
+    pushLuaVar(tmatch, cmatch, apk);
     int t     = lua_type(server.lua, 1);
-    printf("initLOFromCM: vname: %s t: %d top: %d\n", vname, t, lua_gettop(server.lua));
+    printf("initLOFromCM: t: %d top: %d\n", t, lua_gettop(server.lua));
     if (t == LUA_TTABLE || t == LUA_TBOOLEAN || t == LUA_TNIL) {
         CLEAR_LUA_STACK
         lua_getglobal(server.lua, "DataDumper");
-        lua_getglobal(server.lua, vname);
+        pushLuaVar(tmatch, cmatch, apk);
         int ret = lua_pcall(server.lua, 1, 1, 0);
         if (ret) {
             initAobjString(a, UnprintableLuaObject, lenUnplo);
         } else { // DataDumper only returns STRINGs
-            initAobjFromLuaString(server.lua, a, 1, fs);
+            initAobjFromLuaString(server.lua, a, 0, fs);
         }
     } else {
         if (t == LUA_TSTRING) {
@@ -810,7 +816,7 @@ static void initLOFromCM(aobj *a, aobj *apk, int cmatch, int tmatch, bool fs) {
             initAobjString(a, UnprintableLuaObject, lenUnplo);
         }
     }
-    CLEAR_LUA_STACK sdsfree(vname);                      // FREE ME 123
+    CLEAR_LUA_STACK
 }
 static aobj colFromUU(ulong key, bool fs, int cmatch) {
     int cval = (int)((long)key % UINT_MAX);
@@ -1230,9 +1236,7 @@ printf("pushColumnLua: a: "); dumpAobj(printf, a);
             int  cmatch = a->i;           assert(tmatch != -1 && cmatch != -1);
             ctype = Tbl[tmatch].col[cmatch].type;
             if (C_IS_O(ctype)) {
-                sds vname = getLuaVarName(apk, tmatch, cmatch);
-                printf("pushColumnLua: COLUMN: C_IS_O: vname: %s\n", vname);
-                lua_getglobal(server.lua, vname); sdsfree(vname); return;
+                pushLuaVar(tmatch, cmatch, apk); return;
             }
             acol  = getCol(btr, orow, cmatch, apk, tmatch, NULL);
         } else if C_IS_O(a->type) {

@@ -245,33 +245,50 @@ int cr8Xcol(uint128 x, uint128 *col) { *col = x; return 16; }
 
 // LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ
 #define DEBUG_WRITE_LUAOBJ                                          \
-  printf("writeLuaObjCol: VNAME: %s Lua: (%s) apk: ", vname, luac); \
-  dumpAobj(printf, apk);
+  printf("writeLuaObjCol: tname: %s cname: %s apk: %s Lua: (%s)\n", \
+          rt->name, rt->col[cmatch].name, pkbuf, luac); 
 
-sds getLuaVarName(aobj *apk, int tmatch, int cmatch) {
-    r_tbl_t *rt    = &Tbl[tmatch];
-    uchar    pktyp = rt->col[0].type;
-    char pkbuf[64];
-    if      C_IS_I(pktyp)   sprintf    (pkbuf, "%u",      apk->i);
-    else if C_IS_L(pktyp)   sprintf    (pkbuf, "%lu",     apk->l);
-    else if C_IS_X(pktyp) { SPRINTF_128(pkbuf, 64,        apk->x); }
-    else if C_IS_F(pktyp)   sprintf    (pkbuf, FLOAT_FMT, apk->f);
-    return  sdscatprintf(sdsempty(), "SQL_%s_%s_%s",                //FREEME123
-                                      rt->name, rt->col[cmatch].name, 
-                                      C_IS_S(pktyp) ? apk->s : pkbuf);
+#define WRITE_PK_TO_BUFF(apx)                                        \
+    r_tbl_t *rt = &Tbl[tmatch];                                      \
+    char pkbuf[64]; uchar pktyp = rt->col[0].type;                   \
+    if      C_IS_I(pktyp)   sprintf    (pkbuf, "%u",      apk->i);   \
+    else if C_IS_L(pktyp)   sprintf    (pkbuf, "%lu",     apk->l);   \
+    else if C_IS_X(pktyp) { SPRINTF_128(pkbuf, 64,        apk->x); } \
+    else if C_IS_F(pktyp)   sprintf    (pkbuf, FLOAT_FMT, apk->f);   \
+    else                    assert(!"WRITE_PK_TO_BUFF ERROR");
+
+static sds getLuaTblName(int tmatch, int cmatch) {
+    r_tbl_t *rt = &Tbl[tmatch];
+    return sdscatprintf(sdsempty(), "%s_%s_%s", LUA_OBJ_TABLE,
+                                     rt->name, rt->col[cmatch].name);
 }
+void pushLuaVar(int tmatch, int cmatch, aobj *apk) {
+    WRITE_PK_TO_BUFF(apk) sds tbl = getLuaTblName(tmatch, cmatch); // FREE 133
+    lua_getglobal (server.lua, tbl);
+    lua_pushstring(server.lua, pkbuf);
+    lua_gettable  (server.lua, -2);
+    lua_remove    (server.lua, -2);
+}
+// the table ASQL_tbl_col[] should be in Lua's registry
 bool writeLuaObjCol(cli *c,    aobj   *apk, int tmatch, int cmatch,
                     char *val, uint32  vlen) {
     uint32  nlen;
-    char   *xcpd  = new_unescaped(val, '\'', vlen, &nlen);
-    if (!xcpd) return 0;
-    sds     luac  = sdsnewlen(xcpd, nlen);
-    sds     vname = getLuaVarName(apk, tmatch, cmatch);  // FREE ME 124
-    CLEAR_LUA_STACK                                          DEBUG_WRITE_LUAOBJ
+    char   *xcpd = new_unescaped(val, '\'', vlen, &nlen); if (!xcpd) return 0;
+    sds     luac = sdsnewlen(xcpd, nlen);
+    CLEAR_LUA_STACK WRITE_PK_TO_BUFF(apk)                    DEBUG_WRITE_LUAOBJ
+    sds     tbl  = getLuaTblName(tmatch, cmatch);             // FREE 133
+    lua_getglobal(server.lua, tbl);
+    int     t    = lua_type(server.lua, 1);
+    if (lua_type(server.lua, 1) == LUA_TNIL) { 
+        lua_newtable(server.lua); lua_setglobal(server.lua, tbl);
+    } else assert (t == LUA_TTABLE);
+    CLEAR_LUA_STACK
     lua_getfield(server.lua, LUA_GLOBALSINDEX, "luaobj_assign");
-    lua_pushstring(server.lua, vname); sdsfree(vname);          // FREED 124
+    lua_pushstring(server.lua, tbl);
+    sdsfree(tbl);                                        // FREED 133
+    lua_pushstring(server.lua, pkbuf);
     lua_pushstring(server.lua, luac);
-    int ret = lua_pcall(server.lua, 2, 0, 0);
+    int ret = lua_pcall(server.lua, 3, 0, 0);
     if (ret) {
         addReplyErrorFormat(c, "Error running script (luaobj_assign): %s\n",
                                 lua_tostring(server.lua, -1));

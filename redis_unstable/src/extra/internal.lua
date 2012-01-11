@@ -6,12 +6,10 @@
 
 dofile 'extra/dumper.lua';
 
-function luaobj_assign(var, luaexpr)
-  print ('Lua: assign: var: ' .. var .. ' luaexpr: ' .. luaexpr);
-  local assign_cmd = var .. '=' .. luaexpr .. ';';
+function luaobj_assign(tblname, pk, luaexpr)
+  local assign_cmd = tblname .. "['" .. pk .. "']" .. '=' .. luaexpr .. ';';
+  print ('Lua: assign: ' .. assign_cmd);
   assert(loadstring(assign_cmd))()
-  --local debug_cmd = 'dump(' .. var .. ')';
-  --assert(loadstring(debug_cmd))()
 end
 
 -- SELECT_STORE SELECT_STORE SELECT_STORE SELECT_STORE SELECT_STORE

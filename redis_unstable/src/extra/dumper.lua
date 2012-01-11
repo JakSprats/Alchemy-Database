@@ -229,8 +229,8 @@ function DataDumper(value, varname, fastmode, ident)
 end
 
 function DataDumperWrapper(func, ...)
-    print ('DataDumperWrapper');
-    return DataDumper(func(...));
+  --print ('DataDumperWrapper');
+  return DataDumper(func(...));
 end
 
 -- Define a shortcut function for testing
