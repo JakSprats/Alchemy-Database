@@ -182,7 +182,7 @@ printf("parseOBYcol wb->nob: %d tmatch: %d\n", wb->nob, tmatch);
     } 
     wb->obt[wb->nob] = tmatch; wb->obc[wb->nob] = -1; // Simple Parse DEFAULT
     if (join) { // JOIN COLUMN [tbl.col]
-        if ((wb->obt[wb->nob] = find_table_n(t2, join - 1)) == -1) {
+        if ((wb->obt[wb->nob] = find_table_n(t2, join)) == -1) {
             addReply(c, shared.join_order_by_tbl); sdsfree(t2);      return 0;
         } else {
             char *cname = t2 + join + 1;
