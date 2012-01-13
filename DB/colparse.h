@@ -93,7 +93,8 @@ uchar getExprType(char *pred, int plen);
 int parseExpr(cli *c, int tmatch, int cmatch, char *val, uint32 vlen, ue_t *ue);
 
 // LUA_UPDATE
-void   initLUE(lue_t *le, sds fname, list *lcs);
+void initLUE   (lue_t *le, sds fname, list *lcs);
+void releaseLUE(lue_t *le);
 bool parseCommaListToAobjs(char *tkn, int tmatch, list *as);
 bool checkOrCr8LFunc(int tmatch, lue_t *le, sds expr, bool cln);
 bool parseLuaExpr(int tmatch, char *val, uint32 vlen, lue_t *le);

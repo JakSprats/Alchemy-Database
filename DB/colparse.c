@@ -548,6 +548,13 @@ void initLUE(lue_t *le, sds fname, list *lcs) {
         i++;                 
     } listReleaseIterator(lic);
 }
+void releaseLUE(lue_t *le) {
+    if (le->yes) return;
+    sdsfree(le->fname);                                         // FREED 118
+    for (int j = 0; j < le->ncols; j++) destroyAobj(le->as[j]); // FREED 126,128
+    if (le->as) free(le->as);                                   // FREED 119
+    bzero(le, sizeof(lue_t));
+}
 static lue_t *cloneLUE(lue_t *le) {
 printf("cloneLUE fname: %s\n", le->fname);
     lue_t *lf    = malloc(sizeof(lue_t));                // FREE ME 136

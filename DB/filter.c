@@ -57,19 +57,20 @@ void initFilter(f_t *flt) {
 f_t *newEmptyFilter() {
     f_t *flt = malloc(sizeof(f_t)); initFilter(flt); return flt; // FREE 036
 }
-static void releaseFilterInnards(f_t *flt) {
+static void releaseFilterInnards(f_t *flt, bool le) {
     if (flt->key)  { sdsfree(flt->key);     flt->key  = NULL; }
     if (flt->low)  { sdsfree(flt->low);     flt->low  = NULL; }
     if (flt->high) { sdsfree(flt->high);    flt->high = NULL; }
     releaseAobj(&flt->akey); releaseAobj(&flt->alow); releaseAobj(&flt->ahigh);
     destroyINLlist(&flt->inl);
+    if (le) releaseLUE(&flt->le);
 }
 void releaseFilterD_KL(f_t *flt) {             //printf("releaseFilterD_KL\n");
-    releaseFilterInnards(flt);
+    releaseFilterInnards(flt, 0);
     destroyFlist(  &flt->klist); /* RANGE QUERIES klist is live */
 }
 void releaseFilterR_KL(f_t *flt) {             //printf("releaseFilterR_KL\n");
-    releaseFilterInnards(flt);
+    releaseFilterInnards(flt, 1);
     releaseFlist(  &flt->klist); /* JOINS klist is just a reference list */
 }
 void destroyFilter(void *v) {
@@ -97,6 +98,7 @@ f_t *cloneFilter(f_t *oflt) {
         flt->inl       = listDup(oflt->inl);
     }
     if (oflt->klist) flt->klist = listDup(oflt->klist);
+    //TODO cloneLUE
     return flt;
 }
 inline void *vcloneFilter(void *v) { return cloneFilter((f_t *)v); }

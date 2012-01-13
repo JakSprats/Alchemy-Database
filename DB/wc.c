@@ -415,7 +415,7 @@ static uchar pWC_checkLuaFunc(cli *c, f_t *flt, sds tkn, char **fin, robj *ro) {
     if      (oby) { s = sdsnewlen(tkn, (oby - tkn)); *fin = oby;  }
     else if (lim) { s = sdsnewlen(tkn, (oby - lim)); *fin = lim;  }
     else          { s = sdsnew   (tkn);              *fin = NULL; }
-    bool ret = checkOrCr8LFunc(flt->tmatch, &flt->le, s, 0);
+    bool ret = checkOrCr8LFunc(flt->tmatch, &flt->le, s, 1);
     sdsfree(s);
     if (ret) { flt->op = LFUNC;    return PARSE_OK;       }
     else     {
@@ -552,7 +552,6 @@ uchar parseWC(cli *c, cswc_t *w, wob_t *wb, jb_t *jb, list *ijl) {
 p_wd_err:
     if (flt) destroyFilter(flt);
 
-printf("w.lvr: %s\n", w->lvr);
     if (w->lvr) { /* blank space in lvr is not actually lvr */
         SKIP_SPACES(w->lvr)
         if (*(w->lvr)) w->lvr = sdsnewlen(w->lvr, strlen(w->lvr));

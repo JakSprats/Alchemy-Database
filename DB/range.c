@@ -559,8 +559,8 @@ long Op(range_t *g, row_op *p) {
 // FILTERS FILTERS FILTERS FILTERS FILTERS FILTERS FILTERS FILTERS FILTERS
 static bool runLuaFilter(lue_t *le, bt *btr, aobj *apk, void *rrow, int tmatch,
                          bool  *hf) {
-    CLEAR_LUA_STACK lua_getglobal(server.lua, le->fname);
     printf("runLuaFilter: fname: %s ncols: %d\n", le->fname, le->ncols);
+    CLEAR_LUA_STACK lua_getglobal(server.lua, le->fname);
     for (int i = 0; i < le->ncols; i++) {
         pushColumnLua(btr, rrow, tmatch, le->as[i], apk);
     }
@@ -613,7 +613,7 @@ printf("passFilts: nfliters: %d\n", flist->len);
             ret = (*OP_CMP[flt->op])(&flt->akey, &a);     //DEBUG_PASS_FILT_KEY
             releaseAobj(&a);
             if (!ret) break;                      /* break OUTER-LOOP on miss */
-        } else if (flt->le.yes) {
+        } else if (flt->op == LFUNC) {
             ret = runLuaFilter(&flt->le, btr, apk, rrow, tmatch, hf);
         } else assert(!"passFilts ERROR");
     } listReleaseIterator(li);
