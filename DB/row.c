@@ -573,6 +573,7 @@ static aobj getRC_LFunc(bt *btr, uchar *orow, int tmatch, aobj *apk, bool fs,
     }
     int ret = lua_pcall(server.lua, le->ncols + 1, 1, 0); // +1 for Wrapper
     if (ret) {
+        a.err = 1; a.type = COL_TYPE_ERR;
         CURR_ERR_CREATE_OBJ
              "-ERR: Error running SELECT FUNCTION (%s): %s CARD: %ld\r\n",
                le->fname, lua_tostring(server.lua, -1), CurrCard));
@@ -722,6 +723,7 @@ inline aobj getSCol(bt     *btr, uchar *rrow, int cmatch, aobj *apk, int tmatch,
     return getRawCol(btr, rrow, cmatch, apk, tmatch, 1, lfca);
 }
 
+//TODO RawCols[] is too complicated -> use malloc()
 static char RawCols[RAW_COL_BUF_SIZE][64]; /* NOTE: avoid malloc's */
 static void initAobjCol2S(aobj *a, ulong l, uint128 x, float f, int cmatch,
                           int   ktype) {
@@ -930,8 +932,7 @@ robj *write_output_row(int   qcols,   uint32  prelen, char *pbuf,
 }
 static robj *orow_redis(bt   *btr, void *rrow,   int     qcols, int  *cmatchs,
                         aobj *apk, int   tmatch, lfca_t *lfca,  bool *ost) {
-    char pbuf[128];
-    sl_t outs[qcols];
+    char pbuf[128]; sl_t outs[qcols]; int faili   = 0;
     uint32 prelen   = output_start(pbuf, 128, qcols);
     uint32 totlen   = prelen;
     bool   allbools = 1; bool bool_ok = 0; // allbools means dont print row
@@ -939,17 +940,22 @@ static robj *orow_redis(bt   *btr, void *rrow,   int     qcols, int  *cmatchs,
         aobj  acol  = getCol(btr, rrow, cmatchs[i], apk, tmatch, lfca);
         outs[i]     = outputReformat(&acol);
         releaseAobj(&acol);
+        if C_IS_E(acol.type) { faili = i;               goto orowr_err; }
         if C_IS_B(acol.type) { if (acol.b) bool_ok = 1; continue; }
         allbools        = 0;
         totlen     += outs[i].len;
     }
     if (allbools) { *ost = bool_ok ? OR_ALLB_OK : OR_ALLB_NO; return NULL; }
     return write_output_row(qcols, prelen, pbuf, totlen, outs);
+
+orowr_err:
+    for (int i = 0; i <= faili; i++) release_sl(outs[i]);
+    *ost = OR_LUA_FAIL; return NULL;
 }
 static robj *orow_normal(bt  *btr, void *rrow,   int     qcols, int  *cmatchs,
                         aobj *apk, int   tmatch, lfca_t *lfca,  bool *ost) {
     sl_t   outs[qcols];
-    uint32 totlen   = 0;
+    uint32 totlen   = 0; int  faili   = 0;
     bool   allbools = 1; bool bool_ok = 0; // allbools means dont print row
     for (int i = 0; i < qcols; i++) {
         aobj  acol       = getSCol(btr, rrow, cmatchs[i], apk, tmatch, lfca);
@@ -957,6 +963,7 @@ static robj *orow_normal(bt  *btr, void *rrow,   int     qcols, int  *cmatchs,
         outs[i].s       = acol.s;
         outs[i].len     = acol.len;
         outs[i].type    = acol.type;
+        if C_IS_E(acol.type) { faili = i;               goto orown_err; }
         if C_IS_B(acol.type) { if (acol.b) bool_ok = 1; continue; }
         allbools        = 0;
         totlen         += acol.len;
@@ -967,6 +974,10 @@ static robj *orow_normal(bt  *btr, void *rrow,   int     qcols, int  *cmatchs,
     if (allbools) { *ost = bool_ok ? OR_ALLB_OK : OR_ALLB_NO; return NULL; }
     totlen += (uint32)qcols - 1; /* one comma per COL, except final */
     return write_output_row(qcols, 0, NULL, totlen, outs);
+
+orown_err:
+    for (int i = 0; i <= faili; i++) release_sl(outs[i]);
+    *ost = OR_LUA_FAIL; return NULL;
 }
 robj *outputRow(bt  *btr, void *rrow,   int     qcols, int   cmatchs[], 
                aobj *apk, int   tmatch, lfca_t *lfca,  bool *ost) {

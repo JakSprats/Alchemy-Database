@@ -93,15 +93,10 @@ uchar getExprType(char *pred, int plen);
 int parseExpr(cli *c, int tmatch, int cmatch, char *val, uint32 vlen, ue_t *ue);
 
 // LUA_UPDATE
-void initLUE   (lue_t *le, sds fname, list *lcs);
-void releaseLUE(lue_t *le);
-void destroyLUE(lue_t *le);
+void   initLUE(lue_t *le, sds fname, list *lcs);
 bool parseCommaListToAobjs(char *tkn, int tmatch, list *as);
-bool isLuaFunc(char *expr, sds *fname, sds *argt, char **fin);
-bool luaFuncDefined(sds fname);
-bool checkOrCreateLuaFunc(int    tmatch, int cmatch, lue_t *le, sds expr, 
-                          char **fin);
-bool parseLuaExpr(int tmatch, int cmatch, char *val, uint32 vlen, lue_t *le);
+bool checkOrCr8LFunc(int tmatch, lue_t *le, sds expr, bool cln);
+bool parseLuaExpr(int tmatch, char *val, uint32 vlen, lue_t *le);
 
 // CREATE_TABLE
 bool parseColType(cli *c, sds type, uchar *col_type);

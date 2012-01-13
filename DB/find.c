@@ -152,7 +152,7 @@ static int check_special_column(int tmatch, sds cname) {
     }
     return -1; // MISS on special also
 }
-static int find_column_sds(int tmatch, sds cname) {
+int find_column_sds(int tmatch, sds cname) {
     r_tbl_t *rt    = &Tbl[tmatch];
     void    *ptr   = dictFetchValue(rt->cdict, cname);
     return ptr ? ((int)(long)ptr) - 1 : check_special_column(tmatch, cname);

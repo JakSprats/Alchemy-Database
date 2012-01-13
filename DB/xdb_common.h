@@ -53,6 +53,7 @@ typedef struct aobj { /* SIZE: 48 BYTES */ //TODO only pass aobj * to functions
     uint128  x;
     float    f;
     bool     b;
+    bool     err;
     uchar    type;
     uchar    enc;
     uchar    freeme;

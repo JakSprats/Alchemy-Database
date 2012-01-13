@@ -72,8 +72,9 @@ int find_table  (sds   tname);
 int find_table_n(char *tname, int len);
 sds getJoinAlias(int jan);
 
-int find_column  (int tmatch, char *column);
-int find_column_n(int tmatch, char *column, int len);
+int find_column_sds(int tmatch, sds cname);
+int find_column    (int tmatch, char *column);
+int find_column_n  (int tmatch, char *column, int len);
 
 #define TABLE_CHECK_OR_REPLY(TBL, RET)        \
     int tmatch = find_table(TBL);             \

@@ -58,6 +58,7 @@ robj *write_output_row(int   qcols,   uint32  prelen, char *pbuf,
 #define OR_NONE      0
 #define OR_ALLB_OK   1
 #define OR_ALLB_NO   2
+#define OR_LUA_FAIL  3
 robj *outputRow(bt  *btr, void *rrow,   int     qcols, int   cmatchs[], 
                aobj *apk, int   tmatch, lfca_t *lfca,  bool *ostt);
 

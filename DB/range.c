@@ -635,6 +635,7 @@ static bool select_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
 printf("select_op: ost: %d\n", ost);
         if (ost == OR_ALLB_OK) { CurrUpdated++; return 1; }
         if (ost == OR_ALLB_NO)                  return 1;
+        if (ost == OR_LUA_FAIL)                 return 0;
         if (q) {
             if (!addRow2OBList(g->co.ll, g->co.wb, g->co.btr, r, g->co.ofree,
                                rrow,     apk)) return 0;

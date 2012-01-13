@@ -140,86 +140,72 @@ static bool setOffsetReply(cli *c, wob_t *wb, char *nextp) {
     return 1;
 }
 
-#define PARSEOB_DONE(endt) \
-  if (!endt || !(*endt)) { *more   = 0; *fin = NULL; *token  = NULL; return 1; }
-
-#define PARSEOB_IFCOMMA_NEXTTOK(endt)                                 \
-  if (*endt == ',') {                                                 \
-      endt++; PARSEOB_DONE(endt) SKIP_SPACES(endt) PARSEOB_DONE(endt) \
-      *more  = 1; *token = endt; return 1;                            \
-  }
-
-static bool isOrderByLuaFunc(char **token, int tmatch, wob_t *wb, char **fin) {
-    char *desc = strstr_not_quoted(*token, " DESC");
-    sds s      = *token; // Do NOT include DESC -> UGLY need tokenizer
-    if (desc) { s = sdsnewlen(*token, (desc - *token)); *fin = desc; }
-    bool  ret = checkOrCreateLuaFunc(tmatch, -1, &wb->le[wb->nob], s, fin);
-    if (desc) sdsfree(s);
-    return ret;
-}
 /* SYNTAX: ORDER BY {col [DESC],}+ [LIMIT n [OFFSET m]] */
 static bool parseOBYcol(cli   *c,  char  **token, int   tmatch,
                         wob_t *wb, char  **fin,   bool *more) {
 printf("parseOBYcol wb->nob: %d tmatch: %d\n", wb->nob, tmatch);
-    int   tlen  = get_tlen_delim2(*token, ',');
-    if (!tlen) tlen = (int)strlen(*token);
-    char *prd   = _strnchr(*token, '.', tlen);
-    wb->obt[wb->nob] = tmatch; wb->obc[wb->nob] = -1; // DEFAULT VALUES
-    if (prd) { /* JOIN */
-        bool lua_parsed = 0;
-        if ((wb->obt[wb->nob] = find_table_n(*token, prd - *token)) == -1) {
-            if (!isOrderByLuaFunc(token, tmatch, wb, fin)) {
-                addReply(c, shared.join_order_by_tbl);          return 0;
-            } else { lua_parsed = 1; wb->obt[wb->nob] = tmatch; } // DEFAULT
+    wb->le[wb->nob].yes = 0;
+    char *nextc = get_next_nonparaned_comma(*token);
+    *more       = nextc ? 1 : 0;
+    sds   t2    = nextc ? sdsnewlen(*token, (nextc - *token)) : sdsnew(*token);
+    if (nextc) { nextc++; SKIP_SPACES(nextc) }
+    char *endc  = t2 + sdslen(t2) - 1;
+    REV_SKIP_SPACES(endc)
+    if ((endc - t2) > 5 && !strncasecmp((endc - 4), " DESC", 5)) {
+        wb->asc[wb->nob] = 0;
+        sds t3 = sdsnewlen(t2, (endc - 4) - t2); sdsfree(t2); t2 = t3;
+        endc   = t2 + sdslen(t2) - 1;
+        REV_SKIP_SPACES(endc)
+    } else wb->asc[wb->nob] = 1;
+
+printf("ASC: %d t2: (%s) nextc: %s\n", wb->asc[wb->nob], t2, nextc);
+
+    if (!nextc) {
+        char *lim = strstr_not_quoted(t2, " LIMIT");
+        if (lim) {
+            *token = *fin = lim;
+            sds t3 = sdsnewlen(t2, lim - t2); sdsfree(t2); t2 = t3;
+            endc   = t2 + sdslen(t2) - 1;
+            REV_SKIP_SPACES(endc)
+        } else *token = NULL;
+    } else *token = nextc;
+    int  join  = 0;
+    bool iscol = ISALPHA(*t2);
+    if (iscol) {
+        for (int i = 1; i < sdslen(t2); i++) {
+            char c = *(t2 + i);
+            if (!ISALNUM(c) && !ISBLANK(c) && c != '.') { iscol = 0; break; }
+            if (c == '.') join = i;
         }
-        if (!lua_parsed) {
-            char *cname = prd + 1;
-            int   clen  = get_tlen_delim2(cname, ',');
-            if (!clen) clen = (int)strlen(cname);
-            if (!clen) { addReply(c, shared.join_order_by_col); return 0; }
+    }
+    if (!iscol) { // make it a Lua Function
+        if (!checkOrCr8LFunc(tmatch, &wb->le[wb->nob], t2, 1)) {
+            addReply(c, shared.order_by_col_not_found); sdsfree(t2); return 0;
+        } else { wb->nob++;                             sdsfree(t2); return 1; }
+    } 
+
+    wb->obt[wb->nob] = tmatch; wb->obc[wb->nob] = -1; // Simple Parse DEFAULT
+    if (join) { // JOIN COLUMN [tbl.col]
+        if ((wb->obt[wb->nob] = find_table_n(t2, join - 1)) == -1) {
+            addReply(c, shared.join_order_by_tbl); sdsfree(t2);      return 0;
+        } else {
+            char *cname = t2 + join + 1;
+            int   clen  = (int)strlen(cname);
             wb->obc[wb->nob] = find_column_n(wb->obt[wb->nob], cname, clen);
             if (wb->obc[wb->nob] == -1) {
-                addReply(c, shared.join_order_by_col);          return 0;
+                addReply(c, shared.join_order_by_col); sdsfree(t2);  return 0;
             }
         }
-    } else {  /* RANGE_QUERY or IN_QUERY */
-        wb->obc[wb->nob] = find_column_n(tmatch, *token, tlen);
-        if (wb->obc[wb->nob] == -1) {
-            if (!isOrderByLuaFunc(token, tmatch, wb, fin)) {
-                addReply(c, shared.order_by_col_not_found);     return 0;
-            }
+    } else {  // SIMPLE COLUMN [col]
+        if ((wb->obc[wb->nob] = find_column_sds(tmatch, t2)) == -1) {
+            addReply(c, shared.order_by_col_not_found); sdsfree(t2); return 0;
         }
     }
     if (wb->obt[wb->nob] != -1 && wb->obc[wb->nob] != -1 &&
         C_IS_O(Tbl[wb->obt[wb->nob]].col[wb->obc[wb->nob]].type)) {
-            addReply(c, shared.order_by_luaobj);     return 0;
+            addReply(c, shared.order_by_luaobj);     sdsfree(t2);    return 0;
     }
-    wb->asc[wb->nob] = 1; /* ASC by default */
-    *more          = (*(*token + tlen) == ',') ? 1: 0;
-    int nob        = wb->nob;
-    wb->nob++;           /* increment as parsing may already be finished */
-
-    char *nextt = next_token_delim2(*token, ',');
-    PARSEOB_DONE(nextt)            /* e.g. "ORDER BY X" no DESC nor COMMA    */
-    PARSEOB_IFCOMMA_NEXTTOK(nextt) /* e.g. "ORDER BY col1,col2,col3"         */
-    SKIP_SPACES(nextt)             /* e.g. "ORDER BY col1    DESC" -> "DESC" */
-    PARSEOB_IFCOMMA_NEXTTOK(nextt) /* e.g. "ORDER BY col1    ,   col2"       */
-    PARSEOB_DONE(nextt)            /* e.g. "ORDER BY X   " no DESC nor COMMA */
-
-    if (!strncasecmp(nextt, "DESC", 4)) {
-        wb->asc[nob] = 0;
-        if (*(nextt + 4) == ',') *more = 1;
-        nextt       = next_token_delim2(nextt, ',');
-        PARSEOB_DONE(nextt) /* for misformed ORDER BY ending in ',' */
-    } else if (!strncasecmp(nextt, "ASC", 3)) {
-        wb->asc[nob] = 1;
-        if (*(nextt + 3) == ',') *more = 1;
-        nextt       = next_token_delim2(nextt, ',');
-        PARSEOB_DONE(nextt) /* for misformed ORDER BY ending in ',' */
-    }
-    PARSEOB_IFCOMMA_NEXTTOK(nextt) /* e.g. "ORDER BY c1 DESC ,c2" -> "c2" */
-    *token = nextt;
-    return 1;
+    wb->nob++; sdsfree(t2); return 1;
 }
 static bool parseLimit(cli *c, char *token, wob_t *wb, char **fin) {
     if (!strncasecmp(token, "LIMIT ", 6)) {
@@ -425,11 +411,12 @@ static robj *parseInumCol(char *token, int tlen, f_t *flt) {
 static uchar pWC_checkLuaFunc(cli *c, f_t *flt, sds tkn, char **fin, robj *ro) {
     char *oby =              strstr_not_quoted(tkn, " ORDER BY ");
     char *lim = oby ? NULL : strstr_not_quoted(tkn, " LIMIT ");
-    sds s = tkn; // Do NOT include ORDERBY or LIMIT -> UGLY need tokenizer
-    if      (oby) { s = sdsnewlen(tkn, (oby - tkn)); *fin = oby; }
-    else if (lim) { s = sdsnewlen(tkn, (oby - lim)); *fin = lim; }
-    bool ret = checkOrCreateLuaFunc(flt->tmatch, -1, &flt->le, s, fin);
-    if (oby || lim) sdsfree(s);
+    sds s; // Do NOT include ORDERBY or LIMIT -> UGLY need tokenizer
+    if      (oby) { s = sdsnewlen(tkn, (oby - tkn)); *fin = oby;  }
+    else if (lim) { s = sdsnewlen(tkn, (oby - lim)); *fin = lim;  }
+    else          { s = sdsnew   (tkn);              *fin = NULL; }
+    bool ret = checkOrCr8LFunc(flt->tmatch, &flt->le, s, 0);
+    sdsfree(s);
     if (ret) { flt->op = LFUNC;    return PARSE_OK;       }
     else     {
         if (ro) { addReply(c, ro); return PARSE_NEST_ERR; }
@@ -565,6 +552,7 @@ uchar parseWC(cli *c, cswc_t *w, wob_t *wb, jb_t *jb, list *ijl) {
 p_wd_err:
     if (flt) destroyFilter(flt);
 
+printf("w.lvr: %s\n", w->lvr);
     if (w->lvr) { /* blank space in lvr is not actually lvr */
         SKIP_SPACES(w->lvr)
         if (*(w->lvr)) w->lvr = sdsnewlen(w->lvr, strlen(w->lvr));

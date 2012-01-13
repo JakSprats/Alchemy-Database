@@ -56,10 +56,9 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "alsosql.h"
 
-extern int      Num_tbls;
-extern r_tbl_t *Tbl;
-extern int      Num_indx;
-extern r_ind_t *Index;
+extern r_tbl_t *Tbl;   extern int Num_tbls;
+extern r_ind_t *Index; extern int Num_indx;
+extern robj    *CurrError;
 
 // GLOBALS
 uchar  OutputMode   = OUTPUT_NORMAL;
@@ -310,9 +309,6 @@ void init_wob(wob_t *wb) {
 }
 void destroy_wob(wob_t *wb) {
     if (wb->ovar) sdsfree(wb->ovar);
-    for (uint32 i = 0; i < wb->nob; i++) {
-        if (wb->le[i].yes) releaseLUE(&wb->le[i]); 
-    }
 }
 
 // SERIALISE_WB SERIALISE_WB SERIALISE_WB SERIALISE_WB SERIALISE_WB
@@ -400,7 +396,6 @@ void initLFCA(lfca_t *lfca, list *ls) {
     } listReleaseIterator(li);
 }
 void releaseLFCA(lfca_t *lfca) {
-    for (int i = 0; i < lfca->n; i++) destroyLUE(lfca->l[i]); // FREED 130
     free(lfca->l);                                            // FREED 117
 }
 
@@ -444,6 +439,7 @@ printf("rrow: %p gost: %d\n", (void *)rrow, gost);
         robj *r = outputRow(btr, rrow, qcols, cmatchs, apk, tmatch, lfca, &ost);
         if (ost == OR_ALLB_OK)   { addReply(c, shared.cone);        return 1; }
         if (ost == OR_ALLB_NO)   { addReply(c, shared.czero);       return 1; }
+        if (ost == OR_LUA_FAIL)  { addReply(c, CurrError);          return 0; }
         if (!r)            { addReply(c, shared.nullbulk);          return 1; }
         addReply(c, shared.singlerow);
         GET_LRUC GET_LFUC
@@ -570,7 +566,7 @@ static bool assignMisses(cli   *c,      int    tmatch,    int   ncols,
                 int k = parseExpr(c, tmatch, cmatch, vals[i], vlens[i], &ue[i]);
                 if (k == -1) return 0;
                 if (k) { ue[i].yes = 1; break; }
-                if (!parseLuaExpr(tmatch, cmatch, vals[i], vlens[i], &le[i])) {
+                if (!parseLuaExpr(tmatch, vals[i], vlens[i], &le[i])) {
                     addReply(c, shared.updatesyntax); return 0;
                 }
                 break;
@@ -684,7 +680,6 @@ int updateInnards(cli *c,      int   tmatch, sds vallist, sds wclause,
 fflush(NULL);
 
 upc_end:
-    for (int i = 0; i < ncols; i++) releaseLUE(&le[i]);
     destroy_wob(&wb); destroy_check_sql_where_clause(&w);
     return nsize;
 }

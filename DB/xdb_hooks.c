@@ -98,7 +98,7 @@ bool SQL_AOF_MYSQL = 0;
 // RDB Load Table & Index Highwaters
 uint32  Tbl_HW = 0; list   *DropT = NULL; dict   *TblD;
 uint32  Ind_HW = 0; list   *DropI = NULL; dict   *IndD;
-                                          dict   *StmtD;
+                                          dict   *StmtD; dict *DynLuaD;
 
 /* PROTOTYPES */
 int  yesnotoi(char *s);
@@ -228,7 +228,7 @@ void DXDB_initServerConfig() { //printf("DXDB_initServerConfig\n");
     bzero(&WS_WL_Mask, sizeof(struct in_addr));
 }
 
-static void init_Tbl_and_Index(uint32 ntbl, uint32 nindx) {
+static void init_DXDB_PersistentStorageItems(uint32 ntbl, uint32 nindx) {
     if (Tbl) free(Tbl);
     Num_tbls = 0;
     Tbl      = malloc(sizeof(r_tbl_t) * ntbl);
@@ -250,14 +250,17 @@ static void init_Tbl_and_Index(uint32 ntbl, uint32 nindx) {
     if (StmtD) dictRelease(StmtD);
     StmtD    = dictCreate(&dbDictType,  NULL);
 }
+static void initServer_Extra() {
+    if (DynLuaD) dictRelease(DynLuaD);
+    DynLuaD  = dictCreate(&dbDictType,  NULL);
+}
 
 void DXDB_initServer() { //printf("DXDB_initServer\n");
     server.stat_num_dirty_commands = 0;
     aeCreateTimeEvent(server.el, 1, luaCronTimeProc, NULL, NULL);
-    initX_DB_Range();
-    initAccessCommands();
-    init_six_bit_strings();
-    init_Tbl_and_Index(INIT_MAX_NUM_TABLES, INIT_MAX_NUM_INDICES);
+    initX_DB_Range(); initAccessCommands(); init_six_bit_strings();
+    init_DXDB_PersistentStorageItems(INIT_MAX_NUM_TABLES, INIT_MAX_NUM_INDICES);
+    initServer_Extra();
     CurrClient     = NULL;
     Operations     = 0;
 }
@@ -319,7 +322,7 @@ void DXDB_main() { //NOTE: must come after rdbLoad()
 
 void DXDB_emptyDb() { //printf("DXDB_emptyDb\n");
     for (int k = 0; k < Num_tbls; k++) emptyTable(k); /* deletes indices also */
-    init_Tbl_and_Index(INIT_MAX_NUM_TABLES, INIT_MAX_NUM_INDICES);
+    init_DXDB_PersistentStorageItems(INIT_MAX_NUM_TABLES, INIT_MAX_NUM_INDICES);
 }
 
 bool isWhiteListedIp(cli *c) {
@@ -599,7 +602,7 @@ int DXDB_rdbLoad(FILE *fp) { //printf("DXDB_rdbLoad\n");
    uint32 ntbl, nindx;
    if ((ntbl  = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR) return -1;
    if ((nindx = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR) return -1;
-    init_Tbl_and_Index(ntbl, nindx);
+    init_DXDB_PersistentStorageItems(ntbl, nindx);
     while (1) {
         int type;
         if ((type = rdbLoadType(fp))  == -1)               return -1;

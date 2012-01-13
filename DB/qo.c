@@ -721,7 +721,7 @@ bool promoteKLorFLtoW(cswc_t *w, list **klist, list **flist, bool freeme) {
     listNode *ln  = listFirst(*fl); /* take FIRST flt as w */
     f_t *flt      = ln->value;
     memcpy(&w->wf, flt, sizeof(f_t));
-    if (freeme) free(flt); /* FREED, destroyed happens later*/
+    if (freeme) free(flt); /* FREED, destroy() happens later*/
     listDelNode(*fl, ln);
     if (!(*fl)->len) releaseFlist(fl);
     if (w->wf.imatch == -1) return 0;

@@ -52,6 +52,7 @@ typedef int printer(const char *format, ...);
 #define COL_TYPE_FUNC         7
 #define COL_TYPE_BOOL         8
 #define COL_TYPE_CNAME        9
+#define COL_TYPE_ERR         10
 
 #define C_IS_N(ctype)    (ctype == COL_TYPE_NONE)
 #define C_IS_I(ctype)    (ctype == COL_TYPE_INT)
@@ -63,6 +64,7 @@ typedef int printer(const char *format, ...);
 #define C_IS_O(ctype)    (ctype == COL_TYPE_LUAO)
 #define C_IS_B(ctype)    (ctype == COL_TYPE_BOOL)
 #define C_IS_C(ctype)    (ctype == COL_TYPE_CNAME)
+#define C_IS_E(ctype)    (ctype == COL_TYPE_ERR)
 #define C_IS_NUM(ctype) (C_IS_I(ctype) || C_IS_L(ctype) || C_IS_X(ctype))
 
 #define LUA_SEL_FUNC INT_MIN

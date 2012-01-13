@@ -55,8 +55,7 @@ void initFilter(f_t *flt) {
     initAobj(&flt->akey); initAobj(&flt->alow); initAobj(&flt->ahigh);
 }
 f_t *newEmptyFilter() {
-    f_t *flt = malloc(sizeof(f_t));                      /* FREE ME 036 */
-    initFilter(flt); return flt;
+    f_t *flt = malloc(sizeof(f_t)); initFilter(flt); return flt; // FREE 036
 }
 static void releaseFilterInnards(f_t *flt) {
     if (flt->key)  { sdsfree(flt->key);     flt->key  = NULL; }
@@ -64,7 +63,6 @@ static void releaseFilterInnards(f_t *flt) {
     if (flt->high) { sdsfree(flt->high);    flt->high = NULL; }
     releaseAobj(&flt->akey); releaseAobj(&flt->alow); releaseAobj(&flt->ahigh);
     destroyINLlist(&flt->inl);
-    releaseLUE    (&flt->le);
 }
 void releaseFilterD_KL(f_t *flt) {             //printf("releaseFilterD_KL\n");
     releaseFilterInnards(flt);
@@ -211,9 +209,10 @@ void dumpFilter(printer *prn, f_t *flt, char *prfx) {
             (*prn)("\t%s\t\t", prfx); dumpAobj(prn, a);
         } listReleaseIterator(li);
     }
-    if (flt->le.yes) {
+    if (flt->op == LFUNC) {
         (*prn)("\t%s\tlua_function: fname: %s args: %d\n",
                prfx, flt->le.fname, flt->le.ncols);
+        //TODO get function body from lua
     }
     dumpFL(prn, "\t\t\t", "KLIST", flt->klist);
 }
