@@ -157,9 +157,6 @@ printf("parseOBYcol wb->nob: %d tmatch: %d\n", wb->nob, tmatch);
         endc   = t2 + sdslen(t2) - 1;
         REV_SKIP_SPACES(endc)
     } else wb->asc[wb->nob] = 1;
-
-printf("ASC: %d t2: (%s) nextc: %s\n", wb->asc[wb->nob], t2, nextc);
-
     if (!nextc) {
         char *lim = strstr_not_quoted(t2, " LIMIT");
         if (lim) {
@@ -183,7 +180,6 @@ printf("ASC: %d t2: (%s) nextc: %s\n", wb->asc[wb->nob], t2, nextc);
             addReply(c, shared.order_by_col_not_found); sdsfree(t2); return 0;
         } else { wb->nob++;                             sdsfree(t2); return 1; }
     } 
-
     wb->obt[wb->nob] = tmatch; wb->obc[wb->nob] = -1; // Simple Parse DEFAULT
     if (join) { // JOIN COLUMN [tbl.col]
         if ((wb->obt[wb->nob] = find_table_n(t2, join - 1)) == -1) {
@@ -335,7 +331,7 @@ static char *checkIN_Clause(redisClient *c, char *token) {
     }
     return end;
 }
-/* SYNTAX: IN (a,b,c) OR IN($redis_command arg1 arg2) */
+// SYNTAX: IN (a,b,c)
 static bool pWC_IN(cli *c, char *tok, list **inl, uchar ctype, char **fin) {
     char *end = checkIN_Clause(c, tok);
     if (!end) return 0;
@@ -360,7 +356,7 @@ static bool pWC_IN(cli *c, char *tok, list **inl, uchar ctype, char **fin) {
                 sds   x     = sdsnewlen(s, send - s - 1);
                 listAddNodeTail(*inl, x);
                 s           = strchr(send, ','); /* find next comma */
-                if (!s || s > end) break;        /* strchr can bo past end */
+                if (!s || s > end) break;        /* strchr can go past end */
                 s++;                             /* skip comma */
             } else { /* strnextunescapedchr() can go past end, safe but lame */
                 char *nextc = str_next_unescaped_chr(beg, s, ',');
@@ -454,7 +450,7 @@ static uchar parseWCTokRelation(cli *c,   cswc_t *w,   sds    tkn, char **fin,
         flt->key      = sdsnewlen(start, len);
         if (tfin) SKIP_SPACES(tfin)
         *fin       = tfin;
-        if (!tfin) w->lvr = NULL; //TODO WHERE x = 4 WTF AND -> WTF?
+        if (!tfin) w->lvr = NULL;
     } else { /* RANGE_QUERY or IN_QUERY */
         robj *ro      = NULL;
         char *nextp   = strchr(tkn, ' ');
@@ -483,7 +479,8 @@ static bool addIndexes2Join(redisClient *c, f_t *flt, jb_t *jb, list *ijl) {
     if (flt->key && !flt->iss && ISALPHA(*flt->key)) {   /* JOIN INDEX */
         if (flt->op != EQ) { addReply(c, shared.join_noteq);      return 0; }
         f_t f2; initFilter(&f2); /* NOTE f2 does not need to be released */
-        if (!parseInumTblCol(flt->key, sdslen(flt->key), &f2)) return 0;
+        robj *ro = parseInumTblCol(flt->key, sdslen(flt->key), &f2);
+        if (ro) { addReply(c, ro);                                return 0; }
         uchar ctype1 = CTYPE_FROM_FLT(flt) uchar ctype2 = CTYPE_FROM_FLT(flt)
         if (ctype1 != ctype2) {
             addReply(c, shared.join_coltypediff);                 return 0;

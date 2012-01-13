@@ -668,6 +668,7 @@ printf("checkExprIsFunc: expr: %s\n", expr);
   sdsfree(tkn);
 
 bool checkOrCr8LFunc(int tmatch, lue_t *le, sds expr, bool cln) {
+    if (tmatch == -1) return 0; // JOINs not yet supported
 printf("checkOrCr8LFunc\n");
     if (!Inited_LuaDlms) { init_LuaDlms(); Inited_LuaDlms = 1; }
     if (checkExprIsFunc(expr, le, tmatch)) return 1;

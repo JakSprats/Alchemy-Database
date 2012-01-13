@@ -682,7 +682,9 @@ aobj getRawCol(bt  *btr,    uchar *orow, int     cmatch, aobj *apk,
     uchar    ctype = rt->col[cmatch].type;
     if (!cmatch) { /* PK stored ONLY in KEY not in ROW, echo it */
         if (!C_IS_S(ctype) && !fs) return *apk;
-        else                     { initStringAobjFromAobj(&a, apk); return  a; }
+        else                     {
+            initStringAobjFromAobj(&a, apk); a.type = apk->type; return  a; 
+        }
     }
     uint32 clen; uchar rflag;
     uchar *data  = getColData(orow, cmatch, &clen, &rflag);

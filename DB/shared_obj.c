@@ -148,7 +148,7 @@ void DXDB_createSharedObjects() {
     shared.whereclause_in_err = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: WHERE col IN (...) - \"IN\" requires () delimited list\r\n"));
     shared.where_in_select = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: WHERE col IN ($SELECT col ....) INNER SELECT SYNTAX ERROR \r\n"));
+        "-ERR SYNTAX: WHERE col IN (SELECT col ....) INNER SELECT SYNTAX ERROR \r\n"));
     shared.whereclause_between = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: WHERE col BETWEEN x AND y\r\n"));
 
