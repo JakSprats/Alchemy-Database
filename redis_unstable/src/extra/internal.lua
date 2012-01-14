@@ -131,13 +131,24 @@ function internal_run_cmd(cmd)
 end
 
 function internal_copy_table_from_select(tname, clist, tlist, whereclause)
-    --print ('internal_copy_table_from_select tname: ' .. tname ..
-        --' clist: ' .. clist .. ' tlist: ' .. tlist .. ' wc: ' .. whereclause);
+    -- print ('internal_copy_table_from_select tname: ' .. tname ..
+       -- ' clist: ' .. clist .. ' tlist: ' .. tlist .. ' wc: ' .. whereclause);
     local argv      = {"SELECT", clist, "FROM", tlist, "WHERE", whereclause};
     local res      = redis(unpack(argv));
     local inserter = {"INSERT", "INTO", tname, "VALUES", "()" };
     for k,v in pairs(res) do
-         inserter[5] = '(' .. v .. ')';
+         local vallist = '';
+         for kk,vv in pairs(v) do
+             if (string.len(vallist) > 0) then
+                 vallist = vallist .. vv .. ",";
+             end
+             if (type(vv) == "number")  then
+                 vallist = vallist .. vv;
+             else
+                 vallist = vallist .. "'" .. vv .. "'";
+             end
+         end
+         inserter[5] = '(' .. vallist .. ')';
          redis(unpack(inserter));
     end
     return #res;

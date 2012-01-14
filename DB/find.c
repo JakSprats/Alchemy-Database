@@ -148,6 +148,13 @@ static int check_special_column(int tmatch, sds cname) {
              sdsfree(iname);                           // FREED   109
              if (Index[imatch].table != tmatch) return -1;
              if (imatch != -1) return setOCmatchFromImatch(imatch);
+#if 0
+        } else {
+            //TODO cmatch has to be: [coln,list[loels]]
+            char *lo_ncm = sd + 1;
+            sd           = strchr(lo_ncm, '.');
+            printf("lo_ncm: %s sd: %s\n", lo_ncm, sd);
+#endif
         }
     }
     return -1; // MISS on special also

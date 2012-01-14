@@ -122,7 +122,7 @@ typedef struct filter {
     int      jan;    /* JoinAliasNumber filter runs on (for JOINS)        */
     int      imatch; /* index  filter runs on (for JOINS)                 */
     int      tmatch; /* table  filter runs on (for JOINS)                 */
-    int      cmatch; /* column filter runs on                             */
+    int      cmatch; /* column filter runs on (JOINS & RQ & SNGL)         */
     enum OP  op;     /* operation filter applies [>,<,=,!=]               */
 
     bool     iss;    /* is string, WHERE fk = 'fk' (1st iss=0, 2nd iss=1) */
@@ -135,7 +135,7 @@ typedef struct filter {
     aobj     ahigh;  /* value of HIGH [sds="4",int=4,float=4.0]           */
 
     list    *inl;    /* WHERE ..... AND x IN (1,2,3)                      */
-    list    *klist;  /* MCI list of matching (ordered) keys (as f_t) */
+    list    *klist;  /* MCI list of matching (ordered) keys (as f_t)      */
 
     lue_t    le;     /* Filters can be Dynamic Lua Expressions            */
 } f_t;
@@ -221,6 +221,7 @@ void destroy_check_sql_where_clause(cswc_t *w);
 void init_join_block(jb_t *jb);
 void destroy_join_block(cli *c, jb_t *jb);
 
+// PURE_REDIS_OUTPUT PURE_REDIS_OUTPUT PURE_REDIS_OUTPUT PURE_REDIS_OUTPUT
 typedef struct string_and_length {
     char *s;
     int   len;

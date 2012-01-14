@@ -29,6 +29,8 @@ MISC:
       -> can be used for FK integrity checks
 
 CACHE:
+ -1.) PROHIBIT BuildIndex on DirtyTable
+  0.) rdbSave/Load DirtyStream
   1.) specify "PRIMARY KEY AUTO INCREMENT" in "CREATE TABLE" declaration
   3.) slab allocator for the myriad of different btree-node sizes
 

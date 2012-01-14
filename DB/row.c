@@ -781,7 +781,7 @@ static void initAobjFromLuaString(lua_State *lua, aobj *a, bool stkd, bool fs) {
     } else if (!strcmp(varr, "false")) {
         a->b = 0; a->type = a->enc = COL_TYPE_BOOL;
     } else {
-        a->len = len; a->s = varr; a->type = a->enc = COL_TYPE_STRING;
+        a->len = len; a->s = varr; a->type = a->enc = COL_TYPE_LUAO;
     }
 }
 char *UnprintableLuaObject = "ERR: UNPRINTABLE_LUA_OBJECT";
@@ -904,7 +904,7 @@ static robj *orow_embedded(bt   *btr, void *rrow,   int    qcols, int  *cmatchs,
 static char OutBuff[OBUFF_SIZE]; /*avoid malloc()s */
 
 #define QUOTE_COL \
-  if (!OREDIS && (C_IS_S(outs[i].type) || C_IS_O(outs[i].type))&& outs[i].len) \
+  if (!OREDIS && C_IS_S(outs[i].type) && outs[i].len) \
       { obuf[slot] = '\''; slot++; }
 #define FINAL_COMMA \
   if (!OREDIS && i != (qcols - 1)) { obuf[slot] = OUTPUT_DELIM; slot++; }
@@ -969,9 +969,7 @@ static robj *orow_normal(bt  *btr, void *rrow,   int     qcols, int  *cmatchs,
         if C_IS_B(acol.type) { if (acol.b) bool_ok = 1; continue; }
         allbools        = 0;
         totlen         += acol.len;
-        if ((C_IS_S(outs[i].type) || C_IS_O(outs[i].type)) && outs[i].len) {
-            totlen += 2;/* 2 \'s per col */
-        }
+        if (C_IS_S(outs[i].type) && outs[i].len) totlen += 2;/* 2 \'s per col */
     }
     if (allbools) { *ost = bool_ok ? OR_ALLB_OK : OR_ALLB_NO; return NULL; }
     totlen += (uint32)qcols - 1; /* one comma per COL, except final */
