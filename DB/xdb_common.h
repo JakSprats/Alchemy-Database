@@ -166,7 +166,7 @@ enum OP {NONE, EQ, NE, GT, GE, LT, LE, RQ, IN, LFUNC};
     *deletemiss,             *uviol,                       \
     *updatemiss,             *dirtypk,                     \
     *update_luaobj_complex,  *unsupported_pk,              \
-    *order_by_luaobj;
+    *order_by_luaobj,        *buildindexdirty;
 
 #define DEBUG_C_ARGV(c) \
   for (int i = 0; i < c->argc; i++) \

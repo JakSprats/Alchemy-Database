@@ -586,6 +586,7 @@ static bool ICommit(cli *c,      sds   iname,   sds   tname, char *cname,
     int      tmatch  = find_table(tname);
     if (tmatch == -1) { addReply(c, shared.nonexistenttable);       return 0; }
     r_tbl_t *rt      = &Tbl[tmatch];
+    if (rt->dirty) { addReply(c, shared.buildindexdirty);           return 0; }
     if (prtl && !C_IS_NUM(rt->col[0].type)) { // INDEX CURSOR PK -> NUM
         addReply(c, shared.indexcursorerr);                         return 0;
     }

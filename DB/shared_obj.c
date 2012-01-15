@@ -372,4 +372,6 @@ void DXDB_createSharedObjects() {
         "-ERR PROHIBITED: Invalid Primary Key Type. Supported Types: [INT,LONG,U128,FLOAT,TEXT]\r\n"));
     shared.order_by_luaobj       = createObject(REDIS_STRING,sdsnew(
         "-ERR UNDEFINED: sorting by a LUAOBJ requires a function\r\n"));
+    shared.buildindexdirty       = createObject(REDIS_STRING,sdsnew(
+        "-ERR PROHIBITED: Build Index on Dirty Table\r\n"));
 }

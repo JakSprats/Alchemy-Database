@@ -253,24 +253,16 @@ void luasellistRelease(list *ls) {
 static bool parseSelCol(int  tmatch, char   *cname, int   clen,
                         list *cs,    list   *ls,    int  *qcols, bool *cstar,
                         bool  exact, bool    isi) {
-    if (*cname == '*') { *qcols = get_all_cols(tmatch, cs, 0, 0); return 1; }
-    if (!strcasecmp(cname, "COUNT(*)")) { *cstar = 1; *qcols = 1; return 1; }
+    if (*cname == '*') { *qcols = get_all_cols(tmatch, cs, 0, 0);    return 1; }
+    if (!strcasecmp(cname, "COUNT(*)")) { *cstar = 1; *qcols = 1;    return 1; }
     int cmatch = find_column_n(tmatch, cname, clen);
 printf("parseSelCol: clen: %d cname: %s cmatch: %d\n", clen, cname, cmatch);
-    if (cmatch == -1) {
-        lue_t *le   = malloc(sizeof(lue_t));             // FREE 130
-        bzero(le, sizeof(lue_t));
-        sds    expr = sdsnewlen(cname, clen);            // FREE 129
-        bool   ret  = checkOrCr8LFunc(tmatch, le, expr, 0);
-        sdsfree(expr);                                   // FREED 129
-        if (ret) {
-            listAddNodeTail(ls, le);
-            listAddNodeTail(cs, VOIDINT LUA_SEL_FUNC); INCR(*qcols);
-            return 1; 
-        }
-        free(le);                                        // FREED 130
+    if (cmatch != -1) {
+        listAddNodeTail(cs, VOIDINT cmatch); INCR(*qcols);           return 1;
+    } else {
         r_tbl_t *rt = &Tbl[tmatch];
         if (rt->hashy) {
+            if (exact) /* NOTE: used by LUATRIGGER */                return 0;
             if (isi)    { // remember cname to later addColumn(cname)
                 sds *tcnames = malloc(sizeof(sds) * (rt->tcols + 1));//FREEME106
                 if (rt->tcnames) {
@@ -280,12 +272,19 @@ printf("parseSelCol: clen: %d cname: %s cmatch: %d\n", clen, cname, cmatch);
                 rt->tcnames            = tcnames;
                 rt->tcnames[rt->tcols] = sdsnewlen(cname, clen);     //FREEME107
                 rt->tcols++;                         // DEBUG_PARSE_SEL_COL_ISI
-            } else if (exact) return 0; // NOTE: used by LUATRIGGER
-            //else hashy && !isi && !exact-> [SCAN|SELECT] cmatch(-1)-> emptycol
-        } else return 0;
+                listAddNodeTail(cs, VOIDINT cmatch); INCR(*qcols);   return 1;
+            }
+        }
+        lue_t *le   = malloc(sizeof(lue_t)); bzero(le, sizeof(lue_t));//FREE 130
+        sds    expr = sdsnewlen(cname, clen);                         //FREE 129
+        bool   ret  = checkOrCr8LFunc(tmatch, le, expr, 0);
+        sdsfree(expr);                                               //FREED 129
+        if (ret) {
+            listAddNodeTail(ls, le);
+            listAddNodeTail(cs, VOIDINT LUA_SEL_FUNC); INCR(*qcols); return 1; 
+        } free(le);                                                  //FREED 130
+        return 0;
     }
-    listAddNodeTail(cs, VOIDINT cmatch); INCR(*qcols);
-    return 1;
 }
 // JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN
 static bool parseJCols(cli   *c,    char *y,    int   len,

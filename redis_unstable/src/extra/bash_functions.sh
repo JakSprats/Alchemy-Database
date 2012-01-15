@@ -3052,8 +3052,8 @@ function populate_simple() {
   $CLI DROP TABLE simple;
   #$CLI CREATE TABLE simple "(pk LONG, fk LONG, col2 INT)";
   $CLI CREATE TABLE simple "(pk INT, fk INT, col2 INT)";
-  $CLI ALTER TABLE simple SET DIRTY;
   $CLI CREATE INDEX i_simple ON simple "(fk)"
+  $CLI ALTER TABLE simple SET DIRTY;
   J=1; I=1; NUM=6000; FKMOD=10
   if [ -n "$1" ]; then NUM=$1;   fi
   if [ -n "$2" ]; then FKMOD=$2; fi
@@ -3089,8 +3089,8 @@ function populate_join_to_simple() {
 function populate_simple_mci() {
   $CLI DROP TABLE mcisimple;
   $CLI CREATE TABLE mcisimple "(pk LONG, fk1 INt, fk2 INT, col2 INT)";
-  $CLI ALTER TABLE mcisimple SET DIRTY;
   $CLI CREATE INDEX i_mcisimple ON mcisimple "(fk1, fk2)"
+  $CLI ALTER TABLE mcisimple SET DIRTY;
   J=1; K=1; FK1MOD=10; FK2MOD=5;
   I=1; NUM=600;
   while [ $I -le $NUM ]; do
