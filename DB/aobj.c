@@ -288,6 +288,10 @@ static char *outputS(char *s, int len, int *rlen) {
     rs[ilen + len + 3] = '\r'; rs[ilen + len + 4] = '\n';
     return rs;
 }
+static char *outputNil(int *rlen) {
+    static char *snil = ":-1\r\n"; static uint32 lnil = 5; *rlen = lnil;
+    char *rs = malloc(lnil); memcpy(rs, snil, lnil); return rs;
+}
 static char *outputAobj(aobj *a, int *rlen) {
     if      (C_IS_I(a->type)) return outputInt  (a->i,         rlen);
     else if (C_IS_P(a->type)) return outputInt  (a->i,         rlen);
@@ -295,7 +299,8 @@ static char *outputAobj(aobj *a, int *rlen) {
     else if (C_IS_F(a->type)) return outputFloat(a->f,         rlen);
     else if (C_IS_S(a->type)) return outputS    (a->s, a->len, rlen);
     else if (C_IS_X(a->type)) return outputX    (a->x,         rlen);
-    //TODO C_IS_O
+    else if (C_IS_O(a->type)) return outputS    (a->s, a->len, rlen);
+    else if (C_IS_N(a->type)) return outputNil  (              rlen);
     else                      assert(!"outputAobj ERROR");
 }
 sl_t outputReformat(aobj *a) { //NOTE: used by orow_redis()

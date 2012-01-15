@@ -329,9 +329,7 @@ inline char *get_after_parens(char *p) {
 char *get_next_nonparaned_comma(char *tkn) {
     SKIP_SPACES(tkn)
     if (*tkn == '\'') tkn = str_next_unescaped_chr(tkn, tkn, '\'');
-
-    char *z = strchr(tkn, ',');
-    if (!z) return NULL;
+    char *z = strchr(tkn, ','); if (!z) return NULL;
     char *p = strchr(tkn, '(');
     if (p && p < z) {
         char *y = get_after_parens(p);
