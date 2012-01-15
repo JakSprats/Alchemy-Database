@@ -168,7 +168,7 @@ char *rem_backticks(char *token, int *len) {
 
 static char *_strn_next_unescaped_chr(char *beg, char *s, int x, int len) {
     bool  isn   = (len >= 0);
-    char *nextc = s;
+    char *nextc = (s + 1); // ignore first character
     while (1) {
         nextc = isn ? _strnchr(nextc, x, len) : strchr(nextc, x);
         if (!nextc) break;
@@ -181,8 +181,7 @@ static char *_strn_next_unescaped_chr(char *beg, char *s, int x, int len) {
                 }
                 int num_backslash = nextc - backslash - 1;
                 if (num_backslash % 2 == 1) {
-                    nextc++;
-                    continue;
+                    nextc++; continue;
                 }
             }
         }
@@ -330,6 +329,7 @@ inline char *get_after_parens(char *p) {
 char *get_next_nonparaned_comma(char *tkn) {
     SKIP_SPACES(tkn)
     if (*tkn == '\'') tkn = str_next_unescaped_chr(tkn, tkn, '\'');
+
     char *z = strchr(tkn, ',');
     if (!z) return NULL;
     char *p = strchr(tkn, '(');
@@ -338,22 +338,6 @@ char *get_next_nonparaned_comma(char *tkn) {
         if (y) return strchr(y, ',');
         else   return NULL;
     } else return z;
-}
-
-char *get_next_comma_ignore_quotes_n_parens(char *tkn) {
-   while (1) {
-       char c = *tkn;
-       if        (c == ',') return tkn;
-       else if   (c == '(')  tkn = str_matching_end_delim(tkn, '(',  ')');
-       else if   (c == '\'') {
-           tkn++; tkn = str_next_unescaped_chr(tkn, tkn, '\''); 
-       } else if (c == '"')  {
-           tkn++; tkn = str_next_unescaped_chr(tkn, tkn, '"');
-       }
-       if (!tkn || !*tkn) return NULL;
-       tkn++;
-   }
-   return NULL;
 }
 
 char *new_unescaped(char *s, char x, uint32 len, uint32 *nlen) {

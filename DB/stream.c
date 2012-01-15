@@ -273,7 +273,7 @@ void pushLuaVar(int tmatch, int cmatch, aobj *apk) {
 bool writeLuaObjCol(cli *c,    aobj   *apk, int tmatch, int cmatch,
                     char *val, uint32  vlen) {
     uint32  nlen;
-    char   *xcpd = new_unescaped(val, '\'', vlen, &nlen); if (!xcpd) return 0;
+    char   *xcpd = new_unescaped(val, '\'', vlen, &nlen); if (!xcpd) return 1;
     sds     luac = sdsnewlen(xcpd, nlen);
     CLEAR_LUA_STACK WRITE_PK_TO_BUFF(apk)                    DEBUG_WRITE_LUAOBJ
     sds     tbl  = getLuaTblName(tmatch, cmatch);             // FREE 133

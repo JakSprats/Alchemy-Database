@@ -79,15 +79,13 @@ void incrOffsetVar(redisClient *c, wob_t *wb, long incr) {
 }
 
 // INSERT INSERT INSERT INSERT INSERT INSERT INSERT INSERT INSERT INSERT
-static char *parse_insert_val_list_nextc(char *start, uchar ctype, bool *err) {
+static char *parse_insert_val_list_nextc(char *start, uchar ctype) {
+    char *nextc = get_next_nonparaned_comma(start); if (!nextc) return NULL;
     if (C_IS_S(ctype) || C_IS_O(ctype)) { /* column must be \' delimited */
-        *err  = 1;                           /* presume failure */
-        if (*start != '\'')        return NULL;
-        start++; start = str_next_unescaped_chr(start, start, '\'');
-        if (!start)                return NULL;
-        start++; *err  = 0;                  /* negate presumed failure */
+        char *endc = nextc - 1; REV_SKIP_SPACES(endc); SKIP_SPACES(start)
+        if (*start != '\'' || *endc != '\'') return NULL;
     }
-    return str_next_unescaped_chr(start, start, ',');
+    return nextc;
 }
 
 static void assign_auto_inc_pk(uchar pktyp, char **pk, int *pklen, int tmatch) {
@@ -157,7 +155,6 @@ char *parseRowVals(sds vals,  char   **pk,        int  *pklen,
     char    *mvals  = vals + 1; SKIP_SPACES(mvals)
     char    *token  = mvals, *nextc = mvals;
     int      numc   = 0;
-    bool     err    = 0;
     while (1) {
         cmatch = pcols ? cmatchs[numc] : numc;
         if (cmatch >= ncols) return NULL;
@@ -167,13 +164,12 @@ char *parseRowVals(sds vals,  char   **pk,        int  *pklen,
             if (!determineColType(nextc, &ctype, tmatch)) return NULL;
             cmatchs[numc] = cmatch = rt->col_count - 1;  //DEBUG_PARSE_ROW_VALS
         }
-        nextc        = parse_insert_val_list_nextc(nextc, ctype, &err);
-        if (err)    return NULL;
+        nextc        = parse_insert_val_list_nextc(nextc, ctype);
+printf("nextc: %s\n", nextc);
         if (!nextc) break;
         if (!cmatch) { /* parse PK */
             char *cstart = token;
-            char *cend   = nextc - 1; /* skip comma */
-            REV_SKIP_SPACES(cend)
+            char *cend   = nextc - 1; /* skip comma */ REV_SKIP_SPACES(cend)
             if (C_IS_S(ctype)) { // ignore leading & trailing '
                 if (*cstart != '\'') return NULL; cstart++;
                 if (*cend   != '\'') return NULL; cend--;
@@ -198,7 +194,7 @@ char *parseRowVals(sds vals,  char   **pk,        int  *pklen,
         if (!assign_pk(tmatch, pklen, pk, token, ai)) return NULL;
     }
     numc++;
-    /* NOTE: create PK if none exists for INT & LONG */
+    /* NOTE: create PK if none exists for NUM pks */
     if (!*pklen) { if (!assign_pk(tmatch, pklen, pk, token, ai)) return NULL; }
     if (pcols) { if (numc != pcols)  return NULL; }
     else if         (numc != lncols) return NULL;
@@ -358,8 +354,7 @@ static bool addJoinAlias(redisClient *c, char *tkn, char *space, int len) {
     if (CurrClient->NumJTAlias == MAX_JOIN_COLS) {
         addReply(c, shared.toomanyindicesinjoin); return 0;
     }
-    int tlen                   = space - tkn;
-    SKIP_SPACES(space);
+    int tlen                 = space - tkn; SKIP_SPACES(space);
     int nja                  = CurrClient->NumJTAlias;
     JTAlias[nja].alias       = sdsnewlen(space, (tkn + len - space)); //DEST049
     JTAlias[nja].tmatch      = find_table_n(tkn, tlen);
@@ -446,7 +441,7 @@ int parseUpdateColListReply(cli  *c,  int   tmatch, char *vallist,
     int qcols = 0;
     while (1) {
         SKIP_SPACES(vallist)
-        char *val = strchr(vallist, '=');
+        char *val    = strchr(vallist, '=');
         if (!val) { addReply(c, shared.invalidupdatestring);       return 0; }
         char *endval = val - 1; /* skip '=' */
         REV_SKIP_SPACES(endval) /* search backwards */
@@ -454,19 +449,16 @@ int parseUpdateColListReply(cli  *c,  int   tmatch, char *vallist,
         SKIP_SPACES(val)        /* search forwards */
         int cmatch = find_column_n(tmatch, vallist, (endval - vallist + 1));
         if (cmatch == -1) { addReply(c, shared.nonexistentcolumn); return 0; }
-        bool  err   = 0;
-        char *nextc = get_next_comma_ignore_quotes_n_parens(val);
-        if (err) { addReply(c, shared.invalidupdatestring);        return 0; }
+        char *nextc = get_next_nonparaned_comma(val);
         char *end;
         if (nextc) { char *s = nextc;  while(*s != ',') s--; end = s - 1; }
         else       end = val + strlen(val);
         REV_SKIP_SPACES(end)
         listAddNodeTail(cs,    VOIDINT cmatch);
         listAddNodeTail(vals,          val);
-        listAddNodeTail(vlens, VOIDINT (end - val + 1));            
-        qcols++;
+        listAddNodeTail(vlens, VOIDINT (end - val + 1)); qcols++;
         if (!nextc) break;
-        if (*nextc == ',') { nextc++; SKIP_SPACES(nextc) }
+        if (*nextc == ',') { nextc++; SKIP_SPACES(nextc) } //TODO check needed?
         vallist = nextc;
     }
     return qcols;
@@ -554,7 +546,6 @@ void releaseLUE(lue_t *le) {
     bzero(le, sizeof(lue_t));
 }
 static lue_t *cloneLUE(lue_t *le) {
-printf("cloneLUE fname: %s\n", le->fname);
     lue_t *lf    = malloc(sizeof(lue_t));                // FREE ME 136
     lf->yes      = le->yes;
     lf->fname    = sdsdup(le->fname);                    // FREE ME 118
@@ -810,18 +801,15 @@ bool parseCreateTable(cli    *c,      list *ctypes,  list *cnames,
     listIter *li = listGetIterator(cl, AL_START_HEAD); listNode *ln; // B4 goto
     while((ln = listNext(li))) {
         uchar  ctype; int clen;
-        sds    s  = ln->value;
-printf("CREATE TABLE: tkn: %s\n", s);
+        sds    s  = ln->value;          //printf("CREATE TABLE: tkn: %s\n", s);
         char  *tk = s;
         while (tk) { /* first parse column name */
-            clen  = get_token_len(tk);
-            tk    = rem_backticks(tk, &clen);
-            if (!ignore_cname(tk, clen)) break;
-            tk    = next_token(tk);
+            clen  = get_token_len(tk);          tk = rem_backticks(tk, &clen);
+            if (!ignore_cname(tk, clen)) break; tk = next_token   (tk);
         }
         sds cname = sdsnewlen(tk, clen);
         if (!strcasecmp(cname, "LRU") || !strcasecmp(cname, "LFU")) {
-            addReply(c, shared.kw_cname); goto pcr8tbl_end;
+            addReply(c, shared.kw_cname);              goto pcr8tbl_end;
         }
         listAddNodeTail(cnames, cname);
         tk         = next_token(tk); // parse ctype
@@ -829,12 +817,11 @@ printf("CREATE TABLE: tkn: %s\n", s);
         sds   type = sdsnewlen(tk, sdslen(s) - (tk - s)); // FREE 070
         bool   ok  = parseColType(c, type, &ctype);
         sdsfree(type);                                     // FREED 070
-        if (!ok) goto pcr8tbl_end;
+        if (!ok)                                       goto pcr8tbl_end;
         if (!ctypes->len && (C_IS_P(ctype) || C_IS_O(ctype))) {
-            addReply(c, shared.unsupported_pk); goto pcr8tbl_end;
+            addReply(c, shared.unsupported_pk);        goto pcr8tbl_end;
         }
-        listAddNodeTail(ctypes, VOIDINT ctype);
-        INCR(*ccount);
+        listAddNodeTail(ctypes, VOIDINT ctype); INCR(*ccount);
     }
 
 pcr8tbl_end:

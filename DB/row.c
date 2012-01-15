@@ -519,7 +519,7 @@ void *createRow(cli *c,     aobj *apk,  bt     *btr,      int tmatch,
                                           &crd[i].fcols);
                 if (nclen == -1) return NULL;
                 crd[i].fflags = nclen ? 1 : 0;
-            } else assert(!"writeRow ERROR 2");
+            } else assert(!"createRow ERROR");
             cr.rlen        += nclen;
             crd[i].mcofsts  = (int)cr.rlen;                 //DEBUG_CREATE_ROW
         }
