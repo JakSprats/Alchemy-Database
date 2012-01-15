@@ -500,7 +500,8 @@ void *createRow(cli *c,     aobj *apk,  bt     *btr,      int tmatch,
             }
             int nclen = 0;
             if        (C_IS_S(ctype) || C_IS_O(ctype)) { // dont store \' delims
-                crd[i].strs++; crd[i].slens -= 2; nclen = crd[i].slens;
+                crd[i].strs++; crd[i].slens -= 2; 
+                if C_IS_S(ctype) nclen = crd[i].slens; // LUAOBJ !inRow (inLua)
             } else if (C_IS_I(ctype)) {
                 nclen = cr8IcolFromStr(c, crd[i].strs,    crd[i].slens,
                                           &crd[i].iflags, &crd[i].icols);
@@ -688,7 +689,7 @@ aobj getRawCol(bt  *btr,    uchar *orow, int     cmatch, aobj *apk,
     }
     uint32 clen; uchar rflag;
     uchar *data  = getColData(orow, cmatch, &clen, &rflag);
-    if (!clen) a.empty = 1;
+    if (!clen && !C_IS_O(ctype)) a.empty = 1;
     else {
         if        C_IS_I(ctype) {
             uint32  i  = streamIntToUInt(data, &clen);
@@ -1100,40 +1101,40 @@ int updateRow(cli *c, uc_t *uc, aobj *apk, void *orow) {//printf("updateRow\n");
             avs[i] = getCol(uc->btr, orow, i, apk, uc->tmatch, NULL);
             if (avs[i].empty) ovrwr      = 0; // makes updateLFU not recurse
             else              osflags[i] = getLfuSflag();/* Overwrite LFU */
-        } else if (uc->cmiss[i]) {/* NotIn UPDATE_SET_LIST */ //printf("MISS\n");
+        } else if (uc->cmiss[i]) {/* NotIn UPDATE_SET_LIST */
+            //printf("%d: MISS\n", i);
             avs[i] = getCol(uc->btr, orow, i, apk, uc->tmatch, NULL);
-        } else if (uc->ue[i].yes) { /* SIMPLE UPDATE EXPR */  //printf("UE\n");
+        } else if (uc->ue[i].yes) { /* SIMPLE UPDATE EXPR */
+            //printf("%d: UE\n", i);
             avs[i] = getCol(uc->btr, orow, i, apk, uc->tmatch, NULL);
             if (avs[i].empty) { addReply(c, shared.up_on_mt_col);       UP_ERR }
             if (!OVRWR(i, ovrwr, ctype) ||
                 !aobj_sflag(&avs[i], &osflags[i])) ovrwr = 0;
             if (!evalExpr(c, &uc->ue[i], &avs[i], ctype))               UP_ERR
-        } else if (uc->le[i].yes) { /* LUA UPDATE EXPR */    //printf("LUE\n");
+        } else if (uc->le[i].yes) { /* LUA UPDATE EXPR */
+            //printf("%d: LUE\n", i);
             avs[i] = getCol(uc->btr, orow, i, apk, uc->tmatch, NULL);
             if (avs[i].empty) { addReply(c, shared.up_on_mt_col);       UP_ERR }
             if (!OVRWR(i, ovrwr, ctype) ||
                 !aobj_sflag(&avs[i], &osflags[i])) ovrwr = 0;
             if (!evalLuaExpr(c, i, uc, apk, orow, &avs[i]))             UP_ERR
-        } else { /* from UPDATE VALUE LIST (no expression) */  //printf("N\n");
+        } else { /* from UPDATE VALUE LIST (no expression) */
+            //printf("%d: NORMAL\n", i);
             if OVRWR(i, ovrwr, ctype) {
                 aobj a = getCol(uc->btr, orow, i, apk, uc->tmatch, NULL);
                 if (!aobj_sflag(&a, &osflags[i])) ovrwr = 0;
             } else ovrwr = 0;
             char *endptr  = NULL;
-            //TODO all NUM()s are already error checked in getExprType()
             if (!C_IS_S(ctype) && !C_IS_O(ctype)) {
                 tkn = sdsnewlen(uc->vals[i], uc->vlens[i]);  // FREE 137
             }
             if        C_IS_I(ctype) {
                 ulong l = strtoul(tkn, &endptr, 10); // OK: DELIM:[\ ,=,\0]
-                if (endptr && !*endptr) { // valid ULONG
-                    if (l >= TWO_POW_32) { addReply(c, shared.u2big);   UP_ERR }
-                    initAobjInt(&avs[i], l);
-                } else { addReply(c, shared.updatesyntax);              UP_ERR }
+                if (l >= TWO_POW_32) { addReply(c, shared.u2big);   UP_ERR }
+                initAobjInt(&avs[i], l);
             } else if C_IS_L(ctype) {
                 ulong l = strtoul(tkn, &endptr, 10); // OK: DELIM:[\ ,=,\0]
-                if (endptr && !*endptr) initAobjLong(&avs[i], l); // valid ULONG
-                else                { addReply(c, shared.updatesyntax); UP_ERR }
+                initAobjLong(&avs[i], l);
             } else if C_IS_X(ctype) {
                 uint128 x;
                 if (!parseU128(tkn, &x)) {           // invalid U128
@@ -1174,14 +1175,16 @@ int updateRow(cli *c, uc_t *uc, aobj *apk, void *orow) {//printf("updateRow\n");
             } else assert(!"updateRow create-column ERROR");
         }
         crd[i].empty    = nclen ? 0 : 1;
+        if C_IS_O(ctype) nclen = 0; // LUAOBJs are saved inLua, not inRow
         crd[i].mcofsts  = cr.rlen + nclen;
+        //printf("empty: %d mcofst: %d\n", crd[i].empty, crd[i].mcofsts);
         cr.rlen        += nclen;                             //DEBUG_UPDATE_ROW
     }
     if (ovrwr) { /* only OVERWRITE if all OLD and NEW sflags match */
         for (int i = 1; i < cr.ncols; i++) {
             if (osflags[i] && osflags[i] != crd[i].iflags) { ovrwr = 0; break; }
     }}
-    if (ovrwr) { /* just OVERWRITE INTS & LONGS */ //printf("OVRWR\n");
+    if (ovrwr) { /* just OVERWRITE INTS & LONGS */         //printf("OVRWR\n");
         for (int i = 1; i < cr.ncols; i++) {
             if (osflags[i]) {
                 uint32 clen; uchar rflag;
@@ -1215,7 +1218,6 @@ int updateRow(cli *c, uc_t *uc, aobj *apk, void *orow) {//printf("updateRow\n");
         cr.ncols = k + 1; // starting from the right, only write FILLED columns
         if (rt->lrud && rt->lruc >= cr.ncols) cr.ncols = rt->lruc + 1; // 2 LRUC
         if (rt->lfu  && rt->lfuc >= cr.ncols) cr.ncols = rt->lfuc + 1; // 2 LFUC
-
         if (XKEY(uc->btr)) { XX_CRR.val = avs[1].x; nrow = (void *)&XX_CRR; }
         else {
             nrow = UKEY(uc->btr) ? VOIDINT  avs[1].i :

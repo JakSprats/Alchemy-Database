@@ -753,10 +753,11 @@ bool parseLuaExpr(int tmatch, char *val, uint32 vlen, lue_t *le) {
 }
 
 // CREATE_TABLE CREATE_TABLE CREATE_TABLE CREATE_TABLE CREATE_TABLE
-bool ignore_cname(char *tkn, int tlen) {
+int ignore_cname(char *tkn, int tlen) {
     for (uint32 i = 0; i < Num_Ignore_KW; i++) {
-        int len = MAX(tlen, Ignore_KW_lens[i]);
-        if (!strncasecmp(tkn, Ignore_KW[i], len)) return 1;
+        if (!strncasecmp(tkn, Ignore_KW[i], Ignore_KW_lens[i])) {
+            return Ignore_KW_lens[i];
+        }
     }
     return 0;
 }
@@ -779,7 +780,13 @@ bool parseColType(cli *c, sds type, uchar *ctype) {
     if (s) {
         SKIP_SPACES(s)
         if (!strncasecmp(s, "UNSIGNED", 8)) s += 8;
-        if (*s) { addReply(c, shared.cr8tablesyntax); return 0; }
+        if (*s) { int ilen; int slen = strlen(s); // skip IGNORE_KEYWORDs
+            while ((ilen = ignore_cname(s, slen))) {
+                slen -= ilen; s += ilen;
+                char *t = s; SKIP_SPACES(s) slen -= (t - s);
+            }
+            if (*s) { addReply(c, shared.cr8tablesyntax); return 0; }
+        }
     }
     return 1;
 }
@@ -800,12 +807,11 @@ bool parseCreateTable(cli    *c,      list *ctypes,  list *cnames,
         listAddNodeTail(cl, sdsnewlen(tkn, len));
         if (!nextc) break; tkn = nextc + 1;
     }
-
-    listNode *ln;
-    listIter *li = listGetIterator(cl, AL_START_HEAD);
+    listIter *li = listGetIterator(cl, AL_START_HEAD); listNode *ln; // B4 goto
     while((ln = listNext(li))) {
         uchar  ctype; int clen;
         sds    s  = ln->value;
+printf("CREATE TABLE: tkn: %s\n", s);
         char  *tk = s;
         while (tk) { /* first parse column name */
             clen  = get_token_len(tk);
@@ -829,9 +835,10 @@ bool parseCreateTable(cli    *c,      list *ctypes,  list *cnames,
         }
         listAddNodeTail(ctypes, VOIDINT ctype);
         INCR(*ccount);
-    } listReleaseIterator(li);
+    }
 
 pcr8tbl_end:
+    listReleaseIterator(li);
     cl->free = sdsfree; listRelease(cl);                 // FREED 138
     return 1;
 }
