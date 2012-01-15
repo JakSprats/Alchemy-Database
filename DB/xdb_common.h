@@ -139,9 +139,7 @@ enum OP {NONE, EQ, NE, GT, GE, LT, LE, RQ, IN, LFUNC};
     *join_table_not_in_query,    *joinsyntax_no_tablename, *join_chain, \
     *joindanglingfilter,         *join_noteq,              *join_coltypediff, \
     *join_col_not_indexed,       *join_qo_err,             \
-    *createtable_as_on_wrong_type,                         \
-    *create_table_err,                                     \
-    *create_table_as_count,                                \
+    *create_table_err,           *create_table_as_count,   \
     *dump_syntax, *show_syntax,                            \
     *alter_sk_rpt,    *alter_sk_no_i,   *alter_sk_no_lru,  \
     *alter_fk_not_sk, *alter_fk_repeat, *alter_sk_no_lfu,  \
@@ -166,7 +164,8 @@ enum OP {NONE, EQ, NE, GT, GE, LT, LE, RQ, IN, LFUNC};
     *deletemiss,             *uviol,                       \
     *updatemiss,             *dirtypk,                     \
     *update_luaobj_complex,  *unsupported_pk,              \
-    *order_by_luaobj,        *buildindexdirty;
+    *order_by_luaobj,        *buildindexdirty,             \
+    *cr8tablesyntax;
 
 #define DEBUG_C_ARGV(c) \
   for (int i = 0; i < c->argc; i++) \

@@ -31,7 +31,6 @@ ALL RIGHTS RESERVED
 #include <ctype.h>
 #include <limits.h>
 #include <assert.h>
-char *strcasestr(const char *haystack, const char *needle); /*compiler warning*/
 
 #include <lua.h>
 #include <lauxlib.h>
@@ -762,61 +761,77 @@ bool ignore_cname(char *tkn, int tlen) {
     return 0;
 }
 bool parseColType(cli *c, sds type, uchar *ctype) {
-    if      (strcasestr(type, "BIGINT") ||
-             strcasestr(type, "LONG"))     *ctype = COL_TYPE_LONG;
-    else if (strcasestr(type, "INT"))      *ctype = COL_TYPE_INT; // must be 2nd
-    else if (strcasestr(type, "U128"))     *ctype = COL_TYPE_U128;
-    else if (strcasestr(type, "LUAOBJ"))   *ctype = COL_TYPE_LUAO;
-    else if (strcasestr(type, "FLOAT")  ||
-             strcasestr(type, "REAL")   ||
-             strcasestr(type, "DOUBLE"))   *ctype = COL_TYPE_FLOAT;
-    else if (strcasestr(type, "CHAR")   ||
-             strcasestr(type, "TEXT")   ||
-             strcasestr(type, "BLOB")   ||
-             strcasestr(type, "BYTE")   ||
-             strcasestr(type, "BINARY"))   *ctype = COL_TYPE_STRING;
+    if      (!strncasecmp(type, "INT",    3))     *ctype = COL_TYPE_INT;
+    else if (!strncasecmp(type, "BIGINT", 6)  ||
+             !strncasecmp(type, "LONG",   4))     *ctype = COL_TYPE_LONG;
+    else if (!strncasecmp(type, "U128",   4))     *ctype = COL_TYPE_U128;
+    else if (!strncasecmp(type, "LUAOBJ", 6))   *ctype = COL_TYPE_LUAO;
+    else if (!strncasecmp(type, "FLOAT",  5)  ||
+             !strncasecmp(type, "REAL",   4)  ||
+             !strncasecmp(type, "DOUBLE", 6))   *ctype = COL_TYPE_FLOAT;
+    else if (!strncasecmp(type, "CHAR",   4)  ||
+             !strncasecmp(type, "TEXT",   4)  ||
+             !strncasecmp(type, "BLOB",   4)  ||
+             !strncasecmp(type, "BYTE",   4)  ||
+             !strncasecmp(type, "BINARY", 6))   *ctype = COL_TYPE_STRING;
     else { addReply(c, shared.undefinedcolumntype); return 0; }
+    char *s = strchr(type, ' ');
+    if (s) {
+        SKIP_SPACES(s)
+        if (!strncasecmp(s, "UNSIGNED", 8)) s += 8;
+        if (*s) { addReply(c, shared.cr8tablesyntax); return 0; }
+    }
     return 1;
 }
 bool parseCreateTable(cli    *c,      list *ctypes,  list *cnames,
-                      int    *ccount, sds   col_decl) {
-    char *token = col_decl;
-    if (*token == '(') token++;
-    if (!*token) { /* empty or only '(' */
+                      int    *ccount, sds   cdecl) {
+    char *tkn = cdecl;                         SKIP_SPACES(tkn)
+    char *endc  = cdecl + sdslen(cdecl) - 1; REV_SKIP_SPACES(endc)
+    if (!*tkn || *tkn != '(' || *endc != ')') {
         addReply(c, shared.createsyntax); return 0;
     }
-    SKIP_SPACES(token)
-    while (token) {
-        int clen;
-        while (token) { /* first parse column name */
-            clen      = get_token_len(token);
-            token     = rem_backticks(token, &clen);
-            if (!ignore_cname(token, clen)) break;
-            token = get_next_token_nonparaned_comma(token);
+    tkn++; SKIP_SPACES(tkn)
+    list *cl = listCreate();                             // FREE 138
+    while (1) {
+        int len; SKIP_SPACES(tkn) char *nextc = get_next_nonparaned_comma(tkn);
+        if (nextc) {
+            char *endc = nextc - 1; REV_SKIP_SPACES(endc); len = endc - tkn + 1;
+        } else len = strlen(tkn);
+        listAddNodeTail(cl, sdsnewlen(tkn, len));
+        if (!nextc) break; tkn = nextc + 1;
+    }
+
+    listNode *ln;
+    listIter *li = listGetIterator(cl, AL_START_HEAD);
+    while((ln = listNext(li))) {
+        uchar  ctype; int clen;
+        sds    s  = ln->value;
+        char  *tk = s;
+        while (tk) { /* first parse column name */
+            clen  = get_token_len(tk);
+            tk    = rem_backticks(tk, &clen);
+            if (!ignore_cname(tk, clen)) break;
+            tk    = next_token(tk);
         }
-        SKIP_SPACES(token)
-        if (!token) break;
-   
-        sds cname = sdsnewlen(token, clen);
+        sds cname = sdsnewlen(tk, clen);
         if (!strcasecmp(cname, "LRU") || !strcasecmp(cname, "LFU")) {
-            addReply(c, shared.kw_cname); return 0;
+            addReply(c, shared.kw_cname); goto pcr8tbl_end;
         }
         listAddNodeTail(cnames, cname);
-
-        token       = next_token_delim3(token, ',', ')'); /* parse ctype*/
-        if (!token) break;
-        sds   type  = sdsnewlen(token, get_tlen_delim3(token, ',', ')')); //D070
-        token       = get_next_token_nonparaned_comma(token);
-
-        uchar  ctype;
+        tk         = next_token(tk); // parse ctype
+        if (!tk) { addReply(c, shared.cr8tablesyntax); goto pcr8tbl_end; }
+        sds   type = sdsnewlen(tk, sdslen(s) - (tk - s)); // FREE 070
         bool   ok  = parseColType(c, type, &ctype);
-        sdsfree(type);                                   /* DESTROYED 070 */
-        if (!ok) return 0;
+        sdsfree(type);                                     // FREED 070
+        if (!ok) goto pcr8tbl_end;
         if (!ctypes->len && (C_IS_P(ctype) || C_IS_O(ctype))) {
-            addReply(c, shared.unsupported_pk); return 0;
+            addReply(c, shared.unsupported_pk); goto pcr8tbl_end;
         }
         listAddNodeTail(ctypes, VOIDINT ctype);
         INCR(*ccount);
-    }
+    } listReleaseIterator(li);
+
+pcr8tbl_end:
+    cl->free = sdsfree; listRelease(cl);                 // FREED 138
     return 1;
 }

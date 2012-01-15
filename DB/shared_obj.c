@@ -374,4 +374,7 @@ void DXDB_createSharedObjects() {
         "-ERR UNDEFINED: sorting by a LUAOBJ requires a function\r\n"));
     shared.buildindexdirty       = createObject(REDIS_STRING,sdsnew(
         "-ERR PROHIBITED: Build Index on Dirty Table\r\n"));
+    shared.cr8tablesyntax        = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: CREATE TABLE tblname (colname coltype,,,,,)\r\n"));
+
 }
