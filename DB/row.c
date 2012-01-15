@@ -1081,11 +1081,12 @@ static bool aobj_sflag(aobj *a, uchar *sflag) {
 #define UP_ERR goto up_end;
 
 //TODO do an initial pass to determine OVWR (avoids per-col getCol() call)
-int updateRow(cli *c, uc_t *uc, aobj *apk, void *orow) {
+int updateRow(cli *c, uc_t *uc, aobj *apk, void *orow) {//printf("updateRow\n");
     r_tbl_t *rt     = &Tbl[uc->tmatch];
     INIT_CR(uc->tmatch, uc->ncols) /* holds values written to new ROW */
     INIT_COL_AVALS      /* merges values in update_string and vals from ROW */
     uchar osflags[uc->ncols]; bzero(osflags, uc->ncols);
+    sds      tkn    = NULL;
     uchar   *nrow   = NULL; /* B4 GOTO */
     bool     ovrwr  = NORM_BT(uc->btr);
     int      ret    = -1;    /* presume failure */
@@ -1099,48 +1100,52 @@ int updateRow(cli *c, uc_t *uc, aobj *apk, void *orow) {
             avs[i] = getCol(uc->btr, orow, i, apk, uc->tmatch, NULL);
             if (avs[i].empty) ovrwr      = 0; // makes updateLFU not recurse
             else              osflags[i] = getLfuSflag();/* Overwrite LFU */
-        } else if (uc->cmiss[i]) {
+        } else if (uc->cmiss[i]) {/* NotIn UPDATE_SET_LIST */ //printf("MISS\n");
             avs[i] = getCol(uc->btr, orow, i, apk, uc->tmatch, NULL);
-        } else if (uc->ue[i].yes) { // SIMPLE UPDATE EXPR
+        } else if (uc->ue[i].yes) { /* SIMPLE UPDATE EXPR */  //printf("UE\n");
             avs[i] = getCol(uc->btr, orow, i, apk, uc->tmatch, NULL);
             if (avs[i].empty) { addReply(c, shared.up_on_mt_col);       UP_ERR }
             if (!OVRWR(i, ovrwr, ctype) ||
                 !aobj_sflag(&avs[i], &osflags[i])) ovrwr = 0;
             if (!evalExpr(c, &uc->ue[i], &avs[i], ctype))               UP_ERR
-        } else if (uc->le[i].yes) { // LUA UPDATE EXPR
+        } else if (uc->le[i].yes) { /* LUA UPDATE EXPR */    //printf("LUE\n");
             avs[i] = getCol(uc->btr, orow, i, apk, uc->tmatch, NULL);
             if (avs[i].empty) { addReply(c, shared.up_on_mt_col);       UP_ERR }
             if (!OVRWR(i, ovrwr, ctype) ||
                 !aobj_sflag(&avs[i], &osflags[i])) ovrwr = 0;
             if (!evalLuaExpr(c, i, uc, apk, orow, &avs[i]))             UP_ERR
-        } else { /* comes from UPDATE VALUE LIST (no expression) */
+        } else { /* from UPDATE VALUE LIST (no expression) */  //printf("N\n");
             if OVRWR(i, ovrwr, ctype) {
                 aobj a = getCol(uc->btr, orow, i, apk, uc->tmatch, NULL);
                 if (!aobj_sflag(&a, &osflags[i])) ovrwr = 0;
             } else ovrwr = 0;
             char *endptr  = NULL;
             //TODO all NUM()s are already error checked in getExprType()
+            if (!C_IS_S(ctype) && !C_IS_O(ctype)) {
+                tkn = sdsnewlen(uc->vals[i], uc->vlens[i]);  // FREE 137
+            }
             if        C_IS_I(ctype) {
-                ulong l = strtoul(uc->vals[i], &endptr, 10);//OK:DELIM:[\ ,=,\0]
+                ulong l = strtoul(tkn, &endptr, 10); // OK: DELIM:[\ ,=,\0]
                 if (endptr && !*endptr) { // valid ULONG
                     if (l >= TWO_POW_32) { addReply(c, shared.u2big);   UP_ERR }
                     initAobjInt(&avs[i], l);
                 } else { addReply(c, shared.updatesyntax);              UP_ERR }
             } else if C_IS_L(ctype) {
-                ulong l = strtoul(uc->vals[i], &endptr, 10);//OK:DELIM:[\ ,=,\0]
+                ulong l = strtoul(tkn, &endptr, 10); // OK: DELIM:[\ ,=,\0]
                 if (endptr && !*endptr) initAobjLong(&avs[i], l); // valid ULONG
                 else                { addReply(c, shared.updatesyntax); UP_ERR }
             } else if C_IS_X(ctype) {
                 uint128 x;
-                if (!parseU128(uc->vals[i], &x)) { // invalid U128
+                if (!parseU128(tkn, &x)) {           // invalid U128
                     addReply(c, shared.updatesyntax);                   UP_ERR
                 } else initAobjU128(&avs[i], x);
             } else if C_IS_F(ctype) {
-                float f = atof(uc->vals[i]);              //OK: DELIM: [\ ,=,\0]
+                float f = atof(tkn);                 // OK: DELIM: [\ ,=,\0]
                 initAobjFloat(&avs[i], f);
             } else if (C_IS_S(ctype) || C_IS_O(ctype)) { // ignore \' delims
                 initAobjString(&avs[i], uc->vals[i] + 1, uc->vlens[i] - 2);
             } else assert(!"updateRow parse ERROR");
+            sdsfree(tkn); tkn = NULL;                    // FREED 137
         }
         int nclen = 0;
         if (i) { /* NOT PK, populate cr values (PK not stored in row)*/
@@ -1234,6 +1239,7 @@ int updateRow(cli *c, uc_t *uc, aobj *apk, void *orow) {
     server.dirty++;
 
 up_end:
+    if (tkn) sdsfree(tkn);                               // FREED 137
     if (nrow && NORM_BT(uc->btr)) free(nrow);            /* FREED 023 */
     DESTROY_COL_AVALS
     return ret;
