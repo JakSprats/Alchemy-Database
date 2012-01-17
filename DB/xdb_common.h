@@ -1,6 +1,8 @@
 #ifndef XDB_COMMON__H 
 #define XDB_COMMON__H 
 
+#include "sds.h"
+
 #define ALCHEMY_VERSION "0.2.1"
 
 #define REDIS_BTREE       5
@@ -72,6 +74,10 @@ enum OP {NONE, EQ, NE, GT, GE, LT, LE, RQ, IN, LFUNC};
 
 #define LUA_OBJ_TABLE "ASQL"
 
+typedef struct icol_t {
+    int cmatch; uint32 nlo; sds *lo;
+} icol_t;
+
 //TODO move this into a single struct, that can be bzero'ed
 #define ALCHEMY_CLIENT_EXTENSIONS           \
     struct sockaddr_in  sa;                 \
@@ -106,6 +112,7 @@ enum OP {NONE, EQ, NE, GT, GE, LT, LE, RQ, IN, LFUNC};
     *toomany_nob, \
     *accesstypeunknown, \
     *createsyntax,       *dropsyntax,    *altersyntax,  *alter_other, \
+    *createsyntax_dn,                                                 \
     *lru_other,          *lru_repeat,    *col_lru, \
     *update_lru,         *insert_lru,    *insert_replace_update, \
     *drop_virtual_index, *drop_lru,      *drop_ind_on_sk, \

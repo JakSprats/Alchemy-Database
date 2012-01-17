@@ -127,7 +127,7 @@ list *initOBsort(bool qed, wob_t *wb, bool rcrud) {
         for (uint32 i = 0; i < OB_nob; i++) {
             OB_asc[i]   = wb->asc[i];
             OB_ctype[i] = wb->le[i].yes ? COL_TYPE_LUAO :
-                                          Tbl[wb->obt[i]].col[wb->obc[i]].type;
+                                    Tbl[wb->obt[i]].col[wb->obc[i].cmatch].type;
         }}                                                    // \/ DESTROY 009
     if (qed) {                                           return listCreate();
     } else if (rcrud) {
@@ -217,7 +217,7 @@ bool assignObKey(wob_t *wb, bt     *btr, void *rrow,   aobj *apk,
         return assignObKeyLuaFunc(wb, btr, rrow, apk, i, ob, tmatch);
     }
     void  *key;
-    uchar  ctype = Tbl[wb->obt[i]].col[wb->obc[i]].type;
+    uchar  ctype = Tbl[wb->obt[i]].col[wb->obc[i].cmatch].type;
     //TODO this is a repetitive getCol() call
     aobj   ao    = getCol(btr, rrow, wb->obc[i], apk, wb->obt[i], NULL);
     if      C_IS_I(ctype) key = VOIDINT ao.i;

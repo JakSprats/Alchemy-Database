@@ -59,9 +59,9 @@ typedef struct r_tbl { // 131 bytes -> 136B
     uint32   nmci;       /* MCI: number of MultipleColumnIndexes */ //TODO bool?
     uint32   nltrgr;     /* LAUT: number of LuaTriggers */          //TODO bool?
     int      sk;         /* SK: index of shard-key column */
-    int      fk_cmatch;  /* SK: Foreign-key local column */
+    int      fk_cmatch;  /* SK: Foreign-key local column */        //TODO icol_t
     int      fk_otmatch; /* SK: Foreign-key other table's table */
-    int      fk_ocmatch; /* SK: Foreign-key other table's column */
+    int      fk_ocmatch; /* SK: Foreign-key other table's column *///TODO icol_t
     bool     hashy;      /* HASH: adds "HASHABILITY" to the table */
     uint32   tcols;      /* HASH: on INSERT num new columns */
     sds     *tcnames;    /* HASH: on INSERT new column names */
@@ -77,24 +77,25 @@ typedef struct r_tbl { // 131 bytes -> 136B
 //TODO bool's can all be in a bitmap
 //TODO MM: r_ind's elements [clist,ofst] are optional -> bitmap+malloc(elements)
 //TODO: luat should be type: "luat *"
-typedef struct r_ind { // 67 bytes -> 72B
+typedef struct r_ind { // 68 bytes -> 72B
     bt     *btr;     /* Btree of index                                     */
     sds     name;    /* Name of index                                      */
-    int     table;   /* table index is ON                                  */
-    int     column;  /* single column OR 1st MCI column                    */
+    int     tmatch;  /* table index is ON                                  */
+    icol_t  icol;    /* single column OR 1st MCI column                    */
     list   *clist;   /* MultipleColumnIndex(mci) list                      */
     int     nclist;  /* MCI: num columns                                   */
-    int    *bclist;  /* MCI: array representation (for speed)              */
+    icol_t *bclist;  /* MCI: array representation (for speed)              */
     bool    virt;    /* virtual                      - i.e. on primary key */
     uchar   cnstr;   /* CONSTRAINTS: [UNIQUE,,,]                           */
     bool    lru;     /* LRUINDEX                                           */
     bool    luat;    /* LUATRIGGER - call lua function per CRUD            */
-    int     obc;     /* ORDER BY col                                       */
+    icol_t  obc;     /* ORDER BY col                                       */
     bool    done;    /* CREATE INDEX OFFSET -> not done until finished     */
     long    ofst;    /* CREATE INDEX OFFSET partial indexes current offset */
     bool    lfu;     /* LFUINDEX                                           */
     bool    iposon;  /* Index Position On (i.e. SELECT "index.pos()"       */
     uint32  cipos;   /* Current Index position, when iposon                */
+    uchar   dtype;   /* DotNotation Index Type (e.g. luaobj.x.y.z -> INT)  */
 } r_ind_t;
 
 typedef struct update_expression {
@@ -122,7 +123,7 @@ typedef struct filter {
     int      jan;    /* JoinAliasNumber filter runs on (for JOINS)        */
     int      imatch; /* index  filter runs on (for JOINS)                 */
     int      tmatch; /* table  filter runs on (for JOINS)                 */
-    int      cmatch; /* column filter runs on (JOINS & RQ & SNGL)         */
+    icol_t   ic;     /* column filter runs on (JOINS & RQ & SNGL)         */
     enum OP  op;     /* operation filter applies [>,<,=,!=]               */
 
     bool     iss;    /* is string, WHERE fk = 'fk' (1st iss=0, 2nd iss=1) */
@@ -141,10 +142,10 @@ typedef struct filter {
 } f_t;
 
 typedef struct lua_trigger_command {
-    sds   fname;
-    int   ncols;
-    int  *cmatchs;
-    bool  tblarg;
+    sds     fname;
+    int     ncols;
+    icol_t *ics;
+    bool    tblarg;
 } ltc_t;
 typedef struct lua_trigger {
     ltc_t     add;
@@ -155,7 +156,7 @@ typedef struct lua_trigger {
 //TODO make all the [MAX_ORDER_BY_COLS] stack allocated
 typedef struct where_clause_order_by {
     uint32  nob;                       /* number ORDER BY columns             */
-    int     obc[MAX_ORDER_BY_COLS];    /* ORDER BY col                        */
+    icol_t  obc[MAX_ORDER_BY_COLS];    /* ORDER BY col                        */
     int     obt[MAX_ORDER_BY_COLS];    /* ORDER BY tbl -> JOINS               */
     bool    asc[MAX_ORDER_BY_COLS];    /* ORDER BY ASC/DESC                   */
     lue_t   le [MAX_ORDER_BY_COLS];    /* ORDER BY LuaFunction                */

@@ -212,13 +212,14 @@ static void addSelectedColumnNames() {
     CurrEresp->ncols  = NumSelectedCols;
     CurrEresp->cnames = SelectedCols;
 }
-void embeddedSaveSelectedColumnNames(int tmatch, int cmatchs[], int qcols) {
+void embeddedSaveSelectedColumnNames(int tmatch, icol_t *ics, int qcols) {
     if (!embeddedInited) return; // NOOP when not embedded
     //printf("embeddedSaveSelectedColumnNames\n");
     NumSelectedCols = qcols;
     SelectedCols    = malloc(sizeof(sds) * NumSelectedCols);
     for (int i = 0; i < NumSelectedCols; i++) {
-        SelectedCols[i] = sdsdup(Tbl[tmatch].col[cmatchs[i]].name);
+/*TODO FIXME if ics[i].lo add them in */ assert(!ics[i].lo);
+        SelectedCols[i] = sdsdup(Tbl[tmatch].col[ics[i].cmatch].name);
     }
     addSelectedColumnNames();
 }
@@ -337,7 +338,7 @@ efasterr:
 eresp_t *e_alchemy_thin_select(uchar qtype,  int tmatch, int cmatch, int imatch,
                                enum OP op,   int qcols, 
                                uint128 keyx, long keyl,  int keyi,
-                               int *cmatchs, bool cstar, select_callback *scb,
+                               icol_t *ics,  bool cstar, select_callback *scb,
                                bool save_cnames) {
     initEmbeddedAlchemy();
     sds  err = NULL;
@@ -346,15 +347,15 @@ eresp_t *e_alchemy_thin_select(uchar qtype,  int tmatch, int cmatch, int imatch,
     cswc_t w; wob_t wb;
     init_check_sql_where_clause(&w, tmatch, NULL); init_wob(&wb);
     w.wtype     = qtype;
-    w.wf.tmatch = tmatch; w.wf.cmatch = cmatch; w.wf.imatch = imatch;
+    w.wf.tmatch = tmatch; w.wf.ic.cmatch = cmatch; w.wf.imatch = imatch;
     w.wf.op     = op;
     if      (keyi) initAobjInt (&w.wf.akey, keyi);
     else if (keyl) initAobjLong(&w.wf.akey, keyl);
     else if (keyx) initAobjU128(&w.wf.akey, keyx);
     else assert(!"e_alchemy_thin_select needs [keyi|keyl|keyx]");
-    bool ret    = sqlSelectBinary(c, tmatch, cstar, cmatchs, qcols, &w, &wb,
+    bool ret    = sqlSelectBinary(c, tmatch, cstar, ics, qcols, &w, &wb,
                                   save_cnames, NULL);
-    if (!cstar) resetIndexPosOn(qcols, cmatchs);
+    if (!cstar) resetIndexPosOn(qcols, ics);
     destroy_wob(&wb); destroy_check_sql_where_clause(&w);
     if (!ret) { assert(c->bufpos); //NOTE: all -ERRs < REDIS_REPLY_CHUNK_BYTES
         err = sdsnewlen(c->buf, c->bufpos); c->bufpos = 0; goto ethinserr;

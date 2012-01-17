@@ -134,6 +134,7 @@ typedef struct twoint {
     int i; int j;
 } twoint;
 
+//TODO this is dangerous
 #define STACK_STRDUP(dest, src, len) \
   char dest[len + 1];                \
   memcpy(dest, src, len);            \

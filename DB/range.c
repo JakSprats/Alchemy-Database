@@ -74,7 +74,7 @@ typedef struct inner_bt_data {
     row_op  *p;    range_t *g;    qr_t    *q;
     bt      *btr;  bt      *nbtr;
     long    *ofst; long    *card; long    *loops; bool    *brkr;
-    int      obc;
+    icol_t   obc;
 } ibtd_t;
 typedef bool node_op(ibtd_t *d);
 
@@ -93,21 +93,24 @@ void init_range(range_t *g, redisClient *c,  cswc_t *w,     wob_t *wb,
 //TODO inline
 static void init_ibtd(ibtd_t *d,    row_op *p,    range_t *g,     qr_t *q,
                       bt     *nbtr, long   *ofst, long    *card,  long *loops,
-                      bool   *brkr, int     obc) {
+                      bool   *brkr, icol_t  obc) {
     d->p    = p;    d->g    = g;    d->q     = q;     d->nbtr = nbtr;
     d->ofst = ofst; d->card = card; d->loops = loops; d->brkr = brkr;
     d->obc  = obc;
 }
 
 // QUEUE_FOR_ORDER_BY_SORT QUEUE_FOR_ORDER_BY_SORT QUEUE_FOR_ORDER_BY_SORT
+bool icol_cmp(icol_t *ic1, icol_t *ic2) {
+    //TODO FIXME cmp "lo"
+    return ic1->cmatch == ic2->cmatch ? 0 : ic1->cmatch > ic2->cmatch ? 1 : -1;
+}
 static bool mci_fk_queued(wob_t *wb, r_ind_t *ri) { //printf("mci_fk_queued\n");
     uint32_t i;
     for (i = 0; i < (uint32_t)ri->nclist && i < wb->nob; i++) {
-        if (wb->obc[i] != ri->bclist[i]) break;
+        if (!icol_cmp(&wb->obc[i], &ri->bclist[i])) break;
     }
-    if (i < wb->nob) {
-        int obc = (ri->obc == -1) ? 0 : ri->obc;
-        if (wb->obc[i] != obc) return 1; i++;
+    if (i == wb->nob - 1) {
+        if (!icol_cmp(&wb->obc[i], &ri->obc)) return 1; i++;
     }
     return (i != wb->nob);
 }
@@ -115,35 +118,43 @@ static void setRangeQueued(cswc_t *w, wob_t *wb, qr_t *q) {
     bzero(q, sizeof(qr_t));
     r_ind_t *ri     = (w->wf.imatch == -1) ? NULL: &Index[w->wf.imatch];
     bool     virt   = ri ? ri->virt : 0;
-    int      cmatch = ri ? ri->column ? ri->column : -1 : -1;
-    int      obc    = (!ri || ri->obc == -1) ? 0 : ri->obc;
+    DECLARE_ICOL(ic,  -1)  if (ri && ri->icol.cmatch)      ic  = ri->icol;
+    DECLARE_ICOL(obc,  0); if (ri && ri->obc.cmatch != -1) obc = ri->obc;
     if (virt) { // NOTE: there is no inner_desc possible (no inner loop)
-        q->pk_desc  = (wb->nob >= 1 && (!wb->asc[0] && wb->obc[0] == obc));
-        q->pk       = (wb->nob > 1) || (wb->nob == 1 && wb->obc[0] != obc);
+        q->pk_desc  = ((wb->nob >= 1) && (!wb->asc[0] && 
+                       icol_cmp(&wb->obc[0], &obc)));
+        q->pk       = ((wb->nob > 1) || (wb->nob == 1 &&
+                       !icol_cmp(&wb->obc[0], &obc)));
         q->pk_lim   = (!q->pk    && (wb->lim  != -1));
         q->pk_lo    = (q->pk_lim && (wb->ofst != -1));
         q->xth      = q->pk_lo && !(w->flist && (wb->ofst != -1));
         q->qed      = q->pk;
     } else {
-        q->fk_desc  = (wb->nob >= 1 && (!wb->asc[0] && wb->obc[0] == cmatch));
-        q->inr_desc = (wb->nob == 1 && (!wb->asc[0] && wb->obc[0] == obc)) ||
-                      (wb->nob > 1 && (wb->obc[0] == cmatch) &&
-                       (!wb->asc[1] && wb->obc[1] == obc)); // FK,PK DESC
+        q->fk_desc  = ((wb->nob >= 1) && (!wb->asc[0] && 
+                       icol_cmp(&wb->obc[0], &ic)));
+        q->inr_desc = ((wb->nob == 1) && (!wb->asc[0] && 
+                       icol_cmp(&wb->obc[0], &obc))) ||
+                      (wb->nob > 1  && icol_cmp(&wb->obc[0], &ic) && // FK +
+                       (!wb->asc[1] && icol_cmp(&wb->obc[1], &obc)));// PK DESC
         if (w->wtype & SQL_SINGLE_FK_LKP) {
             if (ri->nclist) q->fk = mci_fk_queued(wb, ri);
             else { // NO-Q: [OBY FK|OBY PK|OBY FK,PK|OBY PK,FK]
                 q->fk = (wb->nob > 2) ||
                         (wb->nob == 1 &&  // [FK|OBY]
-                         (wb->obc[0] != cmatch) && (wb->obc[0] != obc)) ||
+                         !icol_cmp(&wb->obc[0], &ic) && 
+                         !icol_cmp(&wb->obc[0], &obc)) ||
                         (wb->nob == 2 &&  // [FK,OBY]&[PK,OBY]
-                         (!((wb->obc[0] == cmatch) && (wb->obc[1] == obc)) &&
-                          !((wb->obc[1] == cmatch) && (wb->obc[0] == obc))));
+                         (!(icol_cmp(&wb->obc[0], &ic)   && 
+                            icol_cmp(&wb->obc[1], &obc)) &&
+                          !(icol_cmp(&wb->obc[1], &ic)   && 
+                            icol_cmp(&wb->obc[0], &obc))));
             }
         } else { // FK RANGE QUERY (clist[MCI] not yet supported)
             q->fk   = (wb->nob > 2) || // NoQ: [OBY FK| OBY FK,PK]
-                      (wb->nob == 1 && (wb->obc[0] != cmatch)) ||
+                      (wb->nob == 1 && !icol_cmp(&wb->obc[0], &ic)) ||
                       (wb->nob == 2 && // [FK&OBY]
-                       !((wb->obc[0] == cmatch) && (wb->obc[1] == obc)));
+                       !(icol_cmp(&wb->obc[0], &ic) && 
+                         icol_cmp(&wb->obc[1], &obc)));
         }
         q->fk_lim   = (!q->fk    && (wb->lim  != -1));
         q->fk_lo    = (q->fk_lim && (wb->ofst != -1));
@@ -261,7 +272,7 @@ static bool nBT_ROp(ibtd_t *d,    qr_t *q,    wob_t *wb,
     INCR(*d->loops)
     if (q->fk_lim && !q->fk_lo && *d->loops < *d->ofst)         return 1;
     void *key; aobj akey; initAobj(&akey);
-    if (d->obc == -1) key = bkey;
+    if (d->obc.cmatch == -1) key = bkey;
     else {  /* ORDER BY INDEX query */                //DEBUG_NODE_BT_OBC_1
         uchar ctype = Tbl[d->g->co.btr->s.num].col[0].type; // PK_CTYPE
         if      C_IS_I(ctype) {
@@ -593,7 +604,7 @@ printf("passFilts: nfliters: %d\n", flist->len);
     while ((ln = listNext(li))) {
         f_t *flt  = ln->value;
         if (tmatch != flt->tmatch) continue;
-        aobj a    = getCol(btr, rrow, flt->cmatch, apk, tmatch, NULL);
+        aobj a    = getCol(btr, rrow, flt->ic, apk, tmatch, NULL);
         if        (flt->inl) {
             listIter *li2 = listGetIterator(flt->inl, AL_START_HEAD);
             while((ln2 = listNext(li2))) {
@@ -630,7 +641,7 @@ static bool select_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
     OP_FILTER_CHECK
     if (!g->se.cstar) {
         uchar ost = OR_NONE;
-        robj *r = outputRow(g->co.btr, rrow,   g->se.qcols, g->se.cmatchs,
+        robj *r = outputRow(g->co.btr, rrow,   g->se.qcols, g->se.ics,
                             apk,       tmatch, g->se.lfca,  &ost);
 printf("select_op: ost: %d\n", ost);
         if (ost == OR_ALLB_OK) { CurrUpdated++; return 1; }
@@ -670,14 +681,14 @@ bool opSelectSort(cli  *c,    list *ll,   wob_t *wb,
     free(v); /* FREED 004 */
     return ret;
 }
-void iselectAction(cli *c,         cswc_t *w,     wob_t *wb,
-                   int  cmatchs[], int     qcols, bool   cstar, lfca_t *lfca) {
+void iselectAction(cli *c,      cswc_t *w,     wob_t *wb,
+                   icol_t *ics, int     qcols, bool   cstar, lfca_t *lfca) {
     printf("\n\niselectAction\n");
     range_t g; qr_t q; setQueued(w, wb, &q);
     list *ll     = initOBsort(q.qed, wb, 0);
     init_range(&g, c, w, wb, &q, ll, OBY_FREE_ROBJ, NULL);
-    g.se.cstar   = cstar;   g.se.qcols   = qcols;
-    g.se.cmatchs = cmatchs; g.se.lfca    = lfca;
+    g.se.cstar   = cstar; g.se.qcols   = qcols;
+    g.se.ics     = ics;   g.se.lfca    = lfca;
     void *rlen   = cstar || EREDIS ? NULL : addDeferredMultiBulkLength(c);
     long  card   = Op(&g, select_op);
 
@@ -853,7 +864,7 @@ void dumpQueued(printer *prn, cswc_t *w, wob_t *wb, qr_t *q, bool debug) {
         r_ind_t *ri     = (w->wf.imatch == -1) ? NULL :
                                                  &Index[w->wf.imatch];
         bool     virt   = (w->wf.imatch == -1) ? 0    : ri->virt;
-        int      cmatch = (w->wf.imatch == -1) ? -1   : ri->column;
+        int      cmatch = (w->wf.imatch == -1) ? -1   : ri->icol.cmatch;
         if (virt) (*prn)("\t\tqpk: %d pklim: %d pklo: %d desc: %d xth: %d\n",
                          q->pk, q->pk_lim, q->pk_lo, q->pk_desc, q->xth);
         else      (*prn)("\t\tqfk: %d fklim: %d fklo: %d desc: %d xth: %d\n",
@@ -862,6 +873,7 @@ void dumpQueued(printer *prn, cswc_t *w, wob_t *wb, qr_t *q, bool debug) {
                     " ofst: %ld indcol: %d inner_desc: %d -> qed: %d\n",
             virt, wb->asc[0], wb->obc[0], wb->lim, wb->ofst,
             cmatch, q->inr_desc, q->qed);
+        //TODO dump ri->icol.lo
     } else {
         (*prn)("\t\tqed:\t%d xth: %d\n", q->qed, q->xth);
     }

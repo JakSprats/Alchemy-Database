@@ -39,6 +39,8 @@ ALL RIGHTS RESERVED
 
 void initX_DB_Range(); /* NOTE: called on server startup */
 
+bool icol_cmp(icol_t *ic1, icol_t *ic2);
+
 typedef struct queue_range_results {
     bool pk;       /* range query on pk, ORDER BY col not pk */
     bool pk_lim;   /* pk LIMIT OFFSET */
@@ -56,7 +58,7 @@ typedef struct queue_range_results {
 /* NOTE: range_* structs are just skeletons,
                i.e. not to be changed after initialization, just derefed */
 typedef struct range_select {
-    bool cstar; int  qcols; int *cmatchs; lfca_t *lfca;
+    bool cstar; int  qcols; icol_t *ics; lfca_t *lfca;
 } rsel_t;
 
 typedef struct range_update {
@@ -104,8 +106,8 @@ bool passFilts(bt   *btr, aobj *akey, void *rrow, list *flist, int tmatch,
 bool opSelectSort(cli  *c,    list *ll,   wob_t *wb,
                   bool ofree, long *sent, int    tmatch);
 
-void iselectAction(cli *c,         cswc_t *w,     wob_t *wb,
-                   int  cmatchs[], int     qcols, bool   cstar, lfca_t *lfca);
+void iselectAction(cli *c,      cswc_t *w,     wob_t *wb,
+                   icol_t *ics, int     qcols, bool   cstar, lfca_t *lfca);
 
 void ideleteAction(cli *c,         cswc_t *w,       wob_t *wb);
 

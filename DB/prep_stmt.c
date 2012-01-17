@@ -190,44 +190,46 @@ static void executeCommand_Join(cli *c, uchar *x) {
 
     destroy_join_block(c, &jb);
 }
+//TODO icol_t not supported, just icol.cmatch
 void prepareRQ(cli *c,     cswc_t *w,      wob_t *wb, bool cstar,
-               int  qcols, int    *cmatchs) {
-    //COMPUTE size -> ORDER [cstar, qcols, cmatchs, wtype, wf]
+               int  qcols, icol_t *ics) {
+    //COMPUTE size -> ORDER [cstar, qcols, ics, wtype, wf]
     int size   = 1 + sizeof(bool)      + sizeof(int)  + // isj, cstar, qcols
-                 (sizeof(int) * qcols) + sizeof(bool) + // cmatchs, wtype
+                 (sizeof(int) * qcols) + sizeof(bool) + // ics, wtype
                  getSizeFLT(&w->wf);                    // wf
     int wbsize = getSizeWB(wb);
     if (wbsize == -1) { addReply(c, shared.supported_prepare); return; }
     size += wbsize;
 
-    //SERIALISE    -> ORDER [cstar, qcols, cmatchs, wtype, wf]
+    //SERIALISE    -> ORDER [cstar, qcols, ics, wtype, wf]
     uchar *blob = malloc(size);                          // FREE ME 111
     uchar *x    = blob;
-    *x          = 0;                          x++; // FLAG: NOT-JOIN -> RQ
-    memcpy(x, &cstar,          sizeof(bool)); x += sizeof(bool);
-    memcpy(x, &qcols,          sizeof(int));  x += sizeof(int); 
+    *x          = 0;                           x++; // FLAG: NOT-JOIN -> RQ
+    memcpy(x, &cstar,          sizeof(bool));  x += sizeof(bool);
+    memcpy(x, &qcols,          sizeof(int));   x += sizeof(int); 
     for (int i = 0; i < qcols; i++) {
-        memcpy(x, &cmatchs[i], sizeof(int));  x += sizeof(int); 
+        memcpy(x, &ics[i].cmatch, sizeof(int)); x += sizeof(int); 
     }
-    memcpy(x, &w->wtype, sizeof(bool));       x += sizeof(bool);
+    memcpy(x, &w->wtype, sizeof(bool));        x += sizeof(bool);
     int    wfsize = getSizeFLT  (&w->wf);
     uchar *wfblob = serialiseFLT(&w->wf);
-    memcpy(x, wfblob, wfsize);                x += wfsize;
+    memcpy(x, wfblob, wfsize);                 x += wfsize;
     
     uchar *wbblob  = serialiseWB(wb);
-    memcpy(x, wbblob, wbsize);                x += wbsize;
+    memcpy(x, wbblob, wbsize);                 x += wbsize;
 
     storePreparedStatement(c, blob, size);
 }
 static void executeCommand_RQ(cli *c, uchar *x) {
     if (c->argc > 3) { addReply(c, shared.execute_argc); return; }
 
-    //DESERIALISE  -> ORDER [cstar, qcols, cmatchs, wtype, wf]
+    //DESERIALISE  -> ORDER [cstar, qcols, ics, wtype, wf]
     bool cstar; memcpy(&cstar, x, sizeof(bool));    x += sizeof(bool);
     int  qcols; memcpy(&qcols, x, sizeof(int));     x += sizeof(int);
-    int  cmatchs[qcols];
+    icol_t ics[qcols];
     for (int i = 0; i < qcols; i++) {
-                memcpy(&cmatchs[i], x,sizeof(int)); x += sizeof(int); 
+        memcpy(&ics[i].cmatch, x, sizeof(int));     x += sizeof(int); 
+        //TODO deserialise ics.lo
     }
     cswc_t w; wob_t wb;
     init_check_sql_where_clause(&w, -1, NULL); init_wob(&wb);
@@ -252,10 +254,10 @@ static void executeCommand_RQ(cli *c, uchar *x) {
     if (!optimiseRangeQueryPlan(c, &w, &wb)) return;
 #endif
 
-    sqlSelectBinary(c, w.wf.tmatch, cstar, cmatchs, qcols, &w, &wb, 
+    sqlSelectBinary(c, w.wf.tmatch, cstar, ics, qcols, &w, &wb, 
                     GlobalNeedCn, NULL);
 
-    if (!cstar) resetIndexPosOn(qcols, cmatchs);
+    if (!cstar) resetIndexPosOn(qcols, ics);
     destroy_wob(&wb); destroy_check_sql_where_clause(&w);
 }
 bool executeCommandBinary(cli *c, uchar *x) {

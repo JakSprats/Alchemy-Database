@@ -40,9 +40,9 @@ void *createRow(cli *c,     aobj *apk,  bt     *btr,      int tmatch,
 uint32 getRowMallocSize(uchar *stream);
 
 uchar *getColData(uchar *orow, int cmatch, uint32 *clen, uchar *rflag);
-aobj   getCol    (bt   *btr, uchar *rrow, int cmatch, aobj *apk, int tmatch, 
+aobj   getCol    (bt   *btr, uchar *rrow, icol_t ic, aobj *apk, int tmatch, 
                   lfca_t *lfca);
-aobj   getSCol   (bt   *btr, uchar *rrow, int cmatch, aobj *apk, int tmatch,
+aobj   getSCol   (bt   *btr, uchar *rrow, icol_t ic, aobj *apk, int tmatch,
                   lfca_t *lfca);
 
 robj *cloneRobjErow(robj *r);   // EMBEDDED
@@ -59,8 +59,8 @@ robj *write_output_row(int   qcols,   uint32  prelen, char *pbuf,
 #define OR_ALLB_OK   1
 #define OR_ALLB_NO   2
 #define OR_LUA_FAIL  3
-robj *outputRow(bt  *btr, void *rrow,   int     qcols, int   cmatchs[], 
-               aobj *apk, int   tmatch, lfca_t *lfca,  bool *ostt);
+robj *outputRow(bt  *btr, void *rrow,   int     qcols, icol_t *ics,
+               aobj *apk, int   tmatch, lfca_t *lfca,  bool   *ostt);
 
 int   deleteRow(int tmatch, aobj *apk, int matches, int inds[]);
 

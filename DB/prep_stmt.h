@@ -33,7 +33,7 @@ ALL RIGHTS RESERVED
 #include "common.h"
 
 void prepareRQ     (cli *c,     cswc_t *w, wob_t *wb, bool cstar,
-                    int  qcols, int    *cmatchs);
+                    int  qcols, icol_t *ic);
 bool prepareJoin   (cli *c, jb_t *jb);
 void prepareCommand(cli *c);
 

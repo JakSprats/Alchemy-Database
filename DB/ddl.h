@@ -31,6 +31,8 @@ ALL RIGHTS RESERVED
 
 #include "common.h"
 
+void v_sdsfree(void *v);
+
 void createCommand   (redisClient *c);
 void dropCommand     (redisClient *c);
 void alterCommand    (redisClient *c);

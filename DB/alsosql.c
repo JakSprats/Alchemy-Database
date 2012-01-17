@@ -123,7 +123,7 @@ uchar insertCommit(cli  *c,      sds     uset,   sds     vals,
     if (rt->lfu)  lncols--; // INSERT can NOT have LFU
     bool     ai     = 0;    // AUTO-INCREMENT
     char    *mvals  = parseRowVals(vals, &pk, &pklen, ncols, cofsts, tmatch,
-                                   pcols, cmatchs, lncols, &ai); // ERR NOW GOTO
+                                   pcols, ics, lncols, &ai); // ERR NOW GOTO
     if (!mvals) { addReply(c, shared.insertcolumn);            goto insc_e; }
     if (parse) { // used in cluster-mode to get sk's value
         int skl = cofsts[rt->sk].j - cofsts[rt->sk].i;
@@ -400,19 +400,18 @@ void releaseLFCA(lfca_t *lfca) {
 }
 
 // SELECT SELECT SELECT SELECT SELECT SELECT SELECT SELECT SELECT SELECT
-bool sqlSelectBinary(cli   *c, int tmatch, bool cstar, int *cmatchs, int qcols,
-                    cswc_t *w, wob_t *wb,  bool need_cn, lfca_t *lfca) {
+bool sqlSelectBinary(cli  *c,     int     tmatch, bool   cstar, icol_t *ics,
+                     int   qcols, cswc_t *w,      wob_t *wb,    bool    need_cn,
+                     lfca_t *lfca) {
     if (cstar && wb->nob) { /* SELECT COUNT(*) ORDER BY -> stupid */
-        addReply(c, shared.orderby_count);                          return 0;
+        addReply(c, shared.orderby_count);                         return 0;
     }
-    if      (c->Prepare) { prepareRQ(c, w, wb, cstar,
-                                     qcols, cmatchs);               return 1; }
-    else if (c->Explain) { explainRQ(c, w, wb, cstar,
-                                     qcols, cmatchs);               return 1; }
+    if      (c->Prepare) { prepareRQ(c, w, wb, cstar, qcols, ics); return 1; }
+    else if (c->Explain) { explainRQ(c, w, wb, cstar, qcols, ics); return 1; }
     //dumpW(printf, w); dumpWB(printf, wb);
 
     if (EREDIS && (need_cn || GlobalNeedCn)) {
-        embeddedSaveSelectedColumnNames(tmatch, cmatchs, qcols);
+        embeddedSaveSelectedColumnNames(tmatch, ics, qcols);
     }
     if (w->wtype != SQL_SINGLE_LKP) { /* FK, RQ, IN */
         if (w->wf.imatch == -1) {
@@ -420,7 +419,7 @@ bool sqlSelectBinary(cli   *c, int tmatch, bool cstar, int *cmatchs, int qcols,
         }
         if (w->wf.imatch == Tbl[tmatch].lrui) c->LruColInSelect = 1;
         if (w->wf.imatch == Tbl[tmatch].lfui) c->LfuColInSelect = 1;
-        iselectAction(c, w, wb, cmatchs, qcols, cstar, lfca);
+        iselectAction(c, w, wb, ics, qcols, cstar, lfca);
     } else {                         /* SQL_SINGLE_LKP */
         bt    *btr   = getBtr(w->wf.tmatch);
         aobj  *apk   = &w->wf.akey;
@@ -436,7 +435,7 @@ printf("rrow: %p gost: %d\n", (void *)rrow, gost);
         if (hf)                                                     return 0;
         if (!ret) { addReply(c, shared.czero);                      return 1; }
         uchar ost = OR_NONE;
-        robj *r = outputRow(btr, rrow, qcols, cmatchs, apk, tmatch, lfca, &ost);
+        robj *r = outputRow(btr, rrow, qcols, ics, apk, tmatch, lfca, &ost);
         if (ost == OR_ALLB_OK)   { addReply(c, shared.cone);        return 1; }
         if (ost == OR_ALLB_NO)   { addReply(c, shared.czero);       return 1; }
         if (ost == OR_LUA_FAIL)  { addReply(c, CurrError);          return 0; }
@@ -463,18 +462,18 @@ bool sqlSelectInnards(cli *c,       sds  clist, sds from, sds tlist, sds where,
     CMATCHS_FROM_CMATCHL
     lfca_t lfca; initLFCA(&lfca, ls); bool ret = 0;
 
-    c->LruColInSelect = initLRUCS(tmatch, cmatchs, qcols);
-    c->LfuColInSelect = initLFUCS(tmatch, cmatchs, qcols);
+    c->LruColInSelect = initLRUCS(tmatch, ics, qcols);
+    c->LfuColInSelect = initLFUCS(tmatch, ics, qcols);
     cswc_t w; wob_t wb;
     init_check_sql_where_clause(&w, tmatch, wclause); init_wob(&wb);
     parseWCplusQO(c, &w, &wb, SQL_SELECT);
     if (w.wtype == SQL_ERR_LKP)                                     goto sel_e;
     if (!leftoverParsingReply(c, w.lvr))                            goto sel_e;
-    ret = sqlSelectBinary(c, tmatch, cstar, cmatchs, qcols, &w, &wb,
+    ret = sqlSelectBinary(c, tmatch, cstar, ics, qcols, &w, &wb,
                           need_cn, &lfca);
 
 sel_e: fflush(NULL);
-    if (!cstar) resetIndexPosOn(qcols, cmatchs);
+    if (!cstar) resetIndexPosOn(qcols, ics);
     destroy_wob(&wb); destroy_check_sql_where_clause(&w);
     RELEASE_CS_LS_LIST releaseLFCA(&lfca);
     return ret;
@@ -525,17 +524,17 @@ void deleteCommand(redisClient *c) {
 }
 
 /* UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE */
-static int getPkUpdateCol(int qcols, int cmatchs[]) {
+static int getPkUpdateCol(int qcols, icol_t *ics) {
     int pkupc = -1; /* PK UPDATEs that OVERWRITE rows disallowed */
     for (int i = 0; i < qcols; i++) {
-        if (!cmatchs[i]) { pkupc = i; break; }
+        if (!ics[i].cmatch) { pkupc = i; break; }
     }
     return pkupc;
 }
-static bool assignMisses(cli   *c,      int    tmatch,    int   ncols,
-                         int   qcols,   int    cmatchs[], uchar cmiss[],
-                         char *vals[],  uint32 vlens[],   ue_t  ue[],
-                         char *mvals[], uint32 mvlens[],  lue_t le[]) {
+static bool assignMisses(cli   *c,      int     tmatch,   int   ncols,
+                         int   qcols,   icol_t *ics,      uchar cmiss[],
+                         char *vals[],  uint32  vlens[],  ue_t  ue[],
+                         char *mvals[], uint32  mvlens[], lue_t le[]) {
     for (int i = 0; i < ncols; i++) {
         ue[i].yes = 0; bzero(&le[i], sizeof(lue_t));
     }
@@ -543,8 +542,8 @@ static bool assignMisses(cli   *c,      int    tmatch,    int   ncols,
         uchar miss  = 1;
         uchar ctype = Tbl[tmatch].col[i].type;
         for (int j = 0; j < qcols; j++) {
-            int cmatch = cmatchs[j];
-            if (i == cmatch) {
+            icol_t ic = ics[j];
+            if (i == ic.cmatch) {
                 bool simp = 0;
                 miss      = 0; vals[i] = mvals[j]; vlens[i] = mvlens[j];
                 if        (C_IS_I(ctype) || C_IS_L(ctype)) {
@@ -563,7 +562,8 @@ static bool assignMisses(cli   *c,      int    tmatch,    int   ncols,
                 if C_IS_O(ctype) { // update expr's (lua 2) not ok LUAOBJ's
                     addReply(c, shared.update_luaobj_complex); return 0;
                 }
-                int k = parseExpr(c, tmatch, cmatch, vals[i], vlens[i], &ue[i]);
+                int k = parseExpr(c, tmatch, ic.cmatch,
+                                  vals[i], vlens[i], &ue[i]);
                 if (k == -1) return 0;
                 if (k) { ue[i].yes = 1; break; }
                 if (!parseLuaExpr(tmatch, vals[i], vlens[i], &le[i])) {
@@ -590,9 +590,9 @@ static bool updatingIndex(int matches, int inds[], uchar cmiss[],
         r_ind_t *ri = &Index[inds[i]];
         if (ri->clist) {
             for (int i = 0; i < ri->nclist; i++) {
-                if (!cmiss[ri->bclist[i]]) { ret = 1;       *mci_up = 1; }
+                if (!cmiss[ri->bclist[i].cmatch]) { ret = 1; *mci_up = 1; }
             }
-        } else if (!cmiss[ri->column]) {
+        } else if (!cmiss[ri->icol.cmatch]) {
             if (ri->btr) { ret = 1; if (SIMP_UNIQ(ri->btr)) *u_up   = 1; }
         }
     }
@@ -606,14 +606,14 @@ int updateInnards(cli *c,      int   tmatch, sds vallist, sds wclause,
     int     qcols   = parseUpdateColListReply(c,      tmatch, vallist, cmatchl,
                                               mvalsl, mvlensl);
     UPDATES_FROM_UPDATEL
-    if (!qcols)                                                return -1;
+    if (!qcols)                                                   return -1;
     for (int i = 0; i < qcols; i++) {
-        if (cmatchs[i] < -1) { addReply(c, shared.updateipos); return -1; }
+        if (ics[i].cmatch < -1) { addReply(c, shared.updateipos); return -1; }
     }
-    if (initLRUCS(tmatch, cmatchs, qcols)) {
-        addReply(c, shared.update_lru);                        return -1;
+    if (initLRUCS(tmatch, ics, qcols)) {
+        addReply(c, shared.update_lru);                           return -1;
     }
-    int pkupc = getPkUpdateCol(qcols, cmatchs);
+    int pkupc = getPkUpdateCol(qcols, ics);
     MATCH_INDICES(tmatch)
 
     /* Figure out which columns get updated(HIT) and which dont(MISS) */
@@ -621,7 +621,7 @@ int updateInnards(cli *c,      int   tmatch, sds vallist, sds wclause,
     int      ncols = rt->col_count;
     uchar    cmiss[ncols]; ue_t    ue   [ncols]; lue_t le[ncols];
     char    *vals [ncols]; uint32  vlens[ncols];
-    if (!assignMisses(c, tmatch, ncols, qcols, cmatchs, cmiss, vals, vlens, ue,
+    if (!assignMisses(c, tmatch, ncols, qcols, ics, cmiss, vals, vlens, ue,
                       mvals, mvlens, le))                      return -1;
     int nsize = -1; /* B4 GOTO */
     cswc_t w; wob_t wb; init_wob(&wb);

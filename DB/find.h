@@ -30,17 +30,18 @@ ALL RIGHTS RESERVED
 #include "adlist.h"
 #include "redis.h"
 
+#include "query.h"
 #include "common.h"
 
 int  setOCmatchFromImatch(int imatch);
 int  getImatchFromOCmatch(int cmatch);
-void resetIndexPosOn(int qcols, int *cmatchs);
+void resetIndexPosOn(int qcols, icol_t *ics);
 
-int find_index      (int tmatch, int cmatch);
+int find_index      (int tmatch, icol_t ic);
 int match_index     (int tmatch, list *indl);
 int match_index_name(sds iname);
 
-int find_partial_index      (int tmatch, int cmatch); // Used by INDEX CURSORs
+int find_partial_index      (int tmatch, icol_t ic); // Used by INDEX CURSORs
 int match_partial_index     (int tmatch, list *indl);//RDBSAVE partial indexes 2
 int match_partial_index_name(sds iname); // Used by DROP INDEX|LUATRIGGER
 
@@ -72,9 +73,9 @@ int find_table  (sds   tname);
 int find_table_n(char *tname, int len);
 sds getJoinAlias(int jan);
 
-int find_column_sds(int tmatch, sds cname);
-int find_column    (int tmatch, char *column);
-int find_column_n  (int tmatch, char *column, int len);
+icol_t find_column_sds(int tmatch, sds cname);
+icol_t find_column    (int tmatch, char *column);
+icol_t find_column_n  (int tmatch, char *column, int len);
 
 #define TABLE_CHECK_OR_REPLY(TBL, RET)        \
     int tmatch = find_table(TBL);             \
@@ -91,6 +92,9 @@ int find_column_n  (int tmatch, char *column, int len);
         return retval;                             \
     }
 
-int get_all_cols(int tmatch, list *cmatchs, bool lru2, bool lfu2);
+int get_all_cols(int tmatch, list *cmatchl, bool lru2, bool lfu2);
+
+#define DECLARE_ICOL(ic, cm) \
+  icol_t ic; ic.cmatch = cm; ic.nlo = 0; ic.lo = NULL; 
 
 #endif /* __FIND__H */ 

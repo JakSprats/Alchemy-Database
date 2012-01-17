@@ -36,10 +36,12 @@ ALL RIGHTS RESERVED
 #include <lauxlib.h>
 #include <lualib.h>
 
-#include "redis.h"
+#include "dict.h"
 #include "zmalloc.h"
+#include "redis.h"
 
 #include "debug.h"
+#include "ddl.h"
 #include "parser.h"
 #include "bt_iterator.h"
 #include "find.h"
@@ -60,9 +62,29 @@ char    *Ignore_KW[]    = {"PRIMARY", "CONSTRAINT", "UNIQUE", "KEY", "FOREIGN"};
 int      Ignore_KW_lens[] = {  7,         10,          6,       3,       7};
 uint32   Num_Ignore_KW    = 5;
 
-// PROTOTYPES
-// from ddl.h
-void addColumn(int tmatch, char *cname, int ctype);
+// HELPERS HELPERS HELPERS HELPERS HELPERS HELPERS HELPERS HELPERS HELPERS
+void init_ics(icol_t *ics, list *cmatchl) {
+    int       ncm  = 0;
+    listIter *lic = listGetIterator(cmatchl, AL_START_HEAD); listNode *lnc;
+    while((lnc = listNext(lic))) {
+        icol_t *ic      = lnc->value;
+        memcpy(&ics[ncm], ic, sizeof(icol_t)); ncm++;
+     } listReleaseIterator(lic);
+     //TODO destroy the malloc'ed icol[]s (but not the els of "lo")
+     //TODO  cloneLo() is the right choice here (& then destroy twice)
+}
+void init_mvals_mvlens(char   **mvals,  list *mvalsl,
+                       uint32  *mvlens, list *mvlensl) {
+    int       ncm  = 0;
+    listIter *lic = listGetIterator(mvalsl, AL_START_HEAD); listNode *lnc;
+    while((lnc = listNext(lic))) {
+        mvals[ncm] = lnc->value; ncm++;
+    } listReleaseIterator(lic);
+    ncm = 0; lic = listGetIterator(mvlensl, AL_START_HEAD);
+    while((lnc = listNext(lic))) {
+        mvlens[ncm] = (uint32)(long)lnc->value; ncm++;
+    } listReleaseIterator(lic);
+}
 
 // CURSORS CURSORS CURSORS CURSORS CURSORS CURSORS CURSORS CURSORS
 /* set "OFFSET var" for next cursor iteration */
@@ -146,9 +168,9 @@ bool parseU128n(char *s, uint32 len, uint128 *x) {
 }
 
 //TODO refactor parseRowVals() into parseCommaListToAobjs()
-char *parseRowVals(sds vals,  char   **pk,        int  *pklen,
-                   int ncols, twoint   cofsts[],  int   tmatch,
-                   int pcols, int      cmatchs[], int   lncols, bool *ai) {
+char *parseRowVals(sds vals,  char   **pk,       int  *pklen,
+                   int ncols, twoint   cofsts[], int   tmatch,
+                   int pcols, icol_t  *ics,      int   lncols, bool *ai) {
     if (vals[sdslen(vals) - 1] != ')' || *vals != '(') return NULL;
     int      cmatch;
     r_tbl_t *rt     = &Tbl[tmatch];
@@ -156,13 +178,13 @@ char *parseRowVals(sds vals,  char   **pk,        int  *pklen,
     char    *token  = mvals, *nextc = mvals;
     int      numc   = 0;
     while (1) {
-        cmatch = pcols ? cmatchs[numc] : numc;
+        cmatch = pcols ? ics[numc].cmatch : numc;
         if (cmatch >= ncols) return NULL;
         if (cmatch  < -1)    return NULL;
         uchar ctype = (cmatch == -1) ? COL_TYPE_NONE : rt->col[cmatch].type;
         if (C_IS_N(ctype)) { // HASHABILITY -> determine ctype
             if (!determineColType(nextc, &ctype, tmatch)) return NULL;
-            cmatchs[numc] = cmatch = rt->col_count - 1;  //DEBUG_PARSE_ROW_VALS
+            ics[numc].cmatch = cmatch = rt->col_count - 1;//DEBUG_PARSE_ROW_VALS
         }
         nextc        = parse_insert_val_list_nextc(nextc, ctype);
 printf("nextc: %s\n", nextc);
@@ -186,7 +208,7 @@ printf("nextc: %s\n", nextc);
     char *end      = token + len - 2;    /* skip trailing ')' */
     char *cend     = end; REV_SKIP_SPACES(cend)/*ignore finalcols trailn space*/
     len           -= (end - cend);
-    cmatch         = pcols ? cmatchs[numc] : numc;
+    cmatch         = pcols ? ics[numc].cmatch : numc;
     cofsts[cmatch ].i = (token - mvals);
     cofsts[cmatch ].j = (token - mvals) + len - 1;
     if (!cmatch) { /* PK */
@@ -250,14 +272,15 @@ static bool parseSelCol(int  tmatch, char   *cname, int   clen,
                         bool  exact, bool    isi) {
     if (*cname == '*') { *qcols = get_all_cols(tmatch, cs, 0, 0);    return 1; }
     if (!strcasecmp(cname, "COUNT(*)")) { *cstar = 1; *qcols = 1;    return 1; }
-    int cmatch = find_column_n(tmatch, cname, clen);
-printf("parseSelCol: clen: %d cname: %s cmatch: %d\n", clen, cname, cmatch);
-    if (cmatch != -1) {
-        listAddNodeTail(cs, VOIDINT cmatch); INCR(*qcols);           return 1;
+    icol_t *mic = malloc(sizeof(icol_t));
+    *mic        = find_column_n(tmatch, cname, clen);
+printf("parseSelCol: clen: %d cname: %s cmatch: %d nlo: %d\n", clen, cname, mic->cmatch, mic->nlo);
+    if (mic->cmatch != -1) {
+        listAddNodeTail(cs, VOIDINT mic); INCR(*qcols);              return 1;
     } else {
         r_tbl_t *rt = &Tbl[tmatch];
         if (rt->hashy) {
-            if (exact) /* NOTE: used by LUATRIGGER */                return 0;
+            if (exact) /* NOTE: used by LUATRIGGER */         goto prsselcolerr;
             if (isi)    { // remember cname to later addColumn(cname)
                 sds *tcnames = malloc(sizeof(sds) * (rt->tcols + 1));//FREEME106
                 if (rt->tcnames) {
@@ -267,19 +290,21 @@ printf("parseSelCol: clen: %d cname: %s cmatch: %d\n", clen, cname, cmatch);
                 rt->tcnames            = tcnames;
                 rt->tcnames[rt->tcols] = sdsnewlen(cname, clen);     //FREEME107
                 rt->tcols++;                         // DEBUG_PARSE_SEL_COL_ISI
-                listAddNodeTail(cs, VOIDINT cmatch); INCR(*qcols);   return 1;
+                listAddNodeTail(cs, VOIDINT mic); INCR(*qcols);     return 1;
             }
         }
         lue_t *le   = malloc(sizeof(lue_t)); bzero(le, sizeof(lue_t));//FREE 130
         sds    expr = sdsnewlen(cname, clen);                         //FREE 129
         bool   ret  = checkOrCr8LFunc(tmatch, le, expr, 0);
         sdsfree(expr);                                               //FREED 129
-        if (ret) {
+        if (ret) { mic->cmatch = LUA_SEL_FUNC;
             listAddNodeTail(ls, le);
-            listAddNodeTail(cs, VOIDINT LUA_SEL_FUNC); INCR(*qcols); return 1; 
-        } free(le);                                                  //FREED 130
-        return 0;
+            listAddNodeTail(cs, VOIDINT mic); INCR(*qcols);         return 1; 
+        } else { free(le);                  /* FREED 130 */ goto prsselcolerr; }
     }
+
+prsselcolerr:
+    free(mic); return 0;
 }
 // JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN JOIN
 static bool parseJCols(cli   *c,    char *y,    int   len,
@@ -336,14 +361,14 @@ static bool parseJCols(cli   *c,    char *y,    int   len,
         }
         return 1;
     }
-    int   cmatch = find_column_n(tmatch, cname, clen);
-    if (cmatch == -1) {
+    icol_t ic    = find_column_n(tmatch, cname, clen);
+    if (ic.cmatch == -1) {
         if (!(Tbl[tmatch].hashy && !exact)) {
             addReply(c,shared.nonexistentcolumn); return 0;
         }
     }
     jc_t *jc = malloc(sizeof(jc_t));
-    jc->t    = tmatch; jc->c = cmatch; jc->jan  = jan;
+    jc->t    = tmatch; jc->c = ic.cmatch; jc->jan  = jan;
     listAddNodeTail(js, jc);
     INCR(*qcols);
     return 1;
@@ -402,7 +427,7 @@ bool parseCSLJoinColumns(cli  *c,     char  *tkn,  bool  exact,
 bool parseCSLSelect(cli  *c,         char  *tkn,
                     bool  exact,     bool   isi,
                     int   tmatch,    list  *cs,        list   *ls,
-                    int  *qcols,     bool  *cstar) {
+                    int  *qcols,     bool  *cstar) { printf("parseCSLSelect\n");
     while (1) {
         int len; SKIP_SPACES(tkn) char *nextc = get_next_nonparaned_comma(tkn);
         if (nextc) {
@@ -438,23 +463,27 @@ bool parseSelect(cli  *c,     bool    is_scan, bool *no_wc, int  *tmatch,
 // UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE
 int parseUpdateColListReply(cli  *c,  int   tmatch, char *vallist,
                             list *cs, list *vals,   list *vlens) {
-    int qcols = 0;
+    icol_t *mic   = NULL;
+    int     qcols = 0;
     while (1) {
         SKIP_SPACES(vallist)
         char *val    = strchr(vallist, '=');
-        if (!val) { addReply(c, shared.invalidupdatestring);       return 0; }
+        if (!val) { addReply(c, shared.invalidupdatestring); goto prsuperr; }
         char *endval = val - 1; /* skip '=' */
         REV_SKIP_SPACES(endval) /* search backwards */
         val++;                  /* skip '=' */
         SKIP_SPACES(val)        /* search forwards */
-        int cmatch = find_column_n(tmatch, vallist, (endval - vallist + 1));
-        if (cmatch == -1) { addReply(c, shared.nonexistentcolumn); return 0; }
+        mic        = malloc(sizeof(icol_t));             // FREE 138
+        *mic       = find_column_n(tmatch, vallist, (endval - vallist + 1));
+        if (mic->cmatch == -1) {
+            addReply(c, shared.nonexistentcolumn);           goto prsuperr;
+        }
         char *nextc = get_next_nonparaned_comma(val);
         char *end;
         if (nextc) { char *s = nextc;  while(*s != ',') s--; end = s - 1; }
         else       end = val + strlen(val);
         REV_SKIP_SPACES(end)
-        listAddNodeTail(cs,    VOIDINT cmatch);
+        listAddNodeTail(cs,    VOIDINT mic); mic = NULL;
         listAddNodeTail(vals,          val);
         listAddNodeTail(vlens, VOIDINT (end - val + 1)); qcols++;
         if (!nextc) break;
@@ -462,6 +491,9 @@ int parseUpdateColListReply(cli  *c,  int   tmatch, char *vallist,
         vallist = nextc;
     }
     return qcols;
+
+prsuperr:
+    if (mic) free(mic); return 0;                        // FREED 138
 }
 
 // UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR 
@@ -483,8 +515,8 @@ int parseExpr(cli *c, int tmatch, int cmatch, char *val, uint32 vlen, ue_t *ue){
     for (i = 0; i < vlen; i++) { char e = *(val + i); if (!ISALNUM(e)) break; }
     if (!i || i == vlen)                         return 0;
     char   *cend  = val + i;
-    int     ucm   = find_column_n(tmatch, val, (cend - val));
-    if (ucm == -1 || ucm != cmatch)              return 0;
+    icol_t  ic    = find_column_n(tmatch, val, (cend - val));
+    if (ic.cmatch == -1 || ic.cmatch != cmatch)        return 0;
     char   *x     = cend; SKIP_SPACES(x)
     i             = (x - val); if (i == vlen)    return 0;
     char    e     = *x;      // TODO \/ use OpDelim[] array
@@ -501,8 +533,8 @@ int parseExpr(cli *c, int tmatch, int cmatch, char *val, uint32 vlen, ue_t *ue){
     if (e == MODULO && (ctype != COL_TYPE_INT && ctype != COL_TYPE_LONG)) {
         addReply(c, shared.update_expr_mod); return -1;
     }
-    ue->c1match = ucm;  ue->type    = uet; ue->pred    = pred;
-    ue->plen    = plen; ue->op      = e;
+    ue->c1match = ic.cmatch; ue->type    = uet; ue->pred    = pred;
+    ue->plen    = plen;      ue->op      = e;
     return 1;
 }
 
@@ -574,8 +606,9 @@ printf("parseCommaListToAobjs: tkn: %s\n", tkn);
             a = createAobjFromString(tkn, len, COL_TYPE_STRING);    //FREEME 126
         } else if (ISALPHA(c)) {
             a = createAobjFromString(tkn, len, COL_TYPE_STRING);    //FREEME 126
-            int cmatch = find_column_n(tmatch, tkn, len);
-            if (cmatch != -1) { a->i = cmatch; a->type = COL_TYPE_CNAME; }
+            icol_t ic  = find_column_n(tmatch, tkn, len);
+//TODO FIXME COL_TYPE_CNAME needs icol_t (?MAYBE?)
+            if (ic.cmatch != -1) { a->i = ic.cmatch; a->type = COL_TYPE_CNAME; }
             else {
                 for (int i = 0; i < len; i++) {
                     char c2 = *(tkn + i); if (!ISALNUM(c2)) return 0;
@@ -656,21 +689,38 @@ printf("checkExprIsFunc: expr: %s\n", expr);
   printf("spot: %d i: %d tok: %s cm: %d\n", spot, i, tkn, cm); \
   sdsfree(tkn);
 
+void dictIcolDestructor(void *privdata, void *val) {
+    ((void) privdata); ((void) val);
+    printf("dictIcolDestructor\n");
+}
+// PROTOTYPES (from redis.c)
+unsigned int dictSdsHash(const void *key);
+int dictSdsKeyCompare(void *privdata, const void *key1, const void *key2);
+void dictSdsDestructor(void *privdata, void *val);
+
+/* Icol->dict, keys are sds strings, vals are icol_t's. */
+dictType icolDictType = {
+    dictSdsHash,                /* hash function */
+    NULL,                       /* key dup */
+    NULL,                       /* val dup */
+    dictSdsKeyCompare,          /* key compare */
+    dictSdsDestructor,          /* key destructor */
+    dictIcolDestructor          /* val destructor */
+};
+
 bool checkOrCr8LFunc(int tmatch, lue_t *le, sds expr, bool cln) {
     if (tmatch == -1) return 0; // JOINs not yet supported
 printf("checkOrCr8LFunc\n");
     if (!Inited_LuaDlms) { init_LuaDlms(); Inited_LuaDlms = 1; }
     if (checkExprIsFunc(expr, le, tmatch)) return 1;
 
-printf("DynLuaD: %p size: %d\n", DynLuaD, dictSize(DynLuaD));
     robj *o = dictFetchValue(DynLuaD, expr);
     if (o) { // we have parsed this "expr" before, use "compiled" version
         lue_t *lesaved = o->ptr; memcpy(le, lesaved, sizeof(lue_t)); return 1;
     }
 
+    dict *colD = dictCreate(&icolDictType,  NULL);                  // FREE 140
     static long  Nfuncn = 0; Nfuncn++;
-    r_tbl_t     *rt     = &Tbl[tmatch];
-    list        *cl     = listCreate();                            // FREE 101
     int          len    = sdslen(expr); int spot = -1;
     for (int i = 0; i < len; i++) {
         char c = expr[i];
@@ -680,12 +730,15 @@ printf("DynLuaD: %p size: %d\n", DynLuaD, dictSize(DynLuaD));
             if (!t) { spot = -1; break; } i += (t - s) + 1;
         } else if (spot != -1) {
             if (!ISALNUM(c)) { 
-                int cm = find_column_n(tmatch, expr + spot, (i - spot));
-                if (cm != -1) {
-                    if (!listSearchKey(cl, VOIDINT cm)) {
-                        listAddNodeTail(cl, VOIDINT cm);
-                    }
+                sds    cname = sdsnewlen(expr + spot, (i - spot)); // FREE 141
+                icol_t ic    = find_column_sds(tmatch, cname);
+                if (ic.cmatch != -1) {
+                    icol_t *mic = malloc(sizeof(icol_t));         // FREE 139
+                    memcpy(mic, &ic, sizeof(icol_t));
+                    icol_t *ic2 = dictFetchValue(colD, cname);
+                    if (!ic2) ASSERT_OK(dictAdd(colD, sdsdup(cname), mic));
                 }                                            //DEBUG_DEEP_PARSE
+                sdsfree(cname);                                    // FREE 141
                 spot = -1;
             }
         } else if (ISALPHA(c)) {
@@ -697,28 +750,36 @@ printf("DynLuaD: %p size: %d\n", DynLuaD, dictSize(DynLuaD));
         }
     }
     if (spot != -1) {
-        int cm = find_column_n(tmatch, expr + spot, (len - spot));
-        if (cm != -1) {
-            if (!listSearchKey(cl, VOIDINT cm)) listAddNodeTail(cl, VOIDINT cm);
+        sds    cname = sdsnewlen(expr + spot, (len - spot)); // FREE 142
+        icol_t ic    = find_column_sds(tmatch, cname);
+        if (ic.cmatch != -1) {
+            icol_t *mic = malloc(sizeof(icol_t));         // FREE 139
+            memcpy(mic, &ic, sizeof(icol_t));
+            icol_t *ic2 = dictFetchValue(colD, cname);
+            if (!ic2) ASSERT_OK(dictAdd(colD, sdsdup(cname), mic));
         }                                    //{int i = len; DEBUG_DEEP_PARSE }
+        sdsfree(cname);                                    // FREE 142
     }
 
-    le->yes   = 1; le->ncols = cl->len;
+    le->yes   = 1; le->ncols = dictSize(colD);
     if (le->ncols) le->as = malloc(le->ncols * sizeof(aobj **));   //FREE 096
     le->fname = sdscatprintf(sdsempty(), "luf_%ld", Nfuncn);       //FREE 118
     sds lfunc = sdsnew("return (function (...) ");                 //FREE 100
-    if (cl->len) { listNode *ln;
-        uint32    i     = 0;
-        listIter *li    = listGetIterator(cl, AL_START_HEAD);
-        while((ln = listNext(li))) {
-            int cm = (int)(long)ln->value;
-            lfunc  = sdscatprintf(lfunc, "local %s = arg[%d]; ",
-                                          rt->col[cm].name, (i + 1));
+    if (dictSize(colD)) {
+        uint32        i  = 0;
+        dictIterator *di = dictGetIterator(colD); dictEntry *de;
+        while((de = dictNext(di)) != NULL) {
+            sds     cname   = dictGetEntryKey(de);
+            icol_t *ic      = dictGetEntryVal(de);
+            int      cm     = ic->cmatch;
+            lfunc           = sdscatprintf(lfunc, "local %s = arg[%d]; ",
+                                                   cname, (i + 1));
             le->as[i]       = createAobjFromInt(cm);
+            //TODO populate "lo"
             le->as[i]->type = COL_TYPE_CNAME;
             printf("CREATE COMPLEX LUA: a: "); dumpAobj(printf, le->as[i]);
             i++;
-        } listReleaseIterator(li);
+        } dictReleaseIterator(di);
     }
     lfunc = sdscatprintf(lfunc, " return (%s); end)(...)", expr);
     CLEAR_LUA_STACK
@@ -732,8 +793,7 @@ printf("DynLuaD: %p size: %d\n", DynLuaD, dictSize(DynLuaD));
         robj  *rfname = createObject(REDIS_STRING, lf); // "compiled" le saved
         ASSERT_OK(dictAdd(DynLuaD, sdsdup(expr), rfname));
     }
-    listRelease(cl);                                               // FREED 101
-
+    dictRelease(colD);
     return le->yes;
 }
 bool parseLuaExpr(int tmatch, char *val, uint32 vlen, lue_t *le) {
@@ -744,7 +804,7 @@ bool parseLuaExpr(int tmatch, char *val, uint32 vlen, lue_t *le) {
 }
 
 // CREATE_TABLE CREATE_TABLE CREATE_TABLE CREATE_TABLE CREATE_TABLE
-int ignore_cname(char *tkn, int tlen) {
+int ignore_cname(char *tkn) {
     for (uint32 i = 0; i < Num_Ignore_KW; i++) {
         if (!strncasecmp(tkn, Ignore_KW[i], Ignore_KW_lens[i])) {
             return Ignore_KW_lens[i];
@@ -757,10 +817,10 @@ bool parseColType(cli *c, sds type, uchar *ctype) {
     else if (!strncasecmp(type, "BIGINT", 6)  ||
              !strncasecmp(type, "LONG",   4))     *ctype = COL_TYPE_LONG;
     else if (!strncasecmp(type, "U128",   4))     *ctype = COL_TYPE_U128;
-    else if (!strncasecmp(type, "LUAOBJ", 6))   *ctype = COL_TYPE_LUAO;
+    else if (!strncasecmp(type, "LUAOBJ", 6))     *ctype = COL_TYPE_LUAO;
     else if (!strncasecmp(type, "FLOAT",  5)  ||
              !strncasecmp(type, "REAL",   4)  ||
-             !strncasecmp(type, "DOUBLE", 6))   *ctype = COL_TYPE_FLOAT;
+             !strncasecmp(type, "DOUBLE", 6))     *ctype = COL_TYPE_FLOAT;
     else if (!strncasecmp(type, "CHAR",   4)  ||
              !strncasecmp(type, "TEXT",   4)  ||
              !strncasecmp(type, "BLOB",   4)  ||
@@ -771,10 +831,9 @@ bool parseColType(cli *c, sds type, uchar *ctype) {
     if (s) {
         SKIP_SPACES(s)
         if (!strncasecmp(s, "UNSIGNED", 8)) s += 8;
-        if (*s) { int ilen; int slen = strlen(s); // skip IGNORE_KEYWORDs
-            while ((ilen = ignore_cname(s, slen))) {
-                slen -= ilen; s += ilen;
-                char *t = s; SKIP_SPACES(s) slen -= (t - s);
+        if (*s) { int ilen; // skip IGNORE_KEYWORDs
+            while ((ilen = ignore_cname(s))) {
+                s += ilen; SKIP_SPACES(s)
             }
             if (*s) { addReply(c, shared.cr8tablesyntax); return 0; }
         }
@@ -798,34 +857,34 @@ bool parseCreateTable(cli    *c,      list *ctypes,  list *cnames,
         listAddNodeTail(cl, sdsnewlen(tkn, len));
         if (!nextc) break; tkn = nextc + 1;
     }
+    bool      ret = 1;
     listIter *li = listGetIterator(cl, AL_START_HEAD); listNode *ln; // B4 goto
     while((ln = listNext(li))) {
-        uchar  ctype; int clen;
-        sds    s  = ln->value;          //printf("CREATE TABLE: tkn: %s\n", s);
-        char  *tk = s;
-        while (tk) { /* first parse column name */
-            clen  = get_token_len(tk);          tk = rem_backticks(tk, &clen);
-            if (!ignore_cname(tk, clen)) break; tk = next_token   (tk);
-        }
-        sds cname = sdsnewlen(tk, clen);
+        uchar  ctype;
+        sds    s     = ln->value;       //printf("CREATE TABLE: tkn: %s\n", s);
+        char  *tk    = s;
+        int    clen  = get_token_len(tk); tk = rem_backticks(tk, &clen);
+        sds    cname = sdsnewlen(tk, clen);
         if (!strcasecmp(cname, "LRU") || !strcasecmp(cname, "LFU")) {
-            addReply(c, shared.kw_cname);              goto pcr8tbl_end;
+            addReply(c, shared.kw_cname); ret = 0;       goto pcr8tbl_end;
         }
         listAddNodeTail(cnames, cname);
         tk         = next_token(tk); // parse ctype
-        if (!tk) { addReply(c, shared.cr8tablesyntax); goto pcr8tbl_end; }
+        if (!tk) {
+            addReply(c, shared.cr8tablesyntax); ret = 0; goto pcr8tbl_end;
+        }
         sds   type = sdsnewlen(tk, sdslen(s) - (tk - s)); // FREE 070
         bool   ok  = parseColType(c, type, &ctype);
         sdsfree(type);                                     // FREED 070
-        if (!ok)                                       goto pcr8tbl_end;
+        if (!ok) { ret = 0;                              goto pcr8tbl_end; }
         if (!ctypes->len && (C_IS_P(ctype) || C_IS_O(ctype))) {
-            addReply(c, shared.unsupported_pk);        goto pcr8tbl_end;
+            addReply(c, shared.unsupported_pk); ret = 0; goto pcr8tbl_end;
         }
         listAddNodeTail(ctypes, VOIDINT ctype); INCR(*ccount);
     }
 
 pcr8tbl_end:
     listReleaseIterator(li);
-    cl->free = sdsfree; listRelease(cl);                 // FREED 138
-    return 1;
+    cl->free = v_sdsfree; listRelease(cl);              // FREED 138
+    return ret;
 }

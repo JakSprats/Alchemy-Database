@@ -75,8 +75,9 @@ void createLfuIndex(cli *c) {
     addColumn(tmatch, "LFU", COL_TYPE_LONG);
 
     sds  iname   = P_SDS_EMT "%s_%s", LFUINDEX_DELIM, tname);  // FREE ME 108
-    rt->lfui     = newIndex(c, iname, tmatch, rt->lfuc, NULL, CONSTRAINT_NONE,
-                            0, 0, NULL, -1, 0, 1); // Can not fail
+    DECLARE_ICOL(lfuic, rt->lfuc) DECLARE_ICOL(ic, -1)
+    rt->lfui     = newIndex(c, iname, tmatch, lfuic, NULL, 0,
+                            0, 0, NULL, ic, 0, 1, 0); // Can not fail
     sdsfree(iname);                                            // FREED 108
     addReply(c, shared.ok);
 }
@@ -126,10 +127,10 @@ void updateLfu(cli *c, int tmatch, aobj *apk, uchar *lfuc, bool lfu) {
     }
 }
 
-inline bool initLFUCS(int tmatch, int cmatchs[], int qcols) {
+inline bool initLFUCS(int tmatch, icol_t *ics, int qcols) {
     r_tbl_t *rt = &Tbl[tmatch];
     if (rt->lfu) {
-        for (int i = 0; i < qcols; i++) if (cmatchs[i] == rt->lfuc) return 1;
+        for (int i = 0; i < qcols; i++) if (ics[i].cmatch == rt->lfuc) return 1;
     }
     return 0;
 }
@@ -138,8 +139,7 @@ inline bool initL_LFUCS(int tmatch, list *cs) {
     if (rt->lfu) { listNode *ln;
         listIter *li = listGetIterator(cs, AL_START_HEAD);
         while((ln = listNext(li))) {
-            int cm = (int)(long)ln->value;
-            if (cm == rt->lfuc) return 1;
+            icol_t *ic = ln->value; if (ic->cmatch == rt->lfuc) return 1;
         } listReleaseIterator(li);
     }
     return 0;

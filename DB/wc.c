@@ -143,33 +143,34 @@ static bool setOffsetReply(cli *c, wob_t *wb, char *nextp) {
 /* SYNTAX: ORDER BY {col [DESC],}+ [LIMIT n [OFFSET m]] */
 static bool parseOBYcol(cli   *c,  char  **token, int   tmatch,
                         wob_t *wb, char  **fin,   bool *more) {
-printf("parseOBYcol wb->nob: %d tmatch: %d\n", wb->nob, tmatch);
+printf("parseOBYcol wb->nob: %d tmatch: %d token: %s\n", wb->nob, tmatch, *token);
     wb->le[wb->nob].yes = 0;
     char *nextc = get_next_nonparaned_comma(*token);
     *more       = nextc ? 1 : 0;
     sds   t2    = nextc ? sdsnewlen(*token, (nextc - *token)) : sdsnew(*token);
     if (nextc) { nextc++; SKIP_SPACES(nextc) }
     char *endc  = t2 + sdslen(t2) - 1;
-    REV_SKIP_SPACES(endc)
+    REV_SKIP_SPACES(endc)             //printf("more: %d t2: %s\n", *more, t2);
+    if (!nextc) {
+        char *lim = strstr_not_quoted(t2, " LIMIT");
+        if (lim) { lim++;
+            *token = *fin = lim;
+            sds t3 = sdsnewlen(t2, lim - t2 - 1); sdsfree(t2); t2 = t3;
+            endc   = t2 + sdslen(t2) - 1;
+            REV_SKIP_SPACES(endc)
+        } else *token = NULL;
+    } else *token = nextc;    //printf("POST LIM: t2: %s fin: %s\n", t2, *fin);
     if ((endc - t2) > 5 && !strncasecmp((endc - 4), " DESC", 5)) {
         wb->asc[wb->nob] = 0;
         sds t3 = sdsnewlen(t2, (endc - 4) - t2); sdsfree(t2); t2 = t3;
         endc   = t2 + sdslen(t2) - 1;
         REV_SKIP_SPACES(endc)
-    } else wb->asc[wb->nob] = 1;
-    if (!nextc) {
-        char *lim = strstr_not_quoted(t2, " LIMIT");
-        if (lim) {
-            *token = *fin = lim;
-            sds t3 = sdsnewlen(t2, lim - t2); sdsfree(t2); t2 = t3;
-            endc   = t2 + sdslen(t2) - 1;
-            REV_SKIP_SPACES(endc)
-        } else *token = NULL;
-    } else *token = nextc;
+    } else wb->asc[wb->nob] = 1; //printf("DESC: t2: %s fin: %s\n", t2, *fin);
+
     int  join  = 0;
     bool iscol = ISALPHA(*t2);
     if (iscol) {
-        for (int i = 1; i < sdslen(t2); i++) {
+        for (uint32 i = 1; i < sdslen(t2); i++) {
             char c = *(t2 + i);
             if (!ISALNUM(c) && !ISBLANK(c) && c != '.') { iscol = 0; break; }
             if (c == '.') join = i;
@@ -180,7 +181,8 @@ printf("parseOBYcol wb->nob: %d tmatch: %d\n", wb->nob, tmatch);
             addReply(c, shared.order_by_col_not_found); sdsfree(t2); return 0;
         } else { wb->nob++;                             sdsfree(t2); return 1; }
     } 
-    wb->obt[wb->nob] = tmatch; wb->obc[wb->nob] = -1; // Simple Parse DEFAULT
+    DECLARE_ICOL(ic, -1)
+    wb->obt[wb->nob] = tmatch; wb->obc[wb->nob] = ic; // Simple Parse DEFAULT
     if (join) { // JOIN COLUMN [tbl.col]
         if ((wb->obt[wb->nob] = find_table_n(t2, join)) == -1) {
             addReply(c, shared.join_order_by_tbl); sdsfree(t2);      return 0;
@@ -188,17 +190,18 @@ printf("parseOBYcol wb->nob: %d tmatch: %d\n", wb->nob, tmatch);
             char *cname = t2 + join + 1;
             int   clen  = (int)strlen(cname);
             wb->obc[wb->nob] = find_column_n(wb->obt[wb->nob], cname, clen);
-            if (wb->obc[wb->nob] == -1) {
+            if (wb->obc[wb->nob].cmatch == -1) {
                 addReply(c, shared.join_order_by_col); sdsfree(t2);  return 0;
             }
         }
     } else {  // SIMPLE COLUMN [col]
-        if ((wb->obc[wb->nob] = find_column_sds(tmatch, t2)) == -1) {
+        wb->obc[wb->nob] = find_column_sds(tmatch, t2);
+        if (wb->obc[wb->nob].cmatch == -1) {
             addReply(c, shared.order_by_col_not_found); sdsfree(t2); return 0;
         }
     }
-    if (wb->obt[wb->nob] != -1 && wb->obc[wb->nob] != -1 &&
-        C_IS_O(Tbl[wb->obt[wb->nob]].col[wb->obc[wb->nob]].type)) {
+    if (wb->obt[wb->nob] != -1 && wb->obc[wb->nob].cmatch != -1 &&
+        C_IS_O(Tbl[wb->obt[wb->nob]].col[wb->obc[wb->nob].cmatch].type)) {
             addReply(c, shared.order_by_luaobj);     sdsfree(t2);    return 0;
     }
     wb->nob++; sdsfree(t2); return 1;
@@ -391,16 +394,16 @@ static robj *parseInumTblCol(char *token, int tlen, f_t *flt) {
     flt->jan    = CurrClient->LastJTAmatch;
     if (flt->tmatch == -1) return shared.nonexistenttable;
     nextp++;
-    flt->cmatch = find_column_n(flt->tmatch, nextp, tlen - (nextp - token));
-    if (flt->cmatch == -1) return shared.nonexistentcolumn;
-    flt->imatch = find_index(flt->tmatch, flt->cmatch);
+    flt->ic     = find_column_n(flt->tmatch, nextp, tlen - (nextp - token));
+    if (flt->ic.cmatch == -1) return shared.nonexistentcolumn;
+    flt->imatch = find_index(flt->tmatch, flt->ic);
     return NULL;
 }
 static robj *parseInumCol(char *token, int tlen, f_t *flt) {
-    flt->jan    = -1;
-    flt->cmatch = find_column_n(flt->tmatch, token, tlen);
-    if (flt->cmatch == -1) return shared.wc_col_not_found;
-    else                   flt->imatch = find_index(flt->tmatch, flt->cmatch);
+    flt->jan = -1;
+    flt->ic  = find_column_n(flt->tmatch, token, tlen);
+    if (flt->ic.cmatch == -1) return shared.wc_col_not_found;
+    else                      flt->imatch = find_index(flt->tmatch, flt->ic);
     return NULL;
 }
 

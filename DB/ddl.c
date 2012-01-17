@@ -150,12 +150,14 @@ static void newTable(cli *c, list *ctypes, list *cnames, int ccount, sds tname){
     ASSERT_OK(dictAdd(TblD, sdsdup(rt->name), VOIDINT(tmatch + 1)));
     /* BTREE implies an index on "tbl_pk_index" -> autogenerate */
     sds  pkname  = rt->col[0].name;
+printf("rtname: %s pkname: %s\n", rt->name, pkname);
     sds  iname   = P_SDS_EMT "%s_%s_%s", rt->name, pkname, INDEX_DELIM); //D073
-    newIndex(c, iname, tmatch, 0, NULL, 0, 1, 0, NULL, -1, 0, 0);// Can not fail
+    DECLARE_ICOL(pkic, 0) DECLARE_ICOL(ic, -1)
+    newIndex(c, iname, tmatch, pkic, NULL, 0, 1, 0, NULL, ic, 0, 0, 0);
     sdsfree(iname);                                      /* DESTROYED 073 */
 }
 
-static inline void v_sdsfree(void *v) { sdsfree((sds)v); }
+inline void v_sdsfree(void *v) { sdsfree((sds)v); }
 
 static void createTable(redisClient *c) { //printf("createTable\n");
     char *tn    = c->argv[2]->ptr;
@@ -244,7 +246,8 @@ void dropCommand(redisClient *c) {
 static bool checkRepeatCnames(cli *c, int tmatch, sds cname) {
     if (!strcasecmp(cname, "LRU")) { addReply(c, shared.col_lru); return 0; }
     if (!strcasecmp(cname, "LFU")) { addReply(c, shared.col_lfu); return 0; }
-    if (find_column(tmatch, cname) == -1)        return 1;
+    icol_t ic = find_column(tmatch, cname);
+    if (ic.cmatch == -1)                         return 1;
     else { addReply(c, shared.nonuniquecolumns); return 0; }
 }
 // addColumn(): Used by ALTER TABLE & LRU & HASHABILITY
@@ -321,13 +324,14 @@ void alterCommand(cli *c) {
         if (c->argc < 6) { addReply(c, shared.altersyntax);             return;}
         sds cname  = c->argv[5]->ptr;
         if (Tbl[tmatch].sk != -1) { addReply(c, shared.alter_sk_rpt);   return;}
-        int cmatch = find_column_n(tmatch, cname, sdslen(cname));
-        if (cmatch == -1)      { addReply(c, shared.altersyntax);       return;}
-        int imatch = find_index(tmatch, cmatch);
+        icol_t ic  = find_column_n(tmatch, cname, sdslen(cname));
+        if (ic.cmatch == -1)   { addReply(c, shared.altersyntax);       return;}
+        int imatch = find_index(tmatch, ic);
         if (imatch == -1)      { addReply(c, shared.alter_sk_no_i);     return;}
         if (Index[imatch].lru) { addReply(c, shared.alter_sk_no_lru);   return;}
         if (Index[imatch].lfu) { addReply(c, shared.alter_sk_no_lfu);   return;}
-        Tbl[tmatch].sk = cmatch;
+//TODO check that this is not a LUAOBJ
+        Tbl[tmatch].sk = ic.cmatch;
     } else {/* altfk */
         if (c->argc < 10) { addReply(c, shared.altersyntax);            return;}
         if (strcasecmp(c->argv[7]->ptr, "REFERENCES")) {
@@ -346,22 +350,22 @@ void alterCommand(cli *c) {
         if (*o_cname != '(' || *o_cend != ')') {
             addReply(c, shared.altersyntax);                            return;
         }
-        int cmatch = find_column_n(tmatch, fkname + 1, fklen - 2);
-        if (cmatch == -1) { addReply(c, shared.altersyntax);            return;}
+        icol_t ic  = find_column_n(tmatch, fkname + 1, fklen - 2);
+        if (ic.cmatch == -1) { addReply(c, shared.altersyntax);         return;}
         int otmatch = find_table(o_tname);
         if (otmatch == -1) { addReply(c, shared.altersyntax);           return;}
-        int ocmatch = find_column_n(otmatch, o_cname + 1, oclen - 2);
-        if (ocmatch == -1) { addReply(c, shared.altersyntax);           return;}
+        icol_t oic  = find_column_n(otmatch, o_cname + 1, oclen - 2);
+        if (oic.cmatch == -1) { addReply(c, shared.altersyntax);        return;}
         r_tbl_t *rt  = &Tbl[tmatch];
         r_tbl_t *ort = &Tbl[otmatch];
-        if (rt->sk != cmatch || ort->sk != ocmatch) {
+        if (rt->sk != ic.cmatch || ort->sk != oic.cmatch) {
             addReply(c, shared.alter_fk_not_sk);                        return;
         }
         //NOTE: BOTH are indexed because shardkey's must be
         if (rt->fk_cmatch != -1) { addReply(c, shared.alter_fk_repeat); return;}
-        rt->fk_cmatch  = cmatch;
+        rt->fk_cmatch  = ic.cmatch;
         rt->fk_otmatch = otmatch;
-        rt->fk_ocmatch = ocmatch;
+        rt->fk_ocmatch = oic.cmatch;
     }
     addReply(c, shared.ok);
 }

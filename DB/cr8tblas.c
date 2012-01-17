@@ -49,22 +49,13 @@ extern char    *Col_type_defs[];
 // CONSTANT GLOBALS
 stor_cmd AccessCommands[NUM_ACCESS_TYPES];
 
-static int  AIdum[1]; /* dummy array of int */
-static bool ABdum[1]; /* dummy array of bool */
-static jc_t AJdum[1]; /* dummy array of bool */
-
 #define INTERNAL_CREATE_TABLE_ERR_MSG \
   "-ERR CREATE TABLE SELECT - Automatic Table Creation failed with error: "
 #define CR8TBL_SELECT_ERR_MSG \
   "-ERR CREATE TABLE SELECT - SELECT command had error: "
 
-static void cpyColDef(sds  *cdefs,
-                      int   tmatch,
-                      int   cmatch,
-                      int   qcols,
-                      int   i,
-                      bool  conflix,
-                      bool  x[]) {
+static void cpyColDef(sds  *cdefs, int   tmatch,  int   cmatch, int   qcols,
+                      int   i,     bool  conflix, bool  x[]) {
     r_tbl_t *rt = &Tbl[tmatch];
     if (conflix && x[i]) { /* prepend tbl_name */
         *cdefs      = sdscatprintf(*cdefs, "%s_", rt->name);
@@ -74,19 +65,17 @@ static void cpyColDef(sds  *cdefs,
     char *finc  = (i == (qcols - 1)) ? ")" : ",";
     *cdefs      = sdscatprintf(*cdefs, "%s %s%s", cname, ctype, finc);
 }
-static bool internalCr8Tbl(redisClient *c,
-                           redisClient *rfc,
-                           int          qcols,
-                           int          cmatchs[],
-                           int          tmatch,
-                           jc_t         js[],
-                           bool         x[]) {
+//TODO no fake client nonsense (just do it in Lua)
+static bool internalCr8Tbl(cli  *c,    cli  *rfc, int   qcols, icol_t *ics,
+                           int tmatch, jc_t *js,  bool *x) {
     sds tname = c->argv[2]->ptr;
     if (find_table(tname) > 0) return 1;
     sds cdefs = sdsnewlen("(", 1);                       /* FREE ME 038 */
     for (int i = 0; i < qcols; i++) {
-        if (tmatch != -1) cpyColDef(&cdefs, tmatch, cmatchs[i], qcols, i, 0, x);
-        else              cpyColDef(&cdefs, js[i].t, js[i].c, qcols, i, 1, x);
+        if (tmatch != -1) cpyColDef(&cdefs, tmatch, ics[i].cmatch,
+                                    qcols, i, 0, x);
+        else              cpyColDef(&cdefs, js[i].t, js[i].c,
+                                     qcols, i, 1, x);
     }
     robj **rargv = zmalloc(sizeof(robj *) * 4);
     rfc->argv    = rargv;
@@ -102,10 +91,8 @@ static bool internalCr8Tbl(redisClient *c,
     if (!replyIfNestedErr(c, rfc, INTERNAL_CREATE_TABLE_ERR_MSG)) return 0;
     else                                                          return 1;
 }
-bool createTableFromJoin(redisClient *c,
-                         redisClient *rfc,
-                         int          qcols,
-                         jc_t         js[]) {
+//TODO no fake client nonsense (just do it in Lua)
+bool createTableFromJoin(cli *c, cli *rfc, int qcols, jc_t js[]) {
     bool x[qcols];
     for (int i = 0; i < qcols; i++) { /* check for column name collisions */
         x[i] = 0;
@@ -119,16 +106,13 @@ bool createTableFromJoin(redisClient *c,
             }
         }
     }
-    return internalCr8Tbl(c, rfc, qcols, AIdum, -1, js, x);
+    return internalCr8Tbl(c, rfc, qcols, NULL, -1, js, x);
 }
 
 void createTableSelect(redisClient *c) {
     char *cmd = c->argv[3]->ptr;
     int axs = getAccessCommNum(cmd);
-    if (axs == -1) {
-        addReply(c, shared.create_table_err);
-        return;
-    }
+    if (axs == -1) { addReply(c, shared.create_table_err); return; }
     CREATE_CS_LS_LIST(0)
     bool   cstar   =  0;
     int    qcols   =  0;
@@ -150,17 +134,16 @@ void createTableSelect(redisClient *c) {
     if (cstar) {
         addReply(c, shared.create_table_as_count); goto cr8tblsel_end;
     }
-    sds          tname = c->argv[2]->ptr;
-    sds          clist = rargv[1]->ptr;
-    sds          tlist = rargv[3]->ptr;
-    sds          wc    = rargv[5]->ptr;
-    bool         ok    = 0;
-    char        *msg   = CR8TBL_SELECT_ERR_MSG;
-    redisClient *rfc   = getFakeClient(); // frees last rfc->rargv[] + contents
+    sds   tname = c->argv[2]->ptr;
+    sds   clist = rargv[1]->ptr;
+    sds   tlist = rargv[3]->ptr;
+    sds   wc    = rargv[5]->ptr;
+    bool  ok    = 0;
+    char *msg   = CR8TBL_SELECT_ERR_MSG;
+    cli  *rfc   = getFakeClient(); // frees last rfc->rargv[] + contents
     rfc->argc          = 0;
     if (join) { /* CREATE TABLE AS SELECT JOIN */
-        jb_t jb;
-        init_join_block(&jb);
+        jb_t jb; init_join_block(&jb);
         parseJoin(rfc, &jb, clist, tlist, wc);
         qcols = jb.qcols;
         if (replyIfNestedErr(c, rfc, msg)) {
@@ -172,8 +155,7 @@ void createTableSelect(redisClient *c) {
         init_check_sql_where_clause(&w, tmatch, wc); init_wob(&wb);
         parseWCplusQO(rfc, &w, &wb, SQL_SELECT);
         if (replyIfNestedErr(c, rfc, msg)) {
-            ok = internalCr8Tbl(c, rfc, qcols, cmatchs, w.wf.tmatch,
-                                AJdum, ABdum);
+            ok = internalCr8Tbl(c, rfc, qcols, ics, w.wf.tmatch, NULL, NULL);
         }
         destroy_check_sql_where_clause(&w);
     }

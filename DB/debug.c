@@ -137,14 +137,14 @@ void dumpQueueOutput(cli *c) {
 }
 
 // EXPLAIN EXPLAIN EXPLAIN EXPLAIN EXPLAIN EXPLAIN EXPLAIN EXPLAIN EXPLAIN
-void explainRQ(cli *c,     cswc_t *w, wob_t *wb, bool cstar,
-               int  qcols, int    *cmatchs) {
+void explainRQ(cli *c,     cswc_t *w,  wob_t *wb, bool cstar,
+               int  qcols, icol_t *ics) {
     initQueueOutput();
     (*queueOutput)("QUERY: ");
     for (int i = 0; i < c->argc; i++) {
         (*queueOutput)("%s ", (char *)c->argv[i]->ptr);
     } (*queueOutput)("\n");
-    dumpQcols(queueOutput, w->wf.tmatch, cstar, qcols, cmatchs);
+    dumpQcols(queueOutput, w->wf.tmatch, cstar, qcols, ics);
     dumpW(queueOutput, w); dumpWB(queueOutput, wb);
     qr_t    q;
     setQueued(w, wb, &q);
@@ -197,12 +197,12 @@ void dumpFL(printer *prn, char *prfx, char *title, list *flist) {
         } listReleaseIterator(li);
     }
 }
-void dumpQcols(printer *prn, int tmatch, bool cstar, int qcols, int *cmatchs) {
+void dumpQcols(printer *prn, int tmatch, bool cstar, int qcols, icol_t *ics) {
     (*prn)("\ttmatch: %d (%s)\n", tmatch, Tbl[tmatch].name);
     if (cstar) (*prn)("\t\tCOUNT(*)\n");
     else {
         for (int i = 0; i < qcols; i++) {
-            int lc = cmatchs[i];
+            int lc = ics[i].cmatch;
              if (lc < -1) (*prn)("\t\t%d: c: %d (%s.pos())\n", i, lc,
                                  Index[getImatchFromOCmatch(lc)].name);
              else         (*prn)("\t\t%d: c: %d (%s)\n", i, lc,
@@ -217,9 +217,10 @@ void dumpWB(printer *prn, wob_t *wb) {
             (*prn)("\t\t\tobt[%d](%s): %d\n", i, 
               (wb->obt[i] == -1) ? "" : Tbl[wb->obt[i]].name, wb->obt[i]);
             (*prn)("\t\t\tobc[%d](%s): %d\n", i,
-                        (wb->obc[i] == -1) ? "" :
-                        (char *)Tbl[wb->obt[i]].col[wb->obc[i]].name,
+                        (wb->obc[i].cmatch == -1) ? "" :
+                        (char *)Tbl[wb->obt[i]].col[wb->obc[i].cmatch].name,
                          wb->obc[i]);
+            //TODO dump obc.lo
             (*prn)("\t\t\tasc[%d]: %d\n", i, wb->asc[i]);
         }
     }
@@ -235,11 +236,11 @@ void dumpW(printer *prn, cswc_t *w) {
 }
 
 void dumpIJ(cli *c, printer *prn, int i, ijp_t *ij, ijp_t *nij) {
-    int lt = ij->lhs.tmatch; int lc = ij->lhs.cmatch;
+    int lt = ij->lhs.tmatch; int lc = ij->lhs.ic.cmatch;
     int lj = ij->lhs.jan;    int li = ij->lhs.imatch;
     if (ij->rhs.tmatch != -1) {
        int ki = ij->kimatch;
-       int rt = ij->rhs.tmatch; int rc = ij->rhs.cmatch;
+       int rt = ij->rhs.tmatch; int rc = ij->rhs.ic.cmatch;
        int rj = ij->rhs.jan;    int ri = ij->rhs.imatch;
        (*prn)("\t\t\t\t%d: ki: %d LHS[t: %d(%s) c: %d(%s) i: %d(%s) j: %d(%s)" \
               " RHS[t: %d(%s) c: %d(%s) i: %d(%s) j: %d(%s)] nrows: %u\n", i,

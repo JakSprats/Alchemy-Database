@@ -48,6 +48,7 @@ extern r_ind_t *Index; extern dict *IndD;
 extern cli  *CurrClient;
 extern ja_t  JTAlias[MAX_JOIN_COLS];
 
+// INDEX.POS() INDEX.POS() INDEX.POS() INDEX.POS() INDEX.POS() INDEX.POS()
 #define SPECIAL_COL_IMATCH_ADD_NUM 100
 inline int setOCmatchFromImatch(int imatch) {
     if (!SIMP_UNIQ(Index[imatch].btr)) return -1;
@@ -57,27 +58,26 @@ inline int setOCmatchFromImatch(int imatch) {
 inline int getImatchFromOCmatch(int cmatch) {
     return (cmatch * -1) - 2 - SPECIAL_COL_IMATCH_ADD_NUM;
 }
-inline void resetIndexPosOn(int qcols, int *cmatchs) {
+inline void resetIndexPosOn(int qcols, icol_t *ics) {
     for (int i = 0; i < qcols; i++) { // Turn Index[].iposon -> OFF
-        if (cmatchs[i] < -1 && !IS_LSF(cmatchs[i])) {
-            Index[getImatchFromOCmatch(cmatchs[i])].iposon = 0;
-        }
-    }   
+        if (ics[i].cmatch < -1 && !IS_LSF(ics[i].cmatch)) {
+            Index[getImatchFromOCmatch(ics[i].cmatch)].iposon = 0;
+        }}   
 }   
 
 // INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX
-static int _find_index(int tmatch, int cmatch, bool prtl) {
-    if (cmatch < -1) return getImatchFromOCmatch(cmatch);
-    int imatch = Tbl[tmatch].col[cmatch].imatch;
+static int _find_index(int tmatch, icol_t ic, bool prtl) {
+    if (ic.cmatch < -1) return getImatchFromOCmatch(ic.cmatch);
+    int imatch = Tbl[tmatch].col[ic.cmatch].imatch;
     if      (imatch == -1) return -1;
     else if (!prtl)        return Index[imatch].done ? imatch : - 1;
     else                   return imatch;
 }
-int find_index(int tmatch, int cmatch) {
-    return _find_index(tmatch, cmatch, 0);
+int find_index(int tmatch, icol_t ic) {
+    return _find_index(tmatch, ic, 0);
 }
-int find_partial_index(int tmatch, int cmatch) { // Used by INDEX CURSORs
-    return _find_index(tmatch, cmatch, 1);
+int find_partial_index(int tmatch, icol_t ic) { // Used by INDEX CURSORs
+    return _find_index(tmatch, ic, 1);
 }
 
 int _match_index(int tmatch, list *indl, bool prtl) {
@@ -102,7 +102,6 @@ int match_index(int tmatch, list *indl) {
 int match_partial_index(int tmatch, list *indl) { // RDBSAVE partial indexes
     return _match_index(tmatch, indl, 1);
 }
-
 int match_partial_index_name(sds iname) { // Used by DROP INDEX|LUATRIGGER
     void *ptr = dictFetchValue(IndD, iname);
     return ptr ? ((int)(long)ptr) - 1 : -1;
@@ -139,39 +138,59 @@ sds getJoinAlias(int jan) {
 }
 
 // COL COL COL COL COL COL COL COL COL COL COL COL COL COL COL COL COL COL COL
-static int check_special_column(int tmatch, sds cname) {
+static icol_t check_special_column(int tmatch, sds cname) {
+    DECLARE_ICOL(ic, -1)
     char *sd = strchr(cname, '.');
     if (sd) {
          if (!strcmp(sd, ".pos()")) {
-             sds iname = sdsnewlen(cname, sd - cname); // FREE ME 109
-             int imatch = match_index_name(iname);
-             sdsfree(iname);                           // FREED   109
-             if (Index[imatch].table != tmatch) return -1;
-             if (imatch != -1) return setOCmatchFromImatch(imatch);
-#if 0
-        } else {
-            //TODO cmatch has to be: [coln,list[loels]]
-            char *lo_ncm = sd + 1;
-            sd           = strchr(lo_ncm, '.');
-            printf("lo_ncm: %s sd: %s\n", lo_ncm, sd);
-#endif
+             sds iname = sdsnewlen(cname, sd - cname);             // FREE 109
+             int imatch = match_index_name(iname); sdsfree(iname); // FREED 109
+             if (Index[imatch].tmatch != tmatch) return ic;
+             if (imatch != -1) ic.cmatch = setOCmatchFromImatch(imatch);
+        } else { // CHECK for DotNotation (e.g. "luaobj.x.y.z")
+            r_tbl_t *rt  = &Tbl[tmatch];
+            sds      cn  = sdsnewlen(cname, sd - cname);           // FREE 143
+            void    *ptr = dictFetchValue(rt->cdict, cn);
+            if (ptr) {
+                sd++; list *lo = listCreate();                     // FREE 144
+                while (*sd) {
+                    char   *nextd = strchr(sd, '.');
+                    uint32  len   = nextd ? nextd - sd : (uint32)strlen(sd);
+                    sds     s     = sdsnewlen(sd, len);            // FREE 145
+                    listAddNodeTail(lo, s);
+                    if (!nextd) break; else sd = nextd + 1;
+                }
+                if (lo->len) { listNode *ln;
+                    ic.cmatch    = ((int)(long)ptr) - 1;
+                    ic.nlo       = lo->len;
+                    ic.lo        = malloc(sizeof(sds) * ic.nlo);   // FREE 146
+                    int        i = 0;
+                    listIter *li = listGetIterator(lo, AL_START_HEAD);
+                    while((ln = listNext(li))) {
+                        ic.lo[i] = ln->value; i++;
+                    } listReleaseIterator(li);
+                }
+                listRelease(lo);                                   // FREED 144
+            }
+            sdsfree(cn);                                           // FREED 143
         }
     }
-    return -1; // MISS on special also
+    return ic; // MISS on special also
 }
-int find_column_sds(int tmatch, sds cname) {
+icol_t find_column_sds(int tmatch, sds cname) {
     r_tbl_t *rt    = &Tbl[tmatch];
     void    *ptr   = dictFetchValue(rt->cdict, cname);
-    return ptr ? ((int)(long)ptr) - 1 : check_special_column(tmatch, cname);
+    if (ptr) { DECLARE_ICOL(ic, ((int)(long)ptr) - 1); return ic; }
+    else     return check_special_column(tmatch, cname);
 }
-int find_column(int tmatch, char *c) {
-    sds      cname = sdsnew(c);                                     // DEST 091
-    int      ret   = find_column_sds(tmatch, cname); sdsfree(cname);// DESTD 091
+icol_t find_column(int tmatch, char *c) {
+    sds    cname = sdsnew(c);                                      // DEST 091
+    icol_t ret   = find_column_sds(tmatch, cname); sdsfree(cname); // DESTD 091
     return ret;
 }
-int find_column_n(int tmatch, char *c, int len) {
-    sds      cname = sdsnewlen(c, len);                             // DEST 092
-    int      ret   = find_column_sds(tmatch, cname); sdsfree(cname);// DESTD 092
+icol_t find_column_n(int tmatch, char *c, int len) {
+    sds    cname = sdsnewlen(c, len);                              // DEST 092
+    icol_t ret   = find_column_sds(tmatch, cname); sdsfree(cname); // DESTD 092
     return ret;
 }
 int get_all_cols(int tmatch, list *cs, bool lru2, bool lfu2) {
@@ -179,10 +198,11 @@ int get_all_cols(int tmatch, list *cs, bool lru2, bool lfu2) {
     for (int i = 0; i < rt->col_count; i++) {
         if (!lru2 && rt->lrud && rt->lruc == i) continue; /* DONT PRINT LRU */
         if (!lfu2 && rt->lfu &&  rt->lfuc == i) continue; /* DONT PRINT LFU */
-        listAddNodeTail(cs, VOIDINT i);
+        icol_t *mic = malloc(sizeof(icol_t)); bzero(mic, sizeof(icol_t));
+        mic->cmatch = i;
+        listAddNodeTail(cs, VOIDINT mic);
     }
     int ret = rt->col_count;
-    if (!lru2 && rt->lrud) ret--;
-    if (!lfu2 && rt->lfu)  ret--;
+    if (!lru2 && rt->lrud) ret--; if (!lfu2 && rt->lfu)  ret--;
     return ret;
 }

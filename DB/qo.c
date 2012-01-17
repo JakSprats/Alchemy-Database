@@ -213,7 +213,7 @@ static bool buildJoinChain(jb_t *jb) {
     return onFilterlessHeadRevChain(jb); /* head no filter, reverse chain */
 }
 
-static f_t *cr8MCIFlt(jb_t *jb, ijp_t *ij, int cmatch, bool rhs) {
+static f_t *cr8MCIFlt(jb_t *jb, ijp_t *ij, icol_t ic, bool rhs) {
     f_t *flt    = newEmptyFilter();                      /* DESTROY ME 069 */
     if (!jb->mciflist) jb->mciflist = listCreate();      /* DESTROY ME 069 */
     listAddNodeTail(jb->mciflist, flt);
@@ -221,7 +221,7 @@ static f_t *cr8MCIFlt(jb_t *jb, ijp_t *ij, int cmatch, bool rhs) {
     flt->jan    = jflt->jan;
     flt->imatch = jflt->imatch;
     flt->tmatch = jflt->tmatch;
-    flt->cmatch = cmatch;
+    flt->ic     = ic; //NOTE: ok because ic.lo is prohibited in joins 
     flt->op     = NONE;
     flt->iss    = jflt->iss;//printf("cr8MCIFlt\n");dumpFilter(printf,flt,"\t");
     return flt;
@@ -233,7 +233,7 @@ static void addNewFltKey(list **flist, f_t *nflt) {
         listIter *li  = listGetIterator(*flist, AL_START_HEAD);
         while ((ln = listNext(li))) {
             f_t *flt = ln->value;
-            if (nflt->tmatch == flt->tmatch && nflt->cmatch == flt->cmatch) {
+            if (nflt->tmatch == flt->tmatch && !icol_cmp(&nflt->ic, &flt->ic)) {
                 hit = 1; break;
             }
         } listReleaseIterator(li);
@@ -249,7 +249,7 @@ static void addMCI(jb_t *jb,  ijp_t *ij, int imatch, list **flist,
         bool hit = 0;
         for (int k = jb->hw; k < (int)jb->n_jind; k++) {
             f_t *ijl = &jb->ij[k].lhs;
-            if (ijl->jan == iflt->jan && ijl->cmatch == ri->bclist[m]) {
+            if (ijl->jan == iflt->jan && !icol_cmp(&ijl->ic, &ri->bclist[m])) {
                 hit = 1; break; /* this cmatch already in KLIST */
             }
         }
@@ -262,18 +262,19 @@ static void checkMissnMCI(jb_t *jb, ijp_t *ij, list **flist, int ii, bool rhs) {
     for (int i = 0; i < matches; i++) {
         r_ind_t *ri = &Index[inds[i]];
         if (ri->clist) { /* check ALL MCIs for this table */
-            listNode *ln;
             int       strt = 0;
             if (ii) { /* secondary joins can join on MCI clist[0] */
-                if (iflt->tmatch == ri->table && iflt->cmatch == ri->column) {
-                    addNewFltKey(flist, cr8MCIFlt(jb, ij, iflt->cmatch, rhs));
+                if (iflt->tmatch == ri->tmatch && 
+                    !icol_cmp(&iflt->ic, &ri->icol)) {
+                    addNewFltKey(flist, cr8MCIFlt(jb, ij, iflt->ic, rhs));
                     strt = 1;
                 }
             }
-            listIter *li = listGetIterator(*flist, AL_START_HEAD);
+            listIter *li = listGetIterator(*flist, AL_START_HEAD); listNode *ln;
             while ((ln = listNext(li))) {
                 f_t *flt = ln->value;
-                if (flt->tmatch == ri->table && flt->cmatch == ri->column) {
+                if (flt->tmatch == ri->tmatch &&
+                    !icol_cmp(&flt->ic, &ri->icol)) {
                     addMCI(jb, ij, inds[i], flist, rhs, strt); break;
                 }
             } listReleaseIterator(li);
@@ -296,16 +297,15 @@ static bool sortFlist2Clist(list *flist, list *clist, int tmatch) {
     bool      khit = 0;
     listIter *li   = listGetIterator(clist, AL_START_TAIL);
     while ((ln = listNext(li))) { /* find flt's that match clist */
-        int       cmatch = (int)(long)ln->value;
-        listNode *fln;
+        icol_t   *ic     = ln->value;
         bool      hit    = 0;
         f_t      *hitf   = NULL;
         listNode *hitln  = NULL;
-        listIter *fli    = listGetIterator(flist, AL_START_HEAD);
+        listIter *fli    = listGetIterator(flist, AL_START_HEAD); listNode *fln;
         while ((fln = listNext(fli)) != NULL) {
             f_t *flt = fln->value;
-            if (flt->tmatch == tmatch && flt->cmatch == cmatch) {
-                khit  = 1;   hit   = 1; hitf  = flt; hitln = fln; break;
+            if (flt->tmatch == tmatch && !icol_cmp(&flt->ic, ic)) {
+                khit = 1; hit = 1; hitf = flt; hitln = fln; break;
             }
         } listReleaseIterator(fli);
         if (hitln) replaceHead(flist, hitln, hitf);
@@ -320,9 +320,9 @@ static void createKList(list **flist, list *clist, int tmatch, list **klist) {
         listNode *cln = listNext(cli);
         listNode *fln = listNext(fli);
         if (!cln || !fln) break;
-        int  cmatch = (int)(long)cln->value;
-        f_t *flt    = fln->value;
-        if (flt->tmatch == tmatch && flt->cmatch == cmatch) {
+        icol_t *ic  = cln->value;
+        f_t    *flt = fln->value;
+        if (flt->tmatch == tmatch && !icol_cmp(&flt->ic, ic)) {
             if (!*klist) *klist = listCreate();      /* DESTROY ME 056 */
             listAddNodeTail(*klist, flt);
         }
@@ -379,18 +379,18 @@ static uint32 matchCheapestMCI(list **flist,   list **klist,
         bool jmatch      = 0;
         if (flt->imatch != -1) {
             r_ind_t *ri = &Index[flt->imatch];
-            if (jcmatch == ri->column) jmatch = 1;
+            if (jcmatch == ri->icol.cmatch) jmatch = 1;
             if (ri->clist) { /* count hits in clist from flist */
                 mci          = 1;
                 int       i  = MAX_JOIN_INDXS;
                 listIter *li = listGetIterator(ri->clist, AL_START_HEAD);
                 while ((cln = listNext(li)) != NULL) {
-                    int       cmatch = (int)(long)cln->value;
-                    listIter *dli    = listGetIterator(*flist, AL_START_HEAD);
+                    icol_t   *ic  = cln->value;
+                    listIter *dli = listGetIterator(*flist, AL_START_HEAD);
                     while ((dln = listNext(dli)) != NULL) {
                         f_t *dflt = dln->value;
                         if (dflt->op != EQ) continue;
-                        if (cmatch == dflt->cmatch) {
+                        if (!icol_cmp(ic, &dflt->ic)) {
                             hitmap += (1 << i);
                             MciHits[ni].clen++;
                         }
@@ -398,7 +398,7 @@ static uint32 matchCheapestMCI(list **flist,   list **klist,
                     i--;
                 } listReleaseIterator(li);
             } else {
-                if (jcmatch == ri->column) {
+                if (jcmatch == ri->icol.cmatch) {
                     hitmap = (ull)(1 << MAX_JOIN_INDXS); MciHits[ni].clen = 1;
                 }
             }
@@ -432,7 +432,7 @@ static uint32 matchCheapestMCI(list **flist,   list **klist,
 #define CNT_INDXD (UINT_MAX - 1) /* indexed columns before non-indexed */
 #define QOP_MAX_NUM_CHECK 10     /* if [range,inl] bigger, dont estimate cost */
 static uint32 numRows4INL(f_t *flt) {
-    int ctype = Tbl[flt->tmatch].col[flt->cmatch].type;
+    int ctype = Tbl[flt->tmatch].col[flt->ic.cmatch].type;
     if (!C_IS_NUM(ctype))        return CNT_INDXD; /* only NUMs */
     int num = listLength(flt->inl);
     if (Index[flt->imatch].virt) return num;
@@ -454,7 +454,7 @@ static uint32 numRows4INL(f_t *flt) {
     return cnt;
 }
 static uint32 numRows4Range(f_t *flt) {
-    int ctype = Tbl[flt->tmatch].col[flt->cmatch].type;
+    int ctype = Tbl[flt->tmatch].col[flt->ic.cmatch].type;
     if (!C_IS_NUM(ctype))          return CNT_INDXD; /* only NUMs */
     int range = C_IS_I(ctype) ? flt->ahigh.i - flt->alow.i :
                 C_IS_L(ctype) ? flt->ahigh.l - flt->alow.l :
@@ -507,9 +507,9 @@ static uint32 sortFLCheap(list **flist,   list **klist,
         f_t *flt = ln->value;
         if (flt->imatch != -1) {
             r_ind_t *ri = &Index[flt->imatch];
-            if (ri->clist)                               continue;
-            if (jcmatch != -1 && flt->cmatch != jcmatch) continue;
-            if (flt->op == LFUNC)                        continue;
+            if (ri->clist)                                  continue;
+            if (jcmatch != -1 && flt->ic.cmatch != jcmatch) continue;
+            if (flt->op == LFUNC)                           continue;
             if (flt->op == EQ || flt->op == RQ || flt->op == IN) {/*KEY,RQ,INL*/
                 uint32 cnt = getNumRow4Filter(flt);
                 if (cnt < lowc) {
@@ -542,7 +542,7 @@ static bool assignFiltersToJoinPairs(redisClient *c, jb_t *jb) {
     for (int j = 0; j < jb->hw; j++) {
         ijp_t *ij = &jb->ij[j];
         ij->nrows = sortFLCheap(&ij->flist,   &ij->lhs.klist,
-                                &ij->kimatch, ij->lhs.cmatch);
+                                &ij->kimatch, ij->lhs.ic.cmatch);
         if (ij->kimatch != -1 ) { /* NOTE: kimatch outranks ij.*.imatch */
             ij->lhs.imatch = ij->kimatch;                  /* current lhs */
             if (j) jb->ij[j - 1].rhs.imatch = ij->kimatch; /* previous rhs */
@@ -550,7 +550,7 @@ static bool assignFiltersToJoinPairs(redisClient *c, jb_t *jb) {
     }
     addJoinIndexToFFlist(jb, &jb->fflist, &jb->ij[jb->hw - 1]);
     jb->fnrows = sortFLCheap(&jb->fflist,   &jb->fklist,
-                             &jb->fkimatch, jb->ij[jb->hw - 1].rhs.cmatch);
+                             &jb->fkimatch, jb->ij[jb->hw - 1].rhs.ic.cmatch);
     if (jb->fkimatch != -1) lastij->rhs.imatch = jb->fkimatch;/* previous rhs */
     return 1;
 }
@@ -628,8 +628,8 @@ static bool checkJoinTypes(cli *c, jb_t *jb) {
     for (uint32 i = 0; i < jb->n_jind; i++) {
         ijp_t *ij = &jb->ij[i];
         if (ij->rhs.tmatch == -1 || ij->lhs.tmatch == -1) continue;
-        uchar ctype1 = Tbl[ij->rhs.tmatch].col[ij->rhs.cmatch].type;
-        uchar ctype2 = Tbl[ij->lhs.tmatch].col[ij->lhs.cmatch].type;
+        uchar ctype1 = Tbl[ij->rhs.tmatch].col[ij->rhs.ic.cmatch].type;
+        uchar ctype2 = Tbl[ij->lhs.tmatch].col[ij->lhs.ic.cmatch].type;
         if (ctype1 != ctype2) { addReply(c, shared.join_type_err); return 0; }
     }
     return 1;
@@ -660,13 +660,13 @@ static void reduceFlist(list **flist) {
 static void validateKlist(list **klist, list **flist, ijp_t *ij, bool rhs) {
     if (!*klist) return;                                       //DEBUG_VAL_KLIST
     listNode *ln;
-    int       ojcmatch = rhs ? ij->rhs.cmatch : ij->lhs.cmatch;
+    int       ojcmatch = rhs ? ij->rhs.ic.cmatch : ij->lhs.ic.cmatch;
     bool      hitj     = 0; bool kbrk = 0;
     listIter *li       = listGetIterator(*klist, AL_START_HEAD);
     while ((ln = listNext(li))) { /* keylist's work ONLY w/ KEYS */
         f_t *flt = ln->value;
         if (hitj && flt->op != EQ) { kbrk = 1; break; }
-        if (flt->cmatch == ojcmatch) hitj = 1;
+        if (flt->ic.cmatch == ojcmatch) hitj = 1;
     }
     if (kbrk) { /* !NOOP -> FLIST */
         listNode *delLn = NULL;
@@ -741,10 +741,10 @@ static void rangeQuerySortFLCheap(list **flist, list **klist) {
 static bool rewriteFuncToLimOfstQuery(cswc_t *w, wob_t *wb) {
     //printf("REWRITE FUNC TO OFFSET\n"); dumpW(printf, w); dumpWB(printf, wb);
     // -> WHERE icol BETWEEN min & max ORDER BY icol LIMIT range OFFSET pos
-    w->wf.cmatch     = Index[w->wf.imatch].column;
+    w->wf.ic         = Index[w->wf.imatch].icol;
     w->wtype         = SQL_RANGE_LKP; w->wf.op         = RQ;
     wb->nob          = 0;             wb->asc[wb->nob] = 1;
-    wb->obt[wb->nob] = w->wf.tmatch;  wb->obc[wb->nob] = w->wf.cmatch;
+    wb->obt[wb->nob] = w->wf.tmatch;  wb->obc[wb->nob] = w->wf.ic;
     wb->nob++;
     if (w->wf.key) { // SINGLE
         wb->ofst = w->wf.akey.i; wb->lim = 1;

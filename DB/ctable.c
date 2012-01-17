@@ -154,7 +154,7 @@ ovrd_sel_end:
             if (w.wtype == SQL_ERR_LKP)   return NULL;
             if (w.wtype == SQL_RANGE_LKP) return NULL;
             if (w.wtype == SQL_IN_LKP   ) return NULL; //TODO evaluate each key
-            if (w.wf.cmatch != rt->sk) {
+            if (w.wf.ic.cmatch != rt->sk) {
                 *err = 1; addReply(c, shared.select_on_sk); return NULL;
             }
             aobj *afk = &w.wf.akey;

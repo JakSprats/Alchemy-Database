@@ -115,12 +115,13 @@ bool validateJoinOrderBy(cli *c, jb_t *jb) {
     dumpAobj(printf, &Resp);
 #define JOP_DEBUG_3                                                       \
     printf("lvl: %d rrow: %p lhs.T: %d lhs.C: %d lhs.I: %d\n",            \
-        g->co.lvl, rrow, ij->lhs.tmatch, ij->lhs.cmatch, ij->lhs.imatch); \
+        g->co.lvl, rrow, ij->lhs.tmatch, ij->lhs.ic.cmatch,               \
+        ij->lhs.ic.imatch); \
     if (nkl) dumpFL(printf, "\t", "KLIST", nkl);                          \
     else     printf("nkey: "); dumpAobj(printf, &nk);
 #define JOP_DEBUG_4                                                       \
     printf("nkey: "); dumpAobj(printf, &nk);                              \
-    printf("imatch: %d tmatch: %d\n", nimatch, ri->table);
+    printf("imatch: %d tmatch: %d\n", nimatch, ri->tmatch);
 #define JOP_DEBUG_5                                                       \
     {   printf("rrow: %p\n", rrow);                                       \
         uchar ctype = Tbl[w->obt[i]].col[w->obc[i]].type;                 \
@@ -222,11 +223,11 @@ static bool popKlist(range_t *g,   int   imatch, list **klist,
         if (!ln) continue;
         f_t  *flt     = ln->value;
         if (flt->op == NONE) {
-            flt->akey = getCol(g->co.btr, rrow, ri->bclist[i], apk, ri->table,
+            flt->akey = getCol(g->co.btr, rrow, ri->bclist[i], apk, ri->tmatch,
                                NULL); //TODO check what "ls" should be
             flt->op   = EQ;
-        } else if (jcmatch == flt->cmatch) {
-            aobj akey = getCol(g->co.btr, rrow, ri->bclist[i], apk, ri->table,
+        } else if (jcmatch == flt->ic.cmatch) {
+            aobj akey = getCol(g->co.btr, rrow, ri->bclist[i], apk, ri->tmatch,
                                NULL);
             bool ok = aobjEQ(&flt->akey, &akey);
             releaseAobj(&akey);
@@ -248,10 +249,11 @@ static bool join_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
     if (hf) return 0; if (!pret) return 1;
     char *freeme[g->se.qcols];                                     //JOP_DEBUG_1
     int   nfree = 0;
+    DECLARE_ICOL(ic, -1)
     for (int i = 0; i < g->se.qcols; i++) { // Extract queried columns
         if (jb->js[i].jan == w->wf.jan) {
-            int tm = jb->js[i].t; int cm = jb->js[i].c; 
-            Resp = getSCol(g->co.btr, rrow, cm, apk, tm, g->se.lfca);//FREE 037
+            int tm = jb->js[i].t; int cm = ic.cmatch = jb->js[i].c; 
+            Resp = getSCol(g->co.btr, rrow, ic, apk, tm, g->se.lfca);//FREE 037
             Jcols[i].len    = Resp.len;
             Jcols[i].freeme = 0; /* freed via freeme[] */
             Jcols[i].type   = (cm == -1) ? COL_TYPE_NONE : Tbl[tm].col[cm].type;
@@ -266,7 +268,7 @@ static bool join_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
         if (!jb->ob) jb->ob = create_obsl(NULL, jb->wb.nob); /*DESTROY ME 057*/
         for (uint32 i = 0; i < jb->wb.nob; i++) {
             if (jb->wb.obt[i] == tmatch) {
-                int tm = jb->wb.obt[i]; int cm = jb->wb.obc[i];
+                int tm = jb->wb.obt[i]; int cm = jb->wb.obc[i].cmatch;
                 uchar ctype = (cm == -1) ? COL_TYPE_NONE : Tbl[tm].col[cm].type;
                 bool aret = assignObKey(&jb->wb, g->co.btr, rrow, apk, i,
                                         jb->ob,  tm);
@@ -298,19 +300,21 @@ static bool join_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
         if (g->co.lvl == ((uint32)jb->hw - 1)) {
             nkl     = jb->fklist;
             nimatch = nkl ? jb->fkimatch : ij->rhs.imatch;
-            jcmatch = jb->ij[g->co.lvl].rhs.cmatch; /* RIGHT-HAND-SIDE */
+            jcmatch = jb->ij[g->co.lvl].rhs.ic.cmatch; /* RIGHT-HAND-SIDE */
         } else { /* next ij determines Join Index */
             nkl     = jb->ij[g->co.lvl + 1].lhs.klist;
             nimatch = nkl ? jb->ij[g->co.lvl + 1].lhs.imatch : ij->rhs.imatch;
-            jcmatch = jb->ij[g->co.lvl].lhs.cmatch; /* LEFT-HAND-SIDE */
+            jcmatch = jb->ij[g->co.lvl].lhs.ic.cmatch; /* LEFT-HAND-SIDE */
         }
         bool ok = 1;
         if (nkl) ok = popKlist(g, nimatch, &nkl, apk, rrow, jcmatch);
-        else     nk = getCol(g->co.btr, rrow, ij->lhs.cmatch,
-                             apk, ij->lhs.tmatch, g->se.lfca);
+        else {
+            ic.cmatch = ij->lhs.ic.cmatch;
+            nk = getCol(g->co.btr, rrow, ic, apk, ij->lhs.tmatch, g->se.lfca);
+        }
         cswc_t w2; range_t g2; qr_t q2;                            //JOP_DEBUG_3
         r_ind_t *ri = &Index[nimatch];                             //JOP_DEBUG_4
-        init_check_sql_where_clause(&w2, ri->table, NULL);
+        init_check_sql_where_clause(&w2, ri->tmatch, NULL);
         if (ok) {
             init_range(&g2, g->co.c, &w2, &jb->wb, &q2, g->co.ll,
                         g->co.ofree, jb);
@@ -320,12 +324,12 @@ static bool join_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
             w2.flist     = w->flist;
             if (nkl) promoteKLorFLtoW(&w2, &nkl, &w2.flist, 1);
             else {
-                w2.wf.jan    = ij->rhs.jan;
-                w2.wf.akey   = nk;
-                w2.wf.imatch = nimatch;
-                w2.wf.tmatch = ri->table;
-                w2.wf.cmatch = ri->column;
-                w2.wf.op     = EQ;
+                w2.wf.jan       = ij->rhs.jan;
+                w2.wf.akey      = nk;
+                w2.wf.imatch    = nimatch;
+                w2.wf.tmatch    = ri->tmatch;
+                w2.wf.ic.cmatch = ri->icol.cmatch;
+                w2.wf.op        = EQ;
                 w2.wtype     = (ri->virt) ? SQL_SINGLE_LKP : SQL_SINGLE_FK_LKP;
             }                                                //DEBUG_PRE_RECURSE
             if (w2.wf.imatch == -1) { JoinErr = 1; }
@@ -360,7 +364,7 @@ void setupFirstJoinStep(cswc_t *w, jb_t *jb, qr_t *q) {
     if (!JoinQed) {
         r_ind_t *ri = &Index[w->wf.imatch];
         for (uint32_t i = 0; i < jb->wb.nob; i++) {
-            if (jb->wb.obt[i] != ri->table) { JoinQed = 1; break; }
+            if (jb->wb.obt[i] != ri->tmatch) { JoinQed = 1; break; }
         }
     }
     JoinLim   = jb->wb.lim; JoinOfst = jb->wb.ofst;            //DEBUG_JOIN_QED

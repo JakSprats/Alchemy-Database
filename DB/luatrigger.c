@@ -90,8 +90,8 @@ luat_t *init_lua_trigger() {
     return luat;
 }
 static void destroy_lua_trigger(luat_t *luat) {//printf("destroy_luatrigger\n");
-    if (luat->add.cmatchs) free(luat->add.cmatchs);      // FREED 083
-    if (luat->del.cmatchs) free(luat->del.cmatchs);      // FREED 083
+    if (luat->add.ics) free(luat->add.ics);              // FREED 083
+    if (luat->del.ics) free(luat->del.ics);              // FREED 083
     free(luat);                                          // FREED 079
 }
 
@@ -117,16 +117,16 @@ static bool parseLuatCmd(cli *c, sds cmd, ltc_t *ltc, int tmatch) {
     bool  ok      = parseCSLSelect(c, tkn, 1, 0, tmatch, cmatchl,
                                    NULL, &ltc->ncols, NULL);
     if (ok) {
-        ltc->cmatchs = malloc(sizeof(int) * ltc->ncols); // FREE ME 083
-        listNode *ln;
         r_tbl_t  *rt = &Tbl[tmatch];
+        ltc->ics     = malloc(sizeof(icol_t) * ltc->ncols); // FREE ME 083
         int       i  = 0;
-        listIter *li = listGetIterator(cmatchl, AL_START_HEAD);
+        listIter *li = listGetIterator(cmatchl, AL_START_HEAD); listNode *ln;
         while((ln = listNext(li))) {
-            int cmatch      = (int)(long)ln->value;
+            icol_t *ic      = ln->value;
+            int cm          = ic->cmatch;
             //NOTE: no support for U128 or index.pos()
-            if (C_IS_X(rt->col[cmatch].type) || cmatch < 0) { ok = 0; break; }
-            ltc->cmatchs[i] = cmatch; i++;
+            if (C_IS_X(rt->col[cm].type) || cm < 0) { ok = 0; break; }
+            ltc->ics[i].cmatch = cm; i++;
         } listReleaseIterator(li);
     }
     listRelease(cmatchl);
@@ -146,7 +146,9 @@ void luaTAdd(cli *c, sds trname, sds tname, sds acmd, sds dcmd) {
             addReply(c, shared.luat_decl_fmt); goto luatadd_err;
         }
     }
-    newIndex(c, trname, tmatch, -1, NULL, 0, 0, 0, luat, -1, 0, 0); //Cant fail
+    DECLARE_ICOL(ic, -1)
+    newIndex(c, trname, tmatch, ic, NULL, 0, 0, 0, luat, ic,
+             0, 0, 0); //Cant fail
     addReply(c, shared.ok);
     return;
 
@@ -167,7 +169,8 @@ sds getLUATlist(ltc_t *ltc, int tmatch) { // Used in DESC & AOF
     cmd     = sdscatlen(cmd, "(", 1);
     for (int j = 0; j < ltc->ncols; j++) {
         if (j) cmd = sdscatlen(cmd, ",", 1);
-        sds cname  = Tbl[tmatch].col[ltc->cmatchs[j]].name;
+        sds cname  = Tbl[tmatch].col[ltc->ics[j].cmatch].name;
+        //TODO FIXME print "lo"
         cmd        = sdscatprintf(cmd, "%s", cname);
     }
     cmd     = sdscatlen(cmd, ")", 1);
@@ -186,7 +189,7 @@ void dropLuaTrigger(cli *c) {
 static void luatDo(bt  *btr,    luat_t *luat, aobj *apk, 
                    int  imatch, void   *rrow, bool  add) {
     r_ind_t *ri    = &Index[imatch];
-    r_tbl_t *rt    = &Tbl[ri->table];
+    r_tbl_t *rt    = &Tbl[ri->tmatch];
     ltc_t   *ltc   = add ? &luat->add : &luat->del;
     int      tcols = ltc->ncols + ltc->tblarg;
     if (!ltc->fname) return; /* e.g. no luatDel */
@@ -196,9 +199,10 @@ static void luatDo(bt  *btr,    luat_t *luat, aobj *apk,
         lua_pushlstring(server.lua, rt->name, sdslen(rt->name));
     }
 
+    //TODO refactor w/ pushLuaVar
     for (int i = 0; i < ltc->ncols; i++) {
-        aobj acol = getCol(btr, rrow, ltc->cmatchs[i], apk, ri->table, NULL);
-        int ctype = rt->col[ltc->cmatchs[i]].type;
+        aobj acol = getCol(btr, rrow, ltc->ics[i], apk, ri->tmatch, NULL);
+        int ctype = rt->col[ltc->ics[i].cmatch].type;
         //NOTE: C_IS_X is prohibited (need lua 128 bit num lib)
         if        C_IS_I(ctype) {
             if (acol.empty) lua_pushnil    (server.lua);

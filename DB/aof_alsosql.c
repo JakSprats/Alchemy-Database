@@ -103,7 +103,8 @@ bool appendOnlyDumpIndices(FILE *fp, int tmatch) {
             if (fwriteBulkString(fp, mlist, sdslen(mlist)) == -1)     return 0;
             sdsfree(mlist);                              /* DESTROYED 051 */
         } else {                /* NORMAL INDEX */
-            sds cname = rt->col[ri->column].name;
+            sds cname = rt->col[ri->icol.cmatch].name;
+            //TODO FIXME sdsprint lo
             sds c_w_p = sdscatprintf(sdsempty(), "(%s)", cname); //DEST 074
             if (fwriteBulkString(fp, c_w_p, sdslen(c_w_p)) == -1)     return 0;
             sdsfree(c_w_p);                              /* DESTROYED 074 */
@@ -159,8 +160,8 @@ static bool SQLappendOnlyDumpTable(FILE *fp, bt *btr, int tmatch) {
             if (fwrite(cvals ,sizeof(cvals) - 1, 1, fp) == 0)     A_BRK
             aobj *apk  = be->key;
             void *rrow = be->val;
-            robj *r    = outputRow(btr, rrow, qcols, cmatchs,
-                                   apk, tmatch, NULL, NULL);
+            robj *r    = outputRow(btr, rrow,   qcols, ics,
+                                   apk, tmatch, NULL,  NULL);
             sds   srow = sdscatprintf(sdsempty(), "(%s);\n", (char *)r->ptr);
             if (fwrite(srow, strlen(srow), 1, fp) == 0)           A_BRK
             sdsfree(srow);
@@ -207,8 +208,8 @@ bool appendOnlyDumpTable(FILE *fp, bt *btr, int tmatch) {
             if (fwrite(cvals ,sizeof(cvals) - 1, 1, fp) == 0)     A_BRK
             aobj *apk  = be->key;
             void *rrow = be->val;
-            robj *r    = outputRow(btr, rrow, qcols, cmatchs,
-                                   apk, tmatch, NULL, NULL);
+            robj *r    = outputRow(btr, rrow,   qcols, ics,
+                                   apk, tmatch, NULL,  NULL);
             sds   srow = sdscatprintf(sdsempty(), "(%s)", (char *)r->ptr);
             if (fwriteBulkString(fp, srow, sdslen(srow)) == -1)   A_BRK
             sdsfree(srow);

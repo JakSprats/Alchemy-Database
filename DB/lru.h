@@ -41,7 +41,7 @@ uint32 getLru(int tmatch);
 void createLruIndex(cli *c);
 void updateLru     (cli *c, int tmatch, aobj *apk, uchar *lruc, bool lrud);
 
-bool initLRUCS  (int tmatch, int   cmatchs[], int qcols);
+bool initLRUCS  (int tmatch, icol_t *ics, int qcols);
 bool initL_LRUCS(int tmatch, list *cs);
 bool initLRUCS_J(jb_t *jb);
 

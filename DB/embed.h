@@ -44,7 +44,7 @@ void initEmbeddedAlchemy(); // NOTE: used for UNSAFE access
 void embedded_exit();
 
 
-void embeddedSaveSelectedColumnNames(int tmatch, int cmatchs[], int qcols);
+void embeddedSaveSelectedColumnNames(int tmatch, icol_t *ics, int qcols);
 struct jb_t;
 void embeddedSaveJoinedColumnNames(struct jb_t *jb);
 
@@ -86,7 +86,7 @@ eresp_t *e_alchemy_sql_fast(ereq_t *ereq);
 eresp_t *e_alchemy_thin_select(uchar qtype,  int tmatch, int cmatch, int imatch,
                                enum OP op,   int qcols,
                                uint128 keyx, long keyl,  int keyi,
-                               int *cmatchs, bool cstar, select_callback *scb,
+                               icol_t *ics,  bool cstar, select_callback *scb,
                                bool save_cnames);
 
 // REDIS

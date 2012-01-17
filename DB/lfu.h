@@ -37,7 +37,7 @@ ulong getLfu(ulong num);
 void createLfuIndex(cli *c);
 void updateLfu     (cli *c, int tmatch, aobj *apk, uchar *lfuc, bool lfu);
 
-bool initLFUCS  (int tmatch, int   cmatchs[], int qcols);
+bool initLFUCS  (int tmatch, icol_t *ics, int qcols);
 bool initL_LFUCS(int tmatch, list *cs);
 bool initLFUCS_J(jb_t *jb);
 

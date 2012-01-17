@@ -36,6 +36,15 @@ CACHE:
 
 LUAOBJ
   1.) rdbLoad/rdbSave lua-objects [use DataDumper & eval()]
+      |-> can be done AFTER dumpBT
+  2.) dot-notation not allowed in any part of joins
+  3.) CREATE INDEX iname ON lo (lo.a.b.c) TYPE <- TYPE is needed
+  4.) rt->ilist should be icol_t
+  5.) test w/ multiple indexes on one LO -> info in DESC
+  6.) ORDER BY "lo.age"
+  7.) OBI w/ & on dot-notation
+  8.) UPDATE dot-notation directly
+  9.) make indexed lua-object elements read-only (write via UPDATE)
 
 -----------LATER LATER LATER LATER LATER LATER LATER---------------
 -----------LATER LATER LATER LATER LATER LATER LATER---------------

@@ -80,8 +80,8 @@ sds createAlterTableFulltext(r_tbl_t *rt, r_ind_t *ri, int cmatch, bool nl) {
     return s;
 }
 sds dumpSQL_Index(char *mtname, r_tbl_t *rt, r_ind_t *ri, int tmatch, bool nl) {
-   bool text_ind = C_IS_S(rt->col[ri->column].type);
-    if (text_ind) return createAlterTableFulltext(rt, ri, ri->column, nl);
+    bool text_ind = C_IS_S(rt->col[ri->icol.cmatch].type);
+    if (text_ind) return createAlterTableFulltext(rt, ri, ri->icol.cmatch, nl);
     else {
         char *cmd   = UNIQ(ri->cnstr) ? "CREATE UNIQUE INDEX" : "CREATE INDEX";
         char *tname = mtname ? mtname : rt->name;
@@ -92,7 +92,7 @@ sds dumpSQL_Index(char *mtname, r_tbl_t *rt, r_ind_t *ri, int tmatch, bool nl) {
             s = sdscatlen(s, mlist, sdslen(mlist));
             sdsfree(mlist);                              /* DESTROYED 051 */
         } else {         /* NORMAL INDEX */
-            sds cname = rt->col[ri->column].name;
+            sds cname = rt->col[ri->icol.cmatch].name;
             sds c_w_p = sdscatprintf(sdsempty(), "(%s)", cname); //DEST 074
             s = sdscatlen(s, c_w_p, sdslen(c_w_p));
             sdsfree(c_w_p);                              /* DESTROYED 074 */
@@ -182,7 +182,7 @@ void sqlDumpCommand(redisClient *c) {
         while ((be = btRangeNext(bi, 1))) {
             aobj *apk  = be->key;
             void *rrow = be->val;
-            robj *r    = outputRow(btr, rrow, qcols, cmatchs,
+            robj *r    = outputRow(btr, rrow, qcols, ics,
                                    apk, tmatch, NULL, NULL);
             if (toms) {
                 snprintf(buf, 191, "INSERT INTO `%s` VALUES (", mtname);
@@ -301,13 +301,14 @@ void descCommand(redisClient *c) {
             while((ln = listNext(li)) != NULL) {
                 int imatch = (int)(long)ln->value;
                 r_ind_t *ri      = &Index[imatch];
-                if (ri->column != j) continue;
+                if (ri->icol.cmatch != j) continue;
                 ull      isize   = 0;
                 if (!ri->virt && !ri->luat) {
                     bt *ibtr = getIBtr(imatch); isize = ibtr->msize;
                 }
                 sds idesc = NULL;
                 if (ri->clist) idesc = getMCIlist(ri->clist, tmatch);/*DEST051*/
+                //TODO add in dot-notation index info
                 r->ptr = sdscatprintf(r->ptr, 
                                       "%s%s%sINDEX: %s%s%s [BYTES: %lld]",
                                         loops     ? ", "       : " - ", 
@@ -320,9 +321,10 @@ void descCommand(redisClient *c) {
                 if (idesc) sdsfree(idesc);               /* DESTROYED 051 */
                 if (ri->lru) r->ptr = sdscatprintf(r->ptr, " - LRUINDEX");
                 if (ri->lfu) r->ptr = sdscatprintf(r->ptr, " - LFUINDEX");
-                if (ri->obc != -1) {
+                if (ri->obc.cmatch != -1) {
                     r->ptr = sdscatprintf(r->ptr, " - ORDER BY %s",
-                                          rt->col[ri->obc].name);
+                                          rt->col[ri->obc.cmatch].name);
+                    //TODO FIXME dump "lo"
                 }
                 if (!ri->done) outputPartialIndex(tmatch, imatch, r);
                 loops++;
@@ -430,10 +432,11 @@ void showCommand(redisClient *c) {
         for (int i = 0; i < Num_indx; i++) {
             r_ind_t *ri = &Index[i];
             if (!ri->name) continue;
-            r_tbl_t *rt = &Tbl[ri->table];
+            r_tbl_t *rt = &Tbl[ri->tmatch];
             card++;
             sds s = sdscatprintf(sdsempty(), "%s ->(%s.%s)",
-                                 ri->name, rt->name, rt->col[ri->column].name);
+                             ri->name, rt->name, rt->col[ri->icol.cmatch].name);
+            //TODO FIXME dump "lo"
             robj *r = createObject(REDIS_STRING, s);
             addReplyBulk(c, r);
             decrRefCount(r);

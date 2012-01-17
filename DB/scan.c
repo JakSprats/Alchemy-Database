@@ -80,12 +80,13 @@ static void scanJoin(cli *c) {
 
     ijp_t *ij = &jb.ij[jb.n_jind]; init_ijp(ij);
     ij->lhs.jan    = ljan;
-    ij->lhs.imatch = find_index(ltmatch, 0);      /* PK RQ */
-    ij->lhs.tmatch = ltmatch;
-    ij->lhs.cmatch = 0;                           /* PK RQ */
-    ij->lhs.op     = RQ;                          /* PK RQ */
-    ij->lhs.low    = createSDSFromAobj(&aL);
-    ij->lhs.high   = createSDSFromAobj(&aH);
+    DECLARE_ICOL(ic, 0)                           /* PK RQ */
+    ij->lhs.imatch    = find_index(ltmatch, ic);
+    ij->lhs.tmatch    = ltmatch;
+    ij->lhs.ic.cmatch = 0;                           /* PK RQ */
+    ij->lhs.op        = RQ;                          /* PK RQ */
+    ij->lhs.low       = createSDSFromAobj(&aL);
+    ij->lhs.high      = createSDSFromAobj(&aH);
     jb.n_jind++;
 
     if (c->Prepare) prepareJoin(c, &jb);
@@ -129,8 +130,8 @@ void tscanCommand(redisClient *c) { //printf("tscanCommand\n");
     if (!nowc && !wc) { addReply(c, shared.scansyntax);        goto tscan_end; }
     if (join)         { scanJoin(c);                           goto tscan_end; }
 
-    c->LruColInSelect = initLRUCS(tmatch, cmatchs, qcols);
-    c->LfuColInSelect = initLFUCS(tmatch, cmatchs, qcols);
+    c->LruColInSelect = initLRUCS(tmatch, ics, qcols);
+    c->LfuColInSelect = initLFUCS(tmatch, ics, qcols);
     cswc_t w; wob_t wb;
     init_check_sql_where_clause(&w, tmatch, wc); /* on error: GOTO tscan_end */
     init_wob(&wb);
@@ -168,20 +169,21 @@ void tscanCommand(redisClient *c) { //printf("tscanCommand\n");
     if (!assignMinKey(btr, &aL) || !assignMaxKey(btr, &aH)) {
         addReply(c, shared.nullbulk);                          goto tscan_end;
     }
-    w.wf.alow   = aL; w.wf.ahigh  = aH;
-    w.wf.imatch = find_index(w.wf.tmatch, 0);
-    w.wf.cmatch = 0; /* PK RangeQuery */
-    w.wtype     = SQL_RANGE_LKP; //dumpW(printf, &w);
+    w.wf.alow      = aL; w.wf.ahigh  = aH;
+    DECLARE_ICOL(ic, 0)                           /* PK RQ */
+    w.wf.imatch    = find_index(w.wf.tmatch, ic);
+    w.wf.ic.cmatch = 0; /* PK RangeQuery */
+    w.wtype        = SQL_RANGE_LKP; //dumpW(printf, &w);
     convertFilterListToAobj(w.flist);
-    if      (c->Prepare) prepareRQ(c, &w, &wb, cstar, qcols, cmatchs);
-    else if (c->Explain) explainRQ(c, &w, &wb, cstar, qcols, cmatchs);
+    if      (c->Prepare) prepareRQ(c, &w, &wb, cstar, qcols, ics);
+    else if (c->Explain) explainRQ(c, &w, &wb, cstar, qcols, ics);
     else {
-        if (EREDIS) embeddedSaveSelectedColumnNames(tmatch, cmatchs, qcols);
-        iselectAction(c, &w, &wb, cmatchs, qcols, cstar, &lfca);
+        if (EREDIS) embeddedSaveSelectedColumnNames(tmatch, ics, qcols);
+        iselectAction(c, &w, &wb, ics, qcols, cstar, &lfca);
     }
 
 tscan_end: fflush(NULL);
-    if (!cstar) resetIndexPosOn(qcols, cmatchs);
+    if (!cstar) resetIndexPosOn(qcols, ics);
     RELEASE_CS_LS_LIST releaseLFCA(&lfca);
     destroy_wob(&wb); destroy_check_sql_where_clause(&w);
 }

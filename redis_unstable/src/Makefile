@@ -188,7 +188,7 @@ dependencies:
 ../deps/jemalloc/lib/libjemalloc.a:
 	cd ../deps/jemalloc && ./configure $(JEMALLOC_CFLAGS) --with-jemalloc-prefix=je_ --enable-cc-silence && $(MAKE) lib/libjemalloc.a
 
-alchemy-server: $(SERVEROBJ)
+alchemy-server: $(SERVEROBJ) ../../DB/libx_db.a
 	$(QUIET_CC)$(CC) -o $(PRGNAME) $(CCOPT) $(DEBUG) $(SERVEROBJ) $(CCLINK) $(ALLOC_LINK) -L../../DB/ -lx_db $(LUALIB) ../deps/hiredis/libhiredis.a ../deps/linenoise/linenoise.o
 
 alchemy-benchmark: dependencies $(BENCHOBJ)

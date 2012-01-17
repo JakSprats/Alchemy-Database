@@ -99,8 +99,9 @@ void createLruIndex(cli *c) {
     addColumn(tmatch, "LRU", COL_TYPE_INT);
 
     sds  iname     = P_SDS_EMT "%s_%s", LRUINDEX_DELIM, tname); /* DEST 072 */
-    rt->lrui       = newIndex(c, iname, tmatch, rt->lruc, NULL, CONSTRAINT_NONE,
-                              0, 1, NULL, -1, 0, 0); // Can not fail
+    DECLARE_ICOL(lruic, rt->lruc) DECLARE_ICOL(ic, -1)
+    rt->lrui       = newIndex(c, iname, tmatch, lruic, NULL, 0,
+                              0, 1, NULL, ic, 0, 0, 0); // Can not fail
     sdsfree(iname);                                            /*DESTROYED 072*/
     addReply(c, shared.ok);
 }
@@ -151,20 +152,19 @@ void updateLru(cli *c, int tmatch, aobj *apk, uchar *lruc, bool lrud) {
     }
 }
 
-inline bool initLRUCS(int tmatch, int cmatchs[], int qcols) {
+inline bool initLRUCS(int tmatch, icol_t *ics, int qcols) {
     r_tbl_t *rt = &Tbl[tmatch];
     if (rt->lrud) {
-        for (int i = 0; i < qcols; i++) if (cmatchs[i] == rt->lruc) return 1;
+        for (int i = 0; i < qcols; i++) if (ics[i].cmatch == rt->lruc) return 1;
     }
     return 0;
 }
 inline bool initL_LRUCS(int tmatch, list *cs) {
     r_tbl_t *rt = &Tbl[tmatch];
-    if (rt->lrud) { listNode *ln;
-        listIter *li = listGetIterator(cs, AL_START_HEAD);
+    if (rt->lrud) {
+        listIter *li = listGetIterator(cs, AL_START_HEAD); listNode *ln;
         while((ln = listNext(li))) {
-            int cm = (int)(long)ln->value;
-            if (cm == rt->lruc) return 1;
+            icol_t *ic = ln->value; if (ic->cmatch == rt->lruc) return 1;
         } listReleaseIterator(li);
     }
     return 0;

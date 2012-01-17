@@ -43,7 +43,7 @@ bool parseU128n(char *s, uint32 len, uint128 *x);
 // INSERT
 char *parseRowVals(sds vals,  char   **pk,        int  *pklen,
                    int ncols, twoint   cofsts[],  int   tmatch,
-                   int pcols, int      cmatchs[], int   lncols, bool *ai);
+                   int pcols, icol_t  *ics,       int   lncols, bool *ai);
 
 // SELECT
 bool parseCSLSelect(cli  *c,         char  *tkn, 
@@ -57,27 +57,17 @@ bool parseCSLJoinColumns(cli  *c,     char  *tkn,  bool  exact,
                          list *ts,    list  *jans, list *js,
                          int  *qcols, bool  *cstar);
 
-//TODO convert [fname+ls] to struct[fname,ls[]
-#define CMATCHS_FROM_CMATCHL                                                   \
-    int  cmatchs[cmatchl->len];                                                \
-    listNode *lnc;                                                             \
-    int       ic  = 0;                                                         \
-    listIter *lic = listGetIterator(cmatchl, AL_START_HEAD);                   \
-    while((lnc = listNext(lic))) { cmatchs[ic] = (int)(long)lnc->value; ic++; }\
-    listReleaseIterator(lic);
+void init_ics(icol_t *ics, list *cmatchl);
+#define CMATCHS_FROM_CMATCHL                          \
+    icol_t ics[cmatchl->len]; init_ics(ics, cmatchl);
 
-#define UPDATES_FROM_UPDATEL                                       \
-    CMATCHS_FROM_CMATCHL                                           \
-    char   *mvals  [mvalsl->len];                                  \
-    ic = 0; lic = listGetIterator(mvalsl, AL_START_HEAD);          \
-    while((lnc = listNext(lic))) { mvals[ic] = lnc->value; ic++; } \
-    listReleaseIterator(lic);                                      \
-    uint32  mvlens [mvlensl->len];                                 \
-    ic = 0; lic = listGetIterator(mvlensl, AL_START_HEAD);         \
-    while((lnc = listNext(lic))) {                                 \
-        mvlens[ic] = (uint32)(long)lnc->value; ic++;               \
-    }                                                              \
-    listReleaseIterator(lic);                                      \
+void init_mvals_mvlens(char   **mvals,  list *mvalsl,
+                       uint32  *mvlens, list *mvlensl);
+#define UPDATES_FROM_UPDATEL                                         \
+    CMATCHS_FROM_CMATCHL                                             \
+    char   *mvals  [mvalsl->len];                                    \
+    uint32  mvlens [mvlensl->len];                                   \
+    init_mvals_mvlens(mvals, mvalsl, mvlens, mvlensl);               \
     listRelease(cmatchl); listRelease(mvalsl); listRelease(mvlensl);
 
 bool parseSelect(cli  *c,     bool    is_scan, bool *no_wc, int  *tmatch,

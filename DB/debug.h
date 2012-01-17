@@ -35,8 +35,7 @@ ALL RIGHTS RESERVED
 long MAX(long a, long b);
 long MIN(long a, long b);
 
-void explainRQ     (cli *c,     cswc_t *w, wob_t *wb, bool cstar,
-                    int  qcols, int    *cmatchs);
+void explainRQ(cli *c, cswc_t *w, wob_t *wb, bool cstr, int qcols, icol_t *ics);
 void explainJoin   (cli *c, jb_t *jb);
 void explainCommand(cli *c);
 
@@ -56,7 +55,7 @@ void replaceDMB                    (cli *c, void *node, robj *err);
 void dumpIJ(cli *c, printer *prn, int i, ijp_t *ij, ijp_t *nij);
 void dumpJB(cli *c, printer *prn, jb_t *jb);
 
-void dumpQcols(printer *prn, int tmatch, bool cstar, int qcols, int *cmatchs);
+void dumpQcols(printer *prn, int tmatch, bool cstar, int qcols, icol_t *ics);
 void dumpWB   (printer *prn, wob_t *wb);
 void dumpW    (printer *prn, cswc_t *w);
 void dumpSds  (printer *prn, sds s, char *smsg);

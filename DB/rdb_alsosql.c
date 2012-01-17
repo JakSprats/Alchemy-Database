@@ -31,6 +31,7 @@ ALL RIGHTS RESERVED
 #include "redis.h"
 
 #include "luatrigger.h"
+#include "find.h"
 #include "bt.h"
 #include "index.h"
 #include "lru.h"
@@ -71,12 +72,12 @@ static int saveLtc(FILE *fp, ltc_t *ltc) {
     if (rdbSaveLen(fp, ltc->tblarg)         == -1)                  return -1;
     if (rdbSaveLen(fp, ltc->ncols)          == -1)                  return -1;
     for (int j = 0; j < ltc->ncols; j++) {
-        if (rdbSaveLen(fp, ltc->cmatchs[j]) == -1)                  return -1;
+        if (rdbSaveLen(fp, ltc->ics[j].cmatch) == -1)               return -1;
     }
     return 0;
 }
 int rdbSaveLuaTrigger(FILE *fp, r_ind_t *ri) {
-    int     tmatch = ri->table;
+    int     tmatch = ri->tmatch;
     luat_t *luat   = (luat_t *)ri->btr;
     robj *r = createStringObject(ri->name, sdslen(ri->name));
     if (rdbSaveStringObject(fp, r) == -1)                           return -1;
@@ -103,7 +104,9 @@ static bool loadLtc(FILE *fp, ltc_t *ltc) {
     ltc->ncols = u;
     for (int j = 0; j < ltc->ncols; j++) {
         if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)         return 0; 
-        ltc->cmatchs[j] = (int)u;
+        ltc->ics[j].cmatch = (int)u;
+        //TODO FIXME populate "lo"
+        ltc->ics[j].lo     = NULL;
     }
     return 1;
 }
@@ -118,9 +121,9 @@ bool rdbLoadLuaTrigger(FILE *fp) {
     if (fread(&which, 1, 1, fp) == 0)                               return 0;
     if (loadLtc(fp, &luat->add)              == 0)                  return 0;
     if (which == LUAT_WITH_DEL && loadLtc(fp, &luat->del) == 0)     return 0;
-
-    if ((newIndex(NULL, trname->ptr, tmatch, -1, NULL, 0, 0, 0,
-                  luat, -1,          0,       0)) == -1)            return 0;
+    DECLARE_ICOL(ic, -1)
+    if ((newIndex(NULL, trname->ptr, tmatch, ic, NULL, 0, 0, 0,
+                  luat, ic,          0,       0, 0)) == -1)         return 0;
     decrRefCount(trname);
     return 1;
 }
@@ -179,21 +182,24 @@ int rdbSaveBT(FILE *fp, bt *btr) { //printf("rdbSaveBT\n");
         robj    *r      = createStringObject(ri->name, sdslen(ri->name));
         if (rdbSaveStringObject(fp, r) == -1)                   return -1;
         decrRefCount(r);
-        if (rdbSaveLen(fp, ri->table) == -1)                    return -1;
+        if (rdbSaveLen(fp, ri->tmatch) == -1)                   return -1;
         if (ri->clist) {
             if (rdbSaveLen(fp, ri->nclist) == -1)               return -1;
             for (int i = 0; i < ri->nclist; i++) {
-                if (rdbSaveLen(fp, ri->bclist[i]) == -1)        return -1;
+                if (rdbSaveLen(fp, ri->bclist[i].cmatch) == -1) return -1;
+                //TODO FIXME save "lo"
             }
         } else {
             if (rdbSaveLen(fp, 1) == -1)                        return -1;
-            if (rdbSaveLen(fp, ri->column) == -1)               return -1;
+            if (rdbSaveLen(fp, ri->icol.cmatch) == -1)          return -1;
+            //TODO FIXME save "lo"
         }
         if (rdbSaveLen(fp, ri->cnstr) == -1)                    return -1;
         if (rdbSaveLen(fp, ri->lru)   == -1)                    return -1;
         if (rdbSaveLen(fp, ri->lfu)   == -1)                    return -1;
         // NOTE: obc: -1 not handled well, so incr on SAVE, decr on LOAD
-        if (rdbSaveLen(fp, (ri->obc + 1)) == -1)                return -1;//INCR
+        if (rdbSaveLen(fp, (ri->obc.cmatch + 1)) == -1)         return -1;//INCR
+        //TODO FIXME save "lo"
         if (fwrite(&(btr->s.ktype),    1, 1, fp) == 0)          return -1;
     }
     return 0;
@@ -286,9 +292,9 @@ bool rdbLoadBT(FILE *fp) { //printf("rdbLoadBT\n");
         r_ind_t *ri       = &Index[imatch]; bzero(ri, sizeof(r_ind_t));
         ri->name          = P_SDS_EMT "%s_%s_%s", rt->name, rt->col[0].name,
                                                   INDEX_DELIM);
-        ri->table         =  tmatch; ri->column =  0; /* PK */
-        ri->virt          =  1;      ri->cnstr  = CONSTRAINT_NONE;
-        ri->obc           = -1;
+        ri->tmatch        =  tmatch; ri->icol.cmatch =  0; /* PK */
+        ri->virt          =  1;      ri->cnstr       = CONSTRAINT_NONE;
+        ri->obc.cmatch    = -1;
         ri->done          =  1; ri->ofst = -1;
 
         rt->col[0].imatch = imatch;
@@ -307,25 +313,32 @@ bool rdbLoadBT(FILE *fp) { //printf("rdbLoadBT\n");
         ri->name = sdsdup(r->ptr);
         decrRefCount(r);
         if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)         return 0;
-        ri->table   = (int)u;
-        r_tbl_t *rt = &Tbl[ri->table];
+        ri->tmatch  = (int)u;
+        r_tbl_t *rt = &Tbl[ri->tmatch];
         if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)         return 0;
         if (u == 1) { /* Single Column */
             if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)     return 0;
-            ri->column                 = (int)u;
-            rt->col[ri->column].indxd  = 1; /* used in updateRow OVRWR */
+            int cmatch             = (int)u;
+            ri->icol.cmatch        = cmatch;
+            //TODO FIXME load "lo"
+            rt->col[cmatch].indxd  = 1; /* used in updateRow OVRWR */
             ri->nclist = 0; ri->bclist = NULL; ri->clist  = NULL;
         } else { /* MultipleColumnIndexes */
             rt->nmci++;
             ri->nclist  = u;
-            ri->bclist  = malloc(ri->nclist * sizeof(int)); /* FREE ME 053 */
+            ri->bclist  = malloc(ri->nclist * sizeof(icol_t)); /* FREE ME 053 */
             ri->clist   = listCreate();                  /* DESTROY ME 054 */
+            DECLARE_ICOL(ic, -1)
             for (int i = 0; i < ri->nclist; i++) {
                 if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR) return 0;
-                if (!addC2MCI(NULL, u, ri->clist))                  return 0;
-                if (!i) ri->column           = u;
-                ri->bclist[i]                = u;
-                rt->col[ri->bclist[i]].indxd = 1; /* used in updateRow OVRWR */
+                int cmatch = (int)u;
+                ic.cmatch  = cmatch;
+                //TODO FIXME load "lo"
+                if (!addC2MCI(NULL, ic, ri->clist))                 return 0;
+                if (!i) ri->icol.cmatch = cmatch;
+                ri->bclist[i].cmatch    = cmatch;
+                //TODO FIXME load "lo"
+                rt->col[cmatch].indxd   = 1; /* used in updateRow OVRWR */
             }
         }
         ri->virt    = 0;
@@ -334,20 +347,21 @@ bool rdbLoadBT(FILE *fp) { //printf("rdbLoadBT\n");
         if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)         return 0;
         ri->lru     = (int)u;
         if (ri->lru) {
-            rt->lrui = imatch; rt->lruc = ri->column;
-            rt->lrud = (uint32)getLru(ri->table);
+            rt->lrui = imatch; rt->lruc = ri->icol.cmatch;
+            rt->lrud = (uint32)getLru(ri->tmatch);
         }
         if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)         return 0;
         ri->lfu     = (int)u;
         if (ri->lfu) {
-            rt->lfu = 1; rt->lfui = imatch; rt->lfuc = ri->column;
+            rt->lfu = 1; rt->lfui = imatch; rt->lfuc = ri->icol.cmatch;
         }
         ri->luat    = 0;
         if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)         return 0;
         // NOTE: obc: -1 not handled well, so incr on SAVE, decr on LOAD
-        ri->obc     = ((int)u) - 1; //DECR
-        ri->done    =  1; ri->ofst = -1;
-        rt->col[ri->column].imatch = imatch;
+        ri->obc.cmatch = ((int)u) - 1; //DECR
+        //TODO FIXME load "lo"
+        ri->done       =  1; ri->ofst = -1;
+        rt->col[ri->icol.cmatch].imatch = imatch;
         if (!rt->ilist) rt->ilist  = listCreate();       // DEST 088
         listAddNodeTail(rt->ilist, VOIDINT imatch);
         uchar ktype;
@@ -369,7 +383,7 @@ void rdbLoadFinished() { //printf("rdbLoadFinished\n");
         r_ind_t *ri  = &Index[imatch];
         if (!ri->name) continue; // previously deleted
         if (ri->virt)  continue;
-        bt      *btr = getBtr(ri->table);
+        bt      *btr = getBtr(ri->tmatch);
         buildIndex(NULL, btr, imatch, -1);
     }
 }

@@ -732,12 +732,12 @@ sds DXDB_SQL_feedAppendOnlyFile(rcommand *cmd, robj **argv, int argc) {
                 char    *token  = argv[coln]->ptr;
                 char    *end    = strchr(token, ')');
                 STACK_STRDUP(cname, (token + 1), (end - token - 1))
-                int      cmatch = find_column(tmatch, cname);
-                uchar    ctype  = rt->col[cmatch].type;
+                icol_t   ic     = find_column(tmatch, cname);
+                uchar    ctype  = rt->col[ic.cmatch].type;
                 if (C_IS_S(ctype)) {
-                    int      imatch = find_index(tmatch, cmatch);
+                    int      imatch = find_index(tmatch, ic);
                     r_ind_t *ri     = &Index[imatch];
-                    return createAlterTableFulltext(rt, ri, ri->column, 1);
+                    return createAlterTableFulltext(rt, ri, ic.cmatch, 1);
                 }
             }
         }

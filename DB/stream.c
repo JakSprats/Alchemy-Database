@@ -262,12 +262,21 @@ static sds getLuaTblName(int tmatch, int cmatch) {
     return sdscatprintf(sdsempty(), "%s_%s_%s", LUA_OBJ_TABLE,
                                      rt->name, rt->col[cmatch].name);
 }
-void pushLuaVar(int tmatch, int cmatch, aobj *apk) {
-    WRITE_PK_TO_BUFF(apk) sds tbl = getLuaTblName(tmatch, cmatch); // FREE 133
+void pushLuaVar(int tmatch, icol_t ic, aobj *apk) {
+    WRITE_PK_TO_BUFF(apk) 
+    sds tbl = getLuaTblName(tmatch, ic.cmatch); // FREE 133
     lua_getglobal (server.lua, tbl);
     lua_pushstring(server.lua, pkbuf);
     lua_gettable  (server.lua, -2);
     lua_remove    (server.lua, -2);
+    if (ic.nlo) {
+        for (uint32 i = 0; i < ic.nlo; i++) {
+            printf("pushLuaVar: pushing: ic.lo[%d]: %s\n", i, ic.lo[i]);
+            lua_pushstring(server.lua, ic.lo[i]);
+            lua_gettable  (server.lua, -2);
+            lua_remove    (server.lua, -2);
+        }
+    }
 }
 // the table ASQL_tbl_col[] should be in Lua's registry
 bool writeLuaObjCol(cli *c,    aobj   *apk, int tmatch, int cmatch,
@@ -276,7 +285,7 @@ bool writeLuaObjCol(cli *c,    aobj   *apk, int tmatch, int cmatch,
     char   *xcpd = new_unescaped(val, '\'', vlen, &nlen); if (!xcpd) return 1;
     sds     luac = sdsnewlen(xcpd, nlen);
     CLEAR_LUA_STACK WRITE_PK_TO_BUFF(apk)                    DEBUG_WRITE_LUAOBJ
-    sds     tbl  = getLuaTblName(tmatch, cmatch);             // FREE 133
+    sds     tbl  = getLuaTblName(tmatch, cmatch);          // FREE 133
     lua_getglobal(server.lua, tbl);
     int     t    = lua_type(server.lua, 1);
     if (lua_type(server.lua, 1) == LUA_TNIL) { 

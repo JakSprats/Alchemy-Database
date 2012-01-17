@@ -723,22 +723,29 @@ function create_table_as_tester() {
 function basic_tests() {
   works
   scanner
-
   create_table_as_tester
 }
 
-function all_tests() {
+function all_tests_1_a() {
   $CLI FLUSHALL
   works
   dropper
-
+}
+function all_tests_1_b() {
   pk_string_join_tests
   pk_float_join_tests
-
+}
+function all_tests_1_c() {
   float_tests
   populate
   $CLI DEBUG RELOAD
-
+}
+function all_tests_1() {
+  all_tests_1_a
+  all_tests_1_b
+  all_tests_1_c
+}
+function all_tests_2() {
   scanner
   in_tester
   orderbyer
@@ -750,22 +757,29 @@ function all_tests() {
   second_mci_test
   dmci_test
   $CLI DEBUG RELOAD
-
-  #selfjoin
-  #many_selfjoin
-
+}
+function all_tests_3_a() {
+  #selfjoin #many_selfjoin
   pk_tester
   int_limit_test
   long_limit_test
   $CLI DEBUG RELOAD
-
+}
+function all_tests_3_b() {
   test_OBT
   $CLI DEBUG RELOAD
-
+}
+function all_tests_3_c() {
   mci_full_delete
   dmci_full_delete
   $CLI DEBUG RELOAD
-
+}
+function all_tests_3() {
+  all_tests_3_a
+  all_tests_3_b
+  all_tests_3_c
+}
+function all_tests_4() {
   test_cols3
   test_AA_backdoor
   test_update_overwrite
@@ -775,7 +789,8 @@ function all_tests() {
   test_alter
   test_lru
   $CLI DEBUG RELOAD
-
+}
+function all_tests_5() {
   test_replace
   test_insert_output
   test_iup
@@ -790,6 +805,8 @@ function all_tests() {
   lfu_test
   middle_lru_lfu_test
   $CLI DEBUG RELOAD
+}
+function all_tests_6() {
 
   create_1000_tables  > /dev/null
   create_1000_columns > /dev/null
@@ -798,6 +815,14 @@ function all_tests() {
 
   test_prepare_execute
   $CLI DEBUG RELOAD
+}
+function all_tests() {
+  all_tests_1
+  all_tests_2
+  all_tests_3
+  all_tests_4
+  all_tests_5
+  all_tests_6
 }
 function all_tests_plus_benchmarks() {
   all_tests
@@ -3134,13 +3159,15 @@ function test_dirty_scion_iterators() {
   J=10; $CLI SELECT \* FROM simple WHERE fk=7 ORDER BY pk DESC LIMIT 1 OFFSET $J;
 }
 
-function test_lua_sql_integration() {
+function pop_lua_sql_integration() {
   $CLI DROP   TABLE lo >/dev/null
   $CLI CREATE TABLE lo "(pk INT, fk LONG, lo LUAOBJ)";
   $CLI INSERT INTO lo VALUES "(1, 111, '{name = \'RUSS\', age=35}')";
   $CLI INSERT INTO lo VALUES "(2, 222, '{name = \'JIM\', age=55}')";
   $CLI INSERT INTO lo VALUES "(3, 333, '{name = \'Jane\', age=22}')"
-
+}
+function test_lua_sql_integration() {
+  pop_lua_sql_integration
   $CLI CONFIG ADD LUA "function foo() print ('foo'); end"
   $CLI CONFIG ADD LUA "function giveage(lo) return lo.age; end"
   $CLI SELECT "giveage(lo)" FROM lo WHERE "pk BETWEEN 1 AND 3"

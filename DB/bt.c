@@ -154,8 +154,9 @@ bt *createMCI_MIDBT(uchar ktype, int imatch) {
 }
 bt *createMCIndexBT(list *clist, int imatch) {
     listNode *ln    = listFirst(clist);
-    r_tbl_t  *rt    = &Tbl[Index[imatch].table];
-    uchar     ktype = rt->col[(int)(long)ln->value].type;
+    icol_t   *ic    = ln->value;
+    r_tbl_t  *rt    = &Tbl[Index[imatch].tmatch];
+    uchar     ktype = rt->col[ic->cmatch].type;
     return createIBT(ktype, imatch, BTREE_MCI);
 }
 bt *createIndexNode(uchar ktype, uchar obctype) {                /* INODE_BT */

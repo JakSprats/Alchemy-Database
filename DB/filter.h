@@ -44,9 +44,9 @@ void *vcloneFilter(void *oflt);
 void convertFilterListToAobj(list *flist);
 
 #define CTYPE_FROM_FLT(flt) \
-  ((flt->cmatch  < -1) ? COL_TYPE_FUNC : \
-   (flt->cmatch == -1) ? COL_TYPE_NONE : \
-                        Tbl[flt->tmatch].col[flt->cmatch].type);
+  ((flt->ic.cmatch  < -1) ? COL_TYPE_FUNC : \
+   (flt->ic.cmatch == -1) ? COL_TYPE_NONE : \
+                        Tbl[flt->tmatch].col[flt->ic.cmatch].type);
 
 //USED for PREPARE/EXECUTE
 int    getSizeFLT    (          f_t *flt);

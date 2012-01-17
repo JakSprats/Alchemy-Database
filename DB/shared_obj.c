@@ -114,6 +114,8 @@ void DXDB_createSharedObjects() {
 
     shared.createsyntax = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: \"CREATE TABLE tablename (columnname type,,,,)\" OR \"CREATE INDEX indexname ON tablename (columnname) [ORDER BY othercolumn] [OFFSET X]\" OR \"CREATE LRUINDEX ON tablename\" OR \"CREATE LUATRIGGER luatriggername ON tablename ADD_LUA_CALL DEL_LUA_CALL\"\r\n"));
+    shared.createsyntax_dn = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: CREATE TABLE tablename (luaobj.x.y.z) TYPE\r\n"));
     shared.dropsyntax = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: DROP TABLE tablename OR DROP INDEX indexname OR DROP LUATRIGGER\r\n"));
     shared.altersyntax = createObject(REDIS_STRING,sdsnew(

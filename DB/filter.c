@@ -50,7 +50,7 @@ extern char *OP_Desc[];
 
 void initFilter(f_t *flt) {
     bzero(flt, sizeof(f_t));
-    flt->jan    = flt->imatch = flt->tmatch = flt->cmatch = -1;
+    flt->jan    = flt->imatch = flt->tmatch = flt->ic.cmatch = -1;
     flt->op     = NONE;
     initAobj(&flt->akey); initAobj(&flt->alow); initAobj(&flt->ahigh);
 }
@@ -84,7 +84,8 @@ f_t *cloneFilter(f_t *oflt) {
     bzero(flt, sizeof(f_t));
     flt->jan    = oflt->jan;
     flt->imatch = oflt->imatch;
-    flt->tmatch = oflt->tmatch; flt->cmatch = oflt->cmatch;
+    flt->tmatch = oflt->tmatch; flt->ic.cmatch = oflt->ic.cmatch;
+    //TODO FIXME clone "ic.lo"
     flt->op     = oflt->op;
     flt->iss    = oflt->iss;
     if (oflt->key)  flt->key  = sdsdup(oflt->key);
@@ -136,11 +137,12 @@ uchar *serialiseFLT(f_t *flt) {
     if (flt->inl || flt->low) return NULL; //TODO support [IN, RQ] compilation
     if (flt->tmatch == -1)    return NULL;
     uchar *x     = (uchar *)&SerialiseFLT_Buf;
-    memcpy(x, &flt->tmatch,  sizeof(int));   x += sizeof(int);
-    memcpy(x, &flt->cmatch,  sizeof(int));   x += sizeof(int);
-    memcpy(x, &flt->jan,     sizeof(int));   x += sizeof(int);
+    memcpy(x, &flt->tmatch,    sizeof(int));   x += sizeof(int);
+    memcpy(x, &flt->ic.cmatch, sizeof(int));   x += sizeof(int);
+    //TODO serialise ic.lo
+    memcpy(x, &flt->jan,       sizeof(int));   x += sizeof(int);
     uchar  ctype = CTYPE_FROM_FLT(flt)
-    memcpy(x, &ctype,        sizeof(uchar)); x += sizeof(uchar);
+    memcpy(x, &ctype,          sizeof(uchar)); x += sizeof(uchar);
     if      C_IS_I(ctype) memcpy(x, &flt->akey.i, sizeof(uint32));
     else if C_IS_L(ctype) memcpy(x, &flt->akey.l, sizeof(ulong));
     else if C_IS_X(ctype) memcpy(x, &flt->akey.x, sizeof(uint128));
@@ -149,10 +151,10 @@ uchar *serialiseFLT(f_t *flt) {
 }
 int deserialiseFLT(uchar *x, f_t *flt) {
     uchar *ox = x;
-    memcpy(&flt->tmatch, x, sizeof(int));   x += sizeof(int);
-    memcpy(&flt->cmatch, x, sizeof(int));   x += sizeof(int);
-    memcpy(&flt->jan   , x, sizeof(int));   x += sizeof(int);
-    flt->imatch = find_index(flt->tmatch, flt->cmatch);
+    memcpy(&flt->tmatch,    x, sizeof(int));   x += sizeof(int);
+    memcpy(&flt->ic.cmatch, x, sizeof(int));   x += sizeof(int);
+    memcpy(&flt->jan,       x, sizeof(int));   x += sizeof(int);
+    flt->imatch = find_index(flt->tmatch, flt->ic);
     flt->op     = EQ;
     uchar ctype;
     memcpy(&ctype,       x, sizeof(uchar)); x += sizeof(uchar);
@@ -173,7 +175,7 @@ int deserialiseFLT(uchar *x, f_t *flt) {
 // DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
 void dumpFilter(printer *prn, f_t *flt, char *prfx) {
     if (!flt) return;
-    int t = flt->tmatch; int c = flt->cmatch; int i = flt->imatch;
+    int t = flt->tmatch; int c = flt->ic.cmatch; int i = flt->imatch;
     (*prn)("\t%sSTART dumpFilter: (%p) iss: %d\n", prfx, (void *)flt, flt->iss);
     (*prn)("\t%s\tjan:    %d (%s)\n", prfx, flt->jan, getJoinAlias(flt->jan));
     (*prn)("\t%s\ttmatch: %d (%s)\n", prfx, t, (t == -1) ? "" : Tbl[t].name);
@@ -182,6 +184,7 @@ void dumpFilter(printer *prn, f_t *flt, char *prfx) {
                                                           
     else (*prn)("\t%s\tcmatch: %d (%s)\n", prfx, c, (c == -1) ? "" :
                                                             Tbl[t].col[c].name);
+    //TODO dump ic.lo
     (*prn)("\t%s\timatch: %d (%s)\n", prfx, i, (i == -1) ? "" : Index[i].name);
     (*prn)("\t%s\top:     %d (%s)\n", prfx, flt->op, OP_Desc[flt->op]);
     if (flt->key) {

@@ -79,28 +79,49 @@ void initAobjFloat(aobj *a, float f) {
 void initAobjBool(aobj *a, bool b) {
     initAobj(a); a->b = b; a->type = a->enc = COL_TYPE_BOOL;;     a->empty = 0;
 }
+void initAobjDetermineType(aobj *a, char *s, int len, bool fs) {  a->empty = 0;
+    if        (is_int(s)) {
+        a->type = a->enc = COL_TYPE_LONG;
+        if (fs) {a->len = len; a->s = s; }
+        else     a->l = strtoul(s, NULL, 10); // OK: DELIM: \0
+    } else if (is_float(s)) {
+        a->type = a->enc = COL_TYPE_FLOAT;
+        if (fs) {a->len = len; a->s = s; }
+        else    a->f = atof(s);               // OK: DELIM: \0
+    } else if (!strcmp(s, "true")) {
+        a->b = 1; a->type = a->enc = COL_TYPE_BOOL;
+    } else if (!strcmp(s, "false")) {
+        a->b = 0; a->type = a->enc = COL_TYPE_BOOL;
+    } else {
+        a->len = len; a->s = s; a->type = a->enc = COL_TYPE_LUAO;
+    } printf("initAobjDetermineType: a: "); dumpAobj(printf, a); 
+} 
 //NOTE: does not throw errors
 void initAobjFromStr(aobj *a, char *s, int len, uchar ctype) {
     initAobj(a);                                                  a->empty = 0;
-    if (       C_IS_S(ctype)) {
+    if         C_IS_S(ctype) {
         a->enc    = a->type   = COL_TYPE_STRING;
         a->freeme = 1;
         a->s      = malloc(len); memcpy(a->s, s, len);
         a->len    = len;
-    } else if (C_IS_F(ctype)) {
+    } else if C_IS_F(ctype) {
         a->enc    = a->type = COL_TYPE_FLOAT; a->f = atof(s); // OK: DELIM: \0 
-    } else if (C_IS_L(ctype)) {
+    } else if C_IS_L(ctype) {
         a->enc    = a->type = COL_TYPE_LONG;
         a->l      = strtoul(s, NULL, 10);                     // OK: DELIM: \0
-    } else if (C_IS_I(ctype)) {
+    } else if C_IS_I(ctype) {
         a->enc    = a->type = COL_TYPE_INT;
         a->i      = (uint32)strtoul(s, NULL, 10);             // OK: DELIM: \0
-    } else if (C_IS_X(ctype)) {
+    } else if C_IS_X(ctype) {
         a->enc    = COL_TYPE_U128;     a->type = COL_TYPE_U128;
         parseU128(s, &a->x);
-    } else if (C_IS_P(ctype)) {
+    } else if C_IS_P(ctype) {
         a->enc    = COL_TYPE_FUNC;      a->type = COL_TYPE_FUNC;
         a->i      = (uint32)strtoul(s, NULL, 10);             // OK: DELIM: \0
+    } else if C_IS_O(ctype) {
+        a->enc    = COL_TYPE_LUAO;      a->type = COL_TYPE_LUAO;
+        sds s2 = sdsnewlen(s, len);
+        initAobjDetermineType(a, s2, len, 0); sdsfree(s2);
     } else assert(!"initAobjFromStr ERROR\n");
     
 }
