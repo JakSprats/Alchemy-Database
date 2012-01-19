@@ -378,5 +378,7 @@ void DXDB_createSharedObjects() {
         "-ERR PROHIBITED: Build Index on Dirty Table\r\n"));
     shared.cr8tablesyntax        = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: CREATE TABLE tblname (colname coltype,,,,,)\r\n"));
+    shared.joindotnotation       = createObject(REDIS_STRING,sdsnew(
+        "-ERR NOT_SUPPORTED: JOINs on DotNotationIndexes (i.e. luaobj.x) are not yet supported, if you have a good use-case, please email us\r\n"));
 
 }

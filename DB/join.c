@@ -369,9 +369,19 @@ void setupFirstJoinStep(cswc_t *w, jb_t *jb, qr_t *q) {
     }
     JoinLim   = jb->wb.lim; JoinOfst = jb->wb.ofst;            //DEBUG_JOIN_QED
 }
+static bool checkForDotNotationJoins(cli *c, jb_t *jb, cswc_t *w) {
+    if (w->wf.ic.nlo) { addReply(c, shared.joindotnotation); return 0; }
+    for (int j = 0; j < jb->hw; j++) {
+        ijp_t *ij = &jb->ij[j];
+        if (ij->lhs.ic.nlo || ij->rhs.ic.nlo) {
+            addReply(c, shared.joindotnotation); return 0;
+        }}
+    return 1;
+}
 bool joinGeneric(redisClient *c, jb_t *jb) {
     qr_t q; bzero(&q, sizeof(qr_t));
     cswc_t w; setupFirstJoinStep(&w, jb, &q);
+    if (!checkForDotNotationJoins(c, jb, &w)) return 0;
     if (w.wf.imatch == -1) { addReply(c, shared.join_qo_err); return 0; }
     bool ret          = 0;
     c->LruColInSelect = initLRUCS_J(jb); c->LfuColInSelect = initLFUCS_J(jb);

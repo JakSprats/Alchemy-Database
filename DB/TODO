@@ -3,30 +3,8 @@ PROTOCOL
   1.) First line of SQL SELECTs should be comma-delimited list of columns
   2.) ADD "SELECT col AS othername"
 
-FIX:
-  1.) [shard-key & foreign-key] info not in RDB
-      [sk, fk_cmatch, fk_otmatch, fk_ocmatch] -> MAKE PERSISTENT
-  2.) bt_output(debug) of Compound Indexes does not recurse
-  4.) FLUSHDB & FLUSHALL should be "DROP DATABASE" in sqlappendfile
-
 TEST:
   1.) make sure IN_Ops are up to date w/ scion & so on
-
-CLEANUP:
-  1.) GLOBAL VARIABLES -> Per Client Structures
-        A.) OB_asc [MAX_ORDER_BY_COLS]    -> push into cswc_t
-        B.) OB_ctype[MAX_ORDER_BY_COLS]   -> push into cswc_t
-        C.) JTAlias[MAX_JOIN_COLS]        -> push into JoinBlock
-  2.) AddTable, AddIndex, AddColumn are NOT efficient - lots of copying
-      |-> on array-grow: add in some extra space (10 slots)
-  3.) EXTEND: Compound Indexes scion's need to recurse from deepest index-btree
-              to highest index-btree, & scion iterators need to use these counts
-
-MISC:
-  1.) LOAD DATA FROM INFILE ... 1st rev as Lua routine reading in CSV file
-  2.) LRU/LFU indexes should be UNIQUE U128 indexes [lru|pk]
-  3.) LuaTrigger takes fknames as first args (like "table") 
-      -> can be used for FK integrity checks
 
 CACHE:
  -1.) PROHIBIT BuildIndex on DirtyTable
@@ -37,15 +15,34 @@ CACHE:
 LUAOBJ
   1.) rdbLoad/rdbSave lua-objects [use DataDumper & eval()]
       |-> can be done AFTER dumpBT
-  2a.) PROHIBIT: dot-notation in any part of joins (for now)
-  2b.) PROHIBIT: dot-notation in CompoundIndexes   (for now)
-  2c.) PROHIBIT: dot-notation in OrderByIndexes    (for now)
-  5.) DESC info on multiple indexes on one LO
+  8.) UPDATE dot-notation directly (UPDATE tbl SET doc.age = 45)
   6.) ORDER BY "lo.age"
   7.) OBI with & on dot-notation
-  8.) UPDATE dot-notation directly (UPDATE tbl SET doc.age = 45)
+  B.) dot-notation CompoundIndexes (plus mixed)
+  D.) LuaObject Input/Output always a table (e.g. '{....}')
   9.) On deleteRow() set Stbl[][] = nil
   A.) gosting LuaObj -> propogates to luaAlchemyDeleteIndex
+  5.) DESC info on multiple indexes on one LO
+
+MISC:
+  1.) LOAD DATA FROM INFILE ... 1st rev as Lua routine reading in CSV file
+  2.) LRU/LFU indexes should be UNIQUE U128 indexes [lru|pk]
+  3.) LuaTrigger takes fknames as first args (like "table") 
+      -> can be used for FK integrity checks
+
+CLEANUP:
+  1.) GLOBAL VARIABLES -> Per Client Structures
+        A.) OB_asc [MAX_ORDER_BY_COLS]    -> push into cswc_t
+        B.) OB_ctype[MAX_ORDER_BY_COLS]   -> push into cswc_t
+        C.) JTAlias[MAX_JOIN_COLS]        -> push into JoinBlock
+  2.) AddTable, AddIndex, AddColumn are NOT efficient - lots of copying
+      |-> on array-grow: add in some extra space (10 slots)
+
+FIX:
+  1.) [shard-key & foreign-key] info not in RDB
+      [sk, fk_cmatch, fk_otmatch, fk_ocmatch] -> MAKE PERSISTENT
+  2.) bt_output(debug) of Compound Indexes does not recurse
+  4.) FLUSHDB & FLUSHALL should be "DROP DATABASE" in sqlappendfile
 
 -----------LATER LATER LATER LATER LATER LATER LATER---------------
 -----------LATER LATER LATER LATER LATER LATER LATER---------------
@@ -59,3 +56,7 @@ PREPARED_STATEMENTS
 EMBEDDED_API
   1.) REPLACE & InsertOnDuplicateUpdate need FAST v2 API bindings
   2.) ALL Redis commands (SET/GET/DEL already done) need FAST v2 API bindings
+
+MISC:
+  3.) EXTEND: Compound Indexes scion's need to recurse from deepest index-btree
+              to highest index-btree, & scion iterators need to use these counts

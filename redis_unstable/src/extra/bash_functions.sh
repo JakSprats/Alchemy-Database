@@ -3255,3 +3255,10 @@ function test_dot_notation_index() {
   echo "1 row (lo.age) [50-60]"
   $CLI SELECT \* FROM doc WHERE "lo.age BETWEEN 50 AND 60"
 }
+
+function populate_join_dot_notation_index() {
+  $CLI DROP   TABLE j_doc >/dev/null;
+  $CLI CREATE TABLE j_doc "(pk INT, fk LONG, lo LUAOBJ)";
+  $CLI CREATE INDEX i_j_doc_dn ON j_doc "(lo.age)" LONG;
+  $CLI INSERT INTO j_doc VALUES "(1, 111, '{name = \'RUSS\', age=35, group=2}')";
+}

@@ -172,7 +172,7 @@ typedef struct icol_t {
     *updatemiss,             *dirtypk,                     \
     *update_luaobj_complex,  *unsupported_pk,              \
     *order_by_luaobj,        *buildindexdirty,             \
-    *cr8tablesyntax;
+    *cr8tablesyntax,         *joindotnotation;
 
 #define DEBUG_C_ARGV(c) \
   for (int i = 0; i < c->argc; i++) \
