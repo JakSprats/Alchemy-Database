@@ -109,6 +109,7 @@ void initAobjFromStr(aobj *a, char *s, int len, uchar ctype) {
     } else if C_IS_L(ctype) {
         a->enc    = a->type = COL_TYPE_LONG;
         a->l      = strtoul(s, NULL, 10);                     // OK: DELIM: \0
+printf("initAobjFromStr: l: %lu len: %d s: %s\n", a->l, len, s);
     } else if C_IS_I(ctype) {
         a->enc    = a->type = COL_TYPE_INT;
         a->i      = (uint32)strtoul(s, NULL, 10);             // OK: DELIM: \0
@@ -386,6 +387,32 @@ ulong subtractAobj(aobj *a, aobj *b) {
     if      (C_IS_L(a->type) && C_IS_L(b->type)) return a->l - b->l;
     else if (C_IS_I(a->type) && C_IS_I(b->type)) return a->i - b->i;
     else                      assert(!"subtractAobj must be INT|LONG");
+}
+
+// LUA LUA LUA LUA LUA LUA LUA LUA LUA LUA LUA LUA LUA LUA LUA
+void pushAobjLua(aobj *a, uchar ctype) { //NOTE: C_IS_X() disallowed
+    if (a->empty) lua_pushnil(server.lua);
+    else {
+        if      C_IS_I(ctype) lua_pushinteger(server.lua, a->i);
+        else if C_IS_L(ctype) lua_pushinteger(server.lua, a->l);
+        else if C_IS_F(ctype) lua_pushnumber (server.lua, a->f);
+        else if C_IS_S(ctype) lua_pushlstring(server.lua, a->s, a->len);
+        else                  assert(!"pushColumnLua ERROR");
+    }
+}
+void initAobjFromLua(aobj *a, uchar ctype) { initAobj(a);
+    assert(!C_IS_X(ctype) && !C_IS_O(ctype));
+    int t = lua_type(server.lua, -1);
+    if (t == LUA_TSTRING) { size_t len; printf("initAobjFromLua STRING\n");
+        char *s = (char *)lua_tolstring(server.lua, -1, &len);
+        initAobjFromStr(a, s, len, ctype);
+    } else if (t == LUA_TNUMBER) {     printf("initAobjFromLua NUMBER\n");
+        lolo l = lua_tonumber(server.lua, -1);
+        if      C_IS_B(ctype) initAobjBool (a, (bool)l);
+        else if C_IS_I(ctype) initAobjInt  (a, l);
+        else if C_IS_L(ctype) initAobjLong (a, l);
+        else if C_IS_F(ctype) initAobjFloat(a, (float)l);
+    } else assert(!"initAobjFromLua MUST return STRING or NUMBER"); //TODO ->ERR
 }
 
 /* DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG */

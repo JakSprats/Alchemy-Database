@@ -45,7 +45,7 @@ void DXDB_createSharedObjects() {
     shared.indextargetinvalid = createObject(REDIS_STRING,sdsnew(
         "-ERR Index on Tablename.columnname target error\r\n"));
     shared.indexedalready = createObject(REDIS_STRING,sdsnew(
-        "-ERR Tablename.Columnname is ALREADY indexed)\r\n"));
+        "-ERR Tablename.Columnname is ALREADY indexed\r\n"));
     shared.index_wrong_nargs = createObject(REDIS_STRING,sdsnew(
         "-ERR wrong number of arguments for 'CREATE INDEX' command\r\n"));
     shared.nonuniquekeyname = createObject(REDIS_STRING,sdsnew(

@@ -37,14 +37,15 @@ CACHE:
 LUAOBJ
   1.) rdbLoad/rdbSave lua-objects [use DataDumper & eval()]
       |-> can be done AFTER dumpBT
-  2.) dot-notation not allowed in any part of joins
-  3.) CREATE INDEX iname ON lo (lo.a.b.c) TYPE <- TYPE is needed
-  4.) rt->ilist should be icol_t
-  5.) test w/ multiple indexes on one LO -> info in DESC
+  2a.) PROHIBIT: dot-notation in any part of joins (for now)
+  2b.) PROHIBIT: dot-notation in CompoundIndexes   (for now)
+  2c.) PROHIBIT: dot-notation in OrderByIndexes    (for now)
+  5.) DESC info on multiple indexes on one LO
   6.) ORDER BY "lo.age"
-  7.) OBI w/ & on dot-notation
-  8.) UPDATE dot-notation directly
-  9.) make indexed lua-object elements read-only (write via UPDATE)
+  7.) OBI with & on dot-notation
+  8.) UPDATE dot-notation directly (UPDATE tbl SET doc.age = 45)
+  9.) On deleteRow() set Stbl[][] = nil
+  A.) gosting LuaObj -> propogates to luaAlchemyDeleteIndex
 
 -----------LATER LATER LATER LATER LATER LATER LATER---------------
 -----------LATER LATER LATER LATER LATER LATER LATER---------------

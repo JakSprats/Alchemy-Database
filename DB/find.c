@@ -37,6 +37,7 @@ ALL RIGHTS RESERVED
 #include "redis.h"
 
 #include "query.h"
+#include "range.h"
 #include "bt.h"
 #include "common.h"
 #include "find.h"
@@ -68,7 +69,18 @@ inline void resetIndexPosOn(int qcols, icol_t *ics) {
 // INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX INDEX
 static int _find_index(int tmatch, icol_t ic, bool prtl) {
     if (ic.cmatch < -1) return getImatchFromOCmatch(ic.cmatch);
-    int imatch = Tbl[tmatch].col[ic.cmatch].imatch;
+    int       imatch = -1;
+    r_tbl_t  *rt     = &Tbl[tmatch];
+    if (!C_IS_O(rt->col[ic.cmatch].type)) imatch = rt->col[ic.cmatch].imatch;
+    else {
+        ci_t     *ci = dictFetchValue(rt->cdict, rt->col[ic.cmatch].name);
+        listIter *li = listGetIterator(ci->ilist, AL_START_HEAD); listNode *ln;
+        while((ln = listNext(li))) {
+            int      im = (int)(long)ln->value;
+            r_ind_t *ri = &Index[im];
+            if (!icol_cmp(&ic, &ri->icol)) { imatch = im; break; }
+        } listReleaseIterator(li);
+    }
     if      (imatch == -1) return -1;
     else if (!prtl)        return Index[imatch].done ? imatch : - 1;
     else                   return imatch;
@@ -150,8 +162,8 @@ static icol_t check_special_column(int tmatch, sds cname) {
         } else { // CHECK for DotNotation (e.g. "luaobj.x.y.z")
             r_tbl_t *rt  = &Tbl[tmatch];
             sds      cn  = sdsnewlen(cname, sd - cname);           // FREE 143
-            void    *ptr = dictFetchValue(rt->cdict, cn);
-            if (ptr) {
+            ci_t    *ci  = dictFetchValue(rt->cdict, cn);
+            if (ci) {
                 sd++; list *lo = listCreate();                     // FREE 144
                 while (*sd) {
                     char   *nextd = strchr(sd, '.');
@@ -161,7 +173,7 @@ static icol_t check_special_column(int tmatch, sds cname) {
                     if (!nextd) break; else sd = nextd + 1;
                 }
                 if (lo->len) { listNode *ln;
-                    ic.cmatch    = ((int)(long)ptr) - 1;
+                    ic.cmatch    = ci->cmatch - 1;
                     ic.nlo       = lo->len;
                     ic.lo        = malloc(sizeof(sds) * ic.nlo);   // FREE 146
                     int        i = 0;
@@ -178,10 +190,10 @@ static icol_t check_special_column(int tmatch, sds cname) {
     return ic; // MISS on special also
 }
 icol_t find_column_sds(int tmatch, sds cname) {
-    r_tbl_t *rt    = &Tbl[tmatch];
-    void    *ptr   = dictFetchValue(rt->cdict, cname);
-    if (ptr) { DECLARE_ICOL(ic, ((int)(long)ptr) - 1); return ic; }
-    else     return check_special_column(tmatch, cname);
+    r_tbl_t *rt = &Tbl[tmatch];
+    ci_t    *ci = dictFetchValue(rt->cdict, cname);
+    if (ci) { DECLARE_ICOL(ic, ci->cmatch - 1); return ic; }
+    else    return check_special_column(tmatch, cname);
 }
 icol_t find_column(int tmatch, char *c) {
     sds    cname = sdsnew(c);                                      // DEST 091

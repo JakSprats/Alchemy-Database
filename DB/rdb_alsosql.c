@@ -269,7 +269,10 @@ bool rdbLoadBT(FILE *fp) { //printf("rdbLoadBT\n");
             if (!(r = rdbLoadStringObject(fp)))                     return 0;
             sds       cname   = (sds)r->ptr;
             rt->col[i].name   = sdsdup(cname);                  // DEST 082
-            ASSERT_OK(dictAdd(rt->cdict, sdsdup(cname), VOIDINT (i + 1)));
+            ci_t *ci          = malloc(sizeof(ci_t));           // FREE 147
+            bzero(ci, sizeof(ci_t));
+            ci->cmatch        = i + 1;
+            ASSERT_OK(dictAdd(rt->cdict, sdsdup(cname), ci));
             decrRefCount(r);
             if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)     return 0;
             rt->col[i].type   = (uchar)u;

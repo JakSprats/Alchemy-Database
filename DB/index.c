@@ -59,6 +59,7 @@ ALL RIGHTS RESERVED
 
 extern r_tbl_t *Tbl;
 extern uint32   Ind_HW; extern dict *IndD; extern list *DropI;
+extern cli     *CurrClient;
 extern char    *Col_type_defs[];
 
 // GLOBALS
@@ -67,6 +68,7 @@ r_ind_t *Index = NULL;
 
 // PROTOTYPES
 static void destroy_mci(bt *ibtr, bt_n *n, int imatch, int lvl);
+void luaPushError(lua_State *lua, char *error);
 
 /* INDEX_MAINTENANCE INDEX_MAINTENANCE INDEX_MAINTENANCE INDEX_MAINTENANCE */
 #define DEBUG_IADDMCI_UNIQ                                               \
@@ -386,7 +388,7 @@ void delFromIndex(bt *btr, aobj *apk, void *rrow, int imatch, bool gost) {
             if (ri->obc.cmatch == -1) { // NORMAL
                 if (ri->lfu) acol.l = (ulong)(floor(log2((dbl)acol.l))) + 1;
                 iRem(ibtr, &acol, apk, NULL, imatch, gost);
-            } else {             // OBY
+            } else {                    // OBY
                 aobj ocol = getCol(btr, rrow, ri->obc, apk, ri->tmatch, NULL);
                 iRem(ibtr, &acol, apk, &ocol, imatch, gost); releaseAobj(&ocol);
             }
@@ -431,6 +433,7 @@ bool upIndex(cli *c, bt *ibtr, aobj *aopk,  aobj *ocol,
     if (!ocol->empty) iRem(ibtr, ocol, aopk, oocol, imatch, 0);
     return 1;
 }
+//TODO can this be sequential [addToIndex, delFromIndex] calls
 bool updateIndex(cli *c, bt *btr, aobj *aopk, void *orow, 
                                   aobj *anpk, void *nrow, int imatch) {
     r_ind_t *ri    = &Index[imatch];
@@ -541,9 +544,15 @@ int newIndex(cli    *c,     sds    iname, int  tmatch, icol_t ic,
     ri->dtype        = dtype ? dtype : rt->col[ic.cmatch].type;
     ri->ofst         = prtl ? 1: -1; // NOTE: PKs start at 1 (not 0)
     if (ri->icol.cmatch != -1) rt->col[ri->icol.cmatch].imatch = imatch;
-//TODO rt->ilist should be [icol]s
     if (!rt->ilist) rt->ilist  = listCreate();           // DESTROY 088
     listAddNodeTail(rt->ilist, VOIDINT imatch);
+    {
+        ci_t *ci = dictFetchValue(rt->cdict, rt->col[ri->icol.cmatch].name);
+        assert(ci);
+        if (!ci->ilist) ci->ilist = listCreate();        // FREE 148
+        listAddNodeTail(ci->ilist, VOIDINT imatch);
+        printf("ci.ilist.len: %d\n", ci->ilist->len);
+    }
     if (ri->luat) rt->nltrgr++;   // this table now has LUA TRIGGERS
     if (ri->clist) {
         listNode *ln; rt->nmci++; // this table now has MCI
@@ -553,8 +562,8 @@ int newIndex(cli    *c,     sds    iname, int  tmatch, icol_t ic,
         listIter *li = listGetIterator(ri->clist, AL_START_HEAD);
         while((ln = listNext(li))) { /* convert clist to bclist */
             icol_t *ic                = ln->value;
+            bzero(&ri->bclist[i], sizeof(icol_t)); //TODO FIXME populate "lo"
             ri->bclist[i].cmatch      = ic->cmatch;
-            ri->bclist[i].lo          = NULL; //TODO FIXME populate "lo"
             rt->col[ic->cmatch].indxd = 1; /* used in updateRow OVRWR */
             i++;
         } listReleaseIterator(li);
@@ -802,6 +811,102 @@ void dropIndex(redisClient *c) {
     if (rt->sk == ri->icol.cmatch) {addReply(c, shared.drop_ind_on_sk); return;}
     emptyIndex(imatch);
     addReply(c, shared.cone);
+}
+
+// LUA_INDEX_CALLBACKS LUA_INDEX_CALLBACKS LUA_INDEX_CALLBACKS
+#define DEBUG_LUA_INDEX_OP                                                \
+  printf("tname: %s cname: %s ename: %s\n", tname, cname, ename);         \
+  printf("apk:  "); dumpAobj(printf, &apk);                               \
+  printf("tmatch: %d cmatch: %d imatch: %d\n", tmatch, ic.cmatch, imatch);
+#define DEBUG_LUA_UPDATE_INDEX               \
+  DEBUG_LUA_INDEX_OP                         \
+  printf("ocol: "); dumpAobj(printf, &ocol); \
+  printf("ncol: "); dumpAobj(printf, &ncol);
+
+static void getTblColElmntFromLua(lua_State *lua, int stack_size,
+                                  sds *tname,  sds    *cname, sds *ename,
+                                  int *tmatch, icol_t *ic,    int *imatch) {
+    size_t len;
+    stack_size *= -1;
+    char   *s = (char *)lua_tolstring(lua, stack_size, &len); stack_size++;
+    *tname    = sdsnewlen(s, len);
+    *tmatch   = find_table(*tname);
+    s         = (char *)lua_tolstring(lua, stack_size, &len); stack_size++;
+    *cname    = sdsnewlen(s, len);
+    s         = (char *)lua_tolstring(lua, stack_size, &len); stack_size++;
+    *ename    = sdsnewlen(s, len); //TODO nested enames
+    *ic       = find_column_sds(*tmatch, *cname);
+    ic->nlo   = 1;                 //TODO nested enames
+    ic->lo    = malloc(sizeof(sds) * ic->nlo);   // FREE 146
+    ic->lo[0] = sdsdup(*ename);
+    *imatch   = find_index(*tmatch, *ic);
+}
+
+/* Usage: Lua: alchemySetIndex(tbl, col, pk, element, val); */
+int luaAlchemySetIndex(lua_State *lua) { //printf("SHA1\n");
+    int  ssize = 5;
+    int  argc  = lua_gettop(lua);
+    if (argc != ssize) {
+        luaPushError(lua, "alchemySetIndex(tbl, col, elmnt, pk, val)");
+        CLEAR_LUA_STACK return 1;
+    }
+    sds tname, cname, ename; icol_t ic; int tmatch, imatch;
+    getTblColElmntFromLua(lua, ssize, &tname,  &cname, &ename,
+                                      &tmatch, &ic,    &imatch);
+    uchar  pktyp = Tbl[tmatch].col[0].type;
+    uchar  ctype = Index[imatch].dtype;
+    aobj acol; initAobjFromLua(&acol, ctype); lua_pop(lua, 1);
+    aobj apk;  initAobjFromLua(&apk,  pktyp); CLEAR_LUA_STACK
+    sdsfree(tname); sdsfree(cname); sdsfree(ename);
+    bt    *ibtr  = getIBtr(imatch);
+    //TODO CurrClient? check error propogation
+    bool   ret   = iAdd(CurrClient, ibtr, &acol, &apk, pktyp, NULL, imatch);
+    lua_pushboolean(lua, ret); return 1;
+}
+/* Usage: Lua: alchemyUpdateIndex(tbl, col, pk, element, oldval, newval); */
+int luaAlchemyUpdateIndex(lua_State *lua) {
+    int  ssize = 6;
+    int  argc  = lua_gettop(lua);
+    if (argc != ssize) {
+        luaPushError(lua, "alchemyUpdateIndex(tbl, col, elmnt, pk, old, new)");
+        CLEAR_LUA_STACK return 1;
+    }
+    sds tname, cname, ename; icol_t ic; int tmatch, imatch;
+    getTblColElmntFromLua(lua, ssize, &tname,  &cname, &ename,
+                                      &tmatch, &ic,    &imatch);
+    uchar  pktyp = Tbl[tmatch].col[0].type;
+    uchar  ctype = Index[imatch].dtype;
+    aobj ncol; initAobjFromLua(&ncol, ctype); lua_pop(lua, 1);
+    aobj ocol; initAobjFromLua(&ocol, ctype); lua_pop(lua, 1);
+    aobj apk;  initAobjFromLua(&apk,  pktyp); CLEAR_LUA_STACK
+    //DEBUG_LUA_UPDATE_INDEX
+    sdsfree(tname); sdsfree(cname); sdsfree(ename);
+    bt    *ibtr  = getIBtr(imatch);
+    bool   ret   = upIndex(CurrClient, ibtr, &apk, &ocol, &apk, &ncol, pktyp,
+                           NULL, NULL, imatch);
+    lua_pushboolean(lua, ret); return 1;
+}
+/* Usage: Lua: alchemyDeleteIndex(tbl, col, pk, element); */
+int luaAlchemyDeleteIndex(lua_State *lua) {
+    printf("luaAlchemyDeleteIndex\n");
+    int  ssize = 5;
+    int  argc  = lua_gettop(lua);
+    if (argc != ssize) {
+        luaPushError(lua, "alchemyDeleteIndex(tbl, col, elmnt, pk, old)");
+        CLEAR_LUA_STACK return 1;
+    }
+    sds tname, cname, ename; icol_t ic; int tmatch, imatch;
+    getTblColElmntFromLua(lua, ssize, &tname,  &cname, &ename,
+                                      &tmatch, &ic,    &imatch);
+    uchar  pktyp = Tbl[tmatch].col[0].type;
+    uchar  ctype = Index[imatch].dtype;
+    aobj acol; initAobjFromLua(&acol, ctype); lua_pop(lua, 1);
+    aobj apk;  initAobjFromLua(&apk,  pktyp); CLEAR_LUA_STACK
+    sdsfree(tname); sdsfree(cname); sdsfree(ename);
+    bt    *ibtr  = getIBtr(imatch);
+    bool   gost  = 0; //TODO FIXME populate gost
+    iRem(ibtr, &acol, &apk, NULL, imatch, gost);
+    lua_pushboolean(lua, (int)1); return 1;
 }
 
 // DESC DESC DESC DESC DESC DESC DESC DESC DESC DESC DESC DESC DESC DESC DESC

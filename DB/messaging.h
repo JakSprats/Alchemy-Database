@@ -48,7 +48,4 @@ int luaGetFDForChannelCommand       (lua_State *lua);
 int luaUnsubscribeFDCommand         (lua_State *lua);
 int luaCloseFDCommand               (lua_State *lua);
 
-#define LUA_POP_WHOLE_STACK \
-  while(lua_type(lua, 1) != LUA_TNONE) { lua_pop(lua, 1); }
-
 #endif /* DXDB_MESSAGING_H */

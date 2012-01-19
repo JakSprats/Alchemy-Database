@@ -29,6 +29,11 @@ ALL RIGHTS RESERVED
 #include <assert.h>
 #include <strings.h>
 
+#include <lua.h>
+#include <lauxlib.h>
+#include <lualib.h>
+
+#include "find.h"
 #include "bt.h"
 #include "parser.h"
 #include "colparse.h"
@@ -37,6 +42,7 @@ ALL RIGHTS RESERVED
 #include "stream.h"
 
 extern r_tbl_t *Tbl;
+extern r_ind_t *Index;
 
 #define TWO_POW_7                 128
 #define TWO_POW_14              16384
@@ -245,64 +251,102 @@ int cr8Xcol(uint128 x, uint128 *col) { *col = x; return 16; }
 
 // LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ
 #define DEBUG_WRITE_LUAOBJ                                          \
-  printf("writeLuaObjCol: tname: %s cname: %s apk: %s Lua: (%s)\n", \
-          rt->name, rt->col[cmatch].name, pkbuf, luac); 
-
-#define WRITE_PK_TO_BUFF(apx)                                        \
-    r_tbl_t *rt = &Tbl[tmatch];                                      \
-    char pkbuf[64]; uchar pktyp = rt->col[0].type;                   \
-    if      C_IS_I(pktyp)   sprintf    (pkbuf, "%u",      apk->i);   \
-    else if C_IS_L(pktyp)   sprintf    (pkbuf, "%lu",     apk->l);   \
-    else if C_IS_X(pktyp) { SPRINTF_128(pkbuf, 64,        apk->x); } \
-    else if C_IS_F(pktyp)   sprintf    (pkbuf, FLOAT_FMT, apk->f);   \
-    else                    assert(!"WRITE_PK_TO_BUFF ERROR");
+  printf("writeLuaObjCol: tname: %s cname: %s Lua: (%s) apk: ", \
+          rt->name, rt->col[cmatch].name, luac); dumpAobj(printf, apk);
 
 static sds getLuaTblName(int tmatch, int cmatch) {
     r_tbl_t *rt = &Tbl[tmatch];
-    return sdscatprintf(sdsempty(), "%s_%s_%s", LUA_OBJ_TABLE,
+    return sdscatprintf(sdsempty(), "%s.%s.%s", LUA_OBJ_TABLE,
                                      rt->name, rt->col[cmatch].name);
 }
 void pushLuaVar(int tmatch, icol_t ic, aobj *apk) {
-    WRITE_PK_TO_BUFF(apk) 
-    sds tbl = getLuaTblName(tmatch, ic.cmatch); // FREE 133
-    lua_getglobal (server.lua, tbl);
-    lua_pushstring(server.lua, pkbuf);
-    lua_gettable  (server.lua, -2);
-    lua_remove    (server.lua, -2);
+    r_tbl_t *rt  = &Tbl[tmatch];
+    lua_getglobal (server.lua, LUA_OBJ_TABLE);
+    lua_pushstring(server.lua, rt->name);
+    lua_gettable  (server.lua, -2); lua_remove(server.lua, -2);
+    lua_pushstring(server.lua, rt->col[ic.cmatch].name);
+    lua_gettable  (server.lua, -2); lua_remove(server.lua, -2);
+    pushAobjLua(apk, apk->type);
+    lua_gettable  (server.lua, -2); lua_remove(server.lua, -2);
     if (ic.nlo) {
         for (uint32 i = 0; i < ic.nlo; i++) {
             printf("pushLuaVar: pushing: ic.lo[%d]: %s\n", i, ic.lo[i]);
             lua_pushstring(server.lua, ic.lo[i]);
-            lua_gettable  (server.lua, -2);
-            lua_remove    (server.lua, -2);
+            lua_gettable  (server.lua, -2); lua_remove    (server.lua, -2);
         }
     }
 }
-// the table ASQL_tbl_col[] should be in Lua's registry
+static bool createTableIfNonExistent(cli *c, int tmatch, int cmatch, sds tbl) {
+    r_tbl_t *rt  = &Tbl[tmatch];
+    bool     ret = 1;
+    CLEAR_LUA_STACK
+    lua_getglobal(server.lua, tbl);
+    int t = lua_type(server.lua, 1);
+    if (t == LUA_TNIL) { 
+        CLEAR_LUA_STACK
+        lua_getfield(server.lua, LUA_GLOBALSINDEX, "create_nested_table");
+        lua_pushstring(server.lua, LUA_OBJ_TABLE);
+        lua_pushstring(server.lua, rt->name);
+        lua_pushstring(server.lua, rt->col[cmatch].name);
+        int r = lua_pcall(server.lua, 3, 0, 0);
+        if (r) { ret = 0;
+            addReplyErrorFormat(c,
+                             "Error running script (create_nested_table): %s\n",
+                                lua_tostring(server.lua, -1));
+        }
+    } else assert (t == LUA_TTABLE);
+    CLEAR_LUA_STACK
+    return ret;
+}
 bool writeLuaObjCol(cli *c,    aobj   *apk, int tmatch, int cmatch,
                     char *val, uint32  vlen) {
     uint32  nlen;
-    char   *xcpd = new_unescaped(val, '\'', vlen, &nlen); if (!xcpd) return 1;
-    sds     luac = sdsnewlen(xcpd, nlen);
-    CLEAR_LUA_STACK WRITE_PK_TO_BUFF(apk)                    DEBUG_WRITE_LUAOBJ
-    sds     tbl  = getLuaTblName(tmatch, cmatch);          // FREE 133
-    lua_getglobal(server.lua, tbl);
-    int     t    = lua_type(server.lua, 1);
-    if (lua_type(server.lua, 1) == LUA_TNIL) { 
-        lua_newtable(server.lua); lua_setglobal(server.lua, tbl);
-    } else assert (t == LUA_TTABLE);
+    r_tbl_t *rt   = &Tbl[tmatch];
+    char    *xcpd = new_unescaped(val, '\'', vlen, &nlen); if (!xcpd) return 1;
+    sds      luac = sdsnewlen(xcpd, nlen);
+    CLEAR_LUA_STACK                                          DEBUG_WRITE_LUAOBJ
+    sds      tbl  = getLuaTblName(tmatch, cmatch);       // FREE 133
+    bool     r    = createTableIfNonExistent(c, tmatch, cmatch, tbl);
+    sdsfree(tbl); if (!r) return 0;                      // FREED 133
     CLEAR_LUA_STACK
     lua_getfield(server.lua, LUA_GLOBALSINDEX, "luaobj_assign");
-    lua_pushstring(server.lua, tbl);
-    sdsfree(tbl);                                        // FREED 133
-    lua_pushstring(server.lua, pkbuf);
+    lua_pushstring(server.lua, LUA_OBJ_TABLE);
+    lua_pushstring(server.lua, rt->name);
+    lua_pushstring(server.lua, rt->col[cmatch].name);
+    pushAobjLua(apk, apk->type);
     lua_pushstring(server.lua, luac);
-    int ret = lua_pcall(server.lua, 3, 0, 0);
+    int ret = lua_pcall(server.lua, 5, 0, 0);
     if (ret) {
         addReplyErrorFormat(c, "Error running script (luaobj_assign): %s\n",
-                                lua_tostring(server.lua, -1));
+                                lua_tostring(server.lua, -1)); CLEAR_LUA_STACK
+    } else { //TODO this makes N lua calls, it should make 1 and Lua loops
+        ci_t *ci = dictFetchValue(rt->cdict, rt->col[cmatch].name);
+        assert(ci);
+        printf("writeLuaObjCol: ci.ilist.len: %d\n", ci->ilist->len);
+        listIter *li = listGetIterator(ci->ilist, AL_START_HEAD); listNode *ln;
+        while((ln = listNext(li))) {
+            int      imatch = (int)(long)ln->value; 
+            r_ind_t *ri     = &Index[imatch];
+            printf("ci.ilist: imatch: %d lo[0]: %s\n", imatch, ri->icol.lo[0]);
+            CLEAR_LUA_STACK
+            lua_getfield(server.lua, LUA_GLOBALSINDEX, "indexLORfield");
+            lua_pushstring(server.lua, rt->name);
+            lua_pushstring(server.lua, rt->col[cmatch].name);
+            pushAobjLua(apk, apk->type);
+            int argc = 3;
+            for (uint32 i = 0; i < ri->icol.nlo; i++) {
+                lua_pushstring(server.lua, ri->icol.lo[i]); argc++;
+            }
+            ret = lua_pcall(server.lua, argc, 0, 0);
+            if (ret) {
+                addReplyErrorFormat(c, 
+                                  "Error running script (indexLORfield): %s\n",
+                                lua_tostring(server.lua, -1)); break;
+            }
+        } listReleaseIterator(li);
+        CLEAR_LUA_STACK
     }
-    CLEAR_LUA_STACK return ret ? 0 : 1;
+    return ret ? 0 : 1;
 }
 
 /* COMPARE COMPARE COMPARE COMPARE COMPARE COMPARE COMPARE COMPARE */

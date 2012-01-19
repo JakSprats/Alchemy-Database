@@ -3162,6 +3162,7 @@ function test_dirty_scion_iterators() {
 function pop_lua_sql_integration() {
   $CLI DROP   TABLE lo >/dev/null
   $CLI CREATE TABLE lo "(pk INT, fk LONG, lo LUAOBJ)";
+  $CLI CREATE INDEX i_lo_dn ON lo "(lo.age)" LONG;
   $CLI INSERT INTO lo VALUES "(1, 111, '{name = \'RUSS\', age=35}')";
   $CLI INSERT INTO lo VALUES "(2, 222, '{name = \'JIM\', age=55}')";
   $CLI INSERT INTO lo VALUES "(3, 333, '{name = \'Jane\', age=22}')"
@@ -3204,4 +3205,53 @@ function test_lua_sql_integration() {
   $CLI INSERT INTO lo VALUES "(11, 111111, 'coroutine.create(foo)')"
   $CLI INSERT INTO lo VALUES "(12, 121212, '{x=4;y=coroutine.create(foo);}')"
   $CLI DUMP lo
+}
+
+function test_dot_notation_index() { 
+  $CLI DROP   TABLE doc >/dev/null;
+  $CLI CREATE TABLE doc "(pk INT, fk LONG, lo LUAOBJ)";
+  $CLI CREATE INDEX i_doc_dn ON doc "(lo.age)" LONG;
+  $CLI INSERT INTO doc VALUES "(1, 111, '{name = \'RUSS\', age=35, group=2}')";
+  $CLI INSERT INTO doc VALUES "(2, 111, '{name = \'JANE\', age=25, group=2}')";
+
+  echo "2 rows (lo.age) [10-100]"
+  $CLI SELECT \* FROM doc WHERE "lo.age BETWEEN 10 AND 100"
+
+  $CLI CREATE INDEX i_doc_grp ON doc "(lo.group)" LONG;
+
+  echo "2 rows (lo.age) [=2]"
+  $CLI SELECT \* FROM doc WHERE "lo.group = 2"
+  echo "1 row (lo.age) [20-30]"
+  $CLI SELECT \* FROM doc WHERE "lo.age BETWEEN 20 AND 30"
+
+  $CLI INSERT INTO doc VALUES "(3, 111, '{name = \'KEN\', age=45, group=3}')";
+  echo "1 row (lo.age) [20-30]"
+  $CLI SELECT \* FROM doc WHERE "lo.age BETWEEN 20 AND 30"
+  echo "2 rows (lo.age) [30-50]"
+  $CLI SELECT \* FROM doc WHERE "lo.age BETWEEN 30 AND 50"
+  echo "2 rows (lo.group) [=2]"
+  $CLI SELECT \* FROM doc WHERE "lo.group = 2"
+
+
+  echo "1 row (lo.group) [=3]"
+  $CLI SELECT \* FROM doc WHERE "lo.group = 3"
+
+  echo print 35 in server
+  $CLI CONFIG ADD LUA "dump(ASQL.doc.lo[1].age)"
+  $CLI CONFIG ADD LUA "dump(ASQL.doc.lo[3].age)"
+  echo print 50 in server, trigger update
+  $CLI CONFIG ADD LUA "ASQL.doc.lo[3].age=55" 
+  echo print 50
+  $CLI CONFIG ADD LUA "dump(ASQL.doc.lo[3].age)"
+
+  echo "1 row (lo.age) [30-50]"
+  $CLI SELECT \* FROM doc WHERE "lo.age BETWEEN 30 AND 50"
+  echo "1 row (lo.age) [50-60]"
+  $CLI SELECT \* FROM doc WHERE "lo.age BETWEEN 50 AND 60"
+  $CLI CONFIG ADD LUA "ASQL.doc.lo[3].age=nil;"
+  echo "0 rows (lo.age) [50-60]"
+  $CLI SELECT \* FROM doc WHERE "lo.age BETWEEN 50 AND 60"
+  $CLI CONFIG ADD LUA "ASQL.doc.lo[3].age=52;"
+  echo "1 row (lo.age) [50-60]"
+  $CLI SELECT \* FROM doc WHERE "lo.age BETWEEN 50 AND 60"
 }

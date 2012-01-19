@@ -86,6 +86,10 @@ void  incrbyAobj  (aobj *a, ulong l);
 void  decrbyAobj  (aobj *a, ulong l);
 ulong subtractAobj(aobj *a, aobj *b);
 
+// LUA
+void pushAobjLua    (aobj *a, uchar ctype);
+void initAobjFromLua(aobj *a, uchar ctype);
+
 // DEBUG
 void dumpAobj(printer *prn, aobj *a);
 

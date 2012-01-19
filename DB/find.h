@@ -95,6 +95,6 @@ icol_t find_column_n  (int tmatch, char *column, int len);
 int get_all_cols(int tmatch, list *cmatchl, bool lru2, bool lfu2);
 
 #define DECLARE_ICOL(ic, cm) \
-  icol_t ic; ic.cmatch = cm; ic.nlo = 0; ic.lo = NULL; 
+  icol_t ic; bzero(&ic, sizeof(icol_t)); ic.cmatch = cm;
 
 #endif /* __FIND__H */ 

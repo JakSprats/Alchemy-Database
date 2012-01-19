@@ -180,9 +180,12 @@ typedef struct twoint {
   luasellistRelease(ls);
 
 #define CLEAR_LUA_STACK                                  \
-  while (lua_gettop(server.lua) > 0) lua_pop(server.lua, 1);
+  lua_settop(server.lua, 0);
 
 #define CURR_ERR_CREATE_OBJ \
   CurrError = createObject(REDIS_STRING, sdscatprintf(sdsempty(),
 
+#define ADD_REPLY_FAILED_LUA_STRING_CMD(cmd)                 \
+  addReplyErrorFormat(c, "FAILED: cmd: (%s) msg: (%s).",     \
+                         cmd, lua_tostring(server.lua, -1));
 #endif /* __ALSOSQL_COMMON__H */

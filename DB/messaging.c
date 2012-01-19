@@ -133,12 +133,12 @@ static void subscribeClient(cli *rc, robj **rargv, int arg_beg, int arg_end) {
 int luaSubscribeFDCommand(lua_State *lua) {
     int  argc   = lua_gettop(lua);
     if (argc < 2) {
-        LUA_POP_WHOLE_STACK
+        CLEAR_LUA_STACK
         luaPushError(lua, "Lua SubscribeCurrentFD(fd, channel)"); return 1;
     }
     int t = lua_type(lua, 1);
     if (t != LUA_TSTRING) {
-        LUA_POP_WHOLE_STACK
+        CLEAR_LUA_STACK
         luaPushError(lua, "Lua SubscribeCurrentFD(fd, channel)"); return 1;
     }
     size_t   len;
@@ -148,7 +148,7 @@ int luaSubscribeFDCommand(lua_State *lua) {
     lua_pop(lua, 1);
     t = lua_type(lua, 1);
     if (t != LUA_TNUMBER && t != LUA_TSTRING) {
-        LUA_POP_WHOLE_STACK
+        CLEAR_LUA_STACK
         luaPushError(lua, "Lua SubscribeCurrentFD(fd, channel)"); return 1;
     }
     int fd   = (t == LUA_TNUMBER) ? (int)(lolo)lua_tonumber(lua, -1) :
@@ -165,12 +165,12 @@ int luaSubscribeFDCommand(lua_State *lua) {
 int luaGetFDForChannelCommand(lua_State *lua) {
     int  argc   = lua_gettop(lua);
     if (argc != 1) {
-        LUA_POP_WHOLE_STACK
+        CLEAR_LUA_STACK
         luaPushError(lua, "Lua GetFDForChannel(channel)"); return 1;
     }
     int t = lua_type(lua, 1);
     if (t != LUA_TSTRING) {
-        LUA_POP_WHOLE_STACK
+        CLEAR_LUA_STACK
         luaPushError(lua, "Lua GetFDForChannel(channel)"); return 1;
     }
     size_t   len;
@@ -198,12 +198,12 @@ int luaGetFDForChannelCommand(lua_State *lua) {
 int luaUnsubscribeFDCommand(lua_State *lua) {
     int  argc   = lua_gettop(lua);
     if (argc != 2) {
-        LUA_POP_WHOLE_STACK
+        CLEAR_LUA_STACK
         luaPushError(lua, "Lua UnsubscribeCurrentFD(fd, channel)"); return 1;
     }
     int t = lua_type(lua, 1);
     if (t != LUA_TSTRING) {
-        LUA_POP_WHOLE_STACK
+        CLEAR_LUA_STACK
         luaPushError(lua, "Lua UnsubscribeCurrentFD(fd, channel)"); return 1;
     }
     size_t   len;
@@ -212,7 +212,7 @@ int luaUnsubscribeFDCommand(lua_State *lua) {
     lua_pop(lua, 1);
     t = lua_type(lua, 1);
     if (t != LUA_TNUMBER && t != LUA_TSTRING) {
-        LUA_POP_WHOLE_STACK
+        CLEAR_LUA_STACK
         luaPushError(lua, "Lua UnsubscribeCurrentFD(fd, channel)"); return 1;
     }
     int fd   = (t == LUA_TNUMBER) ? (int)(lolo)lua_tonumber(lua, -1) :
@@ -234,11 +234,11 @@ int luaUnsubscribeFDCommand(lua_State *lua) {
 int luaCloseFDCommand(lua_State *lua) {
     int  argc   = lua_gettop(lua);
     if (argc != 1) {
-        LUA_POP_WHOLE_STACK luaPushError(lua, "Lua CloseFD(fd)"); return 1;
+        CLEAR_LUA_STACK luaPushError(lua, "Lua CloseFD(fd)"); return 1;
     }
     int t = lua_type(lua, 1);
     if (t != LUA_TNUMBER && t != LUA_TSTRING) {
-        LUA_POP_WHOLE_STACK luaPushError(lua, "Lua CloseFD(fd)"); return 1;
+        CLEAR_LUA_STACK luaPushError(lua, "Lua CloseFD(fd)"); return 1;
     }
     size_t len;
     int    fd = (t == LUA_TNUMBER) ? (int)(lolo)lua_tonumber(lua, -1) :
@@ -252,12 +252,12 @@ int luaCloseFDCommand(lua_State *lua) {
 static int luaRemoteRPC(lua_State *lua, bool closer) {//printf("luaRemoeRPC\n");
     int  argc   = lua_gettop(lua);
     if (argc != 3) {
-        LUA_POP_WHOLE_STACK
+        CLEAR_LUA_STACK
         luaPushError(lua, "Lua RemoteMessage(ip, port, msg)"); return 1;
     }
     int t       = lua_type(lua, 1);
     if (t != LUA_TSTRING) {
-        LUA_POP_WHOLE_STACK
+        CLEAR_LUA_STACK
         luaPushError(lua, "Lua RemoteMessage(ip, port, msg)"); return 1;
     }
     size_t  len;
@@ -266,7 +266,7 @@ static int luaRemoteRPC(lua_State *lua, bool closer) {//printf("luaRemoeRPC\n");
     lua_pop(lua, 1);
     t           = lua_type(lua, 1);
     if (t != LUA_TNUMBER && t != LUA_TSTRING) {
-        LUA_POP_WHOLE_STACK
+        CLEAR_LUA_STACK
         luaPushError(lua, "Lua RemoteMessage(ip, port, msg)"); return 1;
     }
     int port = (t == LUA_TNUMBER) ? (int)(lolo)lua_tonumber(lua, -1) :
@@ -274,7 +274,7 @@ static int luaRemoteRPC(lua_State *lua, bool closer) {//printf("luaRemoeRPC\n");
     lua_pop(lua, 1);
     t           = lua_type(lua, 1);
     if (t != LUA_TSTRING) {
-        LUA_POP_WHOLE_STACK
+        CLEAR_LUA_STACK
         luaPushError(lua, "Lua RemoteMessage(ip, port, msg)"); return 1;
     }
     s           = (char *)lua_tolstring(lua, -1, &len);
@@ -298,7 +298,7 @@ int luaRemotePipeCommand(lua_State *lua) {
 int luaSQLCommand(lua_State *lua) { //printf("SQL\n");
     int   argc  = lua_gettop(lua);
     if (argc != 1 || lua_type(lua, 1) != LUA_TSTRING) {
-        LUA_POP_WHOLE_STACK
+        CLEAR_LUA_STACK
         luaPushError(lua, "Lua SQL() takes 1 string arg"); return 1;
     }
     size_t len;
@@ -318,7 +318,7 @@ int luaSQLCommand(lua_State *lua) { //printf("SQL\n");
 int luaConvertToRedisProtocolCommand(lua_State *lua) { //printf("Redisify()\n");
     int  argc  = lua_gettop(lua);
     if (argc < 1) {
-        LUA_POP_WHOLE_STACK
+        CLEAR_LUA_STACK
         luaPushError(lua, "Lua Redisify() takes 1+ string arg"); return 1;
     }
     sds *argv  = zmalloc(sizeof(sds) * argc);
@@ -354,7 +354,7 @@ int luaConvertToRedisProtocolCommand(lua_State *lua) { //printf("Redisify()\n");
 int luaSha1Command(lua_State *lua) { //printf("SHA1\n");
     int  argc  = lua_gettop(lua);
     if (argc < 1) {
-        LUA_POP_WHOLE_STACK
+        CLEAR_LUA_STACK
         luaPushError(lua, "Lua SHA1() takes 1+ string arg"); return 1;
     }
     sds tok = sdsempty();                                // DESTROY ME 083
@@ -384,7 +384,7 @@ int luaSha1Command(lua_State *lua) { //printf("SHA1\n");
 int luaIsConnectedToMaster(lua_State *lua) {
     int  argc  = lua_gettop(lua);
     if (argc) {
-        LUA_POP_WHOLE_STACK
+        CLEAR_LUA_STACK
         luaPushError(lua, "Lua IsConnectedToMaster() has NO args"); return 1;
     }
     bool ret = (server.replstate != REDIS_REPL_NONE &&

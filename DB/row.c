@@ -798,9 +798,12 @@ static void initLOFromCM(aobj *a, aobj *apk, icol_t ic, int tmatch, bool fs) {
     int t     = lua_type(server.lua, 1);
     printf("initLOFromCM: t: %d top: %d\n", t, lua_gettop(server.lua));
     if (t == LUA_TTABLE || t == LUA_TBOOLEAN || t == LUA_TNIL) {
-        CLEAR_LUA_STACK lua_getglobal(server.lua, "DataDumper");
-        pushLuaVar(tmatch, ic, apk);
-        int ret = lua_pcall(server.lua, 1, 1, 0);
+        r_tbl_t *rt   = &Tbl[tmatch];
+        CLEAR_LUA_STACK lua_getglobal(server.lua, "DataDumperLuaObj");
+        lua_pushstring(server.lua, rt->name);
+        lua_pushstring(server.lua, rt->col[ic.cmatch].name);
+        pushAobjLua(apk, apk->type);
+        int ret = lua_pcall(server.lua, 3, 1, 0);
         if (ret) {
             initAobjString(a, UnprintableLuaObject, lenUnplo);
         } else { // DataDumper only returns STRINGs
@@ -1273,22 +1276,9 @@ printf("pushColumnLua: a: "); dumpAobj(printf, a);
                                                                COL_TYPE_STRING);
         } else assert(!"pushColumnLua UNDEFINED TYPE");
 printf("pushColumnLua: acol: "); dumpAobj(printf, &acol);
-        //NOTE: C_IS_X() disallowed
-        if        C_IS_I(ctype) {
-            if (acol.empty) lua_pushnil     (server.lua);
-            else            lua_pushinteger (server.lua, acol.i);
-        } else if C_IS_L(ctype) {
-            if (acol.empty) lua_pushnil     (server.lua);
-            else            lua_pushinteger (server.lua, acol.l);
-        } else if C_IS_F(ctype) {
-            if (acol.empty) lua_pushnil    (server.lua);
-            else            lua_pushnumber (server.lua, acol.f);
-        } else if C_IS_S(ctype) {
-            if (acol.empty) lua_pushnil    (server.lua);
-            else            lua_pushlstring(server.lua, acol.s, acol.len);
-        } else assert(!"pushColumnLua ERROR");
-        releaseAobj(&acol);
+        pushAobjLua(&acol, ctype); releaseAobj(&acol);
 }
+
 static bool evalLuaExpr(cli *c,    int   cmatch, uc_t *uc, aobj *apk,
                        void *orow, aobj *aval) {
     r_tbl_t *rt = &Tbl[uc->tmatch];

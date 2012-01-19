@@ -101,8 +101,18 @@ static void init_ibtd(ibtd_t *d,    row_op *p,    range_t *g,     qr_t *q,
 
 // QUEUE_FOR_ORDER_BY_SORT QUEUE_FOR_ORDER_BY_SORT QUEUE_FOR_ORDER_BY_SORT
 bool icol_cmp(icol_t *ic1, icol_t *ic2) {
-    //TODO FIXME cmp "lo"
-    return ic1->cmatch == ic2->cmatch ? 0 : ic1->cmatch > ic2->cmatch ? 1 : -1;
+    bool ret =  ic1->cmatch == ic2->cmatch ? 0 :
+                ic1->cmatch >  ic2->cmatch ? 1 : -1;
+    if      (!ic1->nlo && !ic1->nlo) return ret;
+    else if (ic1->nlo  && ic1->nlo) { // Compare "lo"
+        if (ic1->nlo != ic2->nlo)    return ic1->nlo > ic2->nlo ? 1 : -1;
+        else {
+            for (uint32 i = 0; i < ic1->nlo; i++) {
+                bool r = strcmp(ic1->lo[i], ic2->lo[i]); if (r) return r;
+            }
+            return 0;
+        }
+    } else                           return ic1->nlo ? 1 : -1;
 }
 static bool mci_fk_queued(wob_t *wb, r_ind_t *ri) { //printf("mci_fk_queued\n");
     uint32_t i;

@@ -35,8 +35,13 @@ ALL RIGHTS RESERVED
 #include "xdb_common.h"
 #include "common.h"
 
+//TODO make ilist -> [ni, iarr[]]
+typedef struct ci_t {
+    int cmatch; list *ilist;
+} ci_t;
+
 typedef struct r_col {
-    sds   name; uchar type; bool  indxd; int imatch;
+    sds name; uchar type; bool  indxd; int imatch;
 } r_col_t;
 
 //TODO many of r_tbl's elements are optional -> bitmap + malloc(elements)
@@ -49,7 +54,7 @@ typedef struct r_tbl { // 131 bytes -> 136B
     int      col_count;
     r_col_t *col;
     list    *ilist;      // USAGE: list of this table's imatch's
-    dict    *cdict;      // USAGE: maps cname to cmatch
+    dict    *cdict;      // USAGE: maps cname to ci_t
     uint32   n_intr;     /* LRU: num ACCESSES in current LRU interval */
     uint32   lastts;     /* LRU: HIGH-LOAD: last timestamp of lru interval */
     uint32   nextts;     /* LRU: HIGH-LOAD: next timestamp of lru interval */

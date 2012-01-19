@@ -309,6 +309,14 @@ static bool initLua(cli *c) {
     lua_pushcfunction(server.lua, luaCloseFDCommand);
     lua_setglobal(server.lua, "CloseFD");
 
+    // LUA_INDEX_CALLBACKS
+    lua_pushcfunction(server.lua, luaAlchemySetIndex);
+    lua_setglobal(server.lua, "alchemySetIndex");
+    lua_pushcfunction(server.lua, luaAlchemyUpdateIndex);
+    lua_setglobal(server.lua, "alchemyUpdateIndex");
+    lua_pushcfunction(server.lua, luaAlchemyDeleteIndex);
+    lua_setglobal(server.lua, "alchemyDeleteIndex");
+
     if                    (!loadLuaHelperFile(c, LUA_INTERNAL_FILE)) return 0;
     if (LuaIncludeFile  && !loadLuaHelperFile(c, LuaIncludeFile))    return 0;
     else                                                             return 1;
@@ -529,18 +537,26 @@ int DXDB_configSetCommand(cli *c, robj *o) {
 static void configAddCommand(redisClient *c) {
     robj *o = getDecodedObject(c->argv[3]);
     if (!strcasecmp(c->argv[2]->ptr, "luafile")) {
+        CLEAR_LUA_STACK
         if (!loadLuaHelperFile(c, o->ptr)) {
             addReplySds(c,sdscatprintf(sdsempty(),
-               "-ERR problem adding lua helper file: %s\r\n", (char *)o->ptr));
+               "-ERR problem adding LuaFile: (%s) msg: (%s)\r\n",
+               (char *)o->ptr, lua_tostring(server.lua, -1)));
+            CLEAR_LUA_STACK
             decrRefCount(o); return;
         }
+        CLEAR_LUA_STACK
     } else if (!strcasecmp(c->argv[2]->ptr, "lua")) {
+        CLEAR_LUA_STACK
         if (luaL_dostring(server.lua, o->ptr)) {
             lua_pop(server.lua, 1);
             addReplySds(c,sdscatprintf(sdsempty(),
-               "-ERR problem adding lua: %s\r\n", (char *)o->ptr));
+               "-ERR problem adding lua: (%s) msg: (%s)\r\n",
+               (char *)o->ptr, lua_tostring(server.lua, -1)));
+            CLEAR_LUA_STACK
             decrRefCount(o); return;
         }
+        CLEAR_LUA_STACK
     }
     decrRefCount(o);
     addReply(c,shared.ok);

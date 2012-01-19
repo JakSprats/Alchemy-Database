@@ -140,8 +140,10 @@ static void newTable(cli *c, list *ctypes, list *cnames, int ccount, sds tname){
     for (int i = 0; i < rt->col_count; i++) {
         listNode *lnn     = listIndex(cnames, i);
         sds       cname   = (sds)lnn->value;
-        rt->col[i].name   = sdsdup(cname);                  // DEST 082
-        ASSERT_OK(dictAdd(rt->cdict, sdsdup(cname), VOIDINT (i + 1)));
+        rt->col[i].name   = sdsdup(cname);                      // DEST 082
+        ci_t *ci          = malloc(sizeof(ci_t)); bzero(ci, sizeof(ci_t));//F147
+        ci->cmatch        = i + 1;
+        ASSERT_OK(dictAdd(rt->cdict, sdsdup(cname), ci));
         listNode *lnt     = listIndex(ctypes, i);
         rt->col[i].type   = (uchar)(long)lnt->value;
         rt->col[i].imatch = -1;
@@ -150,7 +152,6 @@ static void newTable(cli *c, list *ctypes, list *cnames, int ccount, sds tname){
     ASSERT_OK(dictAdd(TblD, sdsdup(rt->name), VOIDINT(tmatch + 1)));
     /* BTREE implies an index on "tbl_pk_index" -> autogenerate */
     sds  pkname  = rt->col[0].name;
-printf("rtname: %s pkname: %s\n", rt->name, pkname);
     sds  iname   = P_SDS_EMT "%s_%s_%s", rt->name, pkname, INDEX_DELIM); //D073
     DECLARE_ICOL(pkic, 0) DECLARE_ICOL(ic, -1)
     newIndex(c, iname, tmatch, pkic, NULL, 0, 1, 0, NULL, ic, 0, 0, 0);
@@ -265,7 +266,10 @@ void addColumn(int tmatch, char *cname, int ctype) {
     rt->col[col_count].name   = sdsnew(cname);
     rt->col[col_count].type   = ctype;
     rt->col[col_count].imatch = -1;
-    ASSERT_OK(dictAdd(rt->cdict, sdsnew(cname), VOIDINT (col_count + 1)));
+    ci_t *ci                  = malloc(sizeof(ci_t));            // FREE 147
+    bzero(ci, sizeof(ci_t));
+    ci->cmatch                = col_count + 1;
+    ASSERT_OK(dictAdd(rt->cdict, sdsnew(cname), ci));
 }
 
 //TODO ALTER TABLE DROP *
