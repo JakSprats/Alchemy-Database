@@ -35,14 +35,14 @@ ALL RIGHTS RESERVED
 #define SQL_DELETE     1
 #define SQL_UPDATE     2
 
-#define PARSE_OK       0
-#define PARSE_GEN_ERR  1
-#define PARSE_NEST_ERR 2
+#define PRS_OK       0
+#define PRS_GEN_ERR  1
+#define PRS_NEST_ERR 2
 
-bool  parseWCEnd(cli *c, char *token, cswc_t *w, wob_t *wb);
   
 uchar parseWC      (cli *c, cswc_t *w, wob_t *wb, jb_t *jb, list *ijl);
 void  parseWCplusQO(cli *c, cswc_t *w, wob_t *wb, uchar sop);
+bool  parseWCEnd   (cli *c, char *token, cswc_t *w, wob_t *wb, bool isj);
 
 bool  doJoin     (cli *c, sds clist, sds tlist, sds wclause);
 bool  parseJoin  (cli *c, jb_t *jb, char *clist, char *tlist, char *wc);

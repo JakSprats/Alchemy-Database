@@ -534,24 +534,23 @@ int newIndex(cli    *c,     sds    iname, int  tmatch, icol_t ic,
     } else {
         imatch       = Num_indx; Num_indx++;
     }
-    r_tbl_t *rt      = &Tbl[tmatch];
-    r_ind_t *ri      = &Index[imatch]; bzero(ri, sizeof(r_ind_t));
-    ri->name         = sdsdup(iname);                     // FREE 055
-    ri->tmatch       = tmatch;        ri->icol   = ic;     ri->clist = clist;
-    ri->virt         = virt;          ri->cnstr  = cnstr;  ri->lru   = lru;
-    ri->luat         = luat  ? 1 : 0; ri->obc    = obc;    ri->lfu   = lfu;
-    ri->done         = prtl  ? 0 : 1; 
-    ri->dtype        = dtype ? dtype : rt->col[ic.cmatch].type;
-    ri->ofst         = prtl ? 1: -1; // NOTE: PKs start at 1 (not 0)
+    r_tbl_t *rt = &Tbl[tmatch];
+    r_ind_t *ri = &Index[imatch]; bzero(ri, sizeof(r_ind_t));
+    ri->name    = sdsdup(iname);                     // FREE 055
+    ri->tmatch  = tmatch;        ri->icol   = ic;     ri->clist = clist;
+    ri->virt    = virt;          ri->cnstr  = cnstr;  ri->lru   = lru;
+    ri->obc     = obc;           ri->lfu   = lfu;
+    ri->luat    = luat  ? 1     :  0;
+    ri->done    = prtl  ? 0     :  1; 
+    ri->dtype   = dtype ? dtype : rt->col[ic.cmatch].type;
+    ri->ofst    = prtl  ? 1     : -1; // NOTE: PKs start at 1 (not 0)
     if (ri->icol.cmatch != -1) rt->col[ri->icol.cmatch].imatch = imatch;
     if (!rt->ilist) rt->ilist  = listCreate();           // DESTROY 088
     listAddNodeTail(rt->ilist, VOIDINT imatch);
     {
         ci_t *ci = dictFetchValue(rt->cdict, rt->col[ri->icol.cmatch].name);
-        assert(ci);
         if (!ci->ilist) ci->ilist = listCreate();        // FREE 148
         listAddNodeTail(ci->ilist, VOIDINT imatch);
-        printf("ci.ilist.len: %d\n", ci->ilist->len);
     }
     if (ri->luat) rt->nltrgr++;   // this table now has LUA TRIGGERS
     if (ri->clist) {
@@ -562,15 +561,16 @@ int newIndex(cli    *c,     sds    iname, int  tmatch, icol_t ic,
         listIter *li = listGetIterator(ri->clist, AL_START_HEAD);
         while((ln = listNext(li))) { /* convert clist to bclist */
             icol_t *ic                = ln->value;
-            bzero(&ri->bclist[i], sizeof(icol_t)); //TODO FIXME populate "lo"
+            bzero(&ri->bclist[i], sizeof(icol_t));
+            //TODO FIXME populate "lo"
             ri->bclist[i].cmatch      = ic->cmatch;
+            //TODO need bclist[i].dtype = dtlist[i]
             rt->col[ic->cmatch].indxd = 1; /* used in updateRow OVRWR */
             i++;
         } listReleaseIterator(li);
     } else if (!ri->luat) rt->col[ri->icol.cmatch].indxd = 1;
     if      (virt)     rt->vimatch = imatch;
-    //TODO btr should not point to luat, have ri->luat
-    else if (ri->luat) {
+    else if (ri->luat) { //TODO btr should not point to luat, use ri->luat
         ri->btr = (bt *)luat; luat->num   = imatch;
     } else {
         uchar pktyp = rt->col[0].type;
@@ -698,7 +698,8 @@ static bool ICommit(cli *c,      sds   iname,   sds   tname, char  *cname,
         if (obc.cmatch == -1) { addReply(c, shared.indexobcerr);    return 0; }
         if (obc.cmatch ==  0) { addReply(c, shared.indexobcrpt);    return 0; }
         if (UNIQ(cnstr) || (!icol_cmp(&obc, &ic)) ||
-            !C_IS_NUM(rt->col[obc.cmatch].type) || !C_IS_NUM(rt->col[0].type)) {
+            !C_IS_NUM(rt->col[obc.cmatch].type)   ||
+            !C_IS_NUM(rt->col[0].type)) {
              addReply(c, shared.indexobcill);                       return 0;
         }
     }
@@ -737,10 +738,11 @@ void createIndex(redisClient *c) {
     if (!end || (*token != '(')) { addReply(c, shared.createsyntax);  return; }
     STACK_STRDUP(cname, (token + 1), (end - token - 1))
 
+    //TODO for MCI dtype must be dtlist
     uchar  dtype = COL_TYPE_NONE;
     char  *dn    = strchr(cname, '.');
     if (dn) {
-        if (c->argc < (coln + 1)) { addReply(c, shared.createsyntax); return; }
+        if (c->argc < (coln + 2)) { addReply(c, shared.createsyntax); return; }
         coln++;
         if (!parseColType(c, c->argv[coln]->ptr, &dtype)) {
             addReply(c, shared.createsyntax_dn);                      return;
@@ -749,13 +751,13 @@ void createIndex(redisClient *c) {
     sds  obcname = NULL;
     long limit   = -1;
     if (c->argc > (coln + 1)) {
-        if (strcasecmp(c->argv[coln + 1]->ptr, "ORDER")) 
-        if (c->argc == (coln + 4)) { // CREATE INDEX i_t ON t (fk) ORDER BY ts
+        if (strcasecmp(c->argv[coln + 1]->ptr, "ORDER") &&
+            (c->argc == (coln + 4))) { 
             if (strcasecmp(c->argv[coln + 1]->ptr, "ORDER") || 
                 strcasecmp(c->argv[coln + 2]->ptr, "BY")) {
                 addReply(c, shared.createsyntax);                     return;
             } else {
-                obcname = c->argv[coln + 3]->ptr; coln += 3;
+                coln += 3; obcname = c->argv[coln]->ptr;
             }
         }
         if (c->argc > (coln + 1)) {
@@ -771,11 +773,23 @@ void createIndex(redisClient *c) {
     }
     ICommit(c, iname, c->argv[targ]->ptr, cname, cnstr, obcname, limit, dtype);
 }
+static void emptyLuaObjectElementIndex(int imatch) {
+    r_ind_t *ri = &Index[imatch];
+    r_tbl_t *rt = &Tbl  [ri->tmatch];
+    CLEAR_LUA_STACK lua_getfield(server.lua, LUA_GLOBALSINDEX, "dropIndLuaEl");
+    lua_pushstring(server.lua, rt->name);
+    lua_pushstring(server.lua, rt->col[ri->icol.cmatch].name);
+    int argc = 2;
+    for (uint32 i = 0; i < ri->icol.nlo; i++) {
+        lua_pushstring(server.lua, ri->icol.lo[i]); argc++;
+    }
+    lua_pcall(server.lua, argc, 0, 0); CLEAR_LUA_STACK
+}
 void emptyIndex(int imatch) { //printf("emptyIndex: imatch: %d\n", imatch);
-    r_ind_t  *ri = &Index[imatch];
+    r_ind_t *ri = &Index[imatch];
     if (!ri->name) return; /* previously deleted */
     dictDelete(IndD, ri->name); sdsfree(ri->name);      /* DESTROYED 055 */
-    r_tbl_t  *rt = &Tbl[ri->tmatch];
+    r_tbl_t *rt = &Tbl[ri->tmatch];
     rt->col[ri->icol.cmatch].imatch = -1;
     if (ri->icol.cmatch != -1) {
         listNode *ln = listSearchKey(rt->ilist, VOIDINT imatch);
@@ -789,6 +803,10 @@ void emptyIndex(int imatch) { //printf("emptyIndex: imatch: %d\n", imatch);
     }
     // ri->lru & ri->lfu can NOT be dropped, so no need to change rt
     if (!ri->luat && ri->btr) destroy_index(ri->btr, ri->btr->root, imatch);
+    if (ri->icol.nlo) {
+        for (uint32 i = 0; i < ri->icol.nlo; i++) sdsfree(ri->icol.lo[i]);
+        emptyLuaObjectElementIndex(imatch);
+    }
     bzero(ri, sizeof(r_ind_t));
     ri->tmatch = ri->icol.cmatch = ri->obc.cmatch = ri->ofst = -1;
     ri->cnstr  = CONSTRAINT_NONE;

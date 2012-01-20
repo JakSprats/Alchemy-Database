@@ -139,7 +139,7 @@ void tscanCommand(redisClient *c) { //printf("tscanCommand\n");
     if (nowc && c->argc > 4) { /* "[ORDER BY or LIMIT] w/o WHERE CLAUSE */
         if (!strncasecmp(where, "ORDER ", 6) ||
             !strncasecmp(where, "LIMIT ", 6)) {
-            if (!parseWCEnd(c, c->argv[4]->ptr, &w, &wb))      goto tscan_end;
+            if (!parseWCEnd(c, c->argv[4]->ptr, &w, &wb, 0))   goto tscan_end;
             if (w.lvr) {
                 w.lvr = sdsnewlen(w.lvr, strlen(w.lvr));
                 if (!leftoverParsingReply(c, w.lvr))           goto tscan_end;
@@ -151,10 +151,10 @@ void tscanCommand(redisClient *c) { //printf("tscanCommand\n");
     }
     if (!nowc && !wb.nob) { /* WhereClause exists and no ORDER BY */
         uchar prs = parseWC(c, &w, &wb, NULL, NULL);
-        if (prs == PARSE_GEN_ERR) {
+        if (prs == PRS_GEN_ERR) {
             addReply(c, shared.scansyntax);                    goto tscan_end;
         }
-        if (prs == PARSE_NEST_ERR)                             goto tscan_end;
+        if (prs == PRS_NEST_ERR)                               goto tscan_end;
         if (!leftoverParsingReply(c, w.lvr))                   goto tscan_end;
     }
     if (cstar && wb.nob) { /* SCAN COUNT(*) ORDER BY -> stupid */

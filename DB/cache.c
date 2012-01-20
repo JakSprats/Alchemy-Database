@@ -53,36 +53,40 @@ void evictCommand(cli *c) {
     char    *tname = rem_backticks(c->argv[1]->ptr, &len); // Mysql compliant
     TABLE_CHECK_OR_REPLY(tname,)
     r_tbl_t *rt    = &Tbl[tmatch];
-    if (!rt->dirty) { addReply(c, shared.evictnotdirty); return; }
-    //TODO must be NUM PK & auto-inc
+    if (!rt->dirty)  { addReply(c, shared.evictnotdirty);             return; }
+    //TODO validate NUM_PK & auto_inc
     bt   *btr   = getBtr(tmatch);
-    if OTHER_BT(btr) { addReply(c, shared.evict_other); return; }
+    if OTHER_BT(btr) { addReply(c, shared.evict_other);               return; }
     if (!(C_IS_NUM(btr->s.ktype))) { addReply(c, shared.evict_other); return; }
     long  card   = 0;
     for (int i = 2; i < c->argc; i++) {
         sds    pk   = c->argv[i]->ptr;
-        printf("\n\nEVICT: tbl: %s[%d] PK: %s\n", tname, tmatch, pk);
         aobj apk; initAobjFromStr(&apk, pk, sdslen(pk), btr->s.ktype);
-        dwm_t  dwm  = btFindD(btr, &apk); releaseAobj(&apk);
+        printf("\n\nEVICT: tbl: %s[%d] apk: ", tname, tmatch);
+        dumpAobj(printf, &apk);
+        dwm_t  dwm  = btFindD(btr, &apk);
         void  *rrow = dwm.k;
         bool   gost = IS_GHOST(btr, rrow);
         printf("EVICT: K: %p MISS: %d gost: %d\n", dwm.k, dwm.miss, gost);
-        if (!rrow || dwm.miss || gost) continue;
+        if (!rrow || dwm.miss || gost)                          continue;
         MATCH_INDICES(tmatch)
         if (matches) { // EVICT indexes
-            for (int i = 0; i < matches; i++) {
-                r_ind_t *ri  = &Index[inds[i]];
+            for (int j = 0; j < matches; j++) {
+                r_ind_t *ri  = &Index[inds[j]];
                 if (ri->virt || ri->luat || ri->lru || ri->lfu) continue;
                 ulong    pre = ri->btr->msize;
-                evictFromIndex(btr, &apk, rrow, inds[i]);
+                evictFromIndex(btr, &apk, rrow, inds[j]);
                 rt->nebytes += (pre - ri->btr->msize);
-printf("BBBBBBBBBBBBBBBBBBBBBB: %d: ind: %d pre: %ld post: %ld nebytes: %ld\n", i, inds[i], pre, ri->btr->msize, rt->nebytes);
             }}
         printf("EVICT indexes done\n");
+        if (Tbl[tmatch].haslo) {
+            r_tbl_t *rt = &Tbl[tmatch];
+            for (int j = 0; j < rt->col_count; j++) {
+                if C_IS_O(rt->col[j].type) deleteLuaObj(tmatch, j, &apk);
+            }}
         ulong pre = rt->btr->msize;
         btEvict(btr, &apk); card++; releaseAobj(&apk);
         rt->nebytes += (pre - rt->btr->msize);
-printf("BBBBBBBBBBBBBBBBBBBBBB: DATA: pre: %ld post: %ld nebytes: %ld\n", pre, rt->btr->msize, rt->nebytes);
         printf("\n\n"); fflush(NULL);
     }
     rt->nerows += card;

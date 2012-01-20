@@ -87,6 +87,8 @@ void release_uc(uc_t *uc);
 
 int updateRow(cli *c, uc_t *uc, aobj *apk, void *orow);
 
+void deleteLuaObj(int tmatch, int cmatch, aobj *apk);
+
 // DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
 void dumpRow(printer *prn, bt *btr, void *rrow, aobj *apk, int tmatch);
 

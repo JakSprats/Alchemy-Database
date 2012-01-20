@@ -36,17 +36,24 @@ function ASQL_setter(rname, k, v)
   if (ok) then rawset(Stbl[p], k, v); end
 end
 
+function get_IelName(tbl, col)
+  return tbl .. '.' .. col;
+end
 function get_ASQL_data_slots(tbl, col, pk)
-  local ielname = tbl .. '.' .. col;
-  local pkname  = tbl .. '.' .. col .. '.pk_' .. pk;
+  local ielname = get_IelName(tbl, col)
+  local pkname  = ielname .. '.pk_' .. pk;
   return ielname, pkname;
 end
 
 -- NOTE this MUST not be called from Lua (only From C)
-function indexLORfield(tbl, col, pk, el)
-  local e, p = get_ASQL_data_slots(tbl, col, pk);
-  Iel [e][el] = true;
-  --print ('indexLORfield: ' .. e .. ' el: ' .. el); dump(Iel);
+function dropIndLuaEl(tbl, col, el)
+  local e = get_IelName(tbl, col); Iel[e][el] = nil;
+  print ('dropIndLuaEl: ' .. e .. ' el: ' .. el); dump(Iel);
+end
+-- NOTE this MUST not be called from Lua (only From C)
+function createIndLuaEl(tbl, col, el)
+  local e = get_IelName(tbl, col); Iel[e][el] = true;
+  print ('createIndLuaEl: ' .. e .. ' el: ' .. el); dump(Iel);
 end
 
 -- LUAOBJ_ASSIGNMENT LUAOBJ_ASSIGNMENT LUAOBJ_ASSIGNMENT LUAOBJ_ASSIGNMENT
@@ -58,7 +65,8 @@ end
 
 function luaobj_assign(asql, tbl, col, pk, luae) -- create Lua Object Row
   local e, p = get_ASQL_data_slots(tbl, col, pk);
-  Stbl[p] = {}; Iel[e] = {};
+  if (Iel[e] == nil) then Iel[e] = {}; end --TODO push into createIndLuaEl()
+  Stbl[p] = {}; 
   _G[asql][tbl][col][pk] = {};
   local cmd  = 'Stbl[\'' .. p .. '\'] = ' .. luae .. '; '; --print(cmd);
   assert(loadstring(cmd))()
@@ -67,6 +75,11 @@ function luaobj_assign(asql, tbl, col, pk, luae) -- create Lua Object Row
   _G[asql][tbl][col][pk]._pk  = pk;
   setmetatable(_G[asql][tbl][col][pk],
                {__index=Stbl[p], __newindex=ASQL_setter});
+end
+function delete_luaobj(asql, tbl, col, pk)
+  print ('delete_luaobj');
+  local e, p = get_ASQL_data_slots(tbl, col, pk);
+  _G[asql][tbl][col][pk] = nil; Stbl[p] = nil;
 end
 
 function DataDumperLuaObj(tbl, col, pk)

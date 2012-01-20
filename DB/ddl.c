@@ -146,6 +146,7 @@ static void newTable(cli *c, list *ctypes, list *cnames, int ccount, sds tname){
         ASSERT_OK(dictAdd(rt->cdict, sdsdup(cname), ci));
         listNode *lnt     = listIndex(ctypes, i);
         rt->col[i].type   = (uchar)(long)lnt->value;
+        if C_IS_O(rt->col[i].type) rt->haslo = 1;
         rt->col[i].imatch = -1;
     }
     rt->btr          = createDBT(rt->col[0].type, tmatch);

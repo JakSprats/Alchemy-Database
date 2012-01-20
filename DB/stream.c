@@ -319,32 +319,34 @@ bool writeLuaObjCol(cli *c,    aobj   *apk, int tmatch, int cmatch,
     if (ret) {
         addReplyErrorFormat(c, "Error running script (luaobj_assign): %s\n",
                                 lua_tostring(server.lua, -1)); CLEAR_LUA_STACK
-    } else { //TODO this makes N lua calls, it should make 1 and Lua loops
+    } else {
+        //TODO push this into createIndex (not called per luaobj_assign
+        //TODO this makes N lua calls, it should make 1 and Lua loops
         ci_t *ci = dictFetchValue(rt->cdict, rt->col[cmatch].name);
-        assert(ci);
-        printf("writeLuaObjCol: ci.ilist.len: %d\n", ci->ilist->len);
-        listIter *li = listGetIterator(ci->ilist, AL_START_HEAD); listNode *ln;
-        while((ln = listNext(li))) {
-            int      imatch = (int)(long)ln->value; 
-            r_ind_t *ri     = &Index[imatch];
-            printf("ci.ilist: imatch: %d lo[0]: %s\n", imatch, ri->icol.lo[0]);
-            CLEAR_LUA_STACK
-            lua_getfield(server.lua, LUA_GLOBALSINDEX, "indexLORfield");
-            lua_pushstring(server.lua, rt->name);
-            lua_pushstring(server.lua, rt->col[cmatch].name);
-            pushAobjLua(apk, apk->type);
-            int argc = 3;
-            for (uint32 i = 0; i < ri->icol.nlo; i++) {
-                lua_pushstring(server.lua, ri->icol.lo[i]); argc++;
-            }
-            ret = lua_pcall(server.lua, argc, 0, 0);
-            if (ret) {
-                addReplyErrorFormat(c, 
+        if (ci->ilist) { listNode *ln;
+            printf("writeLuaObjCol: ci.ilist.len: %d\n", ci->ilist->len);
+            listIter *li = listGetIterator(ci->ilist, AL_START_HEAD);
+            while((ln = listNext(li))) {
+                int      imatch = (int)(long)ln->value; 
+                r_ind_t *ri     = &Index[imatch];
+                printf("c.ilst: imtch: %d lo[0]: %s\n", imatch, ri->icol.lo[0]);
+                CLEAR_LUA_STACK
+                lua_getfield(server.lua, LUA_GLOBALSINDEX, "createIndLuaEl");
+                lua_pushstring(server.lua, rt->name);
+                lua_pushstring(server.lua, rt->col[cmatch].name);
+                int argc = 2;
+                for (uint32 i = 0; i < ri->icol.nlo; i++) {
+                    lua_pushstring(server.lua, ri->icol.lo[i]); argc++;
+                }
+                ret = lua_pcall(server.lua, argc, 0, 0);
+                if (ret) {
+                    addReplyErrorFormat(c, 
                                   "Error running script (indexLORfield): %s\n",
-                                lua_tostring(server.lua, -1)); break;
-            }
-        } listReleaseIterator(li);
-        CLEAR_LUA_STACK
+                                    lua_tostring(server.lua, -1)); break;
+                }
+            } listReleaseIterator(li);
+            CLEAR_LUA_STACK
+        }
     }
     return ret ? 0 : 1;
 }

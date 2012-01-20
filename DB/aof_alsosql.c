@@ -139,7 +139,7 @@ static bool SQLappendOnlyDumpTable(FILE *fp, bt *btr, int tmatch) {
     if (fwrite(s, strlen(s), 1, fp)         == 0) return 0;
     sdsfree(s);
     if (text_pk && SQL_AOF_MYSQL) { //MYSQL cant index "TEXT" columns directly
-        s = createAlterTableFulltext(rt, NULL, 0, 1);
+        s = createAlterTableFullText(rt, NULL, 0, 1);
         if (fwrite(s, strlen(s), 1, fp)     == 0) return 0;
         sdsfree(s);
     }

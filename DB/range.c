@@ -131,33 +131,33 @@ static void setRangeQueued(cswc_t *w, wob_t *wb, qr_t *q) {
     DECLARE_ICOL(ic,  -1)  if (ri && ri->icol.cmatch)      ic  = ri->icol;
     DECLARE_ICOL(obc,  0); if (ri && ri->obc.cmatch != -1) obc = ri->obc;
     if (virt) { // NOTE: there is no inner_desc possible (no inner loop)
-        q->pk_desc  = ((wb->nob >= 1) && (!wb->asc[0] && 
-                       icol_cmp(&wb->obc[0], &obc)));
-        q->pk       = ((wb->nob > 1) || (wb->nob == 1 &&
-                       !icol_cmp(&wb->obc[0], &obc)));
+        q->pk_desc  = ((wb->nob >= 1) && !wb->asc[0] && 
+                       !icol_cmp(&wb->obc[0], &obc));
+        q->pk       = ((wb->nob > 1) || 
+                       (wb->nob == 1 && icol_cmp(&wb->obc[0], &obc)));
         q->pk_lim   = (!q->pk    && (wb->lim  != -1));
         q->pk_lo    = (q->pk_lim && (wb->ofst != -1));
         q->xth      = q->pk_lo && !(w->flist && (wb->ofst != -1));
         q->qed      = q->pk;
     } else {
         q->fk_desc  = ((wb->nob >= 1) && (!wb->asc[0] && 
-                       icol_cmp(&wb->obc[0], &ic)));
+                       !icol_cmp(&wb->obc[0], &ic)));
         q->inr_desc = ((wb->nob == 1) && (!wb->asc[0] && 
-                       icol_cmp(&wb->obc[0], &obc))) ||
-                      (wb->nob > 1  && icol_cmp(&wb->obc[0], &ic) && // FK +
-                       (!wb->asc[1] && icol_cmp(&wb->obc[1], &obc)));// PK DESC
+                       !icol_cmp(&wb->obc[0], &obc))) ||
+                      (wb->nob > 1  && !icol_cmp(&wb->obc[0], &ic) && // FK +
+                       (!wb->asc[1] && !icol_cmp(&wb->obc[1], &obc)));// PK DESC
         if (w->wtype & SQL_SINGLE_FK_LKP) {
             if (ri->nclist) q->fk = mci_fk_queued(wb, ri);
             else { // NO-Q: [OBY FK|OBY PK|OBY FK,PK|OBY PK,FK]
                 q->fk = (wb->nob > 2) ||
                         (wb->nob == 1 &&  // [FK|OBY]
-                         !icol_cmp(&wb->obc[0], &ic) && 
-                         !icol_cmp(&wb->obc[0], &obc)) ||
+                         icol_cmp(&wb->obc[0], &ic) && 
+                         icol_cmp(&wb->obc[0], &obc)) ||
                         (wb->nob == 2 &&  // [FK,OBY]&[PK,OBY]
-                         (!(icol_cmp(&wb->obc[0], &ic)   && 
-                            icol_cmp(&wb->obc[1], &obc)) &&
-                          !(icol_cmp(&wb->obc[1], &ic)   && 
-                            icol_cmp(&wb->obc[0], &obc))));
+                         (!(!icol_cmp(&wb->obc[0], &ic)   && 
+                            !icol_cmp(&wb->obc[1], &obc)) &&
+                          !(!icol_cmp(&wb->obc[1], &ic)   && 
+                            !icol_cmp(&wb->obc[0], &obc))));
             }
         } else { // FK RANGE QUERY (clist[MCI] not yet supported)
             q->fk   = (wb->nob > 2) || // NoQ: [OBY FK| OBY FK,PK]
@@ -182,10 +182,9 @@ void setQueued(cswc_t *w, wob_t *wb, qr_t *q) { /* NOTE: NOT for JOINS */
 
 // OPERATIONS OPERATIONS OPERATIONS OPERATIONS OPERATIONS OPERATIONS OPERATIONS
 //TODO inline
-static bool pk_row_op(aobj  *apk, void *rrow, range_t *g,    row_op *p,
-                      qr_t *q,    long    *card) {
-    if (!(*p)(g, apk, rrow, q->qed, card)) return 0;
-    else                                   return 1;
+static bool pk_row_op(aobj *apk, void *rrow, range_t *g,    row_op *p,
+                      qr_t *q,   long *card) {
+    return (*p)(g, apk, rrow, q->qed, card);
 }
 static bool pk_op_l(aobj *apk, void *rrow, range_t *g,     row_op *p, wob_t *wb,
                     qr_t *q,   long *card, long    *loops, bool   *brkr) {
@@ -653,7 +652,6 @@ static bool select_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
         uchar ost = OR_NONE;
         robj *r = outputRow(g->co.btr, rrow,   g->se.qcols, g->se.ics,
                             apk,       tmatch, g->se.lfca,  &ost);
-printf("select_op: ost: %d\n", ost);
         if (ost == OR_ALLB_OK) { CurrUpdated++; return 1; }
         if (ost == OR_ALLB_NO)                  return 1;
         if (ost == OR_LUA_FAIL)                 return 0;
@@ -881,7 +879,7 @@ void dumpQueued(printer *prn, cswc_t *w, wob_t *wb, qr_t *q, bool debug) {
                          q->fk, q->fk_lim, q->fk_lo, q->fk_desc, q->xth);
         (*prn)("\t\tvirt: %d asc: %d obc: %d lim: %ld" \
                     " ofst: %ld indcol: %d inner_desc: %d -> qed: %d\n",
-            virt, wb->asc[0], wb->obc[0], wb->lim, wb->ofst,
+            virt, wb->asc[0], wb->obc[0].cmatch, wb->lim, wb->ofst,
             cmatch, q->inr_desc, q->qed);
         //TODO dump ri->icol.lo
     } else {

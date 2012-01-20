@@ -993,7 +993,19 @@ robj *outputRow(bt  *btr, void *rrow,   int     qcols, icol_t *ics,
 // DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW
 #define DEBUG_DELETE_ROW                                                   \
   printf("deleteRow: miss: %d rrow: %p gost: %d\n", dwm.miss, rrow, gost);
+#define DEBUG_DELETE_LUAOBJ                                                \
+  printf("LO: tname: %s cname: %s apk: ", rt->name, rt->col[cmatch].name); \
+  dumpAobj(printf, apk);
 
+void deleteLuaObj(int tmatch, int cmatch, aobj *apk) {
+    r_tbl_t *rt = &Tbl[tmatch]; DEBUG_DELETE_LUAOBJ
+    CLEAR_LUA_STACK lua_getfield(server.lua, LUA_GLOBALSINDEX, "delete_luaobj");
+    lua_pushstring(server.lua, LUA_OBJ_TABLE);
+    lua_pushstring(server.lua, rt->name);
+    lua_pushstring(server.lua, rt->col[cmatch].name);
+    pushAobjLua(apk, apk->type);
+    lua_pcall(server.lua, 4, 0, 0); CLEAR_LUA_STACK
+}
 int deleteRow(int tmatch, aobj *apk, int matches, int inds[]) {
 printf("\n\nSTART: deleteRow: key: "); dumpAobj(printf, apk);
     bt    *btr  = getBtr(tmatch);
@@ -1007,8 +1019,12 @@ printf("\n\nSTART: deleteRow: key: "); dumpAobj(printf, apk);
     if (matches && !dwm.miss) { // delete indexes
         for (int i = 0; i < matches; i++) {
             delFromIndex(btr, apk, rrow, inds[i], wgost);
-        }
-    }
+        }}
+    if (Tbl[tmatch].haslo) {
+        r_tbl_t *rt = &Tbl[tmatch];
+        for (int i = 0; i < rt->col_count; i++) {
+            if C_IS_O(rt->col[i].type) deleteLuaObj(tmatch, i, apk);
+        }}
     btDelete(btr, apk); server.dirty++; 
 printf("END: deleteRow\n\n\n"); fflush(NULL);
     return dwm.miss ? -1 : 1;
@@ -1083,7 +1099,7 @@ static bool aobj_sflag(aobj *a, uchar *sflag) {
 #define UP_ERR goto up_end;
 
 //TODO do an initial pass to determine OVWR (avoids per-col getCol() call)
-int updateRow(cli *c, uc_t *uc, aobj *apk, void *orow) {//printf("updateRow\n");
+int updateRow(cli *c, uc_t *uc, aobj *apk, void *orow) { //printf("upd8Row\n");
     r_tbl_t *rt     = &Tbl[uc->tmatch];
     INIT_CR(uc->tmatch, uc->ncols) /* holds values written to new ROW */
     INIT_COL_AVALS      /* merges values in update_string and vals from ROW */
@@ -1146,8 +1162,10 @@ int updateRow(cli *c, uc_t *uc, aobj *apk, void *orow) {//printf("updateRow\n");
             } else if C_IS_F(ctype) {
                 float f = atof(tkn);                 // OK: DELIM: [\ ,=,\0]
                 initAobjFloat(&avs[i], f);
-            } else if (C_IS_S(ctype) || C_IS_O(ctype)) { // ignore \' delims
+            } else if C_IS_S(ctype) { // ignore \' delims
                 initAobjString(&avs[i], uc->vals[i] + 1, uc->vlens[i] - 2);
+            } else if C_IS_O(ctype) {
+                initAobjString(&avs[i], uc->vals[i],     uc->vlens[i]);
             } else assert(!"updateRow parse ERROR");
             sdsfree(tkn); tkn = NULL;                    // FREED 137
         }

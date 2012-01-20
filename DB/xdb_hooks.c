@@ -753,7 +753,7 @@ sds DXDB_SQL_feedAppendOnlyFile(rcommand *cmd, robj **argv, int argc) {
                 if (C_IS_S(ctype)) {
                     int      imatch = find_index(tmatch, ic);
                     r_ind_t *ri     = &Index[imatch];
-                    return createAlterTableFulltext(rt, ri, ic.cmatch, 1);
+                    return createAlterTableFullText(rt, ri, ic.cmatch, 1);
                 }
             }
         }

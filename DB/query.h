@@ -68,15 +68,16 @@ typedef struct r_tbl { // 131 bytes -> 136B
     int      fk_otmatch; /* SK: Foreign-key other table's table */
     int      fk_ocmatch; /* SK: Foreign-key other table's column *///TODO icol_t
     bool     hashy;      /* HASH: adds "HASHABILITY" to the table */
-    uint32   tcols;      /* HASH: on INSERT num new columns */
-    sds     *tcnames;    /* HASH: on INSERT new column names */
-    uint32   ctcol;      /* HASH: on INSERT current new columns */
-    bool     lfu;        /* LFU: indexing on/off */
-    int      lfuc;       /* LFU: column containing LFU */
-    int      lfui;       /* LFU: index containing LFU */
-    bool     dirty;      /* ALTER TABLE [UN]SET DIRTY */
-    ulong    nerows;     /* Number of Evicted Rows */
-    ulong    nebytes;    /* Number of Evicted Bytes */
+    uint32   tcols;      /* HASH: on INSERT num new columns       */
+    sds     *tcnames;    /* HASH: on INSERT new column names      */
+    uint32   ctcol;      /* HASH: on INSERT current new columns   */
+    bool     lfu;        /* LFU: indexing on/off                  */
+    int      lfuc;       /* LFU: column containing LFU            */
+    int      lfui;       /* LFU: index containing LFU             */
+    bool     dirty;      /* ALTER TABLE [UN]SET DIRTY             */
+    ulong    nerows;     /* Number of Evicted Rows                */
+    ulong    nebytes;    /* Number of Evicted Bytes               */
+    bool     haslo;      /* Table has LuaObj-Columns              */
 } r_tbl_t;
 
 //TODO bool's can all be in a bitmap

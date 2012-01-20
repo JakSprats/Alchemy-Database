@@ -68,7 +68,7 @@ char *Col_type_defs[]       =
 #define SINGLE_LINE       "*1\r\n$%lu\r\n%s\r\n"
 #define EMPTY_DUMP2FILE   "-ERR: table is empty\r\n"
 
-sds createAlterTableFulltext(r_tbl_t *rt, r_ind_t *ri, int cmatch, bool nl) {
+sds createAlterTableFullText(r_tbl_t *rt, r_ind_t *ri, int cmatch, bool nl) {
     sds tname = rt->name;
     sds cname = rt->col[cmatch].name;
     sds iname = !cmatch ? P_SDS_EMT "%s_%s_%s", tname, cname, INDEX_DELIM) :
@@ -81,7 +81,7 @@ sds createAlterTableFulltext(r_tbl_t *rt, r_ind_t *ri, int cmatch, bool nl) {
 }
 sds dumpSQL_Index(char *mtname, r_tbl_t *rt, r_ind_t *ri, int tmatch, bool nl) {
     bool text_ind = C_IS_S(rt->col[ri->icol.cmatch].type);
-    if (text_ind) return createAlterTableFulltext(rt, ri, ri->icol.cmatch, nl);
+    if (text_ind) return createAlterTableFullText(rt, ri, ri->icol.cmatch, nl);
     else {
         char *cmd   = UNIQ(ri->cnstr) ? "CREATE UNIQUE INDEX" : "CREATE INDEX";
         char *tname = mtname ? mtname : rt->name;
@@ -152,7 +152,7 @@ void sqlDumpCommand(redisClient *c) {
         r->ptr = sdscat(r->ptr, ");");
         addReplyBulk(c, r); decrRefCount(r); card++;
         if (text_pk) {// MYSQL can not index "TEXT" columns directly w/o length
-            sds s = createAlterTableFulltext(rt, NULL, 0, 0);
+            sds s = createAlterTableFullText(rt, NULL, 0, 0);
             r     = createObject(REDIS_STRING, s);
             addReplyBulk(c, r); decrRefCount(r); card++;
         }
@@ -172,7 +172,7 @@ void sqlDumpCommand(redisClient *c) {
             }
         }
         btEntry *be;
-        bool   ok       = 1;
+        bool   ok      = 1;
         uchar  o_out   = OutputMode;
         OutputMode     = OUTPUT_NORMAL; /* REDIS output not OK here */
         list  *cmatchl = listCreate();
@@ -210,7 +210,6 @@ void sqlDumpCommand(redisClient *c) {
         OutputMode = o_out; listRelease(cmatchl);
         if (!ok) return;
     }
-
     if (toms) { // for MYSQL: Dump the table's indexes also
         robj *r;
         MATCH_INDICES(tmatch)
@@ -278,6 +277,16 @@ static void outputPartialIndex(int tmatch, int imatch, robj *r) {
                                        ri->ofst, rt->btr->numkeys, perc);
 }
 
+static sds getLOIlist(int imatch) {
+    r_ind_t *ri = &Index[imatch];
+    sds      s  = sdsnew("ELEMENT: (");
+    for (uint32 i = 0; i < ri->icol.nlo; i++) {
+        if (i) s = sdscatlen(s, ".", 1);
+        s = sdscatlen(s, ri->icol.lo[i], sdslen(ri->icol.lo[i]));
+    }
+    sdscatlen(s, ")", 1);
+    return s;
+}
 void descCommand(redisClient *c) {
     TABLE_CHECK_OR_REPLY(c->argv[1]->ptr,)
     void    *rlen = addDeferredMultiBulkLength(c);
@@ -294,11 +303,10 @@ void descCommand(redisClient *c) {
             r->ptr = sdscatprintf(r->ptr, " - FOREIGN KEY REFERENCES %s (%s)",
                                   ort->name, ort->col[rt->fk_ocmatch].name);
         }
-        if (rt->ilist) {
-            listNode *ln; 
+        if (rt->ilist) { listNode *ln; 
             int       loops = 0;
             listIter *li    = listGetIterator(rt->ilist, AL_START_HEAD);
-            while((ln = listNext(li)) != NULL) {
+            while((ln = listNext(li))) {
                 int imatch = (int)(long)ln->value;
                 r_ind_t *ri      = &Index[imatch];
                 if (ri->icol.cmatch != j) continue;
@@ -306,9 +314,9 @@ void descCommand(redisClient *c) {
                 if (!ri->virt && !ri->luat) {
                     bt *ibtr = getIBtr(imatch); isize = ibtr->msize;
                 }
-                sds idesc = NULL;
-                if (ri->clist) idesc = getMCIlist(ri->clist, tmatch);/*DEST051*/
-                //TODO add in dot-notation index info
+                sds idesc = NULL; // DEST 051
+                if      (ri->clist)    idesc = getMCIlist(ri->clist, tmatch);
+                else if (ri->icol.nlo) idesc = getLOIlist(imatch);
                 r->ptr = sdscatprintf(r->ptr, 
                                       "%s%s%sINDEX: %s%s%s [BYTES: %lld]",
                                         loops     ? ", "       : " - ", 

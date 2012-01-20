@@ -177,6 +177,14 @@ void explainCommand(redisClient *c) {
 
 // DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
 // DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
+void dumpIC(printer *prn, icol_t *ic) {
+    (*prn)("IC: cmatch: %d nlo: %u\n", ic->cmatch, ic->nlo);
+    if (ic->nlo) {
+        for (uint32 i = 0; i < ic->nlo; i++) {
+            (*prn)("\t\tlo[%d]: %s\n", i, ic->lo[i]);
+        }
+    }
+}
 void dumpRobj(printer *prn, robj *r, char *smsg, char *dmsg) {
     if (!r) return;
     if (r->encoding == REDIS_ENCODING_RAW) (*prn)(smsg, r->ptr);

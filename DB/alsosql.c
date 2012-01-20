@@ -552,6 +552,7 @@ static bool assignMisses(cli   *c,      int     tmatch,   int   ncols,
                     if (getExprType(vals[i], vlens[i]) == UETYPE_U128) simp = 1;
                 } else if C_IS_F(ctype) {
                     if (getExprType(vals[i], vlens[i]) == UETYPE_FLT)  simp = 1;
+                } else if (C_IS_O(ctype) && ic.nlo)        {           simp = 1;
                 } else if (C_IS_S(ctype) || C_IS_O(ctype)) {
                     if (is_text(vals[i], vlens[i]))                    simp = 1;
                 }

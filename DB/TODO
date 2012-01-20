@@ -1,4 +1,11 @@
 
+LUAOBJ
+  1.) rdbLoad/rdbSave lua-objects [use DataDumper & eval()]
+      |-> can be done AFTER dumpBT
+  8.) UPDATE dot-notation directly (UPDATE tbl SET doc.age = 45)
+  B.) dot-notation CompoundIndexes (plus mixed)                  -- list[dtype]
+  D.) LuaObject Input/Output always a table (e.g. '{....}')
+
 PROTOCOL
   1.) First line of SQL SELECTs should be comma-delimited list of columns
   2.) ADD "SELECT col AS othername"
@@ -11,18 +18,6 @@ CACHE:
   0.) rdbSave/Load DirtyStream
   1.) specify "PRIMARY KEY AUTO INCREMENT" in "CREATE TABLE" declaration
   3.) slab allocator for the myriad of different btree-node sizes
-
-LUAOBJ
-  1.) rdbLoad/rdbSave lua-objects [use DataDumper & eval()]
-      |-> can be done AFTER dumpBT
-  8.) UPDATE dot-notation directly (UPDATE tbl SET doc.age = 45)
-  6.) ORDER BY "lo.age"
-  7.) OBI with & on dot-notation
-  B.) dot-notation CompoundIndexes (plus mixed)
-  D.) LuaObject Input/Output always a table (e.g. '{....}')
-  9.) On deleteRow() set Stbl[][] = nil
-  A.) gosting LuaObj -> propogates to luaAlchemyDeleteIndex
-  5.) DESC info on multiple indexes on one LO
 
 MISC:
   1.) LOAD DATA FROM INFILE ... 1st rev as Lua routine reading in CSV file

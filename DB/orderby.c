@@ -34,6 +34,7 @@ ALL RIGHTS RESERVED
 #include "redis.h"
 #include "adlist.h"
 
+#include "stream.h"
 #include "lru.h"
 #include "lfu.h"
 #include "row.h"
@@ -211,27 +212,41 @@ printf("OB LE: i: %d fname: %s ncols: %d\n", i, wb->le[i].fname, wb->le[i].ncols
     }
     ob->keys[i] = key; CLEAR_LUA_STACK return ret;
 }
-bool assignObKey(wob_t *wb, bt     *btr, void *rrow,   aobj *apk,
+bool assignObKey(wob_t *wb, bt     *btr, void *rrow,  aobj *apk,
                  int    i,  obsl_t *ob,  int   tmatch) {
     if (wb->le[i].yes) {
         return assignObKeyLuaFunc(wb, btr, rrow, apk, i, ob, tmatch);
     }
-    void  *key;
+    void  *key; bool ret = 1;
     uchar  ctype = Tbl[wb->obt[i]].col[wb->obc[i].cmatch].type;
     //TODO this is a repetitive getCol() call
     aobj   ao    = getCol(btr, rrow, wb->obc[i], apk, wb->obt[i], NULL);
-    if      C_IS_I(ctype) key = VOIDINT ao.i;
-    else if C_IS_L(ctype) key = (void *)ao.l;
-    else if C_IS_X(ctype) { uint128 *x = malloc(16); *x = ao.x; key = x; }
-    else if C_IS_F(ctype) memcpy(&(key), &ao.f, FSIZE);
-    else if C_IS_S(ctype) {
+    if        C_IS_I(ctype) key = VOIDINT ao.i;
+      else if C_IS_L(ctype) key = (void *)ao.l;
+      else if C_IS_X(ctype) { uint128 *x = malloc(16); *x = ao.x; key = x; }
+      else if C_IS_F(ctype) memcpy(&(key), &ao.f, FSIZE);
+      else if C_IS_S(ctype) {
         char *s   = malloc(ao.len + 1);                  /* FREE ME 003 */
         memcpy(s, ao.s, ao.len); /* memcpy needed ao.s maybe decoded(freeme) */
         s[ao.len] = '\0';   key       = s;
+    } else if (C_IS_O(ctype) && wb->obc[i].nlo) {
+        CLEAR_LUA_STACK pushLuaVar(tmatch, wb->obc[i], apk);
+        if        (lua_isnumber (server.lua, -1)) {
+            key = VOIDINT lua_tonumber (server.lua, -1);
+        } else if (lua_isboolean(server.lua, -1)) {
+            key = VOIDINT lua_toboolean(server.lua, -1);
+        } else if (lua_isnil    (server.lua, -1)) {
+            key = VOIDINT 0;
+        } else {
+            CURR_ERR_CREATE_OBJ
+            "-ERR: ORDER BY DOT-NOTATION: %s [CARD: %ld]\r\n",
+             "unsupported return type", CurrCard)); ret = 0;
+        }
+        CLEAR_LUA_STACK
     } else assert(!"assignObKey ERROR");
     releaseAobj(&ao);
     ob->keys[i] = key;
-    return 1;
+    return ret;
 }
 /* Range Query API */
 bool addRow2OBList(list   *ll,    wob_t  *wb,   bt     *btr, void  *r,

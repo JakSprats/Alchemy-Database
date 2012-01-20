@@ -142,7 +142,7 @@ static bool setOffsetReply(cli *c, wob_t *wb, char *nextp) {
 
 /* SYNTAX: ORDER BY {col [DESC],}+ [LIMIT n [OFFSET m]] */
 static bool parseOBYcol(cli   *c,  char  **token, int   tmatch,
-                        wob_t *wb, char  **fin,   bool *more) {
+                        wob_t *wb, char  **fin,   bool *more,   bool isj) {
 printf("parseOBYcol wb->nob: %d tmatch: %d token: %s\n", wb->nob, tmatch, *token);
     wb->le[wb->nob].yes = 0;
     char *nextc = get_next_nonparaned_comma(*token);
@@ -183,7 +183,7 @@ printf("parseOBYcol wb->nob: %d tmatch: %d token: %s\n", wb->nob, tmatch, *token
     } 
     DECLARE_ICOL(ic, -1)
     wb->obt[wb->nob] = tmatch; wb->obc[wb->nob] = ic; // Simple Parse DEFAULT
-    if (join) { // JOIN COLUMN [tbl.col]
+    if (isj) { // JOIN COLUMN [tbl.col]
         if ((wb->obt[wb->nob] = find_table_n(t2, join)) == -1) {
             addReply(c, shared.join_order_by_tbl); sdsfree(t2);      return 0;
         } else {
@@ -201,7 +201,8 @@ printf("parseOBYcol wb->nob: %d tmatch: %d token: %s\n", wb->nob, tmatch, *token
         }
     }
     if (wb->obt[wb->nob] != -1 && wb->obc[wb->nob].cmatch != -1 &&
-        C_IS_O(Tbl[wb->obt[wb->nob]].col[wb->obc[wb->nob].cmatch].type)) {
+        C_IS_O(Tbl[wb->obt[wb->nob]].col[wb->obc[wb->nob].cmatch].type) &&
+        !wb->obc[wb->nob].nlo) {
             addReply(c, shared.order_by_luaobj);     sdsfree(t2);    return 0;
     }
     wb->nob++; sdsfree(t2); return 1;
@@ -226,26 +227,26 @@ static bool parseLimit(cli *c, char *token, wob_t *wb, char **fin) {
     if (token) *fin = token; /* still something to parse */
     return 1;
 }
-static bool parseOrderBy(cli *c, char *by, int tmatch, wob_t *wb, char **fin) {
+static bool parseOrderBy(cli  *c, char *by, int tmatch, wob_t *wb, char **fin,
+                         bool  isj) {
     if (strncasecmp(by, "BY ", 3)) {
-        addReply(c, shared.wc_orderby_no_by);                    return 0;
+        addReply(c, shared.wc_orderby_no_by);                         return 0;
     }
     char *token = next_token(by);
-    if (!token) { addReply(c, shared.wc_orderby_no_by);          return 0; }
-
+    if (!token) { addReply(c, shared.wc_orderby_no_by);               return 0;}
     if (strncasecmp(token, "LIMIT ", 6)) {
         bool more = 1; /* more OBC to parse */
         while (more) {
             if (wb->nob == MAX_ORDER_BY_COLS) {
-                addReply(c, shared.toomany_nob);                 return 0;
+                addReply(c, shared.toomany_nob);                      return 0;
             }
-            if (!parseOBYcol(c, &token, tmatch, wb, fin, &more)) return 0;
+            if (!parseOBYcol(c, &token, tmatch, wb, fin, &more, isj)) return 0;
         }
     }
     if (token) return parseLimit(c, token, wb, fin);
     return 1;
 }
-bool parseWCEnd(redisClient *c, char *token, cswc_t *w, wob_t *wb) {
+bool parseWCEnd(redisClient *c, char *token, cswc_t *w, wob_t *wb, bool isj) {
     w->lvr         = token;   /* assume parse error */
     if (!strncasecmp(token, "ORDER ", 6)) {
         char *by      = next_token(token);
@@ -253,7 +254,7 @@ bool parseWCEnd(redisClient *c, char *token, cswc_t *w, wob_t *wb) {
             w->lvr = NULL; addReply(c, shared.wc_orderby_no_by); return 0;
         }
         char *lfin    = NULL;
-        if (!parseOrderBy(c, by, w->wf.tmatch, wb, &lfin)) {
+        if (!parseOrderBy(c, by, w->wf.tmatch, wb, &lfin, isj)) {
             w->lvr = NULL;                                       return 0;
         }
         if (lfin) token     = lfin;
@@ -416,10 +417,10 @@ static uchar pWC_checkLuaFunc(cli *c, f_t *flt, sds tkn, char **fin, robj *ro) {
     else          { s = sdsnew   (tkn);              *fin = NULL; }
     bool ret = checkOrCr8LFunc(flt->tmatch, &flt->le, s, 1);
     sdsfree(s);
-    if (ret) { flt->op = LFUNC;    return PARSE_OK;       }
+    if (ret) { flt->op = LFUNC;    return PRS_OK;       }
     else     {
-        if (ro) { addReply(c, ro); return PARSE_NEST_ERR; }
-        else                       return PARSE_GEN_ERR;
+        if (ro) { addReply(c, ro); return PRS_NEST_ERR; }
+        else                       return PRS_GEN_ERR;
     }
 }
 #define PARSE_WC_CHECK_LUA                       \
@@ -474,7 +475,7 @@ static uchar parseWCTokRelation(cli *c,   cswc_t *w,   sds    tkn, char **fin,
             flt->op = RQ;
         } else                                            PARSE_WC_CHECK_LUA
     }
-    return PARSE_OK;
+    return PRS_OK;
 }
 
 static bool addIndexes2Join(redisClient *c, f_t *flt, jb_t *jb, list *ijl) {
@@ -526,7 +527,7 @@ uchar parseWC(cli *c, cswc_t *w, wob_t *wb, jb_t *jb, list *ijl) {
         if (token) sdsfree(token);
         token = sdsnewlen(line, tlen);
         prs   = parseWCTokRelation(c, w, token, &tfin, flt, isj, ttype);
-        if (prs != PARSE_OK)                          goto p_wd_err;
+        if (prs != PRS_OK)                          goto p_wd_err;
         if (jb) {             /* JOINs */
             if (!addIndexes2Join(c, flt, jb, ijl))    goto p_wd_err;
             flt = NULL; // means do not destroy below
@@ -544,7 +545,7 @@ uchar parseWC(cli *c, cswc_t *w, wob_t *wb, jb_t *jb, list *ijl) {
             line = tfin;
             SKIP_SPACES(line)
             if (!*line)   break;
-            if (!parseWCEnd(c, line, w, wb)) { prs = PARSE_NEST_ERR; break; }
+            if (!parseWCEnd(c, line, w, wb, isj)) { prs = PRS_NEST_ERR; break; }
             break;
         }
     } //dumpW(printf, w);
@@ -564,8 +565,8 @@ p_wd_err:
 /* RANGE_QUERY RANGE_QUERY RANGE_QUERY RANGE_QUERY RANGE_QUERY RANGE_QUERY */
 void parseWCplusQO(cli *c, cswc_t *w, wob_t *wb, uchar sop) {
     uchar prs = parseWC(c, w, wb, NULL, NULL);
-    if (prs == PARSE_GEN_ERR)              genericParseError(c, sop);
-    if (prs != PARSE_OK)                   return;
+    if (prs == PRS_GEN_ERR)              genericParseError(c, sop);
+    if (prs != PRS_OK)                   return;
     if (!optimiseRangeQueryPlan(c, w, wb)) return;
 }
 
@@ -606,8 +607,8 @@ static bool joinParseWC(redisClient *c, jb_t *jb, char *wc) {
         memcpy(&jb->ij[iij], lnij->value, sizeof(ijp_t)); iij++;
     } listReleaseIterator(liij);
     listRelease(ijl);
-    if (prs == PARSE_GEN_ERR) genericParseError(c, SQL_SELECT);
-    if (prs != PARSE_OK) goto j_p_wc_end;
+    if (prs == PRS_GEN_ERR) genericParseError(c, SQL_SELECT);
+    if (prs != PRS_OK) goto j_p_wc_end;
     if (w.lvr) {
         jb->lvr = sdsdup(w.lvr);                 goto j_p_wc_end; // DEST ME 050
     }
