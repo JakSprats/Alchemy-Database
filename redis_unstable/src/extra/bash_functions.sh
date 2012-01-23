@@ -3239,21 +3239,19 @@ function test_dot_notation_index() {
   echo "1 row (lo.group) [=3]"
   $CLI SELECT \* FROM doc WHERE "lo.group = 3"
 
-  echo print 35 in server
-  $CLI CONFIG ADD LUA "dump(ASQL.doc.lo[1].age)"
-  $CLI CONFIG ADD LUA "dump(ASQL.doc.lo[3].age)"
-  echo print 50 in server, trigger update
+  echo "SET [pk=3].age to 55"
   $CLI CONFIG ADD LUA "ASQL.doc.lo[3].age=55" 
-  echo print 50
-  $CLI CONFIG ADD LUA "dump(ASQL.doc.lo[3].age)"
 
   echo "1 row (lo.age) [30-50]"
   $CLI SELECT \* FROM doc WHERE "lo.age BETWEEN 30 AND 50"
   echo "1 row (lo.age) [50-60]"
   $CLI SELECT \* FROM doc WHERE "lo.age BETWEEN 50 AND 60"
+
+  echo "SET [pk=3].age to NIL"
   $CLI CONFIG ADD LUA "ASQL.doc.lo[3].age=nil;"
   echo "0 rows (lo.age) [50-60]"
   $CLI SELECT \* FROM doc WHERE "lo.age BETWEEN 50 AND 60"
+  echo "SET [pk=3].age to 52"
   $CLI CONFIG ADD LUA "ASQL.doc.lo[3].age=52;"
   echo "1 row (lo.age) [50-60]"
   $CLI SELECT \* FROM doc WHERE "lo.age BETWEEN 50 AND 60"

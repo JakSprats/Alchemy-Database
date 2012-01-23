@@ -116,6 +116,23 @@ static bool validateCreateTableCnames(cli *c, list *cnames) {
     } listReleaseIterator(li);
     return 1;
 }
+static bool createLuaObjectBaseTable(cli *c, int tmatch, int cmatch) {
+    r_tbl_t *rt  = &Tbl[tmatch];
+    bool     ret = 1;
+    CLEAR_LUA_STACK
+    lua_getfield  (server.lua, LUA_GLOBALSINDEX, "create_nested_table");
+    lua_pushstring(server.lua, LUA_OBJ_TABLE);
+    lua_pushstring(server.lua, rt->name);
+    lua_pushstring(server.lua, rt->col[cmatch].name);
+    int r = lua_pcall(server.lua, 3, 0, 0);
+    if (r) { ret = 0;
+        addReplyErrorFormat(c,
+                         "Error running script (create_nested_table): %s\n",
+                            lua_tostring(server.lua, -1));
+    }
+    CLEAR_LUA_STACK
+    return ret;
+}
 static void newTable(cli *c, list *ctypes, list *cnames, int ccount, sds tname){
     if (ccount < 2) { addReply(c, shared.toofewcolumns); return; }
     if (!validateCreateTableCnames(c, cnames))           return;
@@ -146,10 +163,12 @@ static void newTable(cli *c, list *ctypes, list *cnames, int ccount, sds tname){
         ASSERT_OK(dictAdd(rt->cdict, sdsdup(cname), ci));
         listNode *lnt     = listIndex(ctypes, i);
         rt->col[i].type   = (uchar)(long)lnt->value;
-        if C_IS_O(rt->col[i].type) rt->haslo = 1;
+        if C_IS_O(rt->col[i].type) {
+            rt->haslo = 1; createLuaObjectBaseTable(c, tmatch, i);
+        }
         rt->col[i].imatch = -1;
     }
-    rt->btr          = createDBT(rt->col[0].type, tmatch);
+    rt->btr = createDBT(rt->col[0].type, tmatch);
     ASSERT_OK(dictAdd(TblD, sdsdup(rt->name), VOIDINT(tmatch + 1)));
     /* BTREE implies an index on "tbl_pk_index" -> autogenerate */
     sds  pkname  = rt->col[0].name;

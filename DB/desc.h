@@ -31,7 +31,7 @@ ALL RIGHTS RESERVED
 
 #include "query.h"
 
-sds createAlterTableFulltext(r_tbl_t *rt, r_ind_t *ri, int cmatch, bool nl);
+sds createAlterTableFullText(r_tbl_t *rt, r_ind_t *ri, int cmatch, bool nl);
 sds dumpSQL_Index(char *mtname, r_tbl_t *rt, r_ind_t *ri, int tmatch, bool nl);
 
 void sqlDumpCommand(redisClient *c);

@@ -3,15 +3,11 @@ LUAOBJ
   1.) rdbLoad/rdbSave lua-objects [use DataDumper & eval()]
       |-> can be done AFTER dumpBT
   B.) dot-notation CompoundIndexes (plus mixed)                  -- list[dtype]
-  D.) LuaObject Input/Output always a table (e.g. {....})
-      |-> UPDATE SET lo = {....} also
   8.) UPDATE dot-notation directly (UPDATE tbl SET doc.age = 45)
       a.) UPDATE SET lo.x = 20              -> Simple Update
       b.) UPDATE SET lo.x = lox. + 20       -> Simple Expression
       c.) UPDATE SET lo.x = func(fk, lo.y)  -> CompiledLuaFunction
       d.) UPDATE SET lo.x = sqrt(lo.x) * 44 -> DynamicLuaFunction
-  G.) Stbl[] mirrors ASQL[] (except for "ASQL" level)
-      |-> take out "ASQL" level?
   H.) test w/ nested luaobjs (e.g. lo.x.y.z) -> DN_Index also
 
 PROTOCOL

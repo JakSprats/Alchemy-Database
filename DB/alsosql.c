@@ -87,8 +87,8 @@ static void addRowSizeReply(cli *c, int tmatch, bt *btr, int len) {
     char buf[128];
     ull  index_size = get_sum_all_index_size_for_table(tmatch);
     snprintf(buf, 127,
-          "INFO: BYTES: [ROW: %d BT-TOTAL: %ld [BT-DATA: %ld] INDEX: %lld]",
-               len, btr->msize, btr->dsize, index_size);
+             "INFO: BYTES: [ROW: %d BT-TOTAL: %ld [BT-DATA: %ld] INDEX: %lld]",
+             len, btr->msize, btr->dsize, index_size);
     buf[127] = '\0';
     robj *r  = _createStringObject(buf); addReplyBulk(c, r); decrRefCount(r);
 }
@@ -109,18 +109,16 @@ uchar insertCommit(cli  *c,      sds     uset,   sds     vals,
                    int   inds[], int     pcols,  list   *cmatchl,
                    bool  repl,   uint32  upd,    uint32 *tsize,
                    bool  parse,  sds    *key) {
-    CMATCHS_FROM_CMATCHL
-    twoint cofsts[ncols];
+    CMATCHS_FROM_CMATCHL twoint cofsts[ncols];
     for (int i = 0; i < ncols; i++) cofsts[i].i = cofsts[i].j = -1;
     aobj     apk; initAobj(&apk);
     bool     ret    = INS_ERR;    /* presume failure */
     void    *nrow   = NULL;       /* B4 GOTO */
     sds      pk     = NULL;
-    int      pklen  = 0;                              // NEEDED? use sdslen(pk)
+    int      pklen  = 0;                            // NEEDED? use sdslen(pk)
     r_tbl_t *rt     = &Tbl[tmatch];
     int      lncols = ncols;
-    if (rt->lrud) lncols--; // INSERT can NOT have LRU
-    if (rt->lfu)  lncols--; // INSERT can NOT have LFU
+    if (rt->lrud) lncols--; if (rt->lfu) lncols--; // INSERT CANT have LRU/LFU
     bool     ai     = 0;    // AUTO-INCREMENT
     char    *mvals  = parseRowVals(vals, &pk, &pklen, ncols, cofsts, tmatch,
                                    pcols, ics, lncols, &ai); // ERR NOW GOTO
@@ -135,7 +133,7 @@ uchar insertCommit(cli  *c,      sds     uset,   sds     vals,
     int      pktyp  = rt->col[0].type;
     apk.type        = apk.enc = pktyp; apk.empty = 0;
     if        C_IS_I(pktyp) {
-        long l      = atol(pk);                              /* OK: DELIM: \0 */
+        long l      = atol(pk);                            /* OK: DELIM: \0 */
         if (l >= TWO_POW_32) { addReply(c, shared.uint_pkbig); goto insc_e; }
         apk.i       = (int)l;
     } else if C_IS_L(pktyp) apk.l = strtoul(pk, NULL, 10); /* OK: DELIM: \0 */
@@ -144,7 +142,7 @@ uchar insertCommit(cli  *c,      sds     uset,   sds     vals,
           if (!r) { addReply(c, shared.u128_parse);            goto insc_e; }
     } else if C_IS_F(pktyp) apk.f = atof(pk);              /* OK: DELIM: \0 */
       else if C_IS_S(pktyp) {
-        apk.s       = pk; apk.len = pklen; apk.freeme = 0; /* "pk freed below */
+        apk.s       = pk; apk.len = pklen; apk.freeme = 0; /* pk freed below */
     } else assert(!"insertCommit ERROR");
     int    len      = 0;
     bt    *btr      = getBtr(tmatch);
@@ -177,12 +175,9 @@ uchar insertCommit(cli  *c,      sds     uset,   sds     vals,
             if (repl && rrow) { /* Delete repld row's Indexes - same PK */
                 for (int i = 0; i < matches; i++) {
                     delFromIndex(btr, &apk, rrow, inds[i], 0);
-            }}
-        }
-
-printf("repl: %d rrow: %p upd: %d miss: %d exists: %d key: ",
-        repl, rrow, upd, dwm.miss, exists); dumpAobj(printf, &apk);
-
+        }}}
+        //printf("repl: %d rrow: %p upd: %d miss: %d exists: %d key: ",
+        //     repl, rrow, upd, dwm.miss, exists); dumpAobj(printf, &apk);
         len = repl ? btReplace(btr, &apk, nrow) : btAdd(btr, &apk, nrow);
         UPDATE_AUTO_INC(pktyp, apk)
         ret = INS_INS;            /* negate presumed failure */
@@ -209,7 +204,7 @@ static bool checkRepeatHashCnames(cli *c, int tmatch) {
         for (uint32 j = 0; j < rt->tcols; j++) { if (i == j) continue;
             if (!strcmp(rt->tcnames[i], rt->tcnames[j])) {
                 addReply(c, shared.repeat_hash_cnames); return 0;
-            }}}
+    }}}
     return 1;
 }
 static void resetTCNames(int tmatch) {
@@ -388,15 +383,14 @@ void initLFCA(lfca_t *lfca, list *ls) {
     bzero(lfca, sizeof(lfca_t));
     if (!ls->len) return;
     int       n  = 0; listNode *ln;
-    lfca->l      = malloc(sizeof(lue_t *) * ls->len);      // FREE ME 117
+    lfca->l      = malloc(sizeof(lue_t *) * ls->len);    // FREE ME 117
     listIter *li = listGetIterator(ls, AL_START_HEAD);
     while((ln = listNext(li))) {
-        lfca->l[n] = (lue_t *)ln->value;
-        n++;
+        lfca->l[n] = (lue_t *)ln->value; n++;
     } listReleaseIterator(li);
 }
 void releaseLFCA(lfca_t *lfca) {
-    free(lfca->l);                                            // FREED 117
+    free(lfca->l);                                       // FREED 117
 }
 
 // SELECT SELECT SELECT SELECT SELECT SELECT SELECT SELECT SELECT SELECT
@@ -404,10 +398,10 @@ bool sqlSelectBinary(cli  *c,     int     tmatch, bool   cstar, icol_t *ics,
                      int   qcols, cswc_t *w,      wob_t *wb,    bool    need_cn,
                      lfca_t *lfca) {
     if (cstar && wb->nob) { /* SELECT COUNT(*) ORDER BY -> stupid */
-        addReply(c, shared.orderby_count);                         return 0;
+        addReply(c, shared.orderby_count);                          return 0;
     }
-    if      (c->Prepare) { prepareRQ(c, w, wb, cstar, qcols, ics); return 1; }
-    else if (c->Explain) { explainRQ(c, w, wb, cstar, qcols, ics); return 1; }
+    if      (c->Prepare) { prepareRQ(c, w, wb, cstar, qcols, ics);  return 1; }
+    else if (c->Explain) { explainRQ(c, w, wb, cstar, qcols, ics);  return 1; }
     //dumpW(printf, w); dumpWB(printf, wb);
 
     if (EREDIS && (need_cn || GlobalNeedCn)) {
@@ -439,9 +433,11 @@ bool sqlSelectBinary(cli  *c,     int     tmatch, bool   cstar, icol_t *ics,
         if (ost == OR_ALLB_OK)   { addReply(c, shared.cone);        return 1; }
         if (ost == OR_ALLB_NO)   { addReply(c, shared.czero);       return 1; }
         if (ost == OR_LUA_FAIL)  { addReply(c, CurrError);          return 0; }
-        if (!r)            { addReply(c, shared.nullbulk);          return 1; }
-        addReply(c, shared.singlerow);
-        outputColumnNames(c, tmatch, cstar, ics, qcols);
+        if (!r)                  { addReply(c, shared.nullbulk);    return 1; }
+        if (!EREDIS) {
+            addReply(c, shared.singlerow);
+            outputColumnNames(c, tmatch, cstar, ics, qcols);
+        }
         GET_LRUC GET_LFUC
         if (!addReplyRow(c, r, tmatch, apk, lruc, lrud, lfuc, lfu)) return 0;
         decrRefCount(r);
@@ -509,7 +505,6 @@ bool deleteInnards(cli *c, sds tlist, sds wclause) {
         if (wb.ovar) incrOffsetVar(c, &wb, 1);
     }
     ret = 1;
-fflush(NULL);
 
 delete_cmd_end:
     destroy_wob(&wb); destroy_check_sql_where_clause(&w); return ret;

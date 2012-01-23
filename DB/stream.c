@@ -254,11 +254,6 @@ int cr8Xcol(uint128 x, uint128 *col) { *col = x; return 16; }
   printf("writeLuaObjCol: tname: %s cname: %s Lua: (%s) apk: ", \
           rt->name, rt->col[cmatch].name, luac); dumpAobj(printf, apk);
 
-static sds getLuaTblName(int tmatch, int cmatch) {
-    r_tbl_t *rt = &Tbl[tmatch];
-    return sdscatprintf(sdsempty(), "%s.%s.%s", LUA_OBJ_TABLE,
-                                     rt->name, rt->col[cmatch].name);
-}
 void pushLuaVar(int tmatch, icol_t ic, aobj *apk) {
     r_tbl_t *rt  = &Tbl[tmatch];
     lua_getglobal (server.lua, LUA_OBJ_TABLE);
@@ -276,38 +271,12 @@ void pushLuaVar(int tmatch, icol_t ic, aobj *apk) {
         }
     }
 }
-static bool createTableIfNonExistent(cli *c, int tmatch, int cmatch, sds tbl) {
-    r_tbl_t *rt  = &Tbl[tmatch];
-    bool     ret = 1;
-    CLEAR_LUA_STACK
-    lua_getglobal(server.lua, tbl);
-    int t = lua_type(server.lua, 1);
-    if (t == LUA_TNIL) { 
-        CLEAR_LUA_STACK
-        lua_getfield(server.lua, LUA_GLOBALSINDEX, "create_nested_table");
-        lua_pushstring(server.lua, LUA_OBJ_TABLE);
-        lua_pushstring(server.lua, rt->name);
-        lua_pushstring(server.lua, rt->col[cmatch].name);
-        int r = lua_pcall(server.lua, 3, 0, 0);
-        if (r) { ret = 0;
-            addReplyErrorFormat(c,
-                             "Error running script (create_nested_table): %s\n",
-                                lua_tostring(server.lua, -1));
-        }
-    } else assert (t == LUA_TTABLE);
-    CLEAR_LUA_STACK
-    return ret;
-}
 bool writeLuaObjCol(cli *c,    aobj   *apk, int tmatch, int cmatch,
                     char *val, uint32  vlen) {
     uint32  nlen;
     r_tbl_t *rt   = &Tbl[tmatch];
     char    *xcpd = new_unescaped(val, '\'', vlen, &nlen); if (!xcpd) return 1;
-    sds      luac = sdsnewlen(xcpd, nlen);
-    CLEAR_LUA_STACK                                          DEBUG_WRITE_LUAOBJ
-    sds      tbl  = getLuaTblName(tmatch, cmatch);       // FREE 133
-    bool     r    = createTableIfNonExistent(c, tmatch, cmatch, tbl);
-    sdsfree(tbl); if (!r) return 0;                      // FREED 133
+    sds      luac = sdsnewlen(xcpd, nlen);                   DEBUG_WRITE_LUAOBJ
     CLEAR_LUA_STACK
     lua_getfield(server.lua, LUA_GLOBALSINDEX, "luaobj_assign");
     lua_pushstring(server.lua, LUA_OBJ_TABLE);
@@ -319,34 +288,6 @@ bool writeLuaObjCol(cli *c,    aobj   *apk, int tmatch, int cmatch,
     if (ret) {
         addReplyErrorFormat(c, "Error running script (luaobj_assign): %s\n",
                                 lua_tostring(server.lua, -1)); CLEAR_LUA_STACK
-    } else {
-        //TODO push this into createIndex (not called per luaobj_assign
-        //TODO this makes N lua calls, it should make 1 and Lua loops
-        ci_t *ci = dictFetchValue(rt->cdict, rt->col[cmatch].name);
-        if (ci->ilist) { listNode *ln;
-            printf("writeLuaObjCol: ci.ilist.len: %d\n", ci->ilist->len);
-            listIter *li = listGetIterator(ci->ilist, AL_START_HEAD);
-            while((ln = listNext(li))) {
-                int      imatch = (int)(long)ln->value; 
-                r_ind_t *ri     = &Index[imatch];
-                printf("c.ilst: imtch: %d lo[0]: %s\n", imatch, ri->icol.lo[0]);
-                CLEAR_LUA_STACK
-                lua_getfield(server.lua, LUA_GLOBALSINDEX, "createIndLuaEl");
-                lua_pushstring(server.lua, rt->name);
-                lua_pushstring(server.lua, rt->col[cmatch].name);
-                int argc = 2;
-                for (uint32 i = 0; i < ri->icol.nlo; i++) {
-                    lua_pushstring(server.lua, ri->icol.lo[i]); argc++;
-                }
-                ret = lua_pcall(server.lua, argc, 0, 0);
-                if (ret) {
-                    addReplyErrorFormat(c, 
-                                  "Error running script (indexLORfield): %s\n",
-                                    lua_tostring(server.lua, -1)); break;
-                }
-            } listReleaseIterator(li);
-            CLEAR_LUA_STACK
-        }
     }
     return ret ? 0 : 1;
 }

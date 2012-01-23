@@ -17,75 +17,68 @@ function deleteIndex(tbl, col, el, pk, old)
   return alchemyDeleteIndex(tbl, col, el, pk, old);
 end
 
--- TODO Stbl & Iel should mimic ASQL[] -> X[tbl][col][pk]
 Stbl = {}; Iel = {};
 
 function ASQL_setter(rname, k, v)
-  local e, p = get_ASQL_data_slots(rname._tbl, rname._col, rname._pk);
-  print('ASQL_setter: p: ' .. p .. ' e: ' .. e);
-  local ok   = true;
-  if (Iel[e][k] ~= nil) then
-    if     (Stbl[p][k] == nil) then
-      ok = setIndex   (rname._tbl, rname._col, k, rname._pk, v);
+  local tbl, col, pk = rname._tbl, rname._col, rname._pk;
+  --print('LUA: ASQL_setter: tbl: ' .. tbl .. ' col: ' .. col .. ' pk: ' .. pk);
+  local ok = true;
+  if (Iel[tbl][col][k] ~= nil) then
+    if     (Stbl[tbl][col][pk][k] == nil) then
+      ok = setIndex   (tbl, col, k, pk, v);
     elseif (v == nil)          then
-      ok = deleteIndex(rname._tbl, rname._col, k, rname._pk, Stbl[p][k]);
+      ok = deleteIndex(tbl, col, k, pk, Stbl[tbl][col][pk][k]);
     else 
-      ok = updateIndex(rname._tbl, rname._col, k, rname._pk, Stbl[p][k], v);
+      ok = updateIndex(tbl, col, k, pk, Stbl[tbl][col][pk][k], v);
     end
   end
-  if (ok) then rawset(Stbl[p], k, v); end
-end
-
-function get_IelName(tbl, col)
-  return tbl .. '.' .. col;
-end
-function get_ASQL_data_slots(tbl, col, pk)
-  local ielname = get_IelName(tbl, col)
-  local pkname  = ielname .. '.pk_' .. pk;
-  return ielname, pkname;
+  if (ok) then rawset(Stbl[tbl][col][pk], k, v); end
 end
 
 -- NOTE this MUST not be called from Lua (only From C)
 function dropIndLuaEl(tbl, col, el)
-  local e = get_IelName(tbl, col); Iel[e][el] = nil;
-  print ('dropIndLuaEl: ' .. e .. ' el: ' .. el); dump(Iel);
+  Iel[tbl][col][el] = nil;
+  --print('LUA: dropIndLuaEl: Iel: '); dump(Iel);
 end
 -- NOTE this MUST not be called from Lua (only From C)
 function createIndLuaEl(tbl, col, el)
-  local e = get_IelName(tbl, col); Iel[e][el] = true;
-  print ('createIndLuaEl: ' .. e .. ' el: ' .. el); dump(Iel);
+  if (Iel[tbl][col] == nil) then Iel[tbl][col] = {}; end
+  Iel[tbl][col][el] = true;
+  --print('LUA: createIndLuaEl: Iel: '); dump(Iel);
 end
 
 -- LUAOBJ_ASSIGNMENT LUAOBJ_ASSIGNMENT LUAOBJ_ASSIGNMENT LUAOBJ_ASSIGNMENT
 function create_nested_table(asql, tbl, col)
-  if (_G[asql]           == nil) then _G[asql]           = {}; end
-  if (_G[asql][tbl]      == nil) then _G[asql][tbl]      = {}; end
-  if (_G[asql][tbl][col] == nil) then _G[asql][tbl][col] = {}; end
+  --print ('LUA: create_nested_table: tbl: ' .. tbl .. ' col: ' .. col);
+  if (_G[asql]           == nil) then
+    _G[asql]           = {};
+  end
+  if (_G[asql][tbl]      == nil) then
+    _G[asql][tbl]      = {}; Stbl[tbl]      = {}; Iel[tbl]      = {};
+  end
+  if (_G[asql][tbl][col] == nil) then
+    _G[asql][tbl][col] = {}; Stbl[tbl][col] = {}; Iel[tbl][col] = {};
+  end
 end
 
 function luaobj_assign(asql, tbl, col, pk, luae) -- create Lua Object Row
-  local e, p = get_ASQL_data_slots(tbl, col, pk);
-  if (Iel[e] == nil) then Iel[e] = {}; end --TODO push into createIndLuaEl()
-  Stbl[p] = {}; 
+  --print('LUA: luaobj_assign: Stbl: '); dump(Stbl);
   _G[asql][tbl][col][pk] = {};
-  local cmd  = 'Stbl[\'' .. p .. '\'] = ' .. luae .. '; '; --print(cmd);
-  assert(loadstring(cmd))()
-  _G[asql][tbl][col][pk]._tbl = tbl; --TODO store at "tbl" level
-  _G[asql][tbl][col][pk]._col = col; --TODO store at "col" level
+  local cmd = 'EVALED = ' ..  luae .. ';'; assert(loadstring(cmd))()
+  Stbl[tbl][col][pk] = EVALED;
+  _G[asql][tbl][col][pk]._tbl = tbl;
+  _G[asql][tbl][col][pk]._col = col;
   _G[asql][tbl][col][pk]._pk  = pk;
   setmetatable(_G[asql][tbl][col][pk],
-               {__index=Stbl[p], __newindex=ASQL_setter});
+               {__index=Stbl[tbl][col][pk], __newindex=ASQL_setter});
 end
 function delete_luaobj(asql, tbl, col, pk)
-  print ('delete_luaobj');
-  local e, p = get_ASQL_data_slots(tbl, col, pk);
-  _G[asql][tbl][col][pk] = nil; Stbl[p] = nil;
+  --print ('LUA: delete_luaobj');
+  _G[asql][tbl][col][pk] = nil; Stbl[tbl][col][pk] = nil;
 end
 
 function DataDumperLuaObj(tbl, col, pk)
-  local name = tbl .. '.' .. col .. '.pk_' .. pk;
-  local e, p = get_ASQL_data_slots(tbl, col, pk);
-  return DataDumper(Stbl[p]);
+  return DataDumper(Stbl[tbl][col][pk]);
 end
 
 -- CREATE_TABLE_AS CREATE_TABLE_AS CREATE_TABLE_AS CREATE_TABLE_AS

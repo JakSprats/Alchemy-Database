@@ -403,11 +403,9 @@ bool joinGeneric(redisClient *c, jb_t *jb) {
         } else sent = card;
     }
     if (JoinLim != -1 && sent < card) card = sent;
-    if (jb->cstar) addReplyLongLong(c, card);
-    else {
-        setDMB_Join_card_cnames(c, jb, card, rlen);
-    }
-    if (jb->wb.ovar) { incrOffsetVar(c, &jb->wb, card); } //TODO done use w
+    if      (jb->cstar) addReplyLongLong(c, card);
+    else if (!EREDIS)   setDMB_Join_card_cnames(c, jb, card, rlen);
+    if (jb->wb.ovar) incrOffsetVar(c, &jb->wb, card);
     ret               = 1;
 
 join_gen_err:

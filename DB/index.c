@@ -521,6 +521,24 @@ static void addIndex() { //printf("addIndex: Ind_HW: %d\n", Ind_HW);
     free(Index); Index = indxs;
 }
 
+static bool createLuaElementIndex(cli *c, int tmatch, icol_t ic, int imatch) {
+    r_tbl_t *rt  = &Tbl  [tmatch];
+    r_ind_t *ri  = &Index[imatch];
+    bool     ret = 1;
+    CLEAR_LUA_STACK
+    lua_getfield  (server.lua, LUA_GLOBALSINDEX, "createIndLuaEl");
+    lua_pushstring(server.lua, rt->name);
+    lua_pushstring(server.lua, rt->col[ic.cmatch].name);
+    int argc = 2;
+    for (uint32 i = 0; i < ri->icol.nlo; i++) {
+        lua_pushstring(server.lua, ri->icol.lo[i]); argc++;
+    }
+    if (lua_pcall(server.lua, argc, 0, 0)) { ret = 0;
+        addReplyErrorFormat(c, "Error running script (indexLORfield): %s\n",
+                        lua_tostring(server.lua, -1));
+    }
+    CLEAR_LUA_STACK return ret;
+}
 int newIndex(cli    *c,     sds    iname, int  tmatch, icol_t ic,
              list   *clist, uchar  cnstr, bool virt,   bool   lru,
              luat_t *luat,  icol_t obc,   bool prtl,   bool   lfu,
@@ -534,12 +552,12 @@ int newIndex(cli    *c,     sds    iname, int  tmatch, icol_t ic,
     } else {
         imatch       = Num_indx; Num_indx++;
     }
-    r_tbl_t *rt = &Tbl[tmatch];
+    r_tbl_t *rt = &Tbl  [tmatch];
     r_ind_t *ri = &Index[imatch]; bzero(ri, sizeof(r_ind_t));
     ri->name    = sdsdup(iname);                     // FREE 055
-    ri->tmatch  = tmatch;        ri->icol   = ic;     ri->clist = clist;
-    ri->virt    = virt;          ri->cnstr  = cnstr;  ri->lru   = lru;
-    ri->obc     = obc;           ri->lfu   = lfu;
+    ri->tmatch  = tmatch; ri->icol  = ic;    ri->clist = clist;
+    ri->virt    = virt;   ri->cnstr = cnstr; ri->lru   = lru;
+    ri->obc     = obc;    ri->lfu   = lfu;
     ri->luat    = luat  ? 1     :  0;
     ri->done    = prtl  ? 0     :  1; 
     ri->dtype   = dtype ? dtype : rt->col[ic.cmatch].type;
@@ -569,10 +587,12 @@ int newIndex(cli    *c,     sds    iname, int  tmatch, icol_t ic,
             i++;
         } listReleaseIterator(li);
     } else if (!ri->luat) rt->col[ri->icol.cmatch].indxd = 1;
-    if      (virt)     rt->vimatch = imatch;
+    if      (virt) rt->vimatch = imatch;
     else if (ri->luat) { //TODO btr should not point to luat, use ri->luat
-        ri->btr = (bt *)luat; luat->num   = imatch;
+        ri->btr = (bt *)luat; luat->num = imatch;
     } else {
+        if (ri->icol.nlo &&
+            !createLuaElementIndex(c, tmatch, ic, imatch)) return -1;
         uchar pktyp = rt->col[0].type;
         ri->btr = ri->clist       ? createMCIndexBT(ri->clist, imatch) :
                   UNIQ(ri->cnstr) ? createU_S_IBT  (ri->dtype, imatch, pktyp) :

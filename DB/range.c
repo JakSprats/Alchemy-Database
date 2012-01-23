@@ -701,6 +701,7 @@ void iselectAction(cli *c,      cswc_t *w,     wob_t *wb,
     long  card   = Op(&g, select_op);
 
 printf("iselectAction: card: %ld CurrCard: %ld CurrUpdated: %ld\n", card, CurrCard, CurrUpdated);
+
     if (card == -1) { replaceDMB(c, rlen, CurrError); goto isele; }
     long sent    = 0;
     if (card) {
