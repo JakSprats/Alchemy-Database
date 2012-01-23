@@ -404,7 +404,9 @@ bool joinGeneric(redisClient *c, jb_t *jb) {
     }
     if (JoinLim != -1 && sent < card) card = sent;
     if (jb->cstar) addReplyLongLong(c, card);
-    else           setDeferredMultiBulkLength(c, rlen, card);
+    else {
+        setDMB_Join_card_cnames(c, jb, card, rlen);
+    }
     if (jb->wb.ovar) { incrOffsetVar(c, &jb->wb, card); } //TODO done use w
     ret               = 1;
 

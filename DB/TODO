@@ -10,11 +10,11 @@ LUAOBJ
       b.) UPDATE SET lo.x = lox. + 20       -> Simple Expression
       c.) UPDATE SET lo.x = func(fk, lo.y)  -> CompiledLuaFunction
       d.) UPDATE SET lo.x = sqrt(lo.x) * 44 -> DynamicLuaFunction
-   G.) Stbl[] mirrors ASQL[] (except for "ASQL" level)
+  G.) Stbl[] mirrors ASQL[] (except for "ASQL" level)
       |-> take out "ASQL" level?
+  H.) test w/ nested luaobjs (e.g. lo.x.y.z) -> DN_Index also
 
 PROTOCOL
-  1.) First line of SQL SELECTs should be comma-delimited list of columns
   2.) ADD "SELECT col AS othername"
 
 TEST:
@@ -31,6 +31,7 @@ MISC:
   2.) LRU/LFU indexes should be UNIQUE U128 indexes [lru|pk]
   3.) LuaTrigger takes fknames as first args (like "table") 
       -> can be used for FK integrity checks
+  4.) Lua bindings for U128's
 
 CLEANUP:
   1.) GLOBAL VARIABLES -> Per Client Structures

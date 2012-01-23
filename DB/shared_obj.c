@@ -31,7 +31,7 @@ ALL RIGHTS RESERVED
 #include "xdb_hooks.h"
 
 void DXDB_createSharedObjects() {
-    shared.singlerow = createObject(REDIS_STRING,sdsnew("*1\r\n"));
+    shared.singlerow = createObject(REDIS_STRING,sdsnew("*2\r\n")); // CNAMES 2
     shared.undefinedcolumntype = createObject(REDIS_STRING,sdsnew(
         "-ERR Column Type Unknown ALCHEMY_DATABASE uses[INT,LONG,FLOAT,TEXT,U128] and recognizes INT=[*INT],LONG=[BIGINT],FLOAT=[FLOAT,REAL,DOUBLE],TEXT=[*CHAR,TEXT,BLOB,BINARY,BYTE]\r\n"));
     shared.toofewcolumns = createObject(REDIS_STRING,sdsnew(

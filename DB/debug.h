@@ -45,6 +45,7 @@ int  queueOutput(const char *format, ...);
 void dumpQueueOutput(cli *c);
 
 // OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT OUTPUT
+void setDeferredMultiBulkSDS       (cli *c, void *node, sds s);
 void resetDeferredMultiBulk_ToError(cli *c, void *node, sds error);
 void setDeferredMultiBulkLong      (cli *c, void *node, long card);
 void prependDeferredMultiBulkError (cli *c, void *node, sds error);

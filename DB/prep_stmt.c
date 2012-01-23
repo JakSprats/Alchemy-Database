@@ -228,8 +228,9 @@ static void executeCommand_RQ(cli *c, uchar *x) {
     int  qcols; memcpy(&qcols, x, sizeof(int));     x += sizeof(int);
     icol_t ics[qcols];
     for (int i = 0; i < qcols; i++) {
-        memcpy(&ics[i].cmatch, x, sizeof(int));     x += sizeof(int); 
         //TODO deserialise ics.lo
+        bzero(&ics[i], sizeof(icol_t));
+        memcpy(&ics[i].cmatch, x, sizeof(int));     x += sizeof(int); 
     }
     cswc_t w; wob_t wb;
     init_check_sql_where_clause(&w, -1, NULL); init_wob(&wb);

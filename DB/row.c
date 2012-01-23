@@ -990,6 +990,14 @@ robj *outputRow(bt  *btr, void *rrow,   int     qcols, icol_t *ics,
                                      orow_normal);
     return (*rop)(btr, rrow, qcols, ics, apk, tmatch, lfca, ost);
 }
+void outputColumnNames(cli *c, int tmatch, bool cstar, icol_t *ics, int qcols) {
+    sds   s = cstar ? sdsnewlen("COUNT(*)", 8) :
+                      getQueriedCnames(tmatch, ics, qcols);
+    robj *r = createObject(REDIS_STRING, s);
+    if OREDIS  addReply    (c, r); 
+    else       addReplyBulk(c, r); 
+    decrRefCount(r);
+}
 
 // DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW
 #define DEBUG_DELETE_ROW                                                   \
@@ -999,7 +1007,7 @@ robj *outputRow(bt  *btr, void *rrow,   int     qcols, icol_t *ics,
   dumpAobj(printf, apk);
 
 void deleteLuaObj(int tmatch, int cmatch, aobj *apk) {
-    r_tbl_t *rt = &Tbl[tmatch]; DEBUG_DELETE_LUAOBJ
+    r_tbl_t *rt = &Tbl[tmatch];                             DEBUG_DELETE_LUAOBJ
     CLEAR_LUA_STACK lua_getfield(server.lua, LUA_GLOBALSINDEX, "delete_luaobj");
     lua_pushstring(server.lua, LUA_OBJ_TABLE);
     lua_pushstring(server.lua, rt->name);

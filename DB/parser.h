@@ -96,4 +96,6 @@ char *new_unescaped(char *s, char x, uint32 len, uint32 *nlen);
 
 robj **parseScanCmdToArgv(char *as_cmd, int *argc);
 
+// REPLY
+sds getQueriedCnames(int tmatch, icol_t *ics, int  qcols);
 #endif /* __ALC_PARSER__H */

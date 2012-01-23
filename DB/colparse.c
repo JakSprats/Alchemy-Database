@@ -53,6 +53,7 @@ ALL RIGHTS RESERVED
 extern cli     *CurrClient;
 extern r_tbl_t *Tbl;
 extern dict    *DynLuaD;
+extern uchar    OutputMode; // NOTE: used by OREDIS
 
 // GLOBALS
 ja_t JTAlias[MAX_JOIN_COLS]; // TODO MOVE to JoinBlock + convert 2 (dict *)
@@ -895,4 +896,69 @@ pcr8tbl_end:
     listReleaseIterator(li);
     cl->free = v_sdsfree; listRelease(cl);              // FREED 138
     return ret;
+}
+
+// REPeY REPLY REPLY REPLY REPLY REPLY REPLY REPLY REPLY REPLY REPLY REPLY
+sds getQueriedCnames(int tmatch, icol_t *ics, int  qcols) {
+    r_tbl_t *rt = &Tbl[tmatch];
+    sds      s  = sdsempty();
+    if OREDIS s = sdscatprintf(s, "*%d\r\n", qcols);
+    for (int i = 0; i < qcols; i++) {
+        sds cname = rt->col[ics[i].cmatch].name;
+        sds fullc = sdsdup(cname);                       // FREE 151
+        if (ics[i].nlo) {
+            for (uint32 j = 0; j < ics[i].nlo; j++) {
+                fullc = sdscatprintf(fullc, ".%s", ics[i].lo[j]);
+            }   
+        }   
+        if OREDIS s = sdscatprintf(s, "$%ld\r\n", sdslen(fullc));
+        s = sdscatlen(s, fullc, sdslen(fullc));
+        sdsfree(fullc);                                  // FREED 151
+        if      OREDIS           s = sdscatlen(s, "\r\n", 2);
+        else if (i != qcols - 1) s = sdscatlen(s, ", ", 2); 
+    }   
+    return s;
+}
+static sds getJoinQueriedCnames(jb_t *jb) {
+    sds s = sdsempty();
+    if OREDIS s = sdscatprintf(s, "*%d\r\n", jb->qcols);
+    for (int i = 0; i < jb->qcols; i++) {
+        sds tname = Tbl[jb->js[i].t].name;
+        sds cname = Tbl[jb->js[i].t].col[jb->js[i].c].name;
+        sds fullc = sdscatprintf(sdsempty(), "%s.%s", tname, cname);// FREE 152
+        if OREDIS s = sdscatprintf(s, "$%ld\r\n", sdslen(fullc));
+        s = sdscatlen(s, fullc, sdslen(fullc));
+        sdsfree(fullc);                                             // FREED 152
+        if      OREDIS               s = sdscatlen(s, "\r\n", 2);
+        else if (i != jb->qcols - 1) s = sdscatlen(s, ", ", 2); 
+    }
+    return s;
+}
+
+void setDMB_card_cnames(cli  *c, cswc_t *w, icol_t *ics, int qcols, long card,
+                        void *rlen) {
+    if (card) {
+        sds trows = sdscatprintf(sdsempty(),"*%ld\r\n", (card + 1));
+        sds s     = getQueriedCnames(w->wf.tmatch, ics, qcols); // FREE 149
+        if OREDIS trows = sdscatlen   (trows, s, sdslen(s));
+        else      trows = sdscatprintf(trows, "$%lu\r\n%s\r\n", sdslen(s), s);
+        sdsfree(s);                                              // FREED 149
+        setDeferredMultiBulkSDS(c, rlen, trows);
+    } else {
+        sds s     = sdsnewlen("*-1\r\n", 5);
+        setDeferredMultiBulkSDS(c, rlen, s);
+    }
+}
+void setDMB_Join_card_cnames(cli *c, jb_t *jb, long card, void *rlen) {
+    if (card) {
+        sds trows = sdscatprintf(sdsempty(),"*%ld\r\n", (card + 1));
+        sds s     = getJoinQueriedCnames(jb);                // FREE 150
+        if OREDIS trows = sdscatlen   (trows, s, sdslen(s));
+        else      trows = sdscatprintf(trows, "$%lu\r\n%s\r\n", sdslen(s), s);
+        sdsfree(s);                                          // FREED 150
+        setDeferredMultiBulkSDS(c, rlen, trows);
+    } else {
+        sds s     = sdsnewlen("*-1\r\n", 5);
+        setDeferredMultiBulkSDS(c, rlen, s);
+    }
 }

@@ -697,7 +697,7 @@ void iselectAction(cli *c,      cswc_t *w,     wob_t *wb,
     init_range(&g, c, w, wb, &q, ll, OBY_FREE_ROBJ, NULL);
     g.se.cstar   = cstar; g.se.qcols   = qcols;
     g.se.ics     = ics;   g.se.lfca    = lfca;
-    void *rlen   = cstar || EREDIS ? NULL : addDeferredMultiBulkLength(c);
+    void *rlen   = (cstar || EREDIS) ? NULL : addDeferredMultiBulkLength(c);
     long  card   = Op(&g, select_op);
 
 printf("iselectAction: card: %ld CurrCard: %ld CurrUpdated: %ld\n", card, CurrCard, CurrUpdated);
@@ -706,14 +706,14 @@ printf("iselectAction: card: %ld CurrCard: %ld CurrUpdated: %ld\n", card, CurrCa
     if (card) {
         if (q.qed) {
             if (!opSelectSort(c, ll, wb, g.co.ofree,
-                              &sent, w->wf.tmatch))         goto isele;
+                              &sent, w->wf.tmatch))   goto isele;
         } else sent = card;
     }
     if (!card && CurrUpdated) setDeferredMultiBulkLong(c, rlen, CurrUpdated);
     else {
         if (wb->lim != -1 && sent < card) card = sent;
         if      (cstar)   addReplyLongLong(c, card);
-        else if (!EREDIS) setDeferredMultiBulkLength(c, rlen, card);
+        else if (!EREDIS) setDMB_card_cnames(c, w, ics, qcols, card, rlen);
     }
 
 isele:

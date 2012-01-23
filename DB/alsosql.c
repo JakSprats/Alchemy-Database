@@ -428,7 +428,7 @@ bool sqlSelectBinary(cli  *c,     int     tmatch, bool   cstar, icol_t *ics,
         if (cstar)    { addReply(c, shared.cone);                   return 1; }
         void  *rrow  = dwm.k;
         bool   gost  = IS_GHOST(btr, rrow);
-printf("rrow: %p gost: %d\n", (void *)rrow, gost);
+        //printf("rrow: %p gost: %d\n", (void *)rrow, gost);
         if (gost || !rrow) { addReply(c, shared.czero);             return 1; }
         bool   hf    = 0;
         bool   ret   = passFilts(btr, apk, rrow, w->flist, tmatch, &hf);
@@ -441,6 +441,7 @@ printf("rrow: %p gost: %d\n", (void *)rrow, gost);
         if (ost == OR_LUA_FAIL)  { addReply(c, CurrError);          return 0; }
         if (!r)            { addReply(c, shared.nullbulk);          return 1; }
         addReply(c, shared.singlerow);
+        outputColumnNames(c, tmatch, cstar, ics, qcols);
         GET_LRUC GET_LFUC
         if (!addReplyRow(c, r, tmatch, apk, lruc, lrud, lfuc, lfu)) return 0;
         decrRefCount(r);

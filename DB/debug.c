@@ -63,11 +63,11 @@ long MIN(long a, long b) { return (a < b) ? a : b; }
 
 //TODO move to output.c
 // DEFERRED_ADD_REPLY_BULK DEFERRED_ADD_REPLY_BULK DEFERRED_ADD_REPLY_BULK
-void setDeferredMultiBulkError(redisClient *c, void *node, sds error) {
+void setDeferredMultiBulkSDS(redisClient *c, void *node, sds s) {
     if (!node) return; /* Abort when addDeferredMultiBulkLength not called. */
     listNode *ln  = (listNode*)node;
     robj     *len = listNodeValue(ln);
-    len->ptr      = error;
+    len->ptr      = s;
     if (ln->next) {
         robj *next = listNodeValue(ln->next);
         /* Only glue when the next node is non-NULL (an sds in this case) */
