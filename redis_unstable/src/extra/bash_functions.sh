@@ -3207,12 +3207,15 @@ function test_lua_sql_integration() {
   $CLI DUMP lo
 }
 
-function test_dot_notation_index() { 
+function populate_dot_notation_index() { 
   $CLI DROP   TABLE doc >/dev/null;
   $CLI CREATE TABLE doc "(pk INT, fk LONG, lo LUAOBJ)";
   $CLI CREATE INDEX i_doc_dn ON doc "(lo.age)" LONG;
-  $CLI INSERT INTO doc VALUES "(1, 111, '{name = \'RUSS\', age=35, group=2}')";
-  $CLI INSERT INTO doc VALUES "(2, 111, '{name = \'JANE\', age=25, group=2}')";
+  $CLI INSERT INTO doc VALUES "(1, 111, {name = 'RUSS', age=35, group=2})";
+  $CLI INSERT INTO doc VALUES "(2, 111, {name = 'JANE', age=25, group=2})";
+}
+function test_dot_notation_index() { 
+  populate_dot_notation_index
 
   echo "2 rows (lo.age) [10-100]"
   $CLI SELECT \* FROM doc WHERE "lo.age BETWEEN 10 AND 100"
@@ -3224,7 +3227,7 @@ function test_dot_notation_index() {
   echo "1 row (lo.age) [20-30]"
   $CLI SELECT \* FROM doc WHERE "lo.age BETWEEN 20 AND 30"
 
-  $CLI INSERT INTO doc VALUES "(3, 111, '{name = \'KEN\', age=45, group=3}')";
+  $CLI INSERT INTO doc VALUES "(3, 111, {name = 'KEN', age=45, group=3})";
   echo "1 row (lo.age) [20-30]"
   $CLI SELECT \* FROM doc WHERE "lo.age BETWEEN 20 AND 30"
   echo "2 rows (lo.age) [30-50]"

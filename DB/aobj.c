@@ -109,7 +109,6 @@ void initAobjFromStr(aobj *a, char *s, int len, uchar ctype) {
     } else if C_IS_L(ctype) {
         a->enc    = a->type = COL_TYPE_LONG;
         a->l      = strtoul(s, NULL, 10);                     // OK: DELIM: \0
-printf("initAobjFromStr: l: %lu len: %d s: %s\n", a->l, len, s);
     } else if C_IS_I(ctype) {
         a->enc    = a->type = COL_TYPE_INT;
         a->i      = (uint32)strtoul(s, NULL, 10);             // OK: DELIM: \0

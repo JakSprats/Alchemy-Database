@@ -337,6 +337,17 @@ char *get_next_nonparaned_comma(char *tkn) {
         else   return NULL;
     } else return z;
 }
+char *get_next_insert_value_token(char *tkn) {
+    SKIP_SPACES(tkn)
+    while (*tkn) {
+        if      (*tkn == '\'') tkn = str_next_unescaped_chr(tkn, tkn, '\'');
+        else if (*tkn == '(' ) tkn = str_next_unescaped_chr(tkn, tkn, ')');
+        else if (*tkn == '{' ) tkn = str_next_unescaped_chr(tkn, tkn, '}');
+        else if (*tkn == ',' ) return tkn;
+        tkn++;
+    }
+    return NULL;
+}
 
 char *new_unescaped(char *s, char x, uint32 len, uint32 *nlen) {
     if (!len) { *nlen = 0; return NULL; }

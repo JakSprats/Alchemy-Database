@@ -101,13 +101,19 @@ void incrOffsetVar(redisClient *c, wob_t *wb, long incr) {
 }
 
 // INSERT INSERT INSERT INSERT INSERT INSERT INSERT INSERT INSERT INSERT
-static char *parse_insert_val_list_nextc(char *start, uchar ctype) {
-    char *nextc = get_next_nonparaned_comma(start); if (!nextc) return NULL;
-    if (C_IS_S(ctype) || C_IS_O(ctype)) { /* column must be \' delimited */
+static char *validate_parsed_insert_val(uchar ctype, char *start, char *nextc) {
+    if        C_IS_S(ctype) { // column must be \' delimited
         char *endc = nextc - 1; REV_SKIP_SPACES(endc); SKIP_SPACES(start)
-        if (*start != '\'' || *endc != '\'') return NULL;
+        if (*start != '\'' || *endc != '\'') return NULL; //TODO custom err-msg
+    } else if C_IS_O(ctype) { // column must be {.......}
+        char *endc = nextc - 1; REV_SKIP_SPACES(endc); SKIP_SPACES(start)
+        if (*start != '{' || *endc != '}') return NULL; //TODO custom err-msg
     }
     return nextc;
+}
+static char *parse_insert_val_list_nextc(char *start, uchar ctype) {
+    char *nextc = get_next_insert_value_token(start); if (!nextc) return NULL;
+    return validate_parsed_insert_val(ctype, start, nextc);
 }
 
 static void assign_auto_inc_pk(uchar pktyp, char **pk, int *pklen, int tmatch) {
@@ -172,7 +178,7 @@ char *parseRowVals(sds vals,  char   **pk,       int  *pklen,
                    int ncols, twoint   cofsts[], int   tmatch,
                    int pcols, icol_t  *ics,      int   lncols, bool *ai) {
     if (vals[sdslen(vals) - 1] != ')' || *vals != '(') return NULL;
-    int      cmatch;
+    int      cmatch; uchar ctype;
     r_tbl_t *rt     = &Tbl[tmatch];
     char    *mvals  = vals + 1; SKIP_SPACES(mvals)
     char    *token  = mvals, *nextc = mvals;
@@ -181,13 +187,12 @@ char *parseRowVals(sds vals,  char   **pk,       int  *pklen,
         cmatch = pcols ? ics[numc].cmatch : numc;
         if (cmatch >= ncols) return NULL;
         if (cmatch  < -1)    return NULL;
-        uchar ctype = (cmatch == -1) ? COL_TYPE_NONE : rt->col[cmatch].type;
+        ctype = (cmatch == -1) ? COL_TYPE_NONE : rt->col[cmatch].type;
         if (C_IS_N(ctype)) { // HASHABILITY -> determine ctype
             if (!determineColType(nextc, &ctype, tmatch)) return NULL;
             ics[numc].cmatch = cmatch = rt->col_count - 1;//DEBUG_PARSE_ROW_VALS
         }
-        nextc        = parse_insert_val_list_nextc(nextc, ctype);
-printf("nextc: %s\n", nextc);
+        nextc = parse_insert_val_list_nextc(nextc, ctype);
         if (!nextc) break;
         if (!cmatch) { /* parse PK */
             char *cstart = token;
@@ -196,7 +201,7 @@ printf("nextc: %s\n", nextc);
                 if (*cstart != '\'') return NULL; cstart++;
                 if (*cend   != '\'') return NULL; cend--;
             }
-            *pklen       = (cend - cstart) + 1;
+            *pklen = (cend - cstart) + 1;
             if (!assign_pk(tmatch, pklen, pk, cstart, ai)) return NULL;
         }
         cofsts[cmatch].i = token - mvals;
@@ -205,15 +210,18 @@ printf("nextc: %s\n", nextc);
         nextc++; token = nextc; SKIP_SPACES(nextc) numc++;
     }
     int   len      = strlen(token);
-    char *end      = token + len - 2;    /* skip trailing ')' */
-    char *cend     = end; REV_SKIP_SPACES(cend)/*ignore finalcols trailn space*/
-    len           -= (end - cend);
+    char *end      = token + len - 1;
+    REV_SKIP_SPACES(end) if (*end == ')') end--; REV_SKIP_SPACES(end)
     cmatch         = pcols ? ics[numc].cmatch : numc;
+    ctype          = (cmatch == -1) ? COL_TYPE_NONE : rt->col[cmatch].type;
+    //TODO if (C_IS_N(ctype)) check ???
+    nextc          = end + 1; // simulate next comma (as end of string)
+    if (!validate_parsed_insert_val(ctype, token, nextc)) return NULL;
+    len            = nextc - token;
     cofsts[cmatch ].i = (token - mvals);
-    cofsts[cmatch ].j = (token - mvals) + len - 1;
+    cofsts[cmatch ].j = (token - mvals) + len;
     if (!cmatch) { /* PK */
-        *pklen = len - 1;
-        if (!assign_pk(tmatch, pklen, pk, token, ai)) return NULL;
+        *pklen = len; if (!assign_pk(tmatch, pklen, pk, token, ai)) return NULL;
     }
     numc++;
     /* NOTE: create PK if none exists for NUM pks */

@@ -501,9 +501,10 @@ void *createRow(cli *c,     aobj *apk,  bt     *btr,      int tmatch,
                 crd[i].slens = clen - (crd[i].strs - startc) - (endc - mendc);
             }
             int nclen = 0;
-            if        (C_IS_S(ctype) || C_IS_O(ctype)) { // dont store \' delims
-                crd[i].strs++; crd[i].slens -= 2; 
-                if C_IS_S(ctype) nclen = crd[i].slens; // LUAOBJ !inRow (inLua)
+            if        C_IS_S(ctype) { // dont store \' delims
+                crd[i].strs++; crd[i].slens -= 2; nclen = crd[i].slens;
+            } else if C_IS_O(ctype) {
+                nclen = 0; // LUAOBJ !inRow (inLua)
             } else if (C_IS_I(ctype)) {
                 nclen = cr8IcolFromStr(c, crd[i].strs,    crd[i].slens,
                                           &crd[i].iflags, &crd[i].icols);
