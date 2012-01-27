@@ -126,9 +126,7 @@ static bool createLuaObjectBaseTable(cli *c, int tmatch, int cmatch) {
     lua_pushstring(server.lua, rt->col[cmatch].name);
     int r = lua_pcall(server.lua, 3, 0, 0);
     if (r) { ret = 0;
-        addReplyErrorFormat(c,
-                         "Error running script (create_nested_table): %s\n",
-                            lua_tostring(server.lua, -1));
+        ADD_REPLY_FAILED_LUA_STRING_CMD("create_nested_table")
     }
     CLEAR_LUA_STACK
     return ret;

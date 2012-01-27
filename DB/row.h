@@ -61,7 +61,8 @@ robj *write_output_row(int   qcols,   uint32  prelen, char *pbuf,
 #define OR_LUA_FAIL  3
 robj *outputRow(bt   *btr, void *rrow,   int     qcols, icol_t *ics,
                 aobj *apk, int   tmatch, lfca_t *lfca,  bool   *ostt);
-void outputColumnNames(cli *c, int tmatch, bool cstar, icol_t *ics, int qcols);
+void outputColumnNames(cli *c,     int     tmatch, bool cstar, icol_t *ics,
+                       int  qcols, lfca_t *lfca);
 
 int   deleteRow(int tmatch, aobj *apk, int matches, int inds[]);
 

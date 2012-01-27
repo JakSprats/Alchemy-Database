@@ -184,6 +184,9 @@ dependencies:
 	@cd ../deps/lua && $(MAKE) ARCH="$(ARCH)" ansi
 	@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)luajit$(ENDCOLOR)
 	@cd ../deps/luajit && $(MAKE)
+	@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)pluto$(ENDCOLOR)
+	@cd ../deps/pluto  && $(MAKE) linux
+	@cp ../deps/pluto/pluto.so .
 
 ../deps/jemalloc/lib/libjemalloc.a:
 	cd ../deps/jemalloc && ./configure $(JEMALLOC_CFLAGS) --with-jemalloc-prefix=je_ --enable-cc-silence && $(MAKE) lib/libjemalloc.a

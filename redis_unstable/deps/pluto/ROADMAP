@@ -1,0 +1,28 @@
+Todo
+----
+
+- Test suite
+- Windows compilation
+- Works on Windows
+- Specify DEBUG in Makefile (env var)
+- Specify Lua source location in Makefile (env var)
+- Cross-platform output
+ - Storing numbers portably?
+- Hooks into the persistence system? (for persisting custom lua_Integers, lua_Numbers)
+  - pluto_persist_integer
+  - pluto_persist_number
+
+Nice to have
+------------
+
+- Lazy images - values are loaded from the image as they are used
+- The ability to build Pluto without Lua sources
+- 5.2 port
+
+Bugs
+----
+
+- lua_lock issues
+- debug.setmetatable(nil, {})
+- some wonky setfenv behavior?
+- Persisting coroutines

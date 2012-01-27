@@ -436,7 +436,7 @@ bool sqlSelectBinary(cli  *c,     int     tmatch, bool   cstar, icol_t *ics,
         if (!r)                  { addReply(c, shared.nullbulk);    return 1; }
         if (!EREDIS) {
             addReply(c, shared.singlerow);
-            outputColumnNames(c, tmatch, cstar, ics, qcols);
+            outputColumnNames(c, tmatch, cstar, ics, qcols, lfca);
         }
         GET_LRUC GET_LFUC
         if (!addReplyRow(c, r, tmatch, apk, lruc, lrud, lfuc, lfu)) return 0;

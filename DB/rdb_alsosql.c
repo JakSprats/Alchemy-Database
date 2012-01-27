@@ -192,14 +192,20 @@ int rdbSaveBT(FILE *fp, bt *btr) { //printf("rdbSaveBT\n");
         } else {
             if (rdbSaveLen(fp, 1) == -1)                        return -1;
             if (rdbSaveLen(fp, ri->icol.cmatch) == -1)          return -1;
-            //TODO FIXME save "lo"
+            if (rdbSaveLen(fp, ri->icol.nlo)    == -1)          return -1;
+            if (ri->icol.nlo) {
+                for (uint32 j = 0; j < ri->icol.nlo; j++) {
+                    robj *r = _createStringObject(ri->icol.lo[j]);
+                    if (rdbSaveStringObject(fp, r) == -1)       return -1;
+                    decrRefCount(r);
+                }
+            }
         }
         if (rdbSaveLen(fp, ri->cnstr) == -1)                    return -1;
         if (rdbSaveLen(fp, ri->lru)   == -1)                    return -1;
         if (rdbSaveLen(fp, ri->lfu)   == -1)                    return -1;
         // NOTE: obc: -1 not handled well, so incr on SAVE, decr on LOAD
         if (rdbSaveLen(fp, (ri->obc.cmatch + 1)) == -1)         return -1;//INCR
-        //TODO FIXME save "lo"
         if (fwrite(&(btr->s.ktype),    1, 1, fp) == 0)          return -1;
     }
     return 0;
@@ -303,6 +309,11 @@ bool rdbLoadBT(FILE *fp) { //printf("rdbLoadBT\n");
         rt->col[0].imatch = imatch;
         if (!rt->ilist) rt->ilist  = listCreate();       // DEST 088
         listAddNodeTail(rt->ilist, VOIDINT imatch);
+        {
+            ci_t *ci = dictFetchValue(rt->cdict, rt->col[ri->icol.cmatch].name);
+            if (!ci->ilist) ci->ilist = listCreate();        // FREE 148
+            listAddNodeTail(ci->ilist, VOIDINT imatch);
+        }
         rt->col[0].indxd  = 1;
         rt->vimatch       = imatch;
 
@@ -323,7 +334,16 @@ bool rdbLoadBT(FILE *fp) { //printf("rdbLoadBT\n");
             if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)     return 0;
             int cmatch             = (int)u;
             ri->icol.cmatch        = cmatch;
-            //TODO FIXME load "lo"
+            if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)     return 0;
+            ri->icol.nlo           = u;
+            if (ri->icol.nlo) {
+                ri->icol.lo = malloc(sizeof(sds) * ri->icol.nlo); // FREE 146
+                for (uint32 j = 0; j < ri->icol.nlo; j++) {
+                    if (!(r = rdbLoadStringObject(fp)))             return 0;
+                    ri->icol.lo[j] = sdsdup(r->ptr);
+                    decrRefCount(r);
+                }
+            }
             rt->col[cmatch].indxd  = 1; /* used in updateRow OVRWR */
             ri->nclist = 0; ri->bclist = NULL; ri->clist  = NULL;
         } else { /* MultipleColumnIndexes */
@@ -362,11 +382,15 @@ bool rdbLoadBT(FILE *fp) { //printf("rdbLoadBT\n");
         if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)         return 0;
         // NOTE: obc: -1 not handled well, so incr on SAVE, decr on LOAD
         ri->obc.cmatch = ((int)u) - 1; //DECR
-        //TODO FIXME load "lo"
         ri->done       =  1; ri->ofst = -1;
         rt->col[ri->icol.cmatch].imatch = imatch;
         if (!rt->ilist) rt->ilist  = listCreate();       // DEST 088
         listAddNodeTail(rt->ilist, VOIDINT imatch);
+        {
+            ci_t *ci = dictFetchValue(rt->cdict, rt->col[ri->icol.cmatch].name);
+            if (!ci->ilist) ci->ilist = listCreate();        // FREE 148
+            listAddNodeTail(ci->ilist, VOIDINT imatch);
+        }
         uchar ktype;
         if (fread(&ktype,    1, 1, fp) == 0)                        return 0;
         uchar pktyp = rt->col[0].type;

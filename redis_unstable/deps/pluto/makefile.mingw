@@ -1,0 +1,21 @@
+# these values are specific to my machine; change them as needed
+LUA_INCLUDES=/home/rob/lua-5.1.4/src/
+LUA_LIBS=/home/rob/lua-5.1.4/src/
+CC= i486-mingw32-gcc
+
+LDLIBS= -lm -llua -L$(LUA_LIBS)
+CFLAGS= -g3 -Wall -Wconversion -ansi -pedantic -I$(LUA_INCLUDES)
+
+default: pluto.dll pptest.exe puptest.exe
+
+%.o: %.c
+	$(CC) $(CFLAGS) -c $<
+
+pluto.dll: pluto.o pdep.o lzio.o
+	$(CC) -o $@ -shared $^ $(LDLIBS)
+
+pptest.exe: pptest.o
+	$(CC) -o $@ $^ $(LDLIBS) 
+
+puptest.exe: puptest.o
+	$(CC) -o $@ $^ $(LDLIBS) 

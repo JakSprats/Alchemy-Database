@@ -534,8 +534,7 @@ static bool createLuaElementIndex(cli *c, int tmatch, icol_t ic, int imatch) {
         lua_pushstring(server.lua, ri->icol.lo[i]); argc++;
     }
     if (lua_pcall(server.lua, argc, 0, 0)) { ret = 0;
-        addReplyErrorFormat(c, "Error running script (indexLORfield): %s\n",
-                        lua_tostring(server.lua, -1));
+        ADD_REPLY_FAILED_LUA_STRING_CMD("indexLORfield")
     }
     CLEAR_LUA_STACK return ret;
 }

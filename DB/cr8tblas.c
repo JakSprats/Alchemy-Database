@@ -170,9 +170,7 @@ void createTableSelect(redisClient *c) {
         lua_pushlstring(server.lua, wc, sdslen(wc));
         int ret = lua_pcall(server.lua, 4, 1, 0);
         if (ret) {
-            addReplyErrorFormat(c, "Error running script (%s): %s\n",
-                                   "internal_copy_table_from_select",
-                                   lua_tostring(server.lua, -1));
+            ADD_REPLY_FAILED_LUA_STRING_CMD("internal_copy_table_from_select")
         } else addReply(c, shared.ok);
         CLEAR_LUA_STACK
     }

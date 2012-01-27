@@ -1,11 +1,10 @@
 
 LUAOBJ
-  1.) rdbLoad/rdbSave lua-objects [use DataDumper & eval()]
-      |-> can be done AFTER dumpBT
   B.) dot-notation CompoundIndexes (plus mixed)                  -- list[dtype]
+        plus rdbSave/Load
   8.) UPDATE dot-notation directly (UPDATE tbl SET doc.age = 45)
       a.) UPDATE SET lo.x = 20              -> Simple Update
-      b.) UPDATE SET lo.x = lox. + 20       -> Simple Expression
+      b.) UPDATE SET lo.x = lo.x + 20       -> Simple Expression
       c.) UPDATE SET lo.x = func(fk, lo.y)  -> CompiledLuaFunction
       d.) UPDATE SET lo.x = sqrt(lo.x) * 44 -> DynamicLuaFunction
   H.) test w/ nested luaobjs (e.g. lo.x.y.z) -> DN_Index also
@@ -26,7 +25,8 @@ MISC:
   1.) LOAD DATA FROM INFILE ... 1st rev as Lua routine reading in CSV file
   2.) LRU/LFU indexes should be UNIQUE U128 indexes [lru|pk]
   3.) LuaTrigger takes fknames as first args (like "table") 
-      -> can be used for FK integrity checks
+        |-> can be used for FK integrity checks
+        |-> clean up parsing, use checkOrCr8LFunc()
   4.) Lua bindings for U128's
 
 CLEANUP:
@@ -35,7 +35,7 @@ CLEANUP:
         B.) OB_ctype[MAX_ORDER_BY_COLS]   -> push into cswc_t
         C.) JTAlias[MAX_JOIN_COLS]        -> push into JoinBlock
   2.) AddTable, AddIndex, AddColumn are NOT efficient - lots of copying
-      |-> on array-grow: add in some extra space (10 slots)
+        |-> on array-grow: add in some extra space (10 slots)
 
 FIX:
   1.) [shard-key & foreign-key] info not in RDB

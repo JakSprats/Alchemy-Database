@@ -76,7 +76,6 @@ extern robj     *CurrError;
 cli            *CurrClient         = NULL;
 
 char           *Basedir            = "./"; //TODO redundant w/ "dir"
-char           *LuaIncludeFile     = NULL; //TODO is LuaIncludeFile needed?
 
 // internal.lua should be in the CWD
 #define LUA_INTERNAL_FILE "internal.lua"
@@ -217,7 +216,6 @@ void DXDB_populateCommandTable(dict *server_commands) {
 }
 
 void DXDB_initServerConfig() { //printf("DXDB_initServerConfig\n");
-    LuaIncludeFile     = NULL;
     LuaCronFunc        = NULL;
     Basedir            = zstrdup("./extra/"); // DEFAULT dir for Alchemy
     WebServerMode      = -1;
@@ -268,7 +266,6 @@ void DXDB_initServer() { //printf("DXDB_initServer\n");
 static bool loadLuaHelperFile(cli *c, char *fname) {
     sds  fwpath = sdscatprintf(sdsempty(), "%s%s", Basedir, fname);
     bool ret    = 1;
-    //printf("loadLuaHelperFile: %s\n", fwpath);
     if (luaL_loadfile(server.lua, fwpath) || lua_pcall(server.lua, 0, 0, 0)) {
         const char *lerr = lua_tostring(server.lua, -1);
         if (c) addReplySds(c, sdscatprintf(sdsempty(),
@@ -317,12 +314,8 @@ static bool initLua(cli *c) {
     lua_pushcfunction(server.lua, luaAlchemyDeleteIndex);
     lua_setglobal(server.lua, "alchemyDeleteIndex");
 
-    if                    (!loadLuaHelperFile(c, LUA_INTERNAL_FILE)) return 0;
-    if (LuaIncludeFile  && !loadLuaHelperFile(c, LuaIncludeFile))    return 0;
-    else                                                             return 1;
-}
-static bool reloadLua(cli *c) {
-    lua_close(server.lua); scriptingInit(); return initLua(c);
+    if   (!loadLuaHelperFile(c, LUA_INTERNAL_FILE)) return 0;
+    else                                            return 1;
 }
 void DXDB_main() { //NOTE: must come after rdbLoad()
     if (!initLua(NULL)) exit(-1);
@@ -370,11 +363,7 @@ static void computeWS_WL_MinMax() {
 }
 int DXDB_loadServerConfig(int argc, sds *argv) {
     //printf("DXDB_loadServerConfig: 0: %s\n", argv[0]);
-    if        (!strcasecmp(argv[0], "include_lua")   && argc == 2) {
-        if (LuaIncludeFile) zfree(LuaIncludeFile);
-        LuaIncludeFile = zstrdup(argv[1]);
-        return 0;
-    } else if (!strcasecmp(argv[0], "luacronfunc")   && argc == 2) {
+    if (!strcasecmp(argv[0], "luacronfunc")   && argc == 2) {
         if (LuaCronFunc) zfree(LuaCronFunc);
         LuaCronFunc = zstrdup(argv[1]);
         return 0;
@@ -459,7 +448,7 @@ void DXDB_createClient(int fd, redisClient *c) {//printf("DXDB_createClient\n");
     if (fd == -1) c->InternalRequest = 1;
 }
 
-int   DXDB_processCommand(redisClient *c) { //printf("DXDB_processCommand\n");
+int DXDB_processCommand(redisClient *c) { //printf("DXDB_processCommand\n");
     if (c->http.mode == HTTP_MODE_ON) return continue_http_session(c);
     Operations++;
     CurrClient  = c;
@@ -501,17 +490,7 @@ void  DXDB_processInputBuffer_ZeroArgs(redisClient *c) {//HTTP Request End-Delim
 
 //TODO webserver_mode, webserver_whitelist_address, webserver_whitelist_netmask, webserver_index_function, sqlslaveof
 int DXDB_configSetCommand(cli *c, robj *o) {
-    if (!strcasecmp(c->argv[2]->ptr, "include_lua")) {
-        if (LuaIncludeFile) zfree(LuaIncludeFile);
-        LuaIncludeFile = zstrdup(o->ptr);
-        if (!reloadLua(c)) {
-            addReplySds(c,sdscatprintf(sdsempty(),
-               "-ERR problem loading lua helper file: %s\r\n", (char *)o->ptr));
-            decrRefCount(o);
-            return -1;
-        }
-        return 0;
-    } else if (!strcasecmp(c->argv[2]->ptr,"luacronfunc")) {
+    if (!strcasecmp(c->argv[2]->ptr,"luacronfunc")) {
         zfree(LuaCronFunc);
         LuaCronFunc = zstrdup(o->ptr);
         return 0;
@@ -569,11 +548,6 @@ unsigned char DXDB_configCommand(redisClient *c) {
     return 1;
 }
 void DXDB_configGetCommand(redisClient *c, char *pattern, int *matches) {
-    if (stringmatch(pattern, "include_lua", 0)) {
-        addReplyBulkCString(c, "include_lua");
-        addReplyBulkCString(c, LuaIncludeFile);
-        *matches = *matches + 1;
-    }
     if (stringmatch(pattern, "luacronfunc", 0)) {
         addReplyBulkCString(c, "luafronfunc");
         addReplyBulkCString(c, LuaCronFunc);
@@ -611,7 +585,15 @@ int DXDB_rdbSave(FILE *fp) { //printf("DXDB_rdbSave\n");
         }
     }
     if (rdbSaveType(fp, REDIS_EOF) == -1) return -1; /* SQL delim REDIS_EOF */
-    return 0;
+    int ret = 0;
+    CLEAR_LUA_STACK lua_getglobal(server.lua, "save_lua_universe");
+    int r = lua_pcall(server.lua, 0, 0, 0);
+    if (r) { ret = -1;
+        redisLog(REDIS_WARNING, "ERROR SAVING LUA UNIVERSE: %s",
+                                 lua_tostring(server.lua, -1));
+    }
+    CLEAR_LUA_STACK
+    return ret;
 }
 
 int DXDB_rdbLoad(FILE *fp) { //printf("DXDB_rdbLoad\n");
@@ -629,6 +611,13 @@ int DXDB_rdbLoad(FILE *fp) { //printf("DXDB_rdbLoad\n");
             if (!rdbLoadLuaTrigger(fp))                    return -1;
         }
     }
+    CLEAR_LUA_STACK lua_getglobal(server.lua, "get_lua_universe");
+    int r = lua_pcall(server.lua, 0, 0, 0);
+    if (r) {
+        redisLog(REDIS_WARNING, "ERROR GETTING LUA UNIVERSE: %s",
+                                 lua_tostring(server.lua, -1)); //return -1;
+    }
+    CLEAR_LUA_STACK
     rdbLoadFinished(); // -> build Indexes
     return 0;
 }
@@ -661,13 +650,12 @@ void DBXD_genRedisInfoString(sds info) {
 #ifdef REDIS3
             "# ALCHEMY\r\n"
 #endif
-            "luafilname:%s\r\n"
             "luacronfunc:%s\r\n"
             "basedir:%s\r\n"
             "outputmode:%s\r\n"
             "webserver_mode:%s\r\n"
             "webserver_index_function:%s\r\n",
-             LuaIncludeFile, LuaCronFunc, Basedir,
+             LuaCronFunc, Basedir,
              (EREDIS) ? "embedded" : ((OREDIS) ? "pure_redis" : "normal"),
              (WebServerMode == -1) ? "no" : "yes",
              WebServerIndexFunc);

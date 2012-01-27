@@ -278,7 +278,7 @@ bool writeLuaObjCol(cli *c,    aobj   *apk, int tmatch, int cmatch,
     char    *xcpd = new_unescaped(val, '\'', vlen, &nlen); if (!xcpd) return 1;
     sds      luac = sdsnewlen(xcpd, nlen);                   DEBUG_WRITE_LUAOBJ
     CLEAR_LUA_STACK
-    lua_getfield(server.lua, LUA_GLOBALSINDEX, "luaobj_assign");
+    lua_getfield  (server.lua, LUA_GLOBALSINDEX, "luaobj_assign");
     lua_pushstring(server.lua, LUA_OBJ_TABLE);
     lua_pushstring(server.lua, rt->name);
     lua_pushstring(server.lua, rt->col[cmatch].name);
@@ -286,9 +286,9 @@ bool writeLuaObjCol(cli *c,    aobj   *apk, int tmatch, int cmatch,
     lua_pushstring(server.lua, luac);
     int ret = lua_pcall(server.lua, 5, 0, 0);
     if (ret) {
-        addReplyErrorFormat(c, "Error running script (luaobj_assign): %s\n",
-                                lua_tostring(server.lua, -1)); CLEAR_LUA_STACK
+        ADD_REPLY_FAILED_LUA_STRING_CMD("luaobj_assign")
     }
+    CLEAR_LUA_STACK
     return ret ? 0 : 1;
 }
 

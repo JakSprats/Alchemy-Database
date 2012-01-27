@@ -100,9 +100,9 @@ uchar *serialiseJTA  (int jtsize);
 int    deserialiseJTA(uchar *x);
 
 // REPLY
-sds  getQueriedCnames(int tmatch, icol_t *ics, int  qcols);
-void setDMB_card_cnames(cli *c, cswc_t *w, icol_t *ics, int qcols, long card,
-                        void *rlen);
+sds  getQueriedCnames(int tmatch, icol_t *ics, int qcols, lfca_t *lfca);
+void setDMBcard_cnames(cli  *c,    cswc_t *w,    icol_t *ics, int qcols,
+                       long  card, void   *rlen, lfca_t *lfca);
 void setDMB_Join_card_cnames(cli *c, jb_t *jb, long card, void *rlen);
 
 #endif /*__ALSOSQL_COLPARSE__H */ 

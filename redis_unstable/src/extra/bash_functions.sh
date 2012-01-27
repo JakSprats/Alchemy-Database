@@ -3263,3 +3263,25 @@ function populate_join_dot_notation_index() {
   $CLI CREATE INDEX i_j_doc_dn ON j_doc "(lo.age)" LONG;
   $CLI INSERT INTO j_doc VALUES "(1, 111, '{name = \'RUSS\', age=35, group=2}')";
 }
+
+function wiki_lua_tests() {
+  $CLI DROP TABLE users >/dev/null
+  $CLI CREATE TABLE users "(userid INT, zipcode INT, info LUAOBJ)"
+  $CLI INSERT INTO users "(userid, zipcode, info)" VALUES "(1,44555,{fname='BILL',lname='DOE',age=32,groupid=999,height=70,weight=180})"
+  $CLI INSERT INTO users "(userid, zipcode, info)" VALUES "(2,44555,{fname='Jane',lname='Smith',age=22,groupid=888,coupon='XYZ123'})"
+  $CLI CREATE INDEX i_users_i_a ON users "(info.age)" LONG
+  $CLI CREATE INDEX i_users_i_g ON users "(info.groupid)" LONG
+  $CLI SELECT info.name FROM users WHERE "info.age = 32"
+  $CLI SELECT info.name FROM users WHERE "info.groupid = 888"
+  $CLI CONFIG ADD LUA "function has_coupon(info, code) if (info.coupon ~= nil and info.coupon == code) then return 1; else return 0; end; end"
+  $CLI CREATE INDEX i_u_zip ON users "(zipcode)"
+  $CLI SELECT info.name FROM users WHERE "zipcode = 44555 AND has_coupon(info, 'XYZ123')"
+  $CLI CONFIG ADD LUA "function format_name(t) return string.sub(t.fname, 1, 1) .. '. ' .. t.lname; end"
+  $CLI SELECT "format_name(info)" FROM users WHERE "zipcode = 44555 AND has_coupon(info, 'XYZ123')"
+  $CLI CONFIG ADD LUA "function generate_coupon() return 'XYZ' .. math.random(1,999); end"
+  $CLI UPDATE users SET "info.coupon = generate_coupon()" WHERE "userid = 1"
+  $CLI CONFIG ADD LUA "weight_gain_per_year={}; weight_gain_per_year[20]=1; weight_gain_per_year[25]=2; weight_gain_per_year[30]=3; weight_gain_per_year[35]=4; weight_gain_per_year[40]=5; weight_gain_per_year[45]=5; weight_gain_per_year[50]=4; weight_gain_per_year[55]=3; weight_gain_per_year[60]=2;"
+  $CLI CONFIG ADD LUA "function update_weight(info) for k, v in pairs(weight_gain_per_year) do if (k > info.age) then info.weight = info.weight + v; return true; end; end; return false; end"
+  $CLI SELECT "update_weight(info)" FROM users WHERE "userid = 1"
+  $CLI SELECT "format_name(info)" FROM users WHERE "zipcode = 44555 ORDER BY string.sub(info.fname,1,3)"
+}

@@ -1,0 +1,20 @@
+LDLIBS= -lm -ldl -llua
+LDFLAGS = -rdynamic
+CFLAGS= -g3 -Wall -Wconversion -ansi -pedantic
+
+LIBTOOL=libtool --tag=CC
+
+default: pluto.so pptest puptest
+
+%.lo: %.c
+	$(LIBTOOL) --mode=compile cc $(CFLAGS) -c $<
+
+pluto.so: pluto.lo pdep.lo lzio.lo
+	$(LIBTOOL) --mode=link cc -rpath /usr/local/lib/lua/5.1 -o libpluto.la $^
+	mv .libs/libpluto.so.0.0.0 $@
+
+pptest: pptest.o
+	$(CC) $(LDFLAGS) -o $@ $^ $(LDLIBS) 
+
+puptest: puptest.o
+	$(CC) $(LDFLAGS) -o $@ $^ $(LDLIBS) 

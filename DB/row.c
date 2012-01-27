@@ -565,8 +565,8 @@ static aobj getRC_OBT(bt *btr, void *orow, int cmatch, aobj *apk, bool fs) {
       else { assert(!"getRC_OBT: ERROR"); aobj a; return a; }
 }
 //TODO aobj *
-static aobj getRC_LFunc(bt *btr, uchar *orow, int tmatch, aobj *apk, bool fs,
-                        lfca_t *lfca) {
+static aobj getRC_LFunc(bt   *btr, uchar  *orow, int tmatch, aobj *apk,
+                        bool  fs,  lfca_t *lfca) {
     aobj a; initAobj(&a); lue_t *le = lfca->l[lfca->curr]; lfca->curr++;
     CLEAR_LUA_STACK 
     lua_getglobal(server.lua, "DataDumperWrapper");
@@ -990,9 +990,10 @@ robj *outputRow(bt  *btr, void *rrow,   int     qcols, icol_t *ics,
                                      orow_normal);
     return (*rop)(btr, rrow, qcols, ics, apk, tmatch, lfca, ost);
 }
-void outputColumnNames(cli *c, int tmatch, bool cstar, icol_t *ics, int qcols) {
+void outputColumnNames(cli *c,     int     tmatch, bool cstar, icol_t *ics,
+                       int  qcols, lfca_t *lfca) {
     sds   s = cstar ? sdsnewlen("COUNT(*)", 8) :
-                      getQueriedCnames(tmatch, ics, qcols);
+                      getQueriedCnames(tmatch, ics, qcols, lfca);
     robj *r = createObject(REDIS_STRING, s);
     if OREDIS  addReply    (c, r); 
     else       addReplyBulk(c, r); 
@@ -1319,11 +1320,7 @@ printf("evalLuaExpr: fname: %s ncols: %d\n", le->fname, le->ncols);
     int ret = lua_pcall(server.lua, le->ncols, 1, 0);
 printf("evalLuaExpr: lua_pcall: ret: %d\n", ret);
     if (ret) {
-        sds err = sdscatprintf(sdsempty(),
-                               "Error running LUA UPDATE (%s): %s\n",
-                                le->fname, lua_tostring(server.lua, -1));
-        addReplyErrorFormat(c, "%s", err);
-        CLEAR_LUA_STACK return 0;
+        ADD_REPLY_FAILED_LUA_STRING_CMD(le->fname) return 0;
     }
     int  ctype = rt->col[cmatch].type;
     //NOTE: C_IS_X() disallowed

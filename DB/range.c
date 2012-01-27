@@ -714,7 +714,7 @@ printf("iselectAction: card: %ld CurrCard: %ld CurrUpdated: %ld\n", card, CurrCa
     else {
         if (wb->lim != -1 && sent < card) card = sent;
         if      (cstar)   addReplyLongLong(c, card);
-        else if (!EREDIS) setDMB_card_cnames(c, w, ics, qcols, card, rlen);
+        else if (!EREDIS) setDMBcard_cnames(c, w, ics, qcols, card, rlen, lfca);
     }
 
 isele:

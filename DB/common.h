@@ -187,5 +187,7 @@ typedef struct twoint {
 
 #define ADD_REPLY_FAILED_LUA_STRING_CMD(cmd)                 \
   addReplyErrorFormat(c, "FAILED: cmd: (%s) msg: (%s).",     \
-                         cmd, lua_tostring(server.lua, -1));
+                         cmd, lua_tostring(server.lua, -1)); \
+  CLEAR_LUA_STACK
+
 #endif /* __ALSOSQL_COMMON__H */

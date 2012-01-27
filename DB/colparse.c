@@ -899,12 +899,14 @@ pcr8tbl_end:
 }
 
 // REPeY REPLY REPLY REPLY REPLY REPLY REPLY REPLY REPLY REPLY REPLY REPLY
-sds getQueriedCnames(int tmatch, icol_t *ics, int  qcols) {
+sds getQueriedCnames(int tmatch, icol_t *ics, int qcols, lfca_t *lfca) {
     r_tbl_t *rt = &Tbl[tmatch];
     sds      s  = sdsempty();
     if OREDIS s = sdscatprintf(s, "*%d\r\n", qcols);
+    int       k = 0;
     for (int i = 0; i < qcols; i++) {
-        sds cname = rt->col[ics[i].cmatch].name;
+        sds cname = ics[i].cmatch < 0 ? lfca->l[k++]->fname :
+                                        rt->col[ics[i].cmatch].name;
         sds fullc = sdsdup(cname);                       // FREE 151
         if (ics[i].nlo) {
             for (uint32 j = 0; j < ics[i].nlo; j++) {
@@ -935,11 +937,11 @@ static sds getJoinQueriedCnames(jb_t *jb) {
     return s;
 }
 
-void setDMB_card_cnames(cli  *c, cswc_t *w, icol_t *ics, int qcols, long card,
-                        void *rlen) {
+void setDMBcard_cnames(cli  *c,    cswc_t *w,    icol_t *ics, int qcols,
+                       long  card, void   *rlen, lfca_t *lfca) {
     if (card) {
         sds trows = sdscatprintf(sdsempty(),"*%ld\r\n", (card + 1));
-        sds s     = getQueriedCnames(w->wf.tmatch, ics, qcols); // FREE 149
+        sds s     = getQueriedCnames(w->wf.tmatch, ics, qcols, lfca);// FREE 149
         if OREDIS trows = sdscatlen   (trows, s, sdslen(s));
         else      trows = sdscatprintf(trows, "$%lu\r\n%s\r\n", sdslen(s), s);
         sdsfree(s);                                              // FREED 149
