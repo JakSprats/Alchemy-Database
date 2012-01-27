@@ -199,6 +199,7 @@ static bool _iAddMCI(cli  *c,      bt   *btr,  aobj *apk,     uchar  pktyp,
             } else {                              /* middle MID -> MID */
                 uchar ntype = 
                              Tbl[ri->tmatch].col[ri->bclist[i + 1].cmatch].type;
+                if C_IS_O(ntype) ntype = ri->dtype; // DNI override
                 if (i == trgr) nbtr = createU_MCI_IBT(ntype, imatch, pktyp);
                 else           nbtr = createMCI_MIDBT(ntype, imatch);
             }
@@ -574,14 +575,12 @@ int newIndex(cli    *c,     sds    iname, int  tmatch, icol_t ic,
         listNode *ln; rt->nmci++; // this table now has MCI
         ri->nclist   = listLength(ri->clist);
         ri->bclist   = malloc(ri->nclist * sizeof(icol_t)); /* FREE ME 053 */
+        bzero(ri->bclist, ri->nclist * sizeof(icol_t));
         int       i  = 0;
         listIter *li = listGetIterator(ri->clist, AL_START_HEAD);
         while((ln = listNext(li))) { /* convert clist to bclist */
-            icol_t *ic                = ln->value;
-            bzero(&ri->bclist[i], sizeof(icol_t));
-            //TODO FIXME populate "lo"
-            ri->bclist[i].cmatch      = ic->cmatch;
-            //TODO need bclist[i].dtype = dtlist[i]
+            icol_t *ic = ln->value;
+            cloneIC(&ri->bclist[i], ic);
             rt->col[ic->cmatch].indxd = 1; /* used in updateRow OVRWR */
             i++;
         } listReleaseIterator(li);
@@ -593,9 +592,9 @@ int newIndex(cli    *c,     sds    iname, int  tmatch, icol_t ic,
         if (ri->icol.nlo &&
             !createLuaElementIndex(c, tmatch, ic, imatch)) return -1;
         uchar pktyp = rt->col[0].type;
-        ri->btr = ri->clist       ? createMCIndexBT(ri->clist, imatch) :
-                  UNIQ(ri->cnstr) ? createU_S_IBT  (ri->dtype, imatch, pktyp) :
-        /* normal & lru/lfu */      createIndexBT  (ri->dtype, imatch);
+        ri->btr = ri->clist       ? createMCI_IBT(ri->clist, imatch, ri->dtype):
+                  UNIQ(ri->cnstr) ? createU_S_IBT(ri->dtype, imatch, pktyp) :
+        /* normal & lru/lfu */      createIndexBT(ri->dtype, imatch);
     }
     ASSERT_OK(dictAdd(IndD, sdsdup(ri->name), VOIDINT(imatch + 1)));
     if (!virt && !lru && !lfu && !luat && !prtl) { //NOTE: failure -> emptyIndex
@@ -612,7 +611,7 @@ bool addC2MCI(cli *c, icol_t ic, list *clist) {
     if (!ic.cmatch) {
         listRelease(clist); if (c) { addReply(c, shared.mci_on_pk); } return 0;
     }
-    icol_t *mic = malloc(sizeof(icol_t)); memcpy(mic, &ic, sizeof(icol_t));
+    icol_t *mic = malloc(sizeof(icol_t)); cloneIC(mic, &ic);
     listAddNodeTail(clist, VOIDINT mic);
     return 1;
 }
@@ -638,21 +637,22 @@ static bool ICommit(cli *c,      sds   iname,   sds   tname, char  *cname,
                 addReply(c, shared.uniq_mci_pk_notint);             return 0;
             }
         }
-        int ocmatch = -1; /* first column can be used as normal index */
+        DECLARE_ICOL(oic, -1)
         clist       = listCreate();                  /* DESTROY ME 054 */
         while (1) {
             char *end = nextc - 1;
             REV_SKIP_SPACES(end)
-            ic        = find_column_n(tmatch, cname, (end + 1 - cname));
-            if (!addC2MCI(c, ic, clist))                            return 0;
-            if (ocmatch == -1) ocmatch = ic.cmatch;
+            oic       = find_column_n(tmatch, cname, (end + 1 - cname));
+            if (!addC2MCI(c, oic, clist))                           return 0;
+            //TODO releaseIC(oic);
+            if (ic.cmatch == -1) cloneIC(&ic, &oic); // 1st col can be index
             nextc++;
             SKIP_SPACES(nextc);
             cname     = nextc;
             nextc     = strchr(nextc, ',');
             if (!nextc) {
-                ic = find_column(tmatch, cname);
-                if (!addC2MCI(c, ic, clist))                    return 0;
+                oic = find_column(tmatch, cname);
+                if (!addC2MCI(c, oic, clist))                       return 0;
                 break;
             }
         }
@@ -687,7 +687,6 @@ static bool ICommit(cli *c,      sds   iname,   sds   tname, char  *cname,
                 }
             }
         }
-        ic.cmatch = ocmatch;
     } else {
         ic = find_column(tmatch, cname);
         if (ic.cmatch <= -1) {
@@ -757,11 +756,12 @@ void createIndex(redisClient *c) {
     if (!end || (*token != '(')) { addReply(c, shared.createsyntax);  return; }
     STACK_STRDUP(cname, (token + 1), (end - token - 1))
 
-    //TODO for MCI dtype must be dtlist
     uchar  dtype = COL_TYPE_NONE;
     char  *dn    = strchr(cname, '.');
     if (dn) {
-        if (c->argc < (coln + 2)) { addReply(c, shared.createsyntax); return; }
+        if (c->argc < (coln + 2)) {
+            addReply(c, shared.createsyntax_dn); return;
+        }
         coln++;
         if (!parseColType(c, c->argv[coln]->ptr, &dtype)) {
             addReply(c, shared.createsyntax_dn);                      return;
@@ -825,6 +825,7 @@ void emptyIndex(int imatch) { //printf("emptyIndex: imatch: %d\n", imatch);
     if (ri->icol.nlo) {
         for (uint32 i = 0; i < ri->icol.nlo; i++) sdsfree(ri->icol.lo[i]);
         emptyLuaObjectElementIndex(imatch);
+        //TODO free ri->icol.lo & set to NULL
     }
     bzero(ri, sizeof(r_ind_t));
     ri->tmatch = ri->icol.cmatch = ri->obc.cmatch = ri->ofst = -1;
@@ -941,7 +942,7 @@ int luaAlchemyDeleteIndex(lua_State *lua) {
     aobj apk;  initAobjFromLua(&apk,  pktyp); CLEAR_LUA_STACK
     sdsfree(tname); sdsfree(cname); sdsfree(ename);
     bt    *ibtr  = getIBtr(imatch);
-    bool   gost  = 0; //TODO FIXME populate gost
+    bool   gost  = 0;
     iRem(ibtr, &acol, &apk, NULL, imatch, gost);
     lua_pushboolean(lua, (int)1); return 1;
 }

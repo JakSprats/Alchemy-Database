@@ -3255,6 +3255,16 @@ function test_dot_notation_index() {
   $CLI CONFIG ADD LUA "ASQL.doc.lo[3].age=52;"
   echo "1 row (lo.age) [50-60]"
   $CLI SELECT \* FROM doc WHERE "lo.age BETWEEN 50 AND 60"
+
+  $CLI DROP INDEX i_doc_dn
+  $CLI DROP INDEX i_doc_grp
+  $CLI CREATE INDEX i_doc_mci ON doc "(lo.group,lo.age)" LONG
+  echo "1 row [group=2,age=35]"
+  $CLI SELECT \* FROM doc WHERE "lo.group = 2 AND lo.age = 35"
+  $CLI INSERT INTO doc VALUES "(4, 111, {name = 'KATE', age=25, group=2})";
+  echo "2 rows [group=2,age=25]"
+  $CLI SELECT \* FROM doc WHERE "lo.group = 2 AND lo.age = 25"
+
 }
 
 function populate_join_dot_notation_index() {

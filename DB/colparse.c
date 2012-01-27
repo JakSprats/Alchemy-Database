@@ -86,7 +86,16 @@ void init_mvals_mvlens(char   **mvals,  list *mvalsl,
         mvlens[ncm] = (uint32)(long)lnc->value; ncm++;
     } listReleaseIterator(lic);
 }
-
+void cloneIC(icol_t *dic, icol_t *sic) {
+    dic->cmatch = sic->cmatch;
+    dic->nlo    = sic->nlo;
+    if (dic->nlo) {
+        dic->lo = malloc(sizeof(sds) * dic->nlo); // FREE 146
+        for (uint32 j = 0; j < dic->nlo; j++) {
+            dic->lo[j] = sdsdup(sic->lo[j]);
+        }
+    }
+}
 // CURSORS CURSORS CURSORS CURSORS CURSORS CURSORS CURSORS CURSORS
 /* set "OFFSET var" for next cursor iteration */
 void incrOffsetVar(redisClient *c, wob_t *wb, long incr) {

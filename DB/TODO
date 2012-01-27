@@ -1,13 +1,14 @@
 
 LUAOBJ
-  B.) dot-notation CompoundIndexes (plus mixed)                  -- list[dtype]
-        plus rdbSave/Load
   8.) UPDATE dot-notation directly (UPDATE tbl SET doc.age = 45)
       a.) UPDATE SET lo.x = 20              -> Simple Update
       b.) UPDATE SET lo.x = lo.x + 20       -> Simple Expression
       c.) UPDATE SET lo.x = func(fk, lo.y)  -> CompiledLuaFunction
       d.) UPDATE SET lo.x = sqrt(lo.x) * 44 -> DynamicLuaFunction
   H.) test w/ nested luaobjs (e.g. lo.x.y.z) -> DN_Index also
+  I.) LuaTriggers, calling (lo.x.y) - ???
+  J.) UNIQUE DNI
+  K.) Test STRING DNI
 
 PROTOCOL
   2.) ADD "SELECT col AS othername"

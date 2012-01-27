@@ -349,7 +349,7 @@ static uint32 getMCIKeys(list *klist, uchar cnstr) {
     listIter *fli  = listGetIterator(klist, AL_START_HEAD);
     listNode *fln  = listNext(fli);
     f_t      *flt  = fln->value;
-    if (flt->op == NONE) { listReleaseIterator(fli);     return UINT_MAX; }
+    if (flt->op     == NONE) { listReleaseIterator(fli); return UINT_MAX; }
     bt       *ibtr = getIBtr(flt->imatch);
     bt       *nbtr = btIndFind(ibtr, &flt->akey);
     if (!nbtr) {                                         return UINT_MAX; }

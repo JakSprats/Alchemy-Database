@@ -45,18 +45,7 @@ char *parseRowVals(sds vals,  char   **pk,        int  *pklen,
                    int ncols, twoint   cofsts[],  int   tmatch,
                    int pcols, icol_t  *ics,       int   lncols, bool *ai);
 
-// SELECT
-bool parseCSLSelect(cli  *c,         char  *tkn, 
-                    bool  exact,     bool   isi, 
-                    int   tmatch,    list  *cs,    list   *ls,
-                    int  *qcols,     bool  *cstar);
-
-bool parseCSLJoinTable(cli *c, char *tkn, list *ts, list  *jans);
-
-bool parseCSLJoinColumns(cli  *c,     char  *tkn,  bool  exact,
-                         list *ts,    list  *jans, list *js,
-                         int  *qcols, bool  *cstar);
-
+// HELPERS
 void init_ics(icol_t *ics, list *cmatchl);
 #define CMATCHS_FROM_CMATCHL                          \
     icol_t ics[cmatchl->len]; init_ics(ics, cmatchl);
@@ -69,6 +58,20 @@ void init_mvals_mvlens(char   **mvals,  list *mvalsl,
     uint32  mvlens [mvlensl->len];                                   \
     init_mvals_mvlens(mvals, mvalsl, mvlens, mvlensl);               \
     listRelease(cmatchl); listRelease(mvalsl); listRelease(mvlensl);
+
+void cloneIC(icol_t *dic, icol_t *sic);
+
+// SELECT
+bool parseCSLSelect(cli  *c,         char  *tkn, 
+                    bool  exact,     bool   isi, 
+                    int   tmatch,    list  *cs,    list   *ls,
+                    int  *qcols,     bool  *cstar);
+
+bool parseCSLJoinTable(cli *c, char *tkn, list *ts, list  *jans);
+
+bool parseCSLJoinColumns(cli  *c,     char  *tkn,  bool  exact,
+                         list *ts,    list  *jans, list *js,
+                         int  *qcols, bool  *cstar);
 
 bool parseSelect(cli  *c,     bool    is_scan, bool *no_wc, int  *tmatch,
                  list *cs,    list   *ls,    int  *qcols, bool *join,

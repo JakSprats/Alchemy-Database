@@ -152,11 +152,12 @@ bt *createU_MCI_IBT(uchar ktype, int imatch, uchar pktyp) {  // UNIQ MCI
 bt *createMCI_MIDBT(uchar ktype, int imatch) {
     return createIBT(ktype, imatch, BTREE_MCI_MID);
 }
-bt *createMCIndexBT(list *clist, int imatch) {
+bt *createMCI_IBT(list *clist, int imatch, uchar dtype) {
     listNode *ln    = listFirst(clist);
     icol_t   *ic    = ln->value;
     r_tbl_t  *rt    = &Tbl[Index[imatch].tmatch];
     uchar     ktype = rt->col[ic->cmatch].type;
+    if C_IS_O(ktype) ktype = dtype; // MCI DNI OVERRIDE
     return createIBT(ktype, imatch, BTREE_MCI);
 }
 bt *createIndexNode(uchar ktype, uchar obctype) {                /* INODE_BT */

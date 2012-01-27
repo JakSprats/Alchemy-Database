@@ -44,7 +44,7 @@ bt *createU_MCI_IBT(uchar ktype, int imatch, uchar pktyp);
 bt *createU_S_IBT  (uchar ktype, int imatch, uchar pktyp);
 bt *createMCI_MIDBT(uchar ktype, int imatch);
 bt *createIndexBT  (uchar ktype, int imatch);
-bt *createMCIndexBT(list *clist, int imatch);
+bt *createMCI_IBT  (list *clist, int imatch, uchar dtype);
 bt *createDBT      (uchar ktype, int tmatch);
 bt *createIndexNode(uchar pktyp, bool hasobc);
 
