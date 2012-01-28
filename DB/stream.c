@@ -265,8 +265,8 @@ void pushLuaVar(int tmatch, icol_t ic, aobj *apk) {
     lua_pushstring(server.lua, rt->col[ic.cmatch].name);
     lua_gettable  (server.lua, -2); lua_remove(server.lua, -2);
     pushAobjLua(apk, apk->type);
+    lua_gettable  (server.lua, -2); lua_remove(server.lua, -2);
     if (ic.nlo) {
-        lua_gettable  (server.lua, -2); lua_remove(server.lua, -2);
         for (uint32 i = 0; i < ic.nlo; i++) {
             printf("pushLuaVar: pushing: ic.lo[%d]: %s\n", i, ic.lo[i]);
             lua_pushstring(server.lua, ic.lo[i]);

@@ -626,7 +626,6 @@ printf("parseCommaListToAobjs: tkn: %s\n", tkn);
         } else if (ISALPHA(c)) {
             a = createAobjFromString(tkn, len, COL_TYPE_STRING);    //FREEME 126
             icol_t ic  = find_column_n(tmatch, tkn, len);
-//TODO FIXME COL_TYPE_CNAME needs icol_t (?MAYBE?)
             if (ic.cmatch != -1) { a->i = ic.cmatch; a->type = COL_TYPE_CNAME; }
             else {
                 for (int i = 0; i < len; i++) {
@@ -727,6 +726,17 @@ dictType icolDictType = {
     dictIcolDestructor          /* val destructor */
 };
 
+static void addCnameToCdict(sds cname, icol_t *mic, dict *colD) {
+    if (mic->nlo) { //NOTE: only LuaObject-name is passed
+        char   *p   = strchr(cname, '.');
+        sds     cn  = sdsnewlen(cname, p - cname); // FREE 153
+        icol_t *ic2 = dictFetchValue(colD, cn);
+        if (!ic2) ASSERT_OK(dictAdd(colD, sdsdup(cn), mic));
+        //TODO else destroyIC(mic);
+        sdsfree(cn);                            // FREED 153
+    }
+    else ASSERT_OK(dictAdd(colD, sdsdup(cname), mic));
+}
 bool checkOrCr8LFunc(int tmatch, lue_t *le, sds expr, bool cln) {
     if (tmatch == -1) return 0; // JOINs not yet supported
 printf("checkOrCr8LFunc\n");
@@ -738,24 +748,40 @@ printf("checkOrCr8LFunc\n");
         lue_t *lesaved = o->ptr; memcpy(le, lesaved, sizeof(lue_t)); return 1;
     }
 
-    dict *colD = dictCreate(&icolDictType,  NULL);                  // FREE 140
-    static long  Nfuncn = 0; Nfuncn++;
-    int          len    = sdslen(expr); int spot = -1;
+    sds mexpr = sdsdup(expr);                                       // FREE 154
+    sds nexpr = NULL; int pleq = -1;
+
+    //TODO both joins and nested lua objects are '.' delimited
+    //     give joins precedence (i.e. check_table 'xxx' in 'xxx.yyy')
+    dict   *colD   = dictCreate(&icolDictType,  NULL);              // FREE 140
+    static long Nfuncn = 0; Nfuncn++;
+    int         len    = sdslen(mexpr); int spot = -1;
     for (int i = 0; i < len; i++) {
-        char c = expr[i];
+        char c = mexpr[i];
+        if        (c == '!') {
+            if (i != (len - 1) && mexpr[i + 1] == '=') {
+                mexpr[i] = '~'; i++; continue; // skip next '='
+            }
+        } else if (c == '=') {
+            if (!nexpr) nexpr = sdsnewlen(expr, i + 1);
+            else        nexpr = sdscatlen(nexpr, expr + pleq, i - pleq + 1);
+            pleq = i + 1; nexpr = sdscatlen(nexpr, "=", 1);
+        }
         if        (c == '\'') {
-            char *s = expr + i + 1;
+            char *s = mexpr + i + 1;
             char *t = str_next_unescaped_chr(s, s, '\'');
             if (!t) { spot = -1; break; } i += (t - s) + 1;
         } else if (spot != -1) {
-            if (!ISALNUM(c)) { 
-                sds    cname = sdsnewlen(expr + spot, (i - spot)); // FREE 141
+            if (!ISALNUM(c) && c != '.') { 
+                sds    cname = sdsnewlen(mexpr + spot, (i - spot)); // FREE 141
                 icol_t ic    = find_column_sds(tmatch, cname);
                 if (ic.cmatch != -1) {
-                    icol_t *mic = malloc(sizeof(icol_t));         // FREE 139
-                    memcpy(mic, &ic, sizeof(icol_t));
                     icol_t *ic2 = dictFetchValue(colD, cname);
-                    if (!ic2) ASSERT_OK(dictAdd(colD, sdsdup(cname), mic));
+                    if (!ic2) {
+                        icol_t *mic = malloc(sizeof(icol_t));       // FREE 139
+                        cloneIC(mic, &ic);
+                        addCnameToCdict(cname, mic, colD);
+                    }
                 }                                            //DEBUG_DEEP_PARSE
                 sdsfree(cname);                                    // FREE 141
                 spot = -1;
@@ -763,22 +789,24 @@ printf("checkOrCr8LFunc\n");
         } else if (ISALPHA(c)) {
             if (!i) spot = i;
             else { 
-                char d = expr[i - 1];
-                if (LuaDlms[(int)d] && d != '.') spot = i;
+                char d = mexpr[i - 1]; if (LuaDlms[(int)d]) spot = i;
             }
         }
     }
     if (spot != -1) {
-        sds    cname = sdsnewlen(expr + spot, (len - spot)); // FREE 142
+        sds    cname = sdsnewlen(mexpr + spot, (len - spot)); // FREE 142
         icol_t ic    = find_column_sds(tmatch, cname);
         if (ic.cmatch != -1) {
-            icol_t *mic = malloc(sizeof(icol_t));         // FREE 139
-            memcpy(mic, &ic, sizeof(icol_t));
             icol_t *ic2 = dictFetchValue(colD, cname);
-            if (!ic2) ASSERT_OK(dictAdd(colD, sdsdup(cname), mic));
+            if (!ic2) {
+                icol_t *mic = malloc(sizeof(icol_t));         // FREE 139
+                cloneIC(mic, &ic);
+                addCnameToCdict(cname, mic, colD);
+            }
         }                                    //{int i = len; DEBUG_DEEP_PARSE }
         sdsfree(cname);                                    // FREE 142
     }
+    if (nexpr) nexpr = sdscatlen(nexpr, expr + pleq, len - pleq);
 
     le->yes   = 1; le->ncols = dictSize(colD);
     if (le->ncols) le->as = malloc(le->ncols * sizeof(aobj **));   //FREE 096
@@ -792,19 +820,23 @@ printf("checkOrCr8LFunc\n");
             icol_t *ic      = dictGetEntryVal(de);
             int      cm     = ic->cmatch;
             lfunc           = sdscatprintf(lfunc, "local %s = arg[%d]; ",
-                                                   cname, (i + 1));
+                                                    cname, (i + 1));
             le->as[i]       = createAobjFromInt(cm);
-            //TODO populate "lo"
             le->as[i]->type = COL_TYPE_CNAME;
             printf("CREATE COMPLEX LUA: a: "); dumpAobj(printf, le->as[i]);
             i++;
         } dictReleaseIterator(di);
     }
-    lfunc = sdscatprintf(lfunc, " return (%s); end)(...)", expr);
+    if (nexpr) { //TODO replace any '=' w/ '=='
+        lfunc = sdscatprintf(lfunc, " return (%s); end)(...)", nexpr);
+        sdsfree(nexpr);
+    } else lfunc = sdscatprintf(lfunc, " return (%s); end)(...)", mexpr);
     CLEAR_LUA_STACK
     int ret = luaL_loadstring(server.lua, lfunc);
-    printf("ret: %d fname: %s ncols: %d lfunc: %s\n", ret, le->fname, le->ncols, lfunc);
+    printf("ret: %d fname: %s ncols: %d lfunc: %s\n",
+           ret, le->fname, le->ncols, lfunc);
     sdsfree(lfunc);                                                // FREED 100
+    sdsfree(mexpr);                                                // FREED 154
     if (ret) { le->yes = 0; sdsfree(le->fname); le->fname = NULL; }// FREED 096
     else     {
         lua_setglobal(server.lua, le->fname);

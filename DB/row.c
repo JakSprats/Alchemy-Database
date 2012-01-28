@@ -1281,10 +1281,9 @@ up_end:
 /* UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR */
 void pushColumnLua(bt *btr, uchar *orow, int tmatch, aobj *a, aobj *apk) {
         aobj acol; initAobj(&acol); int ctype = COL_TYPE_NONE;
-printf("pushColumnLua: a: "); dumpAobj(printf, a);
+printf("pushColumnLua: type: %d a: ", a->type); dumpAobj(printf, a);
         if        C_IS_C(a->type) {
             DECLARE_ICOL(ic, a->i)
-//TODO FIXME need a->lo for ic.lo - ???
             assert(tmatch != -1 && ic.cmatch != -1);
             ctype = Tbl[tmatch].col[ic.cmatch].type;
             if (C_IS_O(ctype)) {

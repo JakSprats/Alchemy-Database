@@ -37,6 +37,7 @@ ALL RIGHTS RESERVED
 #include "redis.h"
 
 #include "query.h"
+#include "ddl.h"
 #include "range.h"
 #include "bt.h"
 #include "common.h"
@@ -164,22 +165,30 @@ static icol_t check_special_column(int tmatch, sds cname) {
             sds      cn  = sdsnewlen(cname, sd - cname);           // FREE 143
             ci_t    *ci  = dictFetchValue(rt->cdict, cn);
             if (ci) {
-                sd++; list *lo = listCreate();                     // FREE 144
+                bool ok = 1;
+                sd++; list *lo = listCreate(); lo->free = v_sdsfree; //FREE 144
                 while (*sd) {
                     char   *nextd = strchr(sd, '.');
                     uint32  len   = nextd ? nextd - sd : (uint32)strlen(sd);
+                    char    c     = *sd;
+                    if (!ISALPHA(c)) { ok = 0; break; }
+                    for (int j = 1; j < len; j++) {
+                        c = *(sd + j);
+                        if (!ISALNUM(c) && c != "_") { ok = 0; break; }
+                    }
+                    if (!ok) break;
                     sds     s     = sdsnewlen(sd, len);            // FREE 145
                     listAddNodeTail(lo, s);
                     if (!nextd) break; else sd = nextd + 1;
                 }
-                if (lo->len) { listNode *ln;
+                if (ok && lo->len) { listNode *ln;
                     ic.cmatch    = ci->cmatch - 1;
                     ic.nlo       = lo->len;
                     ic.lo        = malloc(sizeof(sds) * ic.nlo);   // FREE 146
                     int        i = 0;
                     listIter *li = listGetIterator(lo, AL_START_HEAD);
                     while((ln = listNext(li))) {
-                        ic.lo[i] = ln->value; i++;
+                        ic.lo[i] = sdsdup(ln->value); i++;
                     } listReleaseIterator(li);
                 }
                 listRelease(lo);                                   // FREED 144

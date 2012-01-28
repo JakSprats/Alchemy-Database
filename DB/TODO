@@ -8,6 +8,8 @@ LUAOBJ
   H.) test w/ nested luaobjs (e.g. lo.x.y.z) -> DN_Index also
   I.) LuaTriggers, calling (lo.x.y) - ???
   K.) Test STRING DNI
+  O.) in checkOrCr8LFunc, joins have precedence over nested luaobjs
+        in '.' delimited parsing
 
 PROTOCOL
   2.) ADD "SELECT col AS othername"

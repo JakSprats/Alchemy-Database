@@ -415,7 +415,7 @@ void initAobjFromLua(aobj *a, uchar ctype) { initAobj(a);
 }
 
 /* DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG */
-static char DumpBuf[1024];
+static char DumpBuf[1024]; //TODO turn into sds
 
 static void memcpyAobjStoDumpBuf(aobj *a) {
     int len      = MIN(a->len, 1023);
@@ -431,8 +431,8 @@ void dumpAobj(printer *prn, aobj *a) {
     } else if (C_IS_C(a->type)) {
         if (a->empty) { (*prn)("\tCNAME aobj: EMPTY\n"); return; }
         memcpyAobjStoDumpBuf(a);
-        (*prn)("\tCNAME aobj: mt: %d len: %d -> (%s) cmatch: %d\n",
-                a->empty, a->len, DumpBuf, a->i);
+        (*prn)("\tCNAME aobj: mt: %d -> (%s) cmatch: %d\n",
+               a->empty, DumpBuf, a->i);
     } else if (C_IS_I(a->type) || C_IS_P(a->type)) {
         char *name = C_IS_I(a->type) ? "INT" : "FUNC";
         if (a->enc == COL_TYPE_INT || a->enc == COL_TYPE_FUNC) {
