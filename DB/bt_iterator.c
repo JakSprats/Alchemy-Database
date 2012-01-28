@@ -352,8 +352,9 @@ btSIter *btGetFullRangeIter(bt *btr, bool asc, cswc_t *w) {
 typedef struct four_longs { long cnt; long ofst; long diff; long over; } fol_t;
 
 static void iter_leaf_scion(btIterator *iter) {
-    fol_t *fl      = (fol_t *)iter->data;               //DEBUG_ITER_LEAF_SCION
+    fol_t *fl      = (fol_t *)iter->data;
     long   cnt     = (long)(iter->bln->self->n - iter->bln->ik); 
+    //DEBUG_ITER_LEAF_SCION
     if (fl->cnt + cnt >= fl->ofst) { fl->over = fl->ofst - fl->cnt; return; }
     fl->cnt       += cnt;
     fl->diff       = fl->ofst - fl->cnt;
@@ -370,7 +371,6 @@ static void iter_node_scion(btIterator *iter) {
     bool   scioned = (fl->diff > kid->scion); //DEBUG_ITER_NODE_SCION
     if (scioned) {
         fl->cnt  += kid->scion + 1; // +1 for NODE itself
-printf("iter_node_scion: (scioned): dirty: %d dr: %d\n", btr->dirty, getDR(btr, iter->bln->self, iter->bln->ik));
         if (btr->dirty) fl->cnt += getDR(btr, iter->bln->self, iter->bln->ik);
         fl->diff  = fl->ofst - fl->cnt;
         if (fl->diff < 0) { fl->over = 0; return; }
@@ -381,7 +381,6 @@ printf("iter_node_scion: (scioned): dirty: %d dr: %d\n", btr->dirty, getDR(btr, 
     } else {
         fl->cnt++;
         if (btr->dirty) fl->cnt += getDR(btr, iter->bln->self, iter->bln->ik);
-printf("iter_node_scion: (NOT scioned): dirty: %d dr: %d\n", btr->dirty, getDR(btr, iter->bln->self, iter->bln->ik));
         fl->diff  = fl->ofst - fl->cnt;
         if (fl->diff < 0) { fl->over = 0; return; }
         if ((iter->bln->ik + 1) < iter->bln->self->n) iter->bln->ik++;
@@ -527,8 +526,12 @@ static bool XthIterFind(btSIter *siter, aobj *alow, aobj *ahigh,
     iter->iNode = asc ? iter_node : iter_node_rev;
     return 1;
 }
+#define DEBUG_GET_XTH_ITER                                  \
+  printf("btGetXthIter: alow:  "); dumpAobj(printf, alow);  \
+  printf("btGetXthIter: ahigh: "); dumpAobj(printf, ahigh); \
+  printf("btGetXthIter: ofst: %d asc: %d\n", ofst, asc);
 btSIter *btGetXthIter(bt *btr, aobj *alow, aobj *ahigh, long oofst, bool asc) {
-    ulong ofst = (ulong)oofst;
+    ulong ofst = (ulong)oofst;                               DEBUG_GET_XTH_ITER
     if (!btr->root || !btr->numkeys) return NULL;
     CR8ITER8R(btr, asc, iter_leaf, iter_leaf_rev, iter_node, iter_node_rev);
     setHigh(siter, asc ? ahigh : alow, btr->s.ktype);

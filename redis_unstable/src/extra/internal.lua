@@ -123,26 +123,26 @@ local STBL_dump_file="STBL.lua.rdb"
 local IEL_dump_file ="IEL.lua.rdb"
 
 function save_lua_universe()
-  local permtable = { 1234 };
-  local perms     = { [coroutine.yield] = 1, [permtable] = 2 };
-  local buf       = pluto.persist(perms, ASQL);
-  local outfile   = io.open(ASQL_dump_file, "wb");
+  local ptable  = { 1234 };
+  local perms   = { [coroutine.yield] = 1, [ptable] = 2 };
+  local buf     = pluto.persist(perms, ASQL);
+  local outfile = io.open(ASQL_dump_file, "wb");
   outfile:write(buf); outfile:close();
-  buf             = pluto.persist(perms, STBL);
-  outfile         = io.open(STBL_dump_file, "wb");
+  buf           = pluto.persist(perms, STBL);
+  outfile       = io.open(STBL_dump_file, "wb");
   outfile:write(buf); outfile:close();
-  buf             = pluto.persist(perms, IEL);
-  outfile         = io.open(IEL_dump_file, "wb");
+  buf           = pluto.persist(perms, IEL);
+  outfile       = io.open(IEL_dump_file, "wb");
   outfile:write(buf); outfile:close();
 end
 
 function get_lua_universe()
-  local permtable = { 1234 };
-  local perms     = { [coroutine.yield] = 1, [permtable] = 2 };
-  local buf       = open_or_error(ASQL_dump_file);
-  ASQL            = pluto.unpersist(perms, buf);
-  buf             = open_or_error(STBL_dump_file);
-  STBL            = pluto.unpersist(perms, buf)
-  buf             = open_or_error(IEL_dump_file);
-  IEL             = pluto.unpersist(perms, buf)
+  local ptable  = { 1234 };
+  local perms   = { [coroutine.yield] = 1, [ptable] = 2 };
+  local buf     = open_or_error(ASQL_dump_file);
+  ASQL          = pluto.unpersist(perms, buf);
+  buf           = open_or_error(STBL_dump_file);
+  STBL          = pluto.unpersist(perms, buf)
+  buf           = open_or_error(IEL_dump_file);
+  IEL           = pluto.unpersist(perms, buf)
 end

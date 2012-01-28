@@ -3264,7 +3264,6 @@ function test_dot_notation_index() {
   $CLI INSERT INTO doc VALUES "(4, 111, {name = 'KATE', age=25, group=2})";
   echo "2 rows [group=2,age=25]"
   $CLI SELECT \* FROM doc WHERE "lo.group = 2 AND lo.age = 25"
-
 }
 
 function populate_join_dot_notation_index() {
@@ -3294,4 +3293,28 @@ function wiki_lua_tests() {
   $CLI CONFIG ADD LUA "function update_weight(info) for k, v in pairs(weight_gain_per_year) do if (k > info.age) then info.weight = info.weight + v; return true; end; end; return false; end"
   $CLI SELECT "update_weight(info)" FROM users WHERE "userid = 1"
   $CLI SELECT "format_name(info)" FROM users WHERE "zipcode = 44555 ORDER BY string.sub(info.fname,1,3)"
+}
+
+function populate_dbs_index_pos_test() {
+  $CLI DROP TABLE leaderboard_123 >/dev/null
+  $CLI CREATE TABLE leaderboard_123 "(enduser_id U128, eucb_last_update U128)"
+  $CLI CREATE UNIQUE INDEX ndx_balance ON leaderboard_123 "(eucb_last_update)"
+  $CLI INSERT INTO leaderboard_123 VALUES "(9478867950257327008|24083409225689, 1111|1327709828555)"
+  $CLI INSERT INTO leaderboard_123 VALUES "(9478867950257327008|1229788256658081753, 1234|1327709828558)"
+  $CLI INSERT INTO leaderboard_123 VALUES "(9478867950257327008|2459552429906937817, 5463|1327709828560)"
+  $CLI INSERT INTO leaderboard_123 VALUES "(9478867950257327008|3689316603155793881, 9183|1327709828562)"
+  $CLI INSERT INTO leaderboard_123 VALUES "(9478867950257327008|4919080776404649945, 337|1327709828564)"
+  $CLI INSERT INTO leaderboard_123 VALUES "(9478867950257327008|6148844949653506009, 3437|1327709828566)"
+  $CLI INSERT INTO leaderboard_123 VALUES "(9478867950257327008|7378609122902362073, 2435|1327709828567)"
+  $CLI INSERT INTO leaderboard_123 VALUES "(9478867950257327008|9838137469400074201, 3333|1327709828571)"
+  $CLI INSERT INTO leaderboard_123 VALUES "(9478867950257327008|11067901642648930265, 3333|1327709828573)"
+}
+function dbs_index_pos_test() {
+  populate_dbs_index_pos_test
+  $CLI UPDATE leaderboard_123 SET eucb_last_update = "500|1327709828575" WHERE enduser_id = "9478867950257327008|4919080776404649945"
+  $CLI UPDATE leaderboard_123 SET eucb_last_update = "3500|1327709828577" WHERE enduser_id = "9478867950257327008|6148844949653506009"
+  $CLI UPDATE leaderboard_123 SET eucb_last_update = "2500|1327709828579" WHERE enduser_id = "9478867950257327008|7378609122902362073"
+  $CLI UPDATE leaderboard_123 SET eucb_last_update = "600|1327709828584" WHERE enduser_id = "9478867950257327008|4919080776404649945"
+  $CLI UPDATE leaderboard_123 SET eucb_last_update = "3600|1327709828589" WHERE enduser_id = "9478867950257327008|6148844949653506009"
+  $CLI UPDATE leaderboard_123 SET eucb_last_update = "2600|1327709828591" WHERE enduser_id = "9478867950257327008|7378609122902362073"
 }

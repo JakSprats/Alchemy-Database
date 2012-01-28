@@ -210,7 +210,7 @@ static inline void add_to_cipos(bt *btr, bt_n *x, int i) {
         for (int j = 0; j <= i; j++) {
             bt_n *xp = NODES(btr, x)[j]; Index[btr->s.num].cipos += xp->scion;
         }}
-    Index[btr->s.num].cipos += i;                         //DEBUG_ADD_TO_CIPOS
+    Index[btr->s.num].cipos += i + 1;                      //DEBUG_ADD_TO_CIPOS
 }
 
 // BINARY_SEARCH BINARY_SEARCH BINARY_SEARCH BINARY_SEARCH BINARY_SEARCH
@@ -570,10 +570,10 @@ void *case_2c_ptr = NULL;
     listAddNodeHead(plist, bp);                                      \
   }
 
-#define RETURN_DELETED_KEY(btr, kp, dr)               \
+#define CREATE_RETURN_DELETED_KEY(btr, kp, dr)        \
   dwd_t dwd; bzero(&dwd, sizeof(dwd_t)); dwd.dr = dr; \
   if BIG_BT(btr) memcpy(BT_DelBuf, kp, btr->s.ksize); \
-  dwd.k  = BIG_BT(btr) ? BT_DelBuf : kp; return dwd;
+  dwd.k  = BIG_BT(btr) ? BT_DelBuf : kp;
 
 #define DK_NONE 0
 #define DK_2A   1
@@ -611,6 +611,7 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
         if (s == DK_2B) i++;                                   DEBUG_DEL_CASE_1
         kp        = KEYS (btr, x, i);
         int  dr   = getDR(btr, x, i);
+        CREATE_RETURN_DELETED_KEY(btr, kp, dr)
         if (drt) {                                // CASE: EVICT
             if (s == DK_NONE) {           //NOTE: only place DR grows
                 x = incrPrevDR(btr, x, i, (dr + 1), p, pi, plist);
@@ -627,7 +628,7 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
             mvXKeys(btr, &x, i, &x, i + 1, (x->n - i - 1), ks, p, pi, p, pi);
             x      = trimBTN(btr, x, drt, p, pi);
         }
-        RETURN_DELETED_KEY(btr, kp, dr)
+        return dwd;
     }
 
     if (r == 0) { /* (r==0) means key found, but in node */   DEBUG_DEL_CASE_2
@@ -636,7 +637,8 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
             int dr = getDR(btr, x, i);
             if (dr) { // IF DR -> REPLACE_W_GHOST, no recursive delete 
                 x = replaceKeyWithGhost(btr, x, i, kp, dr, p, pi);
-                RETURN_DELETED_KEY(btr, kp, dr)
+                CREATE_RETURN_DELETED_KEY(btr, kp, dr)
+                return dwd;
             }
         }
         /* Case 2:
@@ -845,7 +847,7 @@ dwm_t findnodekey(bt *btr, bt_n *x, bt_data_t k, aobj *akey) {
     dwm_t  dwm; bzero(&dwm, sizeof(dwm_t)); SET_DWM_XIP
     if (SIMP_UNIQ(btr) && Index[btr->s.num].iposon) Index[btr->s.num].cipos = 0;
     while (x) {
-        i = findkindex(btr, x, k, &r, NULL);                DEBUG_FIND_NODE_KEY
+        i = findkindex(btr, x, k, &r, NULL);              //DEBUG_FIND_NODE_KEY
         if (i >= 0 && !r) { SET_DWM_XIP dwm.k = KEYS(btr, x, i); return dwm; }
         if (key_covers_miss(btr, x, i, akey)) { SET_DWM_XIP dwm.miss = 1; }
         if (x->leaf)       {            dwm.k = NULL;            return dwm; }

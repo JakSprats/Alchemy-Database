@@ -62,6 +62,9 @@ void printKey(bt *btr, bt_n *x, int i) {
         dumpAobj(printf, &akey);
     }
 }
+void printKeyFromPtr(bt *btr, void *be) {
+    aobj akey; convertStream2Key(be, &akey, btr); dumpAobj(printf, &akey);
+}
 
 void bt_dump_info(printer *prn, bt *btr) {
     (*prn)("BT t: %d nbits: %d nbyte: %d kbyte: %d "                \

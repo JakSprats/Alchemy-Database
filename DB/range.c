@@ -117,10 +117,10 @@ bool icol_cmp(icol_t *ic1, icol_t *ic2) {
 static bool mci_fk_queued(wob_t *wb, r_ind_t *ri) { //printf("mci_fk_queued\n");
     uint32_t i;
     for (i = 0; i < (uint32_t)ri->nclist && i < wb->nob; i++) {
-        if (!icol_cmp(&wb->obc[i], &ri->bclist[i])) break;
+        if (icol_cmp(&wb->obc[i], &ri->bclist[i])) break;
     }
     if (i == wb->nob - 1) {
-        if (!icol_cmp(&wb->obc[i], &ri->obc)) return 1; i++;
+        if (icol_cmp(&wb->obc[i], &ri->obc)) return 1; i++;
     }
     return (i != wb->nob);
 }
@@ -161,10 +161,10 @@ static void setRangeQueued(cswc_t *w, wob_t *wb, qr_t *q) {
             }
         } else { // FK RANGE QUERY (clist[MCI] not yet supported)
             q->fk   = (wb->nob > 2) || // NoQ: [OBY FK| OBY FK,PK]
-                      (wb->nob == 1 && !icol_cmp(&wb->obc[0], &ic)) ||
+                      (wb->nob == 1 && icol_cmp(&wb->obc[0], &ic)) ||
                       (wb->nob == 2 && // [FK&OBY]
-                       !(icol_cmp(&wb->obc[0], &ic) && 
-                         icol_cmp(&wb->obc[1], &obc)));
+                       !(!icol_cmp(&wb->obc[0], &ic) && 
+                         !icol_cmp(&wb->obc[1], &obc)));
         }
         q->fk_lim   = (!q->fk    && (wb->lim  != -1));
         q->fk_lo    = (q->fk_lim && (wb->ofst != -1));
@@ -445,7 +445,7 @@ static bool runOnNode(bt      *ibtr, uint32  still,
     return ret;
 }
 // RANGE_FK RANGE_FK RANGE_FK RANGE_FK RANGE_FK RANGE_FK RANGE_FK RANGE_FK
-static long rangeOpFK(range_t *g, row_op *p) {                 //DEBUG_RANGE_FK
+static long rangeOpFK(range_t *g, row_op *p) {                 DEBUG_RANGE_FK
     ibtd_t   d; btEntry *be; btSIter *bi;
     cswc_t  *w     = g->co.w; wob_t *wb = g->co.wb; qr_t *q = g->q;
     bool     iss   = g->se.qcols ? 1 : 0;
@@ -459,11 +459,11 @@ static long rangeOpFK(range_t *g, row_op *p) {                 //DEBUG_RANGE_FK
     g->asc         = !q->fk_desc;
     long     loops = -1; long card =  0; bool brkr =  0;
     bool     smplo = SIMP_UNIQ(ibtr) && q->xth;
-    if (!smplo) bi  = btGetRangeIter(ibtr, &w->wf.alow, &w->wf.ahigh, g->asc);
-    else { // SIMPLE UNIQUE + OFFSET -> use SCION iter8trs
+    if (smplo) { // SIMPLE UNIQUE + OFFSET -> use SCION iter8trs
         bi   = btGetXthIter(ibtr, &w->wf.alow, &w->wf.ahigh, wb->ofst, g->asc);
         ofst = wb->ofst = -1; // OFFSET handled by btGetXthIter()
     }
+    else bi = btGetRangeIter(ibtr, &w->wf.alow, &w->wf.ahigh, g->asc);
     if (!bi) return card;
     init_ibtd(&d, p, g, q, NULL, &ofst, &card, &loops, &brkr, ri->obc);
     while ((be = btRangeNext(bi, g->asc))) {                DEBUG_RANGE_FK_LOOP

@@ -52,6 +52,7 @@ ALL RIGHTS RESERVED
 
 extern cli     *CurrClient;
 extern r_tbl_t *Tbl;
+extern r_ind_t *Index;
 extern dict    *DynLuaD;
 extern uchar    OutputMode; // NOTE: used by OREDIS
 
@@ -914,9 +915,18 @@ sds getQueriedCnames(int tmatch, icol_t *ics, int qcols, lfca_t *lfca) {
     if OREDIS s = sdscatprintf(s, "*%d\r\n", qcols);
     int       k = 0;
     for (int i = 0; i < qcols; i++) {
-        sds cname = ics[i].cmatch < 0 ? lfca->l[k++]->fname :
-                                        rt->col[ics[i].cmatch].name;
+        int cmatch = ics[i].cmatch;
+        sds cname; bool frcn = 0;
+        if      IS_LSF(cmatch) {
+            cname = lfca->l[k++]->fname;
+        } else if (ics[i].cmatch < -1) { frcn = 1;
+            cname = sdscatprintf(sdsempty(), "%s.pos()", // FREE 153
+                                 Index[getImatchFromOCmatch(cmatch)].name);
+        } else {
+            cname = rt->col[ics[i].cmatch].name;
+        }
         sds fullc = sdsdup(cname);                       // FREE 151
+        if (frcn) sdsfree(cname);                        // FREED 153
         if (ics[i].nlo) {
             for (uint32 j = 0; j < ics[i].nlo; j++) {
                 fullc = sdscatprintf(fullc, ".%s", ics[i].lo[j]);

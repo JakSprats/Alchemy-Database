@@ -454,6 +454,7 @@ static uint32 numRows4INL(f_t *flt) {
     return cnt;
 }
 static uint32 numRows4Range(f_t *flt) {
+    if (flt->ic.cmatch < -1)       return CNT_INDXD;
     int ctype = Tbl[flt->tmatch].col[flt->ic.cmatch].type;
     if (!C_IS_NUM(ctype))          return CNT_INDXD; /* only NUMs */
     int range = C_IS_I(ctype) ? flt->ahigh.i - flt->alow.i :

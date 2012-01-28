@@ -207,7 +207,8 @@ printf("get_prev_child_recurse: x: %p i: %d xp: %p xp->leaf: %d xp->n: %d\n", \
   printf("NDK: x: %p i: %d p: %p pi: %d key: ",         \
          (void *)x, i, (void *)p, pi); printKey(btr, x, i);
 #define DEBUG_DEL_CASE_1 \
-  printf("ndk CASE_1    s: %d i: %d x->n: %d\n", s, i, x->n); \
+  printf("ndk CASE_1    s: %d i: %d x->n: %d key: ", s, i, x->n);  \
+  printKey(btr, x, i);
   //bt_dumptree(printf, btr, 0);
 #define DEBUG_DEL_CASE_1_DIRTY \
   printf("CASE1 drt: %d i: %d s: %d dr: %u key: ", \
