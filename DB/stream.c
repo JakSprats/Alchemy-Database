@@ -250,20 +250,23 @@ uint128 streamToU128(uchar *data, uint32 *clen) {
 int cr8Xcol(uint128 x, uint128 *col) { *col = x; return 16; }
 
 // LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ
-#define DEBUG_WRITE_LUAOBJ                                          \
-  printf("writeLuaObjCol: tname: %s cname: %s Lua: (%s) apk: ", \
+#define DEBUG_WRITE_LUAOBJ                                              \
+  printf("writeLuaObjCol: tname: %s cname: %s Lua: (%s) apk: ",         \
           rt->name, rt->col[cmatch].name, luac); dumpAobj(printf, apk);
+#define DEBUG_PUSH_LUA_VAR                                              \
+  printf("pushLuaVar: tname: %s cname: %s pk: ",                        \
+         rt->name, rt->col[ic.cmatch].name); dumpAobj(printf, apk);
 
 void pushLuaVar(int tmatch, icol_t ic, aobj *apk) {
-    r_tbl_t *rt  = &Tbl[tmatch];
-    lua_getglobal (server.lua, LUA_OBJ_TABLE);
+    r_tbl_t *rt  = &Tbl[tmatch];                             DEBUG_PUSH_LUA_VAR
+    lua_getglobal (server.lua, LUA_OBJ_SHADOW_TABLE);
     lua_pushstring(server.lua, rt->name);
     lua_gettable  (server.lua, -2); lua_remove(server.lua, -2);
     lua_pushstring(server.lua, rt->col[ic.cmatch].name);
     lua_gettable  (server.lua, -2); lua_remove(server.lua, -2);
     pushAobjLua(apk, apk->type);
-    lua_gettable  (server.lua, -2); lua_remove(server.lua, -2);
     if (ic.nlo) {
+        lua_gettable  (server.lua, -2); lua_remove(server.lua, -2);
         for (uint32 i = 0; i < ic.nlo; i++) {
             printf("pushLuaVar: pushing: ic.lo[%d]: %s\n", i, ic.lo[i]);
             lua_pushstring(server.lua, ic.lo[i]);

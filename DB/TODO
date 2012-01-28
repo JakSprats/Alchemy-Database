@@ -7,7 +7,6 @@ LUAOBJ
       d.) UPDATE SET lo.x = sqrt(lo.x) * 44 -> DynamicLuaFunction
   H.) test w/ nested luaobjs (e.g. lo.x.y.z) -> DN_Index also
   I.) LuaTriggers, calling (lo.x.y) - ???
-  J.) UNIQUE DNI
   K.) Test STRING DNI
 
 PROTOCOL

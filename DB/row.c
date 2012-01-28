@@ -797,7 +797,7 @@ static void initAobjFromLuaNumber(lua_State *lua, aobj *a,      bool   stkd,
 static void initLOFromCM(aobj *a, aobj *apk, icol_t ic, int tmatch, bool fs) {
     CLEAR_LUA_STACK pushLuaVar(tmatch, ic, apk);
     int t     = lua_type(server.lua, 1);
-    printf("initLOFromCM: t: %d top: %d\n", t, lua_gettop(server.lua));
+    printf("initLOFromCM: t: %d apk: ", t); dumpAobj(printf, apk);
     if (t == LUA_TTABLE || t == LUA_TBOOLEAN || t == LUA_TNIL) {
         r_tbl_t *rt   = &Tbl[tmatch];
         CLEAR_LUA_STACK lua_getglobal(server.lua, "DataDumperLuaObj");
@@ -1284,7 +1284,7 @@ void pushColumnLua(bt *btr, uchar *orow, int tmatch, aobj *a, aobj *apk) {
 printf("pushColumnLua: a: "); dumpAobj(printf, a);
         if        C_IS_C(a->type) {
             DECLARE_ICOL(ic, a->i)
-//TODO FIXME need a->lo for ic.lo
+//TODO FIXME need a->lo for ic.lo - ???
             assert(tmatch != -1 && ic.cmatch != -1);
             ctype = Tbl[tmatch].col[ic.cmatch].type;
             if (C_IS_O(ctype)) {

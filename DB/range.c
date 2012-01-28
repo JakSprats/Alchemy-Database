@@ -357,7 +357,7 @@ static bool nBT_Op(ibtd_t *d) {                              //DEBUG_NODE_BT
 
 static bool setUniqIndexVal(bt *nbtr, aobj *akey) {
     //printf("setUniqIndexVal: akey: "); dumpAobj(printf, akey);
-    aobj *uv       = &UniqueIndexVal;
+    aobj *uv       = &UniqueIndexVal; uv->empty = 0;
     if        UU(nbtr) {
         uv->enc = uv->type = COL_TYPE_INT;
         if (!(uv->i = (long)btFind(nbtr, akey))) return 0;
@@ -424,7 +424,7 @@ static bool runOnNode(bt      *ibtr, uint32  still,
         } else {
             if UNIQ(ri->cnstr) {                       //DEBUG_RUN_ON_NODE_UNIQ
                 d->nbtr        = ibtr; // Unique 1 step shorter
-                aobj *uv       = &UniqueIndexVal;
+                aobj *uv       = &UniqueIndexVal; uv->empty = 0;
                 if        UU(d->nbtr) {
                     uv->enc = uv->type = COL_TYPE_INT;
                     uv->i   = (uint32)(ulong)nbe->val;
@@ -505,7 +505,7 @@ static long singleOpFK(range_t *g, row_op *p) {               //DEBUG_SINGLE_FK
         uint32 diff = nexpc - nmatch;
         if      (diff) { if (!runOnNode(d.nbtr, diff, nop, &d, ri)) return -1; }
         else {
-            if (singu && !setUniqIndexVal(nbtr, afk)) return -1;
+            if (singu && !setUniqIndexVal(nbtr, afk))              return -1;
             if (!(*nop)(&d))                                       return -1;
         }
     }

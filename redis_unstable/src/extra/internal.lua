@@ -63,6 +63,7 @@ function create_nested_table(asql, tbl, col)
   end
 end
 
+--TODO "ASQL" defined in Lua, not in C
 function luaobj_assign(asql, tbl, col, pk, luae) -- create Lua Object Row
   --print('LUA: luaobj_assign: STBL: '); dump(STBL);
   _G[asql][tbl][col][pk] = {};
@@ -74,12 +75,14 @@ function luaobj_assign(asql, tbl, col, pk, luae) -- create Lua Object Row
   setmetatable(_G[asql][tbl][col][pk],
                {__index=STBL[tbl][col][pk], __newindex=ASQL_setter});
 end
+--TODO "ASQL" defined in Lua, not in C
 function delete_luaobj(asql, tbl, col, pk)
   --print ('LUA: delete_luaobj');
   _G[asql][tbl][col][pk] = nil; STBL[tbl][col][pk] = nil;
 end
 
 function DataDumperLuaObj(tbl, col, pk)
+  print ('DataDumperLuaObj: tbl: ' .. tbl .. ' col: ' .. col .. ' pk: ' .. pk);
   return DataDumper(STBL[tbl][col][pk]);
 end
 

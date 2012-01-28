@@ -693,7 +693,7 @@ static bool ICommit(cli *c,      sds   iname,   sds   tname, char  *cname,
             addReply(c, shared.indextargetinvalid); return 0;
         }
         if UNIQ(cnstr) {/*NOTE: RESTRICTION: UNIQUE MCI both cols -> NUM */
-            if (!C_IS_NUM(rt->col[ic.cmatch].type) ||
+            if ((!C_IS_NUM(rt->col[ic.cmatch].type) && !C_IS_NUM(dtype)) ||
                 !C_IS_NUM(rt->col[0].type)) {
                 addReply(c, shared.uniq_simp_index_nums); return 0;
             }

@@ -72,7 +72,8 @@ typedef bool select_callback(erow_t* erow);
 #define NOP 10 
 enum OP {NONE, EQ, NE, GT, GE, LT, LE, RQ, IN, LFUNC};
 
-#define LUA_OBJ_TABLE "ASQL"
+#define LUA_OBJ_TABLE        "ASQL"
+#define LUA_OBJ_SHADOW_TABLE "STBL"
 
 typedef struct icol_t {
     int cmatch; uint32 nlo; sds *lo;
