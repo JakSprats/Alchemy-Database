@@ -50,9 +50,6 @@ ALL RIGHTS RESERVED
 extern r_tbl_t *Tbl;
 extern r_ind_t *Index;
 
-extern cli     *CurrClient;
-extern uchar    OutputMode; // NOTE: used by OREDIS
-
 extern bool  OB_asc  [MAX_ORDER_BY_COLS];
 extern uchar OB_ctype[MAX_ORDER_BY_COLS];
 
@@ -134,7 +131,7 @@ bool validateJoinOrderBy(cli *c, jb_t *jb) {
   printf("PRE RECURSE: join_op\n"); dumpW(printf, g2.co.w);
 #define DEBUG_JOIN_GEN \
     printf("joinGeneric W\n"); dumpW(printf, w); dumpWB(printf, &jb->wb); \
-    printf("joinGeneric JB\n"); dumpJB(CurrClient, printf, jb);
+    printf("joinGeneric JB\n"); dumpJB(server.alc.CurrClient, printf, jb);
 #define DEBUG_JOIN_QED \
   printer *prn = printf; \
   (*prn)("\t\tJoinQed: %d JoinLim: %ld JoinOfst: %ld\n", \

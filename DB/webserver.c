@@ -40,10 +40,6 @@ char *strcasestr(const char *haystack, const char *needle); /*compiler warning*/
 #include "alsosql.h"
 #include "webserver.h"
 
-cli            *CurrClient;
-extern int      WebServerMode;
-extern char    *WebServerIndexFunc;
-
 // PROTOTYPES
 static robj *luaReplyToHTTPReply(lua_State *lua);
 // from scripting.c
@@ -128,12 +124,13 @@ static void send_http_reponse_header(cli *c, sds body) {
 
 // HTTP_LUA_COMMANDS HTTP_LUA_COMMANDS HTTP_LUA_COMMANDS HTTP_LUA_COMMANDS
 static void addHttpResponseHeader(sds name, sds value) {
-    if (!CurrClient->http.resp_hdr) {
-        CurrClient->http.resp_hdr       = listCreate(); 
-        CurrClient->http.resp_hdr->free = free_two_sds;
+    if (!server.alc.CurrClient->http.resp_hdr) {
+        server.alc.CurrClient->http.resp_hdr       = listCreate(); 
+        server.alc.CurrClient->http.resp_hdr->free = free_two_sds;
     }
     two_sds *ss = init_two_sds(name, value);
-    listAddNodeTail(CurrClient->http.resp_hdr, ss);// Store RESP Headers in List
+    // Store RESP Headers in List
+    listAddNodeTail(server.alc.CurrClient->http.resp_hdr, ss);
 }
 int luaSetHttpResponseHeaderCommand(lua_State *lua) {
     int argc = lua_gettop(lua);
@@ -151,8 +148,8 @@ int luaSetHttpRedirectCommand(lua_State *lua) {
     if (argc != 1 || !lua_isstring(lua, 1)) {
         luaPushError(lua, "Lua SetHttpRedirect() takes 1 string arg"); return 1;
     }
-    CurrClient->http.retcode = 302;
-    CurrClient->http.redir   = sdsnew(lua_tostring(lua, 1)); // DESTROY ME 079
+    server.alc.CurrClient->http.retcode = 302;
+    server.alc.CurrClient->http.redir   = sdsnew(lua_tostring(lua, 1));//FREE079
     return 0;
 }
 int luaSetHttp304Command(lua_State *lua) {
@@ -160,7 +157,7 @@ int luaSetHttp304Command(lua_State *lua) {
     if (argc != 0) {
         luaPushError(lua, "Lua SetHttp304() takes ZERO args"); return 1;
     }
-    CurrClient->http.retcode = 304;
+    server.alc.CurrClient->http.retcode = 304;
     return 0;
 }
 
@@ -246,7 +243,7 @@ void end_http_session(cli *c) {
             if (!sdslen(file) || !strcmp(file, "/")) {
                 argc      = 2; //NOTE: rargv[0] is ignored
                 rargv     = zmalloc(sizeof(robj *) * argc);
-                rargv[1]  = _createStringObject(WebServerIndexFunc);
+                rargv[1]  = _createStringObject(server.alc.WebServerIndexFunc);
             } else if (c->http.post && c->http.req_clen) {
                 int  urgc;
                 sds *urgv = sdssplitlen(file, sdslen(file), "/", 1, &urgc);
@@ -355,7 +352,7 @@ static robj *luaReplyToHTTPReply(lua_State *lua) {
 
 bool luafunc_call(redisClient *c, int argc, robj **argv) {
     sds fname;
-    if (WebServerMode == -1) {
+    if (server.alc.WebServerMode == -1) {
         fname = sdsdup(argv[1]->ptr);
     } else {
         if (isWhiteListedIp(c)) {
@@ -382,7 +379,8 @@ bool luafunc_call(redisClient *c, int argc, robj **argv) {
         sds arg = argv[i]->ptr; lua_pushlstring(server.lua, arg, sdslen(arg));
     }
 
-    if (WebServerMode > 0 && c->http.req_hdr) { // POPULATE Lua Global HTTP Vars
+    // POPULATE Lua Global HTTP Vars
+    if (server.alc.WebServerMode > 0 && c->http.req_hdr) {
         listNode *ln;
         bool      hascook = 0;
         lua_newtable(server.lua);

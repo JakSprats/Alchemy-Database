@@ -38,9 +38,6 @@ ALL RIGHTS RESERVED
 #include "xdb_hooks.h"
 #include "messaging.h"
 
-//GLOBALS
-extern cli *CurrClient;
-
 //PROTOTYPES
 // from networking.c
 int processMultibulkBuffer(redisClient *c);

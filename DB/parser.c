@@ -38,9 +38,6 @@ char *strcasestr(const char *haystack, const char *needle); /*compiler warning*/
 #include "row.h"
 #include "parser.h"
 
-// GLOBALS
-extern uchar OutputMode;
-
 /* copy of strdup - compiles w/o warnings */
 inline char *_strdup(char *s) {
     int len = strlen(s);

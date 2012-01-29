@@ -59,15 +59,10 @@ ALL RIGHTS RESERVED
     5.) non-FK/PK updates can be in update_op() (w/o Qing in the ll)
 */
 
+// GLOBALS
 extern aobj_cmp *OP_CMP[7];
 extern r_tbl_t  *Tbl;
 extern r_ind_t  *Index;
-extern uchar     OutputMode;
-
-// GLOBALS
-ulong            CurrCard    = 0;
-ulong            CurrUpdated = 0;
-robj            *CurrError   = NULL;
 
 /* NOTE: this struct contains pointers, it is to be used ONLY for derefs */
 typedef struct inner_bt_data {
@@ -588,7 +583,7 @@ static bool runLuaFilter(lue_t *le, bt *btr, aobj *apk, void *rrow, int tmatch,
     int  r   = lua_pcall(server.lua, le->ncols, 1, 0);
     if (r) { *hf = 1; ret = 0;
         CURR_ERR_CREATE_OBJ "-ERR: running LUA FILTER (%s): %s [CARD: %ld]\r\n",
-                 le->fname, lua_tostring(server.lua, -1), CurrCard));
+                 le->fname, lua_tostring(server.lua, -1), server.alc.CurrCard));
     } else {
         int t = lua_type(server.lua, -1);
         if        (t == LUA_TNUMBER)  {
@@ -598,7 +593,8 @@ static bool runLuaFilter(lue_t *le, bt *btr, aobj *apk, void *rrow, int tmatch,
         } else { *hf = 1; ret = 0;
             CURR_ERR_CREATE_OBJ
             "-ERR: LUA FILTER (%s): %s [CARD: %ld]\r\n",
-             le->fname, "use NUMBER or BOOLEAN return types", CurrCard));
+             le->fname, "use NUMBER or BOOLEAN return types",
+             server.alc.CurrCard));
         }
     }
     CLEAR_LUA_STACK return ret;
@@ -652,9 +648,9 @@ static bool select_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
         uchar ost = OR_NONE;
         robj *r = outputRow(g->co.btr, rrow,   g->se.qcols, g->se.ics,
                             apk,       tmatch, g->se.lfca,  &ost);
-        if (ost == OR_ALLB_OK) { CurrUpdated++; return 1; }
-        if (ost == OR_ALLB_NO)                  return 1;
-        if (ost == OR_LUA_FAIL)                 return 0;
+        if (ost == OR_ALLB_OK) { server.alc.CurrUpdated++; return 1; }
+        if (ost == OR_ALLB_NO)                             return 1;
+        if (ost == OR_LUA_FAIL)                            return 0;
         if (q) {
             if (!addRow2OBList(g->co.ll, g->co.wb, g->co.btr, r, g->co.ofree,
                                rrow,     apk)) return 0;
@@ -666,7 +662,7 @@ static bool select_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
         }
         if (!(EREDIS)) decrRefCount(r); //TODO MEMLEAK??? for EREDIS
     }
-    INCR(*card) CurrCard++; return ret;
+    INCR(*card) server.alc.CurrCard++; return ret;
 }
 bool opSelectSort(cli  *c,    list *ll,   wob_t *wb,
                   bool ofree, long *sent, int    tmatch) {
@@ -700,9 +696,9 @@ void iselectAction(cli *c,      cswc_t *w,     wob_t *wb,
     void *rlen   = (cstar || EREDIS) ? NULL : addDeferredMultiBulkLength(c);
     long  card   = Op(&g, select_op);
 
-printf("iselectAction: card: %ld CurrCard: %ld CurrUpdated: %ld\n", card, CurrCard, CurrUpdated);
+printf("iselectAction: card: %ld CurrCard: %ld CurrUpdated: %ld\n", card, server.alc.CurrCard, server.alc.CurrUpdated);
 
-    if (card == -1) { replaceDMB(c, rlen, CurrError); goto isele; }
+    if (card == -1) { replaceDMB(c, rlen, server.alc.CurrError); goto isele; }
     long sent    = 0;
     if (card) {
         if (q.qed) {
@@ -710,8 +706,9 @@ printf("iselectAction: card: %ld CurrCard: %ld CurrUpdated: %ld\n", card, CurrCa
                               &sent, w->wf.tmatch))   goto isele;
         } else sent = card;
     }
-    if (!card && CurrUpdated) setDeferredMultiBulkLong(c, rlen, CurrUpdated);
-    else {
+    if (!card && server.alc.CurrUpdated) {
+        setDeferredMultiBulkLong(c, rlen, server.alc.CurrUpdated);
+    } else {
         if (wb->lim != -1 && sent < card) card = sent;
         if      (cstar)   addReplyLongLong(c, card);
         else if (!EREDIS) setDMBcard_cnames(c, w, ics, qcols, card, rlen, lfca);
@@ -735,7 +732,7 @@ printf("dellist_op: adding: key: "); dumpAobj(printf, apk);
         list_adder *la = g->asc ? listAddNodeHead : listAddNodeTail;
         (*la)(g->co.ll, cln); /* UGLY: build list of PKs to delete */
     }
-    INCR(*card) CurrCard++; return ret;
+    INCR(*card) server.alc.CurrCard++; return ret;
 }
 static void opDeleteSort(list *ll,    cswc_t *w,      wob_t *wb,   bool  ofree,
                          long  *sent, int     matches, int   inds[]) {
@@ -791,7 +788,7 @@ printf("update_op: adding: key: "); dumpAobj(printf, apk);
         aobj *cln  = cloneAobj(apk);
         listAddNodeTail(g->co.ll, cln); /* UGLY: build list of PKs to update */
     }
-    INCR(*card) CurrCard++; return ret;
+    INCR(*card) server.alc.CurrCard++; return ret;
 }
 static bool opUpdateSort(cli   *c,   list *ll,    cswc_t  *w,
                          wob_t *wb,  bool  ofree, long    *sent,

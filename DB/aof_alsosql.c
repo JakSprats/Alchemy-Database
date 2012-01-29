@@ -45,9 +45,6 @@ extern int       Num_indx;
 extern r_ind_t  *Index;
 
 extern char    *Col_type_defs[];
-extern uchar    OutputMode;
-extern bool     SQL_AOF;
-extern bool     SQL_AOF_MYSQL;
 
 static bool SQLappendOnlyDumpIndices(FILE *fp, int tmatch) {
     r_tbl_t *rt     = &Tbl[tmatch];
@@ -62,7 +59,7 @@ static bool SQLappendOnlyDumpIndices(FILE *fp, int tmatch) {
     return 1;
 }
 bool appendOnlyDumpIndices(FILE *fp, int tmatch) {
-    if (SQL_AOF) return SQLappendOnlyDumpIndices(fp, tmatch);
+    if (server.alc.SQL_AOF) return SQLappendOnlyDumpIndices(fp, tmatch);
     //printf("appendOnlyDumpIndices: fp: %p tmatch: %d\n", fp, tmatch);
     char cmd_INDEX[]  = "*6\r\n$6\r\nCREATE\r\n$5\r\nINDEX\r\n";
     char cmd_UINDEX[] = "*7\r\n$6\r\nCREATE\r\n$6\r\nUNIQUE\r\n$5\r\nINDEX\r\n";
@@ -133,12 +130,14 @@ static bool SQLappendOnlyDumpTable(FILE *fp, bt *btr, int tmatch) {
                        (i) ? "," : "",
                        rt->col[i].name,
                        Col_type_defs[rt->col[i].type],
-                       (!i && !text_pk && SQL_AOF_MYSQL) ? " PRIMARY KEY" : "");
+                       (!i && !text_pk && server.alc.SQL_AOF_MYSQL) ?
+                                                           " PRIMARY KEY" : "");
     }
     s = sdscatlen(s, ");\n", 3);
     if (fwrite(s, strlen(s), 1, fp)         == 0) return 0;
     sdsfree(s);
-    if (text_pk && SQL_AOF_MYSQL) { //MYSQL cant index "TEXT" columns directly
+    // MYSQL cant index "TEXT" columns directly
+    if (text_pk && server.alc.SQL_AOF_MYSQL) {
         s = createAlterTableFullText(rt, NULL, 0, 1);
         if (fwrite(s, strlen(s), 1, fp)     == 0) return 0;
         sdsfree(s);
@@ -146,14 +145,14 @@ static bool SQLappendOnlyDumpTable(FILE *fp, bt *btr, int tmatch) {
     bool ret = 1;
     if (btr->numkeys) { /* Dump Table DATA */
         btEntry *be;
-        char  cmd2[]  = "INSERT INTO ";
-        char  cvals[] = " VALUES ";
-        uchar  o_out  = OutputMode;
-        OutputMode    = OUTPUT_NORMAL; /* REDIS output not OK here */
-        list *cmatchl = listCreate();
-        int   qcols   = get_all_cols(tmatch, cmatchl, 1, 1);
+        char  cmd2[]          = "INSERT INTO ";
+        char  cvals[]         = " VALUES ";
+        uchar  o_out          = server.alc.OutputMode;
+        server.alc.OutputMode = OUTPUT_NORMAL; /* REDIS output not OK here */
+        list *cmatchl         = listCreate();
+        int   qcols           = get_all_cols(tmatch, cmatchl, 1, 1);
         CMATCHS_FROM_CMATCHL
-        btSIter *bi  = btGetFullRangeIter(btr, 1, NULL);
+        btSIter *bi           = btGetFullRangeIter(btr, 1, NULL);
         while ((be = btRangeNext(bi, 1)) != NULL) {
             if (fwrite(cmd2 ,sizeof(cmd2) - 1, 1, fp) == 0)       A_BRK
             if (fwrite(tname, strlen(tname), 1, fp) == 0)         A_BRK
@@ -167,12 +166,12 @@ static bool SQLappendOnlyDumpTable(FILE *fp, bt *btr, int tmatch) {
             sdsfree(srow);
             decrRefCount(r);
         } btReleaseRangeIterator(bi);
-        OutputMode = o_out; listRelease(cmatchl);
+        server.alc.OutputMode = o_out; listRelease(cmatchl);
     }
     return ret;
 }
 bool appendOnlyDumpTable(FILE *fp, bt *btr, int tmatch) {
-    if (SQL_AOF) return SQLappendOnlyDumpTable(fp, btr, tmatch);
+    if (server.alc.SQL_AOF) return SQLappendOnlyDumpTable(fp, btr, tmatch);
     //printf("appendOnlyDumpTable: tmatch: %d\n", tmatch);
     r_tbl_t *rt    = &Tbl[tmatch];
     sds      tname = rt->name;
@@ -194,14 +193,14 @@ bool appendOnlyDumpTable(FILE *fp, bt *btr, int tmatch) {
     bool ret = 1;
     if (btr->numkeys) { /* Dump Table DATA */
         btEntry *be;
-        char  cmd2[]  = "*5\r\n$6\r\nINSERT\r\n$4\r\nINTO\r\n";
-        char  cvals[] = "$6\r\nVALUES\r\n";
-        uchar  o_out  = OutputMode;
-        OutputMode    = OUTPUT_NORMAL; /* REDIS output not OK here */
-        list *cmatchl = listCreate();
-        int   qcols   = get_all_cols(tmatch, cmatchl, 1, 1);
+        char  cmd2[]          = "*5\r\n$6\r\nINSERT\r\n$4\r\nINTO\r\n";
+        char  cvals[]         = "$6\r\nVALUES\r\n";
+        uchar  o_out          = server.alc.OutputMode;
+        server.alc.OutputMode = OUTPUT_NORMAL; /* REDIS output not OK here */
+        list *cmatchl         = listCreate();
+        int   qcols           = get_all_cols(tmatch, cmatchl, 1, 1);
         CMATCHS_FROM_CMATCHL
-        btSIter *bi  = btGetFullRangeIter(btr, 1, NULL);
+        btSIter *bi           = btGetFullRangeIter(btr, 1, NULL);
         while ((be = btRangeNext(bi, 1)) != NULL) {
             if (fwrite(cmd2 ,sizeof(cmd2) - 1, 1, fp) == 0)       A_BRK
             if (fwriteBulkString(fp, tname, sdslen(tname)) == -1) A_BRK
@@ -215,7 +214,7 @@ bool appendOnlyDumpTable(FILE *fp, bt *btr, int tmatch) {
             sdsfree(srow);
             decrRefCount(r);
         } btReleaseRangeIterator(bi);
-        OutputMode = o_out; listRelease(cmatchl);
+        server.alc.OutputMode = o_out; listRelease(cmatchl);
     }
     return ret;
 }

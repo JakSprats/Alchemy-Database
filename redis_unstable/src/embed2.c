@@ -25,12 +25,11 @@
 //#define SHORT_INSERT_STRING
 
 //GLOBALS
-extern eresp_t *CurrEresp;   // USED in callbacks to get "CurrEresp->cnames[]"
-extern bool GlobalZipSwitch; // can GLOBALLY turn off [lzf] compression of rows
-extern bool GlobalNeedCn;    // turn print_cnames ON/OFF in PREPARED_STATMENTs
+extern eresp_t *CurrEresp;       // USED in callbacks to get "CurrEresp->cnames[]"
+extern bool     GlobalZipSwitch; // can GLOBALLY turn off [lzf] compression of rows
+extern bool     GlobalNeedCn;    // turn print_cnames ON/OFF in PREPARED_STATMENTs
 
 extern int   Num_tbls; // USED in thin_select
-extern int   Num_indx; // USED in thin_select
 extern dict *StmtD;    // USED for EXEC_BIN
 
 // PROTOTYPES
@@ -183,68 +182,6 @@ static void test_kv_zip_select(ulong prows, ulong qrows) {
     release_ereq(&ereq);
 }
 
-#define BINARY_SELECT_QUERY_KV                                      \
-    bool    cstar = 0;  /* NOT SELECT COUNT(*) */                   \
-    int     qcols = 1;  /* SELECT val -> 1 query column */          \
-    int     cmatchs[qcols];                                         \
-    cmatchs[0]    = 1;  /* SELECT val -> column number 1 */         \
-    uchar   qtype = SQL_SINGLE_LKP; /* WHERE pk = 1 -> PK lookup */ \
-    enum OP op    = EQ;                                             \
-    int tmatch    = Num_tbls - 1; /* last table created */          \
-    int cmatch    = 0;            /* pk is column 0 */              \
-    int imatch    = Num_indx - 1; /* last index created */
-
-static void test_kv_zip_thinselect(ulong prows, ulong qrows) {
-    ereq_t ereq; init_ereq(&ereq);
-    init_kv_table(); populate_kv_table(prows);
-    BINARY_SELECT_QUERY_KV
-
-    bool save_cnames     = 0;
-    select_callback *scb = NULL;
-#ifdef DEBUG_PRINT
-    scb                  = print_cb_w_cnames; save_cnames = 1;
-#endif
-
-    long long beg = mstime(), fin, tps;
-    for (ulong i = 1; i < qrows; i++) {
-        ulong    index = (ulong)rand() % prows + 1;
-        e_alchemy_thin_select(qtype, tmatch, cmatch, imatch, op, qcols,
-                              0, index, 0, cmatchs, cstar, scb, save_cnames);
-    }
-    fin = mstime(); tps = (fin == beg) ? 0 : qrows / (fin - beg);
-    printf("KV: THIN SELECT:\t\t%lu rows, duration: %lld ms, %lldK TPS\n\n",
-           qrows, (fin - beg), tps);
-    hit_return_to_continue();
-    release_ereq(&ereq);
-}
-static void test_kv_nocompression_thinselect(ulong prows, ulong qrows) {
-    ereq_t ereq; init_ereq(&ereq);
-    GlobalZipSwitch = 0; // turn compression -> OFF
-    init_kv_table(); populate_kv_table(prows);
-    GlobalZipSwitch = 1; // turn compression -> BACK ON
-    BINARY_SELECT_QUERY_KV
-
-    bool save_cnames     = 0;
-    select_callback *scb = NULL;
-#ifdef DEBUG_PRINT
-    scb                  = print_cb_w_cnames; save_cnames = 1;
-#endif
-
-    long long beg = mstime(), fin, tps;
-    for (ulong i = 1; i < qrows; i++) {
-        ulong    index = (ulong)rand() % prows + 1;
-        e_alchemy_thin_select(qtype, tmatch, cmatch, imatch, op, qcols,
-                              0, index, 0, cmatchs, cstar, scb, save_cnames);
-    }
-    fin = mstime();
-    tps = (fin == beg) ? 0 : qrows / (fin - beg);
-    printf("KV: THIN SELECT [NO ZIP]:\t%lu rows, duration: %lld ms,"\
-           " %lldK TPS\n\n",
-           qrows, (fin - beg), tps);
-    hit_return_to_continue();
-    release_ereq(&ereq);
-}
-
 // DELETE_KV
 static void test_kv_delete(ulong prows, ulong qrows) {
     ereq_t ereq; init_ereq(&ereq);
@@ -304,80 +241,6 @@ static void test_kv_update(ulong prows, ulong qrows) {
     printf("AFTER UPDATE\n"); desc_table("kv");
 #endif
     //debug_rows((prows / 2 - 2), (prows / 2 + 2));
-    release_ereq(&ereq);
-}
-
-// POPULATE_SB
-static void init_sb_table() {
-    e_alchemy_raw("DROP TABLE SB", NULL);
-    e_alchemy_raw("CREATE TABLE SB (userid U128, cu U128)",  NULL);
-    e_alchemy_raw("CREATE UNIQUE INDEX i_SB ON SB \"(cu)\"", NULL);
-    desc_table("SB"); hit_return_to_continue();
-}
-static void populate_sb_table(ulong prows) {
-    char buf[1024]; char nbuf[16];
-    char  *insert_string = "(000|000000000000001, 000|000000000000001)";
-
-    ereq_t ereq; init_ereq(&ereq);
-    ereq.op        = INSERT;
-    ereq.tablelist = sdsnew("SB");
-
-    memcpy(buf, insert_string, strlen(insert_string) + 1);
-    char *pkspot  = buf + 6;
-    char *valspot = buf + 27;
-#ifdef  DEBUG_DESC_TABLE
-    printf("Populating table SB: prows: %lu zip: %d\n", prows, GlobalZipSwitch);
-#endif
-    long long beg = mstime(), fin, tps;
-    for (ulong i = 1; i < prows; i++) {
-        sprintf(nbuf, "%014lu", i);
-        memcpy(pkspot, nbuf, 14); memcpy(valspot, nbuf, 14);
-        ereq.insert_value_string = sdsnew(buf);
-        e_alchemy_sql_fast(&ereq);
-        sdsfree(ereq.insert_value_string); ereq.insert_value_string = NULL;
-    }
-    fin = mstime(); tps = (fin == beg) ? 0 : prows / (fin - beg);
-    printf("SB: INSERT%s%lu rows, duration: %lld ms, %lldK TPS\n",
-           GlobalZipSwitch ? ":\t\t\t" : ": [NO ZIP]:\t",
-           prows, (fin - beg), tps);
-    print_mem_usage(Num_tbls - 1);
-    desc_table("SB"); hit_return_to_continue();
-    release_ereq(&ereq);
-}
-// SELECT SB
-#define BINARY_SELECT_QUERY_SB                                         \
-    bool    cstar = 0;  /* NOT SELECT COUNT(*) */                      \
-    int     qcols = 2;  /* SELECT userid, cu -> 1 query column */      \
-    int     cmatchs[qcols];                                            \
-    cmatchs[0]    = 0;  /* SELECT userid -> column number 0 */         \
-    cmatchs[1]    = 1;  /* SELECT cu     -> column number 1 */         \
-    uchar   qtype = SQL_SINGLE_FK_LKP; /* WHERE cu = 1 -> FK lookup */ \
-    enum OP op    = EQ;                                                \
-    int tmatch    = Num_tbls - 1; /* last table created */             \
-    int cmatch    = 1;            /* FK is column 2     */             \
-    int imatch    = Num_indx - 1; /* last index created */
-
-static void test_sb_zip_thinselect(ulong prows, ulong qrows) {
-    ereq_t ereq; init_ereq(&ereq);
-    init_sb_table(); populate_sb_table(prows);
-    BINARY_SELECT_QUERY_SB
-
-    bool save_cnames     = 0;
-    select_callback *scb = NULL;
-#ifdef DEBUG_PRINT
-    scb                  = print_cb_w_cnames; save_cnames = 1;
-#endif
-
-    long long beg = mstime(), fin, tps;
-    for (ulong i = 1; i < qrows; i++) {
-        uint128  index = (uint128)rand() % prows + 1;
-        e_alchemy_thin_select(qtype, tmatch, cmatch, imatch, op, qcols,
-                              index, 0, 0, cmatchs, cstar, scb, save_cnames);
-    }
-    fin = mstime(); tps = (fin == beg) ? 0 : qrows / (fin - beg);
-    printf("SB: THIN SELECT:\t\t%lu rows, duration: %lld ms, %lldK TPS\n\n",
-           qrows, (fin - beg), tps);
-    hit_return_to_continue();
     release_ereq(&ereq);
 }
 
@@ -519,14 +382,8 @@ int main(int argc, char **argv) {
     prows = 5; qrows = 5;
 #endif
 
-#ifdef TEST_SB
-    test_sb_zip_thinselect          (prows, qrows);
-#endif
-
 #ifdef TEST_KV
     test_kv_zip_select              (prows, qrows);
-    test_kv_zip_thinselect          (prows, qrows);
-    test_kv_nocompression_thinselect(prows, qrows);
     test_kv_delete                  (prows, qrows);
     test_kv_update                  (prows, qrows);
 #endif

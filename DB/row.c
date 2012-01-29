@@ -68,10 +68,6 @@ bool GlobalZipSwitch = 1; // can GLOBALLY turn off [lzf] compression of rows
 extern r_tbl_t *Tbl;
 extern r_ind_t *Index;
 
-extern robj    *CurrError;  // NOTE: for deeply nested errors
-extern long     CurrCard;   // NOTE: to report when nested errors happened
-extern uchar    OutputMode; // NOTE: used by OREDIS
-
 // CONSTANT GLOBALS
 extern char OUTPUT_DELIM;
 extern char PLUS;  extern char MINUS;
@@ -580,7 +576,7 @@ static aobj getRC_LFunc(bt   *btr, uchar  *orow, int tmatch, aobj *apk,
         a.err = 1; a.type = COL_TYPE_ERR;
         CURR_ERR_CREATE_OBJ
              "-ERR: Error running SELECT FUNCTION (%s): %s CARD: %ld\r\n",
-               le->fname, lua_tostring(server.lua, -1), CurrCard));
+               le->fname, lua_tostring(server.lua, -1), server.alc.CurrCard));
     } else { // DataDumperWrapper returns only strings
         initAobjFromLuaString(server.lua, &a, 0, fs);
     }

@@ -46,9 +46,6 @@ ALL RIGHTS RESERVED
 #include "orderby.h"
 
 extern r_tbl_t *Tbl;
-extern robj    *CurrError;  // NOTE: for deeply nested errors
-extern long     CurrCard;   // NOTE: to report when nested errors happened
-
 
 //GLOBALS
 uint32 OB_nob   = 0;                 // TODO push into cswc_t
@@ -197,7 +194,7 @@ printf("OB LE: i: %d fname: %s ncols: %d\n", i, wb->le[i].fname, wb->le[i].ncols
     if (r) { ret = 0;
         CURR_ERR_CREATE_OBJ
         "-ERR: running ORDER BY FUNCTION (%s): %s [CARD: %ld]\r\n",
-         wb->le[i].fname, lua_tostring(server.lua, -1), CurrCard));
+         wb->le[i].fname, lua_tostring(server.lua, -1), server.alc.CurrCard));
     } else {
         int t = lua_type(server.lua, -1);
         if        (t == LUA_TNUMBER) {
@@ -207,7 +204,8 @@ printf("OB LE: i: %d fname: %s ncols: %d\n", i, wb->le[i].fname, wb->le[i].ncols
         } else { ret = 0;
             CURR_ERR_CREATE_OBJ
             "-ERR: ORDER BY FUNCTION (%s): %s [CARD: %ld]\r\n",
-             wb->le[i].fname, "use NUMBER or BOOLEAN return types", CurrCard));
+             wb->le[i].fname, "use NUMBER or BOOLEAN return types",
+             server.alc.CurrCard));
         }
     }
     ob->keys[i] = key; CLEAR_LUA_STACK return ret;
@@ -240,7 +238,7 @@ bool assignObKey(wob_t *wb, bt     *btr, void *rrow,  aobj *apk,
         } else {
             CURR_ERR_CREATE_OBJ
             "-ERR: ORDER BY DOT-NOTATION: %s [CARD: %ld]\r\n",
-             "unsupported return type", CurrCard)); ret = 0;
+             "unsupported return type", server.alc.CurrCard)); ret = 0;
         }
         CLEAR_LUA_STACK
     } else assert(!"assignObKey ERROR");

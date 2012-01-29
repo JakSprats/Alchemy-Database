@@ -10,15 +10,16 @@ LUAOBJ
   K.) Test STRING DNI
   O.) in checkOrCr8LFunc, joins have precedence over nested luaobjs
         in '.' delimited parsing
+  P.) icol_t mem-leaks
 
 PROTOCOL
   2.) ADD "SELECT col AS othername"
+  3.) Merge SCAN into SELECT
 
 TEST:
   1.) make sure IN_Ops are up to date w/ scion & so on
 
 CACHE:
- -1.) PROHIBIT BuildIndex on DirtyTable
   0.) rdbSave/Load DirtyStream
   1.) specify "PRIMARY KEY AUTO INCREMENT" in "CREATE TABLE" declaration
   3.) slab allocator for the myriad of different btree-node sizes
@@ -32,7 +33,7 @@ MISC:
   4.) Lua bindings for U128's
 
 CLEANUP:
-  1.) GLOBAL VARIABLES -> Per Client Structures
+  1.) GLOBAL VARIABLES -> Per Client Structures (needed for MVCC)
         A.) OB_asc [MAX_ORDER_BY_COLS]    -> push into cswc_t
         B.) OB_ctype[MAX_ORDER_BY_COLS]   -> push into cswc_t
         C.) JTAlias[MAX_JOIN_COLS]        -> push into JoinBlock
@@ -44,20 +45,3 @@ FIX:
       [sk, fk_cmatch, fk_otmatch, fk_ocmatch] -> MAKE PERSISTENT
   2.) bt_output(debug) of Compound Indexes does not recurse
   4.) FLUSHDB & FLUSHALL should be "DROP DATABASE" in sqlappendfile
-
------------LATER LATER LATER LATER LATER LATER LATER---------------
------------LATER LATER LATER LATER LATER LATER LATER---------------
-PREPARED_STATEMENTS
-  0.) Make Persistent -> add to DXDB_rdbSave/Load()
-  1.) PREPARE STATEMENT for joins runs PRE QueryOptimisation -> do POST
-  2.) Support CRUD
-  3.) SELECTs -> support RangeQueries & IN()Queries
-  4.) support SELECT lua-functions 
-
-EMBEDDED_API
-  1.) REPLACE & InsertOnDuplicateUpdate need FAST v2 API bindings
-  2.) ALL Redis commands (SET/GET/DEL already done) need FAST v2 API bindings
-
-MISC:
-  3.) EXTEND: Compound Indexes scion's need to recurse from deepest index-btree
-              to highest index-btree, & scion iterators need to use these counts

@@ -1,0 +1,15 @@
+
+PREPARED_STATEMENTS
+  0.) Make Persistent -> add to DXDB_rdbSave/Load()
+  1.) PREPARE STATEMENT for joins runs PRE QueryOptimisation -> do POST
+  2.) Support CRUD
+  3.) SELECTs -> support RangeQueries & IN()Queries
+  4.) support SELECT,UPDATE,WhereClause,ORDER_BY lua-functions 
+
+EMBEDDED_API
+  1.) REPLACE & InsertOnDuplicateUpdate need FAST v2 API bindings
+  2.) ALL Redis commands (SET/GET/DEL already done) need FAST v2 API bindings
+
+MISC:
+  3.) EXTEND: Compound Indexes scion's need to recurse from deepest index-btree
+              to highest index-btree, & scion iterators need to use these counts

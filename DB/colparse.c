@@ -50,7 +50,6 @@ ALL RIGHTS RESERVED
 #include "common.h"
 #include "colparse.h"
 
-extern cli     *CurrClient;
 extern r_tbl_t *Tbl;
 extern r_ind_t *Index;
 extern dict    *DynLuaD;
@@ -245,7 +244,7 @@ char *parseRowVals(sds vals,  char   **pk,       int  *pklen,
 // JTA_SERIALISATION JTA_SERIALISATION JTA_SERIALISATION JTA_SERIALISATION
 int getJTASize() {
     int size = sizeof(int); // NumJTAlias
-    for (int i = 0; i < CurrClient->NumJTAlias; i++) {
+    for (int i = 0; i < server.alc.CurrClient->NumJTAlias; i++) {
         size += sizeof(int) + sdslen(JTAlias[i].alias);
     }
     return size;
@@ -253,8 +252,9 @@ int getJTASize() {
 uchar *serialiseJTA(int jtsize) {
     uchar *ox = (uchar *)malloc(jtsize);                 // FREE ME 112
     uchar *x  = ox;
-    memcpy(x, &CurrClient->NumJTAlias, sizeof(int)); x += sizeof(int);
-    for (int i = 0; i < CurrClient->NumJTAlias; i++) {
+    memcpy(x, &server.alc.CurrClient->NumJTAlias, sizeof(int))
+                                                   ; x += sizeof(int);
+    for (int i = 0; i < server.alc.CurrClient->NumJTAlias; i++) {
         int len = sdslen(JTAlias[i].alias);
         memcpy(x, &len,                sizeof(int)); x += sizeof(int);
         memcpy(x, JTAlias[i].alias,    len);         x += len;
@@ -263,8 +263,9 @@ uchar *serialiseJTA(int jtsize) {
 }
 int deserialiseJTA(uchar *x) {
     uchar *ox = x;
-    memcpy(&CurrClient->NumJTAlias, x, sizeof(int)); x += sizeof(int);
-    for (int i = 0; i < CurrClient->NumJTAlias; i++) {
+    memcpy(&server.alc.CurrClient->NumJTAlias, x, sizeof(int));
+                                                     x += sizeof(int);
+    for (int i = 0; i < server.alc.CurrClient->NumJTAlias; i++) {
         int len;
         memcpy(&len, x,                sizeof(int)); x += sizeof(int);
         char *s = malloc(len);                           // FREE ME 114
@@ -369,7 +370,7 @@ static bool parseJCols(cli   *c,    char *y,    int   len,
     int      tmatch = find_table_n(tname, tlen);
     if (tmatch == -1) { addReply(c,shared.nonexistenttable); return 0; }
     r_tbl_t *rt     = &Tbl[tmatch];
-    int      jan    = CurrClient->LastJTAmatch;
+    int      jan    = server.alc.CurrClient->LastJTAmatch;
     char    *cname  = nextp + 1;
     int      clen   = len - tlen - 1;
     if (clen == 1 && *cname == '*') {
@@ -395,15 +396,15 @@ static bool parseJCols(cli   *c,    char *y,    int   len,
 
 // PARSE_JOIN PARSE_JOIN PARSE_JOIN PARSE_JOIN PARSE_JOIN PARSE_JOIN
 static bool addJoinAlias(redisClient *c, char *tkn, char *space, int len) {
-    if (CurrClient->NumJTAlias == MAX_JOIN_COLS) {
+    if (server.alc.CurrClient->NumJTAlias == MAX_JOIN_COLS) {
         addReply(c, shared.toomanyindicesinjoin); return 0;
     }
-    int tlen                 = space - tkn; SKIP_SPACES(space);
-    int nja                  = CurrClient->NumJTAlias;
-    JTAlias[nja].alias       = sdsnewlen(space, (tkn + len - space)); //DEST049
-    JTAlias[nja].tmatch      = find_table_n(tkn, tlen);
-    CurrClient->LastJTAmatch = nja; /* NOTE: needed on JoinColParse */
-    CurrClient->NumJTAlias++;
+    int tlen            = space - tkn; SKIP_SPACES(space);
+    int nja             = server.alc.CurrClient->NumJTAlias;
+    JTAlias[nja].alias  = sdsnewlen(space, (tkn + len - space)); //DEST049
+    JTAlias[nja].tmatch = find_table_n(tkn, tlen);
+    server.alc.CurrClient->LastJTAmatch = nja;// NOTE: needed on JoinColParse
+    server.alc.CurrClient->NumJTAlias++;
     return 1;
 }
 // PARSE_ALL_SELECTs PARSE_ALL_SELECTs PARSE_ALL_SELECTs PARSE_ALL_SELECTs
@@ -418,11 +419,11 @@ bool parseCSLJoinTable(cli  *c, char  *tkn, list *ts, list  *jans) {
         if (alias) {
             if (!addJoinAlias(c, tkn, alias, len)) return 0;
             len     = alias - tkn;
-            jan     = CurrClient->LastJTAmatch;   /* from addJoinAlias() */
+            jan     = server.alc.CurrClient->LastJTAmatch;// from addJoinAlias()
         }
         int   tm    = find_table_n(tkn, len);
         if (tm == -1) { addReply(c, shared.nonexistenttable); return 0; }
-        if (!alias) jan = CurrClient->LastJTAmatch;/* from find_table_n() */
+        if (!alias) jan = server.alc.CurrClient->LastJTAmatch;// find_table_n()
         listAddNodeTail(ts,   VOIDINT tm); listAddNodeTail(jans, VOIDINT jan);
         if (!nextc) break; tkn = nextc + 1;
     }
@@ -506,7 +507,7 @@ int parseUpdateColListReply(cli  *c,  int   tmatch, char *vallist,
         listAddNodeTail(vals,          val);
         listAddNodeTail(vlens, VOIDINT (end - val + 1)); qcols++;
         if (!nextc) break;
-        if (*nextc == ',') { nextc++; SKIP_SPACES(nextc) } //TODO check needed?
+        if (*nextc == ',') { nextc++; SKIP_SPACES(nextc) }
         vallist = nextc;
     }
     return qcols;
@@ -739,7 +740,6 @@ static void addCnameToCdict(sds cname, icol_t *mic, dict *colD) {
 }
 bool checkOrCr8LFunc(int tmatch, lue_t *le, sds expr, bool cln) {
     if (tmatch == -1) return 0; // JOINs not yet supported
-printf("checkOrCr8LFunc\n");
     if (!Inited_LuaDlms) { init_LuaDlms(); Inited_LuaDlms = 1; }
     if (checkExprIsFunc(expr, le, tmatch)) return 1;
 
@@ -762,7 +762,7 @@ printf("checkOrCr8LFunc\n");
             if (i != (len - 1) && mexpr[i + 1] == '=') {
                 mexpr[i] = '~'; i++; continue; // skip next '='
             }
-        } else if (c == '=') {
+        } else if (c == '=') { // transform SQL '=' to Lua '=='
             if (!nexpr) nexpr = sdsnewlen(expr, i + 1);
             else        nexpr = sdscatlen(nexpr, expr + pleq, i - pleq + 1);
             pleq = i + 1; nexpr = sdscatlen(nexpr, "=", 1);
@@ -806,7 +806,7 @@ printf("checkOrCr8LFunc\n");
         }                                    //{int i = len; DEBUG_DEEP_PARSE }
         sdsfree(cname);                                    // FREE 142
     }
-    if (nexpr) nexpr = sdscatlen(nexpr, expr + pleq, len - pleq);
+    if (nexpr) nexpr = sdscatlen(nexpr, expr + pleq, len - pleq);//SQL= -> Lua==
 
     le->yes   = 1; le->ncols = dictSize(colD);
     if (le->ncols) le->as = malloc(le->ncols * sizeof(aobj **));   //FREE 096
@@ -827,7 +827,7 @@ printf("checkOrCr8LFunc\n");
             i++;
         } dictReleaseIterator(di);
     }
-    if (nexpr) { //TODO replace any '=' w/ '=='
+    if (nexpr) {
         lfunc = sdscatprintf(lfunc, " return (%s); end)(...)", nexpr);
         sdsfree(nexpr);
     } else lfunc = sdscatprintf(lfunc, " return (%s); end)(...)", mexpr);

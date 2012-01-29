@@ -59,14 +59,11 @@ char *strcasestr(const char *haystack, const char *needle); /*compiler warning*/
 extern int      Num_tbls;
 extern r_tbl_t *Tbl;
 extern r_ind_t *Index;
-extern cli     *CurrClient;
 
 extern ja_t     JTAlias[MAX_JOIN_COLS];
 
 extern stor_cmd AccessCommands[];
 extern uchar    OP_len[NOP];
-
-extern uchar    OutputMode;
 
 // CONSTANT GLOBALS
 static char CLT = '<';
@@ -392,7 +389,7 @@ static robj *parseInumTblCol(char *token, int tlen, f_t *flt) {
     char *nextp = _strnchr(token, '.', tlen);
     if (!nextp)            return shared.badindexedcolumnsyntax;
     flt->tmatch = find_table_n(token, nextp - token);
-    flt->jan    = CurrClient->LastJTAmatch;
+    flt->jan    = server.alc.CurrClient->LastJTAmatch;
     if (flt->tmatch == -1) return shared.nonexistenttable;
     nextp++;
     flt->ic     = find_column_n(flt->tmatch, nextp, tlen - (nextp - token));
@@ -407,7 +404,6 @@ static robj *parseInumCol(char *token, int tlen, f_t *flt) {
     else                      flt->imatch = find_index(flt->tmatch, flt->ic);
     return NULL;
 }
-
 static uchar pWC_checkLuaFunc(cli *c, f_t *flt, sds tkn, char **fin, robj *ro) {
     char *oby =              strstr_not_quoted(tkn, " ORDER BY ");
     char *lim = oby ? NULL : strstr_not_quoted(tkn, " LIMIT ");

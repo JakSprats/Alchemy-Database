@@ -115,8 +115,9 @@ typedef int printer(const char *format, ...);
 #define CONSTRAINT_UNIQUE 1
 #define UNIQ(cnstr) (cnstr == CONSTRAINT_UNIQUE)
 
-#define OREDIS (OutputMode == OUTPUT_PURE_REDIS)
-#define EREDIS (OutputMode == OUTPUT_EMBEDDED)
+#define OREDIS (server.alc.OutputMode == OUTPUT_PURE_REDIS)
+#define EREDIS (server.alc.OutputMode == OUTPUT_EMBEDDED)
+#define LREDIS (server.alc.OutputMode == OUTPUT_LUA)
 
 #define FK_RQ(wtype) !(wtype == SQL_SINGLE_FK_LKP)
 
@@ -183,7 +184,7 @@ typedef struct twoint {
   lua_settop(server.lua, 0);
 
 #define CURR_ERR_CREATE_OBJ \
-  CurrError = createObject(REDIS_STRING, sdscatprintf(sdsempty(),
+  server.alc.CurrError = createObject(REDIS_STRING, sdscatprintf(sdsempty(),
 
 #define ADD_REPLY_FAILED_LUA_STRING_CMD(cmd)                 \
   addReplyErrorFormat(c, "FAILED: cmd: (%s) msg: (%s).",     \

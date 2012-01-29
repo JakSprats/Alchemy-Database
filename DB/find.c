@@ -47,7 +47,6 @@ ALL RIGHTS RESERVED
 extern r_tbl_t *Tbl;   extern dict *TblD;
 extern r_ind_t *Index; extern dict *IndD;
 
-extern cli  *CurrClient;
 extern ja_t  JTAlias[MAX_JOIN_COLS];
 
 // INDEX.POS() INDEX.POS() INDEX.POS() INDEX.POS() INDEX.POS() INDEX.POS()
@@ -131,23 +130,24 @@ int find_table(sds tname) { /* NOTE does not use JTAlias[] */
     return ptr ? ((int)(long)ptr) - 1 : -1;
 }
 int find_table_n(char *tname, int len) {
-    CurrClient->LastJTAmatch = -1;
-    for (int i = 0; i < CurrClient->NumJTAlias; i++) {// 1st check Join Aliases
+    server.alc.CurrClient->LastJTAmatch = -1;// 1st check Join Aliases
+    for (int i = 0; i < server.alc.CurrClient->NumJTAlias; i++) {
         sds x = JTAlias[i].alias;
         if (((int)sdslen(x) == len) && !strncmp(tname, x, len)) {
-            CurrClient->LastJTAmatch = i; return JTAlias[i].tmatch;
+            server.alc.CurrClient->LastJTAmatch = i; return JTAlias[i].tmatch;
         }
     }
     sds stname = sdsnewlen(tname, len);                // DEST  087
     int tmatch = find_table(stname); sdsfree(stname);  // DESTD 087
     if (tmatch == -1) return -1;
-    CurrClient->LastJTAmatch = tmatch + USHRT_MAX; // DONT collide w/ NumJTAlias
+    // DONT collide w/ NumJTAlias
+    server.alc.CurrClient->LastJTAmatch = tmatch + USHRT_MAX;
     return tmatch;
 }
 sds getJoinAlias(int jan) {
     if (jan == -1) return NULL;
-    return (jan < CurrClient->NumJTAlias) ? JTAlias[jan].alias :
-                                            Tbl[(jan - USHRT_MAX)].name;
+    return (jan < server.alc.CurrClient->NumJTAlias) ? JTAlias[jan].alias :
+                                                    Tbl[(jan - USHRT_MAX)].name;
 }
 
 // COL COL COL COL COL COL COL COL COL COL COL COL COL COL COL COL COL COL COL
@@ -170,11 +170,11 @@ static icol_t check_special_column(int tmatch, sds cname) {
                 while (*sd) {
                     char   *nextd = strchr(sd, '.');
                     uint32  len   = nextd ? nextd - sd : (uint32)strlen(sd);
-                    char    c     = *sd;
-                    if (!ISALPHA(c)) { ok = 0; break; }
-                    for (int j = 1; j < len; j++) {
-                        c = *(sd + j);
-                        if (!ISALNUM(c) && c != "_") { ok = 0; break; }
+                    char    x     = *sd;
+                    if (!ISALPHA(x)) { ok = 0; break; }
+                    for (uint32 j = 1; j < len; j++) {
+                        x = *(sd + j);
+                        if (!ISALNUM(x) && x != '_') { ok = 0; break; }
                     }
                     if (!ok) break;
                     sds     s     = sdsnewlen(sd, len);            // FREE 145

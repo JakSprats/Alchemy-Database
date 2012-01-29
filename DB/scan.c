@@ -50,7 +50,6 @@ ALL RIGHTS RESERVED
 
 extern r_tbl_t *Tbl; // used in getBtr()
 extern r_ind_t *Index;
-extern uchar    OutputMode;
 
 static void scanJoin(cli *c) {
     jb_t jb; init_join_block(&jb);

@@ -82,13 +82,6 @@ void release_ereq(ereq_t *ereq);
 // SQL
 eresp_t *e_alchemy_sql_fast(ereq_t *ereq);
 
-// BINARY_SELECT
-eresp_t *e_alchemy_thin_select(uchar qtype,  int tmatch, int cmatch, int imatch,
-                               enum OP op,   int qcols,
-                               uint128 keyx, long keyl,  int keyi,
-                               icol_t *ics,  bool cstar, select_callback *scb,
-                               bool save_cnames);
-
 // REDIS
 eresp_t *e_alchemy_redis(ereq_t *ereq);
 

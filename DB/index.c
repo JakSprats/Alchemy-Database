@@ -59,7 +59,6 @@ ALL RIGHTS RESERVED
 
 extern r_tbl_t *Tbl;
 extern uint32   Ind_HW; extern dict *IndD; extern list *DropI;
-extern cli     *CurrClient;
 extern char    *Col_type_defs[];
 
 // GLOBALS
@@ -898,7 +897,8 @@ int luaAlchemySetIndex(lua_State *lua) { //printf("SHA1\n");
     sdsfree(tname); sdsfree(cname); sdsfree(ename);
     bt    *ibtr  = getIBtr(imatch);
     //TODO CurrClient? check error propogation
-    bool   ret   = iAdd(CurrClient, ibtr, &acol, &apk, pktyp, NULL, imatch);
+    bool   ret   = iAdd(server.alc.CurrClient, ibtr, &acol, &apk, pktyp,
+                        NULL, imatch);
     lua_pushboolean(lua, ret); return 1;
 }
 /* Usage: Lua: alchemyUpdateIndex(tbl, col, pk, element, oldval, newval); */
@@ -920,7 +920,8 @@ int luaAlchemyUpdateIndex(lua_State *lua) {
     //DEBUG_LUA_UPDATE_INDEX
     sdsfree(tname); sdsfree(cname); sdsfree(ename);
     bt    *ibtr  = getIBtr(imatch);
-    bool   ret   = upIndex(CurrClient, ibtr, &apk, &ocol, &apk, &ncol, pktyp,
+    bool   ret   = upIndex(server.alc.CurrClient, ibtr, &apk, &ocol, &apk,
+                           &ncol, pktyp,
                            NULL, NULL, imatch);
     lua_pushboolean(lua, ret); return 1;
 }

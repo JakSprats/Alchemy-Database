@@ -58,10 +58,8 @@ ALL RIGHTS RESERVED
 
 extern r_tbl_t *Tbl;   extern int Num_tbls;
 extern r_ind_t *Index; extern int Num_indx;
-extern robj    *CurrError;
 
 // GLOBALS
-uchar  OutputMode   = OUTPUT_NORMAL;
 bool   GlobalNeedCn = 0;
 
 // CONSTANT GLOBALS
@@ -432,7 +430,9 @@ bool sqlSelectBinary(cli  *c,     int     tmatch, bool   cstar, icol_t *ics,
         robj *r = outputRow(btr, rrow, qcols, ics, apk, tmatch, lfca, &ost);
         if (ost == OR_ALLB_OK)   { addReply(c, shared.cone);        return 1; }
         if (ost == OR_ALLB_NO)   { addReply(c, shared.czero);       return 1; }
-        if (ost == OR_LUA_FAIL)  { addReply(c, CurrError);          return 0; }
+        if (ost == OR_LUA_FAIL)  {
+            addReply(c, server.alc.CurrError);                      return 0;
+        }
         if (!r)                  { addReply(c, shared.nullbulk);    return 1; }
         if (!EREDIS) {
             addReply(c, shared.singlerow);

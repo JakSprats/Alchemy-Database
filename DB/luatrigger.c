@@ -51,32 +51,25 @@ ALL RIGHTS RESERVED
 extern r_tbl_t *Tbl;
 extern r_ind_t *Index;
 
-extern cli    *CurrClient;
-
-// GLOBALS
-ulong  Operations  = 0;
-char  *LuaCronFunc = NULL;
-
 #define SLOW_LUA_TRIGGER //TODO TEST VALUE - slow things down
-
 
 /* NOTE: this calls lua routines every second from a server cron -> an event */
 /*  luacronfunc(Operations) -> use Operations to estimate current load */
 int luaCronTimeProc(struct aeEventLoop *eventLoop, lolo id, void *clientData) {
     eventLoop = NULL; id = 0; clientData = 0; /* compiler warnings */
-    if (LuaCronFunc) {
+    if (server.alc.LuaCronFunc) {
         CLEAR_LUA_STACK
-        lua_getfield(server.lua, LUA_GLOBALSINDEX, LuaCronFunc); /* func2call */
-        lua_pushinteger(server.lua, Operations);             /* prepare param */
+        lua_getfield(server.lua, LUA_GLOBALSINDEX, server.alc.LuaCronFunc);
+        lua_pushinteger(server.lua, server.alc.Operations);
         struct timeval t1, t2; gettimeofday(&t1, NULL);
-        CurrClient = server.lua_client;
+        server.alc.CurrClient = server.lua_client;
         int ret = lua_pcall(server.lua, 1, 0, 0);
         if (ret) redisLog(REDIS_WARNING, "Error running luaCron: %s",
                            lua_tostring(server.lua, -1));
         CLEAR_LUA_STACK
         gettimeofday(&t2, NULL);
     }
-    Operations = 0;
+    server.alc.Operations = 0;
 #ifdef SLOW_LUA_TRIGGER
     return 10000; /* 10000ms -> 10secs */
 #else

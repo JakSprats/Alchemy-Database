@@ -50,8 +50,6 @@ extern r_tbl_t *Tbl;
 extern int      Num_indx;
 extern r_ind_t *Index;
 
-extern uchar    OutputMode;
-
 // CONSTANT GLOBALS
 char *Col_type_defs[]       =
   {"NONE", "INT UNSIGNED", "BIGINT UNSIGNED", "TEXT", "FLOAT", "U128",
@@ -172,13 +170,16 @@ void sqlDumpCommand(redisClient *c) {
             }
         }
         btEntry *be;
-        bool   ok      = 1;
-        uchar  o_out   = OutputMode;
-        OutputMode     = OUTPUT_NORMAL; /* REDIS output not OK here */
-        list  *cmatchl = listCreate();
-        int    qcols   = get_all_cols(tmatch, cmatchl, 1, 1);
+        bool   ok             = 1;
+        uchar  o_out          = server.alc.OutputMode;
+        server.alc.OutputMode = OUTPUT_NORMAL; /* REDIS output not OK here */
+        list  *cmatchl        = listCreate();
+        int    qcols          = get_all_cols(tmatch, cmatchl, 1, 1);
         CMATCHS_FROM_CMATCHL
-        btSIter *bi    = btGetFullRangeIter(btr, 1, NULL);
+        if (!toms && !tof) {
+            outputColumnNames(c, tmatch, 0, ics, qcols, NULL);
+        }
+        btSIter *bi           = btGetFullRangeIter(btr, 1, NULL);
         while ((be = btRangeNext(bi, 1))) {
             aobj *apk  = be->key;
             void *rrow = be->val;
@@ -207,7 +208,7 @@ void sqlDumpCommand(redisClient *c) {
             } else addReplyBulk(c, r);
             decrRefCount(r); card++;
         } btReleaseRangeIterator(bi);
-        OutputMode = o_out; listRelease(cmatchl);
+        server.alc.OutputMode = o_out; listRelease(cmatchl);
         if (!ok) return;
     }
     if (toms) { // for MYSQL: Dump the table's indexes also

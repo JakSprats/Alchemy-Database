@@ -1,6 +1,5 @@
 #ifdef ALCHEMY_DATABASE
   #include "xdb_hooks.h"
-  extern bool SQL_AOF;
 #endif
 /*
  * Copyright (c) 2009-2010, Salvatore Sanfilippo <antirez at gmail dot com>
@@ -854,9 +853,6 @@ void createSharedObjects(void) {
 }
 
 void initServerConfig() {
-#ifdef ALCHEMY_DATABASE
-    DXDB_initServerConfig();
-#endif
     server.port = REDIS_SERVERPORT;
     server.bindaddr = NULL;
     server.unixsocket = NULL;
@@ -1544,7 +1540,7 @@ sds genRedisInfoString(char *section) {
             server.stat_numconnections,
             server.stat_numcommands,
 #ifdef ALCHEMY_DATABASE
-            server.stat_num_dirty_commands,
+            server.alc.stat_num_dirty_commands,
 #endif
             server.stat_expiredkeys,
             server.stat_evictedkeys,
@@ -1931,7 +1927,7 @@ int main(int argc, char **argv) {
     if (server.ds_enabled) {
         redisLog(REDIS_NOTICE,"DB not loaded (running with disk back end)");
 #ifdef ALCHEMY_DATABASE
-    } else if (server.appendonly && !SQL_AOF) {
+    } else if (server.appendonly && !server.alc.SQL_AOF) {
 #else
     } else if (server.appendonly) {
 #endif

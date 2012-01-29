@@ -28,10 +28,11 @@ ALL RIGHTS RESERVED
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+
 #include <assert.h>
 #include <strings.h>
 
-//PROTOTYPES (annoying complier warnings) -- TODO include these :)
+//PROTOTYPES (annoying complier warnings)
 int inet_aton(const char *cp, struct in_addr *inp);
 
 #include "xdb_hooks.h"
@@ -60,44 +61,17 @@ int inet_aton(const char *cp, struct in_addr *inp);
 extern int       Num_tbls; extern r_tbl_t *Tbl;
 extern int       Num_indx; extern r_ind_t *Index;
 
-
-extern char     *LuaCronFunc;
-extern ulong     Operations;
-
-extern uchar     OutputMode;
 extern dictType  sdsDictType;
 extern dictType  dbDictType;
 
-extern long      CurrCard;
-extern long      CurrUpdated;
-extern robj     *CurrError;
-
-// GLOBALS
-cli            *CurrClient         = NULL;
-
-char           *Basedir            = "./"; //TODO redundant w/ "dir"
-
-// internal.lua should be in the CWD
+// internal.lua should be in the CWD (or in server.alc.Basedir)
 #define LUA_INTERNAL_FILE "internal.lua"
-
-/* WEBSERVERMODE variables */
-int             WebServerMode      = -1;
-char           *WebServerIndexFunc = NULL;
-
-/* WHITELISTED IPS for WebServerMode */
-struct in_addr  WS_WL_Addr;
-struct in_addr  WS_WL_Mask;
-unsigned int    WS_WL_Broadcast = 0;
-unsigned int    WS_WL_Subnet    = 0;
-
-// SQL_AOF SQL_AOF SQL_AOF SQL_AOF SQL_AOF SQL_AOF SQL_AOF SQL_AOF
-bool SQL_AOF       = 0;
-bool SQL_AOF_MYSQL = 0;
 
 // RDB Load Table & Index Highwaters
 uint32  Tbl_HW = 0; list   *DropT = NULL; dict   *TblD;
 uint32  Ind_HW = 0; list   *DropI = NULL; dict   *IndD;
-                                          dict   *StmtD; dict *DynLuaD;
+
+dict   *StmtD; dict *DynLuaD;
 
 /* PROTOTYPES */
 int  yesnotoi(char *s);
@@ -133,8 +107,8 @@ void prepareCommand  (redisClient *c);
 void executeCommand  (redisClient *c);
 
 #ifdef CLIENT_BTREE_DEBUG
-void btreeCommand     (redisClient *c);
-void validateBTommand (redisClient *c);
+void btreeCommand    (redisClient *c);
+void validateBTommand(redisClient *c);
 #endif
 
 void messageCommand  (redisClient *c);
@@ -142,7 +116,7 @@ void messageCommand  (redisClient *c);
 void purgeCommand    (redisClient *c);
 void dirtyCommand    (redisClient *c);
 
-void evictCommand     (redisClient *c);
+void evictCommand    (redisClient *c);
 
 #ifdef REDIS3
   #define CMD_END       NULL,1,1,1,0,0
@@ -215,17 +189,6 @@ void DXDB_populateCommandTable(dict *server_commands) {
     }
 }
 
-void DXDB_initServerConfig() { //printf("DXDB_initServerConfig\n");
-    LuaCronFunc        = NULL;
-    Basedir            = zstrdup("./extra/"); // DEFAULT dir for Alchemy
-    WebServerMode      = -1;
-    WebServerIndexFunc = NULL;
-    WS_WL_Broadcast    =  0;
-    WS_WL_Subnet       =  0;
-    bzero(&WS_WL_Addr, sizeof(struct in_addr));
-    bzero(&WS_WL_Mask, sizeof(struct in_addr));
-}
-
 static void init_DXDB_PersistentStorageItems(uint32 ntbl, uint32 nindx) {
     if (Tbl) free(Tbl);
     Num_tbls = 0;
@@ -254,17 +217,17 @@ static void initServer_Extra() {
 }
 
 void DXDB_initServer() { //printf("DXDB_initServer\n");
-    server.stat_num_dirty_commands = 0;
+    bzero(&server.alc, sizeof(alchemy_server_extensions_t));
+    server.alc.Basedir       = zstrdup("./extra/");//Alchemy's DEFAULT dir
+    server.alc.WebServerMode = -1;
     aeCreateTimeEvent(server.el, 1, luaCronTimeProc, NULL, NULL);
     initX_DB_Range(); initAccessCommands(); init_six_bit_strings();
     init_DXDB_PersistentStorageItems(INIT_MAX_NUM_TABLES, INIT_MAX_NUM_INDICES);
     initServer_Extra();
-    CurrClient     = NULL;
-    Operations     = 0;
 }
 
 static bool loadLuaHelperFile(cli *c, char *fname) {
-    sds  fwpath = sdscatprintf(sdsempty(), "%s%s", Basedir, fname);
+    sds  fwpath = sdscatprintf(sdsempty(), "%s%s", server.alc.Basedir, fname);
     bool ret    = 1;
     if (luaL_loadfile(server.lua, fwpath) || lua_pcall(server.lua, 0, 0, 0)) {
         const char *lerr = lua_tostring(server.lua, -1);
@@ -327,23 +290,26 @@ void DXDB_emptyDb() { //printf("DXDB_emptyDb\n");
 }
 
 bool isWhiteListedIp(cli *c) {
-    if (WS_WL_Broadcast) { // check WHITELISTED IPs
+    if (server.alc.WS_WL_Broadcast) { // check WHITELISTED IPs
         unsigned int saddr     = c->sa.sin_addr.s_addr;
-        unsigned int b_masked  = saddr | WS_WL_Broadcast;
-        unsigned int sn_masked = saddr & WS_WL_Subnet;
-        if (b_masked  == WS_WL_Broadcast &&
-            sn_masked == WS_WL_Subnet) return 1;
+        unsigned int b_masked  = saddr | server.alc.WS_WL_Broadcast;
+        unsigned int sn_masked = saddr & server.alc.WS_WL_Subnet;
+        if (b_masked  == server.alc.WS_WL_Broadcast &&
+            sn_masked == server.alc.WS_WL_Subnet) return 1;
     }
     return 0;
 }
 rcommand *DXDB_lookupCommand(sds name) {
     struct redisCommand *cmd = dictFetchValue(server.commands, name);
-    if (WebServerMode > 0) {
-        if (!CurrClient) return cmd; // called during load in whitelist
-        if (CurrClient == server.master) return cmd; // feed from master
-        if (CurrClient == server.lua_client) return cmd; // lua already internal
-        if (!CurrClient->InternalRequest) {
-            if (isWhiteListedIp(CurrClient)) return cmd;
+    if (server.alc.WebServerMode > 0) {
+        // called during load in whitelist
+        if (!server.alc.CurrClient)                     return cmd;
+        // feed from master
+        if (server.alc.CurrClient == server.master)     return cmd;
+        // lua already internal
+        if (server.alc.CurrClient == server.lua_client) return cmd;
+        if (!server.alc.CurrClient->InternalRequest) {
+            if (isWhiteListedIp(server.alc.CurrClient)) return cmd;
             return cmd ? (cmd->proc == luafuncCommand) ? cmd : NULL : NULL;
         }
     }
@@ -352,32 +318,51 @@ rcommand *DXDB_lookupCommand(sds name) {
 
 void DXDB_call(struct redisCommand *cmd, long long *dirty) {
     if (cmd->proc == luafuncCommand || cmd->proc == messageCommand) *dirty = 0;
-    if (*dirty) server.stat_num_dirty_commands++;
+    if (*dirty) server.alc.stat_num_dirty_commands++;
 }
 
 static void computeWS_WL_MinMax() {
-    if (!WS_WL_Broadcast && WS_WL_Mask.s_addr && WS_WL_Addr.s_addr) {
-        WS_WL_Subnet    = WS_WL_Addr.s_addr & WS_WL_Mask.s_addr;
-        WS_WL_Broadcast = WS_WL_Addr.s_addr | ~WS_WL_Mask.s_addr;
+    if (!server.alc.WS_WL_Broadcast && server.alc.WS_WL_Mask.s_addr &&
+         server.alc.WS_WL_Addr.s_addr) {
+        server.alc.WS_WL_Subnet    = server.alc.WS_WL_Addr.s_addr &
+                                     server.alc.WS_WL_Mask.s_addr;
+        server.alc.WS_WL_Broadcast = server.alc.WS_WL_Addr.s_addr |
+                                     ~server.alc.WS_WL_Mask.s_addr;
     }
 }
 int DXDB_loadServerConfig(int argc, sds *argv) {
     //printf("DXDB_loadServerConfig: 0: %s\n", argv[0]);
     if (!strcasecmp(argv[0], "luacronfunc")   && argc == 2) {
-        if (LuaCronFunc) zfree(LuaCronFunc);
-        LuaCronFunc = zstrdup(argv[1]);
+        if (server.alc.LuaCronFunc) zfree(server.alc.LuaCronFunc);
+        server.alc.LuaCronFunc = zstrdup(argv[1]);
         return 0;
     } else if (!strcasecmp(argv[0], "basedir")       && argc == 2) {
-        if (Basedir) zfree(Basedir);
-        Basedir = zstrdup(argv[1]);
-        return 0;
-    } else if (!strcasecmp(argv[0], "outputmode")    && argc == 2) {
+        if (server.alc.Basedir) zfree(server.alc.Basedir);
+        server.alc.Basedir = zstrdup(argv[1]); return 0;
+    } else if (!strcasecmp(argv[0], "lua_output_cnames") && argc == 2) {
+        if (server.alc.OutputLuaFunc_Cnames) {
+            zfree(server.alc.OutputLuaFunc_Cnames);
+        }
+        server.alc.OutputLuaFunc_Cnames = zstrdup(argv[1]); return 0;
+    } else if (!strcasecmp(argv[0], "lua_output_row") && argc == 2) {
+        if (server.alc.OutputLuaFunc_Row) zfree(server.alc.OutputLuaFunc_Row);
+        server.alc.OutputLuaFunc_Row = zstrdup(argv[1]); return 0;
+    } else if (!strcasecmp(argv[0], "outputmode")    && argc >= 2) {
         if        (!strcasecmp(argv[1], "embedded")) {
-            OutputMode = OUTPUT_EMBEDDED;
+            server.alc.OutputMode = OUTPUT_EMBEDDED;
         } else if (!strcasecmp(argv[1], "pure_redis")) {
-            OutputMode = OUTPUT_PURE_REDIS;
-        } else if (!strcasecmp(argv[1],"normal")) {
-            OutputMode = OUTPUT_NORMAL;
+            server.alc.OutputMode = OUTPUT_PURE_REDIS;
+        } else if (!strcasecmp(argv[1], "normal")) {
+            server.alc.OutputMode = OUTPUT_NORMAL;
+        } else if (!strcasecmp(argv[1], "lua")) {
+            if (!server.alc.OutputLuaFunc_Cnames ||
+                !server.alc.OutputLuaFunc_Row) {
+                char *err = "outputmode lua requires lua_output_cnames &"\
+                            " lua_output_row";
+                fprintf(stderr, "%s\n", err);
+                return -1;
+            }
+            server.alc.OutputMode = OUTPUT_LUA;
         } else {
             char *err = "argument must be 'embedded', 'pure_redis' or 'normal'";
             fprintf(stderr, "%s\n", err);
@@ -385,19 +370,19 @@ int DXDB_loadServerConfig(int argc, sds *argv) {
         }
         return 0;
     } else if (!strcasecmp(argv[0], "webserver_mode") && argc == 2) {
-        if ((WebServerMode = yesnotoi(argv[1])) == -1) {
+        if ((server.alc.WebServerMode = yesnotoi(argv[1])) == -1) {
             char *err = "argument must be 'yes' or 'no'";
             fprintf(stderr, "%s\n", err);
             return -1;
         }
         return 0;
     } else if (!strcasecmp(argv[0], "webserver_index_function") && argc == 2) {
-        if (WebServerIndexFunc) zfree(WebServerIndexFunc);
-        WebServerIndexFunc = zstrdup(argv[1]);
+        if (server.alc.WebServerIndexFunc) zfree(server.alc.WebServerIndexFunc);
+        server.alc.WebServerIndexFunc = zstrdup(argv[1]);
         return 0;
     } else if (!strcasecmp(argv[0], "webserver_whitelist_address") &&
                 argc == 2) {
-        if (!inet_aton(argv[1], &WS_WL_Addr)) {
+        if (!inet_aton(argv[1], &server.alc.WS_WL_Addr)) {
             fprintf(stderr, "ERR: webserver_whitelist_address: %s\n", argv[1]);
             return -1;
         }
@@ -405,7 +390,7 @@ int DXDB_loadServerConfig(int argc, sds *argv) {
         return 0;
     } else if (!strcasecmp(argv[0], "webserver_whitelist_netmask") &&
                 argc == 2) {
-        if (!inet_aton(argv[1], &WS_WL_Mask)) {
+        if (!inet_aton(argv[1], &server.alc.WS_WL_Mask)) {
             fprintf(stderr, "ERR: webserver_whitelist_netmask: %s\n", argv[1]);
             return -1;
         }
@@ -418,12 +403,12 @@ int DXDB_loadServerConfig(int argc, sds *argv) {
             server.appendonly = 1;
         } else if (!strcasecmp(argv[1], "mysql")) {
             server.appendonly = 1;
-            SQL_AOF_MYSQL = 1;
+            server.alc.SQL_AOF_MYSQL = 1;
         } else {
             fprintf(stderr, "argument must be 'yes', 'no' or 'mysql;\n");
             return -1;
         }
-        SQL_AOF = 1;
+        server.alc.SQL_AOF = 1;
         return 0;
     }
     return 1;
@@ -450,11 +435,11 @@ void DXDB_createClient(int fd, redisClient *c) {//printf("DXDB_createClient\n");
 
 int DXDB_processCommand(redisClient *c) { //printf("DXDB_processCommand\n");
     if (c->http.mode == HTTP_MODE_ON) return continue_http_session(c);
-    Operations++;
-    CurrClient  = c;
-    CurrCard    = 0;
-    CurrUpdated = 0;
-    CurrError   = NULL;
+    server.alc.Operations++;
+    server.alc.CurrClient  = c;
+    server.alc.CurrCard    = 0;
+    server.alc.CurrUpdated = 0;
+    server.alc.CurrError   = NULL;//TODO if(CurrError) decrRefCount(CurError) ??
     initClient(c);
     sds arg0       = c->argv[0]->ptr;
     sds arg2       = c->argc > 2 ? c->argv[2]->ptr : NULL;
@@ -491,19 +476,34 @@ void  DXDB_processInputBuffer_ZeroArgs(redisClient *c) {//HTTP Request End-Delim
 //TODO webserver_mode, webserver_whitelist_address, webserver_whitelist_netmask, webserver_index_function, sqlslaveof
 int DXDB_configSetCommand(cli *c, robj *o) {
     if (!strcasecmp(c->argv[2]->ptr,"luacronfunc")) {
-        zfree(LuaCronFunc);
-        LuaCronFunc = zstrdup(o->ptr);
-        return 0;
+        if (server.alc.LuaCronFunc) zfree(server.alc.LuaCronFunc);
+        server.alc.LuaCronFunc = zstrdup(o->ptr); return 0;
+    } else if (!strcasecmp(c->argv[2]->ptr, "lua_output_cnames")) {
+        if (server.alc.OutputLuaFunc_Cnames) {
+            zfree(server.alc.OutputLuaFunc_Cnames);
+        }
+        server.alc.OutputLuaFunc_Cnames = zstrdup(o->ptr); return 0;
+    } else if (!strcasecmp(c->argv[2]->ptr, "lua_output_row")) {
+        if (server.alc.OutputLuaFunc_Row) zfree(server.alc.OutputLuaFunc_Row);
+        server.alc.OutputLuaFunc_Row = zstrdup(o->ptr); return 0;
     } else if (!strcasecmp(c->argv[2]->ptr, "outputmode")) {
         if        (!strcasecmp(o->ptr, "embedded")) {
-            OutputMode = OUTPUT_EMBEDDED;
+            server.alc.OutputMode = OUTPUT_EMBEDDED;
         } else if (!strcasecmp(o->ptr, "pure_redis")) {
-            OutputMode = OUTPUT_PURE_REDIS;
+            server.alc.OutputMode = OUTPUT_PURE_REDIS;
         } else if (!strcasecmp(o->ptr, "normal")) {
-            OutputMode = OUTPUT_NORMAL;
+            server.alc.OutputMode = OUTPUT_NORMAL;
+        } else if (!strcasecmp(o->ptr, "lua")) {
+            if (!server.alc.OutputLuaFunc_Cnames ||
+                !server.alc.OutputLuaFunc_Row) {
+                sds err = sdsnew("-ERR: OUTPUTMODE: lua requires "\
+                                 "lua_output_cnames & lua_output_row\r\n");
+                addReplySds(c, err); decrRefCount(o); return -1;
+            }
+            server.alc.OutputMode = OUTPUT_LUA;
         } else {
             addReplySds(c,sdscatprintf(sdsempty(),
-               "-ERR OUTPUTMODE: [EMBEDDED|PURE_REDIS|NORMAL] not: %s\r\n",
+               "-ERR OUTPUTMODE: [EMBEDDED|PURE_REDIS|LUA|NORMAL] not: %s\r\n",
                 (char *)o->ptr));
             decrRefCount(o);
             return -1;
@@ -550,13 +550,14 @@ unsigned char DXDB_configCommand(redisClient *c) {
 void DXDB_configGetCommand(redisClient *c, char *pattern, int *matches) {
     if (stringmatch(pattern, "luacronfunc", 0)) {
         addReplyBulkCString(c, "luafronfunc");
-        addReplyBulkCString(c, LuaCronFunc);
+        addReplyBulkCString(c, server.alc.LuaCronFunc);
         *matches = *matches + 1;
     }
     if (stringmatch(pattern, "outputmode", 0)) {
         addReplyBulkCString(c, "outputmode");
         if      (EREDIS) addReplyBulkCString(c, "embedded");
         else if (OREDIS) addReplyBulkCString(c, "pure_redis");
+        else if (LREDIS) addReplyBulkCString(c, "lua");
         else             addReplyBulkCString(c, "normal");
         *matches = *matches + 1;
     }
@@ -655,10 +656,20 @@ void DBXD_genRedisInfoString(sds info) {
             "outputmode:%s\r\n"
             "webserver_mode:%s\r\n"
             "webserver_index_function:%s\r\n",
-             LuaCronFunc, Basedir,
-             (EREDIS) ? "embedded" : ((OREDIS) ? "pure_redis" : "normal"),
-             (WebServerMode == -1) ? "no" : "yes",
-             WebServerIndexFunc);
+             server.alc.LuaCronFunc, server.alc.Basedir,
+             (EREDIS ? "embedded"   :
+              OREDIS ? "pure_redis" : 
+              LREDIS ? "lua"        : "normal"),
+             (server.alc.WebServerMode == -1) ? "no" : "yes",
+             server.alc.WebServerIndexFunc);
+    if (server.alc.OutputLuaFunc_Cnames) {
+        info = sdscatprintf(info, "lua_output_cnames:%s\r\n",
+                            server.alc.OutputLuaFunc_Cnames);
+    }
+    if (server.alc.OutputLuaFunc_Row) {
+        info = sdscatprintf(info, "lua_output_row:%s\r\n",
+                            server.alc.OutputLuaFunc_Row);
+    }
 }
 
 extern struct sockaddr_in AcceptedClientSA;
@@ -673,7 +684,7 @@ void luafuncCommand(redisClient *c) {
 // PURGE PURGE PURGE PURGE PURGE PURGE PURGE PURGE PURGE PURGE PURGE PURGE
 void DXDB_syncCommand(redisClient *c) {
     sds ds = sdscatprintf(sdsempty(), "DIRTY %lld\r\n", 
-                                       server.stat_num_dirty_commands);
+                                       server.alc.stat_num_dirty_commands);
     robj *r = createStringObject(ds, sdslen(ds));
     addReply(c, r); // SYNC DIRTY NUM
     decrRefCount(r);
@@ -684,7 +695,7 @@ void DXDB_syncCommand(redisClient *c) {
 static bool checkPurge() {
     listNode *ln; listIter li;
     uint32    num_ok = 0;
-    sds       ds     = sdsnew("DIRTY\r\n"); //TODO does not need malloc'ing
+    sds       ds     = sdsnew("DIRTY\r\n");
     listRewind(server.slaves, &li);
     while((ln = listNext(&li))) {
         cli *slave = ln->value;
@@ -693,7 +704,7 @@ static bool checkPurge() {
         if (fd == -1) close(fd);
         if (reply) {
             assert(reply->type == REDIS_REPLY_INTEGER);
-            if (reply->integer == server.stat_num_dirty_commands) num_ok++;
+            if (reply->integer == server.alc.stat_num_dirty_commands) num_ok++;
         }
     }
     sdsfree(ds);
@@ -712,9 +723,9 @@ void purgeCommand(redisClient *c) {
 }
 void dirtyCommand(redisClient *c) {
     if (c->argc != 1) { /* strtoul OK delimed by sds */
-        server.stat_num_dirty_commands = strtoul(c->argv[1]->ptr, NULL, 10);
+        server.alc.stat_num_dirty_commands = strtoul(c->argv[1]->ptr, NULL, 10);
     }
-    addReplyLongLong(c, server.stat_num_dirty_commands);
+    addReplyLongLong(c, server.alc.stat_num_dirty_commands);
 }
 
 // SQL_AOF SQL_AOF SQL_AOF SQL_AOF SQL_AOF SQL_AOF SQL_AOF SQL_AOF SQL_AOF

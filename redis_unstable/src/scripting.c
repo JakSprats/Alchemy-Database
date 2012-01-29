@@ -9,10 +9,6 @@
 #include <lualib.h>
 #include <ctype.h>
 
-#ifdef ALCHEMY_DATABASE
-extern uchar    OutputMode;
-#endif
-
 char *redisProtocolToLuaType_Int(lua_State *lua, char *reply);
 char *redisProtocolToLuaType_Bulk(lua_State *lua, char *reply);
 char *redisProtocolToLuaType_Status(lua_State *lua, char *reply);
@@ -179,17 +175,17 @@ int luaRedisCommand(lua_State *lua) {
     /* Run the command in the context of a fake client */
 #ifdef ALCHEMY_DATABASE
     //NOTE: this is basically a copy of redis.c: call()
-    long long dirty = server.dirty, start = ustime();;
-    uchar o_outputmode = OutputMode;
-    OutputMode         = OUTPUT_PURE_REDIS; // best output mode for LUA tables
+    long long dirty         = server.dirty, start = ustime();;
+    uchar     o_outputmode  = server.alc.OutputMode;
+    server.alc.OutputMode   = OUTPUT_PURE_REDIS; // best output mode for LUA tables
 #endif
     c->argv = argv;
     c->argc = argc;
     cmd->proc(c);
 #ifdef ALCHEMY_DATABASE
-    OutputMode         = o_outputmode;
-    dirty = server.dirty-dirty;
-    cmd->microseconds += ustime()-start;
+    server.alc.OutputMode   = o_outputmode;
+    dirty                   = server.dirty-dirty;
+    cmd->microseconds      += ustime()-start;
     cmd->calls++;
     DXDB_call(cmd, &dirty);
     if (server.appendonly && dirty)

@@ -529,7 +529,7 @@ static bool XthIterFind(btSIter *siter, aobj *alow, aobj *ahigh,
 #define DEBUG_GET_XTH_ITER                                  \
   printf("btGetXthIter: alow:  "); dumpAobj(printf, alow);  \
   printf("btGetXthIter: ahigh: "); dumpAobj(printf, ahigh); \
-  printf("btGetXthIter: ofst: %d asc: %d\n", ofst, asc);
+  printf("btGetXthIter: ofst: %ld asc: %d\n", ofst, asc);
 btSIter *btGetXthIter(bt *btr, aobj *alow, aobj *ahigh, long oofst, bool asc) {
     ulong ofst = (ulong)oofst;                               DEBUG_GET_XTH_ITER
     if (!btr->root || !btr->numkeys) return NULL;

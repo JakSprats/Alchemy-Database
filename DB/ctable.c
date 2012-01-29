@@ -35,7 +35,6 @@ ALL RIGHTS RESERVED
 #include "ctable.h"
 
 extern r_tbl_t *Tbl;
-extern cli     *CurrClient;
 
 //TODO when parsing work is done in these functions
 //      it does not need to be done AGAIN (store globally)
@@ -75,7 +74,7 @@ extern cli     *CurrClient;
 
 sds override_getKeysFromComm(rcommand *cmd, robj **argv, int argc, bool *err) {
     int argt;
-    cli              *c    = CurrClient;
+    cli              *c    = server.alc.CurrClient;
     redisCommandProc *proc = cmd->proc;
     if      (proc == sqlSelectCommand || proc == tscanCommand     ) argt = 3;
     else if (proc == insertCommand    || proc == deleteCommand ||

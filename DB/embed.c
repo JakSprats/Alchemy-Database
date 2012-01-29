@@ -44,7 +44,6 @@ ALL RIGHTS RESERVED
 #include "redis.h"
 
 extern r_tbl_t *Tbl; extern r_ind_t *Index;
-extern uchar    OutputMode;
 
 // PROTOTYPES
 redisClient *createClient(int fd);              // from networking.c
@@ -99,7 +98,7 @@ robj *ManyRobj[NUM_MANY_ROBJ];
 
 static bool embeddedInited = 0;
 void initEmbeddedAlchemy() {
-    OutputMode = OUTPUT_EMBEDDED;
+    server.alc.OutputMode = OUTPUT_EMBEDDED;
     if (!embeddedInited) {
         initEmbedded(); // defined in redis.c -DNO_MAIN
         initEmbeddedClient(); initEmbeddedResponse(); embeddedInited  = 1;
@@ -331,39 +330,6 @@ eresp_t *e_alchemy_sql_fast(ereq_t *ereq) {
     return CurrEresp;
 
 efasterr:
-    CREATE_RESPONSE_ERROR
-}
-
-//TODO does PREPARE/EXECUTE deprecates ???
-eresp_t *e_alchemy_thin_select(uchar qtype,  int tmatch, int cmatch, int imatch,
-                               enum OP op,   int qcols, 
-                               uint128 keyx, long keyl,  int keyi,
-                               icol_t *ics,  bool cstar, select_callback *scb,
-                               bool save_cnames) {
-    initEmbeddedAlchemy();
-    sds  err = NULL;
-    cli *c      = EmbeddedCli; c->argc = 0; c->argv = NULL;
-    c->scb      = scb;
-    cswc_t w; wob_t wb;
-    init_check_sql_where_clause(&w, tmatch, NULL); init_wob(&wb);
-    w.wtype     = qtype;
-    w.wf.tmatch = tmatch; w.wf.ic.cmatch = cmatch; w.wf.imatch = imatch;
-    w.wf.op     = op;
-    if      (keyi) initAobjInt (&w.wf.akey, keyi);
-    else if (keyl) initAobjLong(&w.wf.akey, keyl);
-    else if (keyx) initAobjU128(&w.wf.akey, keyx);
-    else assert(!"e_alchemy_thin_select needs [keyi|keyl|keyx]");
-    bool ret    = sqlSelectBinary(c, tmatch, cstar, ics, qcols, &w, &wb,
-                                  save_cnames, NULL);
-    if (!cstar) resetIndexPosOn(qcols, ics);
-    destroy_wob(&wb); destroy_check_sql_where_clause(&w);
-    if (!ret) { assert(c->bufpos); //NOTE: all -ERRs < REDIS_REPLY_CHUNK_BYTES
-        err = sdsnewlen(c->buf, c->bufpos); c->bufpos = 0; goto ethinserr;
-    }
-    CurrEresp->retcode = REDIS_OK;
-    return CurrEresp;
-
-ethinserr:
     CREATE_RESPONSE_ERROR
 }
 

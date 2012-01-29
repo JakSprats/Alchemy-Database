@@ -1,6 +1,11 @@
 #ifndef XDB_COMMON__H 
 #define XDB_COMMON__H 
 
+#include <unistd.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
 #include "sds.h"
 
 #define ALCHEMY_VERSION "0.2.1"
@@ -12,6 +17,7 @@
 #define OUTPUT_NORMAL     1
 #define OUTPUT_PURE_REDIS 2
 #define OUTPUT_EMBEDDED   3
+#define OUTPUT_LUA        4
 
 #include <endian.h>
 #ifndef BYTE_ORDER
@@ -94,8 +100,37 @@ typedef struct icol_t {
     int                 bindport;           \
     select_callback    *scb;
 
-#define ALCHEMY_SERVER_EXTENSIONS \
-    long long      stat_num_dirty_commands; /* number of dirty commands    */
+struct redisClient;
+typedef struct alchemy_server_extensions_t {
+    long long            stat_num_dirty_commands; // number of dirty commands
+    struct redisClient *CurrClient;
+
+    uchar                OutputMode;
+    char                *OutputLuaFunc_Cnames;
+    char                *OutputLuaFunc_Row;
+
+    char                *Basedir;
+    char                *LuaCronFunc;
+    ulong                Operations;
+
+    long                 CurrCard;
+    long                 CurrUpdated;
+    void                *CurrError;
+
+    int                  WebServerMode;
+    char                *WebServerIndexFunc;
+
+    struct in_addr       WS_WL_Addr;
+    struct in_addr       WS_WL_Mask;
+    unsigned int         WS_WL_Broadcast;
+    unsigned int         WS_WL_Subnet;
+
+    bool                 SQL_AOF;
+    bool                 SQL_AOF_MYSQL;
+
+} alchemy_server_extensions_t;
+
+#define ALCHEMY_SERVER_EXTENSIONS alchemy_server_extensions_t alc;
 
 #define SHARED_OBJ_DECLARATION \
     robj \
