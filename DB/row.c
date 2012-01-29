@@ -564,7 +564,6 @@ static aobj getRC_OBT(bt *btr, void *orow, int cmatch, aobj *apk, bool fs) {
 static aobj getRC_LFunc(bt   *btr, uchar  *orow, int tmatch, aobj *apk,
                         bool  fs,  lfca_t *lfca) {
     aobj a; initAobj(&a); lue_t *le = lfca->l[lfca->curr]; lfca->curr++;
-    CLEAR_LUA_STACK 
     lua_getglobal(server.lua, "DataDumperWrapper");
     lua_getglobal(server.lua, le->fname);
     printf("lua select function: fname: %s ncols: %d\n", le->fname, le->ncols);
@@ -577,10 +576,12 @@ static aobj getRC_LFunc(bt   *btr, uchar  *orow, int tmatch, aobj *apk,
         CURR_ERR_CREATE_OBJ
              "-ERR: Error running SELECT FUNCTION (%s): %s CARD: %ld\r\n",
                le->fname, lua_tostring(server.lua, -1), server.alc.CurrCard));
+        lua_pop(server.lua, 1);
     } else { // DataDumperWrapper returns only strings
         initAobjFromLuaString(server.lua, &a, 0, fs);
+        lua_pop(server.lua, 1);
     }
-    CLEAR_LUA_STACK return a;
+    return a;
 }
 static aobj getRC_Ipos(int cmatch, bool fs) {
     aobj a; int imatch = getImatchFromOCmatch(cmatch);
@@ -791,12 +792,13 @@ static void initAobjFromLuaNumber(lua_State *lua, aobj *a,      bool   stkd,
     printf("initAobjFromLuaNumber: a: "); dumpAobj(printf, a);
 }
 static void initLOFromCM(aobj *a, aobj *apk, icol_t ic, int tmatch, bool fs) {
-    CLEAR_LUA_STACK pushLuaVar(tmatch, ic, apk);
-    int t     = lua_type(server.lua, 1);
+    pushLuaVar(tmatch, ic, apk);
+    int t     = lua_type(server.lua, -1);
     printf("initLOFromCM: t: %d apk: ", t); dumpAobj(printf, apk);
     if (t == LUA_TTABLE || t == LUA_TBOOLEAN || t == LUA_TNIL) {
         r_tbl_t *rt   = &Tbl[tmatch];
-        CLEAR_LUA_STACK lua_getglobal(server.lua, "DataDumperLuaObj");
+        lua_pop(server.lua, 1);
+        lua_getglobal(server.lua, "DataDumperLuaObj");
         lua_pushstring(server.lua, rt->name);
         lua_pushstring(server.lua, rt->col[ic.cmatch].name);
         pushAobjLua(apk, apk->type);
@@ -806,6 +808,7 @@ static void initLOFromCM(aobj *a, aobj *apk, icol_t ic, int tmatch, bool fs) {
         } else { // DataDumper only returns STRINGs
             initAobjFromLuaString(server.lua, a, 0, fs);
         }
+        lua_pop(server.lua, 1);
     } else {
         if        (t == LUA_TSTRING) {
             initAobjFromLuaString(server.lua, a, 1, fs);
@@ -814,8 +817,8 @@ static void initLOFromCM(aobj *a, aobj *apk, icol_t ic, int tmatch, bool fs) {
         } else {
             initAobjString(a, UnprintableLuaObject, lenUnplo);
         }
+        lua_pop(server.lua, 1);
     }
-    CLEAR_LUA_STACK
 }
 static aobj colFromUU(ulong key, bool fs, int cmatch) {
     int cval = (int)((long)key % UINT_MAX);
@@ -865,21 +868,6 @@ void decrRefCountErow(robj *r) { // NOTE Used in cloneRobj()
     if (er) destroy_erow(er); /* destroy here (avoids deep redis integration) */
     r->ptr      = NULL;       /* already destroyed */
     decrRefCount(r);
-}
-// ADD_REPLY_ROW ADD_REPLY_ROW ADD_REPLY_ROW ADD_REPLY_ROW ADD_REPLY_ROW
-bool addReplyRow(cli   *c,    robj *r,    int    tmatch, aobj *apk,
-                 uchar *lruc, bool  lrud, uchar *lfuc,   bool  lfu) {
-    updateLru(c, tmatch, apk, lruc, lrud); /* NOTE: updateLRU (RQ_SELECT) */
-    updateLfu(c, tmatch, apk, lfuc, lfu);  /* NOTE: updateLFU (RQ_SELECT) */
-    if      (EREDIS) {
-        erow_t *er  = (erow_t *)r->ptr;
-        bool    ret = c->scb ? (*c->scb)(er) : 1;
-        destroy_erow(er);   /* destroy here (avoids deep redis integration) */
-        r->ptr      = NULL; /* already destroyed */
-        return ret;
-    } else if (OREDIS) addReply(c,     r);
-      else             addReplyBulk(c, r);
-    return 1;
 }
 // OUTPUT_ROW OUTPUT_ROW OUTPUT_ROW OUTPUT_ROW OUTPUT_ROW OUTPUT_ROW
 static robj *orow_embedded(bt     *btr,  void *rrow, int qcols, 
@@ -966,6 +954,7 @@ static robj *orow_normal(bt     *btr, void *rrow, int qcols,
         outs[i].type    = acol.type;
         if C_IS_E(acol.type) { faili = i;               goto orown_err; }
         if C_IS_B(acol.type) { if (acol.b) bool_ok = 1; continue; }
+//NOTE: return STRING,BOOL,STRING,BOOL,STRING and this will SEGV
         allbools        = 0;
         totlen         += acol.len;
         if (C_IS_S(outs[i].type) && outs[i].len) totlen += 2;/* 2 \'s per col */
@@ -978,22 +967,50 @@ orown_err:
     for (int i = 0; i <= faili; i++) release_sl(outs[i]);
     *ost = OR_LUA_FAIL; return NULL;
 }
+static robj *orow_lua(bt   *btr, void *rrow,   int     qcols, icol_t *ics,
+                      aobj *apk, int   tmatch, lfca_t *lfca,  bool   *ost) {
+    CLEAR_LUA_STACK lua_getglobal(server.lua, server.alc.OutputLuaFunc_Row);
+    int  faili = 0; bool allbools = 1; bool bool_ok = 0;
+    for (int i = 0; i < qcols; i++) {
+        aobj  acol       = getSCol(btr, rrow, ics[i], apk, tmatch, lfca);
+        if C_IS_E(acol.type) { faili = i;               goto orowl_err; }
+        if C_IS_B(acol.type) { if (acol.b) bool_ok = 1; continue; }
+        allbools        = 0;
+        pushAobjLua(&acol, COL_TYPE_STRING);
+    }
+    if (allbools) { *ost = bool_ok ? OR_ALLB_OK : OR_ALLB_NO; return NULL; }
+    int ret = lua_pcall(server.lua, qcols, 1, 0);
+    sds s   = ret ? sdsempty()                                    :
+                    sdsnewlen((char*)lua_tostring(server.lua, -1),
+                              lua_strlen(server.lua, -1));
+    CLEAR_LUA_STACK
+    return createObject(REDIS_STRING, s);
+
+orowl_err:
+    CLEAR_LUA_STACK *ost = OR_LUA_FAIL; return NULL;
+}
 robj *outputRow(bt  *btr, void *rrow,   int     qcols, icol_t *ics, 
                aobj *apk, int   tmatch, lfca_t *lfca,  bool   *ost) {
     if (lfca) lfca->curr = 0; //RESET queue
-    row_outputter *rop =  (EREDIS) ? orow_embedded :
-                         ((OREDIS) ? orow_redis    :
-                                     orow_normal);
+    row_outputter *rop = (EREDIS ? orow_embedded :
+                          OREDIS ? orow_redis    :
+                          LREDIS ? orow_lua      : orow_normal);
     return (*rop)(btr, rrow, qcols, ics, apk, tmatch, lfca, ost);
 }
-void outputColumnNames(cli *c,     int     tmatch, bool cstar, icol_t *ics,
-                       int  qcols, lfca_t *lfca) {
-    sds   s = cstar ? sdsnewlen("COUNT(*)", 8) :
-                      getQueriedCnames(tmatch, ics, qcols, lfca);
-    robj *r = createObject(REDIS_STRING, s);
-    if OREDIS  addReply    (c, r); 
-    else       addReplyBulk(c, r); 
-    decrRefCount(r);
+// ADD_REPLY_ROW ADD_REPLY_ROW ADD_REPLY_ROW ADD_REPLY_ROW ADD_REPLY_ROW
+bool addReplyRow(cli   *c,    robj *r,    int    tmatch, aobj *apk,
+                 uchar *lruc, bool  lrud, uchar *lfuc,   bool  lfu) {
+    updateLru(c, tmatch, apk, lruc, lrud); /* NOTE: updateLRU (RQ_SELECT) */
+    updateLfu(c, tmatch, apk, lfuc, lfu);  /* NOTE: updateLFU (RQ_SELECT) */
+    if      (EREDIS) {
+        erow_t *er  = (erow_t *)r->ptr;
+        bool    ret = c->scb ? (*c->scb)(er) : 1;
+        destroy_erow(er);   /* destroy here (avoids deep redis integration) */
+        r->ptr      = NULL; /* already destroyed */
+        return ret;
+    } else if (OREDIS || LREDIS) addReply(c,     r);
+      else                       addReplyBulk(c, r);
+    return 1;
 }
 
 // DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW

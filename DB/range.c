@@ -575,7 +575,7 @@ long Op(range_t *g, row_op *p) {
 static bool runLuaFilter(lue_t *le, bt *btr, aobj *apk, void *rrow, int tmatch,
                          bool  *hf) {
     printf("runLuaFilter: fname: %s ncols: %d\n", le->fname, le->ncols);
-    CLEAR_LUA_STACK lua_getglobal(server.lua, le->fname);
+    lua_getglobal(server.lua, le->fname);
     for (int i = 0; i < le->ncols; i++) {
         pushColumnLua(btr, rrow, tmatch, le->as[i], apk);
     }
@@ -584,6 +584,7 @@ static bool runLuaFilter(lue_t *le, bt *btr, aobj *apk, void *rrow, int tmatch,
     if (r) { *hf = 1; ret = 0;
         CURR_ERR_CREATE_OBJ "-ERR: running LUA FILTER (%s): %s [CARD: %ld]\r\n",
                  le->fname, lua_tostring(server.lua, -1), server.alc.CurrCard));
+        lua_pop(server.lua, 1);
     } else {
         int t = lua_type(server.lua, -1);
         if        (t == LUA_TNUMBER)  {
@@ -596,8 +597,9 @@ static bool runLuaFilter(lue_t *le, bt *btr, aobj *apk, void *rrow, int tmatch,
              le->fname, "use NUMBER or BOOLEAN return types",
              server.alc.CurrCard));
         }
+        lua_pop(server.lua, 1);
     }
-    CLEAR_LUA_STACK return ret;
+    return ret;
 }
 bool passFilts(bt   *btr, aobj *apk, void *rrow, list *flist, int tmatch, 
                bool *hf) {

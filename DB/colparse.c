@@ -53,7 +53,6 @@ ALL RIGHTS RESERVED
 extern r_tbl_t *Tbl;
 extern r_ind_t *Index;
 extern dict    *DynLuaD;
-extern uchar    OutputMode; // NOTE: used by OREDIS
 
 // GLOBALS
 ja_t JTAlias[MAX_JOIN_COLS]; // TODO MOVE to JoinBlock + convert 2 (dict *)
@@ -940,24 +939,60 @@ pcr8tbl_end:
     return ret;
 }
 
-// REPeY REPLY REPLY REPLY REPLY REPLY REPLY REPLY REPLY REPLY REPLY REPLY
-sds getQueriedCnames(int tmatch, icol_t *ics, int qcols, lfca_t *lfca) {
-    r_tbl_t *rt = &Tbl[tmatch];
-    sds      s  = sdsempty();
-    if OREDIS s = sdscatprintf(s, "*%d\r\n", qcols);
+// REPLY REPLY REPLY REPLY REPLY REPLY REPLY REPLY REPLY REPLY REPLY REPLY
+sds startOutput(long card) {
+    if (!(LREDIS)){
+        return sdscatprintf(sdsempty(),"*%ld\r\n", card ? (card + 1) : -1);
+    }
+    CLEAR_LUA_STACK lua_getglobal(server.lua, server.alc.OutputLuaFunc_Start);
+    lua_pushinteger(server.lua, card);
+    int ret = lua_pcall(server.lua, 1, 1, 0);
+    sds s   = ret ? sdsempty() :
+                    sdsnewlen((char*)lua_tostring(server.lua, -1),
+                              lua_strlen(server.lua, -1));
+    CLEAR_LUA_STACK return s;
+}
+static sds getSingleCname(int     tmatch, icol_t *ics, int   i,
+                          lfca_t *lfca,   int    *k,   bool *frcn) {
+    r_tbl_t *rt     = &Tbl[tmatch];
+    int      cmatch = ics[i].cmatch;
+    if      IS_LSF(cmatch) {
+        sds cname = lfca->l[*k]->fname; INCR(*k); return cname;
+    } else if (ics[i].cmatch < -1) { *frcn = 1;
+        return sdscatprintf(sdsempty(), "%s.pos()", // FREE 153
+                            Index[getImatchFromOCmatch(cmatch)].name);
+    } else {
+        return rt->col[ics[i].cmatch].name;
+    }
+}
+static sds L_getQueriedCnames(int tmatch, icol_t *ics, bool cstar,
+                              int qcols,  lfca_t *lfca) {
+    CLEAR_LUA_STACK lua_getglobal(server.lua, server.alc.OutputLuaFunc_Cnames);
     int       k = 0;
     for (int i = 0; i < qcols; i++) {
-        int cmatch = ics[i].cmatch;
-        sds cname; bool frcn = 0;
-        if      IS_LSF(cmatch) {
-            cname = lfca->l[k++]->fname;
-        } else if (ics[i].cmatch < -1) { frcn = 1;
-            cname = sdscatprintf(sdsempty(), "%s.pos()", // FREE 153
-                                 Index[getImatchFromOCmatch(cmatch)].name);
-        } else {
-            cname = rt->col[ics[i].cmatch].name;
-        }
-        sds fullc = sdsdup(cname);                       // FREE 151
+        bool frcn  = 0;
+        sds  cname = cstar ? sdsnew("COUNT(*)")                              :
+                             getSingleCname(tmatch, ics, i, lfca, &k, &frcn);
+        lua_pushstring(server.lua, cname);
+        if (frcn) sdsfree(cname);                        // FREED 153
+    }
+    int ret = lua_pcall(server.lua, qcols, 1, 0);
+    sds s   = ret ? sdsempty() :
+                    sdsnewlen((char*)lua_tostring(server.lua, -1),
+                              lua_strlen(server.lua, -1));
+    CLEAR_LUA_STACK return s;
+}
+static sds getQueriedCnames(int tmatch, icol_t *ics, bool cstar,
+                            int qcols,  lfca_t *lfca) {
+    if LREDIS return L_getQueriedCnames(tmatch, ics, cstar, qcols, lfca);
+    sds s = sdsempty();
+    if OREDIS s = sdscatprintf(s, "*%d\r\n", qcols);
+    int k = 0;
+    for (int i = 0; i < qcols; i++) {
+        bool frcn  = 0;
+        sds  cname = cstar ? sdsnew("COUNT(*)")                              :
+                             getSingleCname(tmatch, ics, i, lfca, &k, &frcn);
+        sds  fullc = sdsdup(cname);                      // FREE 151
         if (frcn) sdsfree(cname);                        // FREED 153
         if (ics[i].nlo) {
             for (uint32 j = 0; j < ics[i].nlo; j++) {
@@ -972,7 +1007,31 @@ sds getQueriedCnames(int tmatch, icol_t *ics, int qcols, lfca_t *lfca) {
     }   
     return s;
 }
+void outputColumnNames(cli *c,     int     tmatch, bool cstar, icol_t *ics,
+                       int  qcols, lfca_t *lfca) {
+    sds   s = getQueriedCnames(tmatch, ics, cstar, qcols, lfca);
+    robj *r = createObject(REDIS_STRING, s);
+    if (OREDIS || LREDIS) addReply    (c, r);
+    else                  addReplyBulk(c, r);
+    decrRefCount(r);
+}
+static sds L_getJoinQueriedCnames(jb_t *jb) {
+    CLEAR_LUA_STACK lua_getglobal(server.lua, server.alc.OutputLuaFunc_Cnames);
+    for (int i = 0; i < jb->qcols; i++) {
+        sds tname = Tbl[jb->js[i].t].name;
+        sds cname = Tbl[jb->js[i].t].col[jb->js[i].c].name;
+        sds fullc = sdscatprintf(sdsempty(), "%s.%s", tname, cname);// FREE 152
+        lua_pushstring(server.lua, fullc);
+        sdsfree(fullc);                                             // FREED 152
+    }
+    int ret = lua_pcall(server.lua, jb->qcols, 1, 0);
+    sds s   = ret ? sdsempty() :
+                    sdsnewlen((char*)lua_tostring(server.lua, -1),
+                              lua_strlen(server.lua, -1));
+    CLEAR_LUA_STACK return s;
+}
 static sds getJoinQueriedCnames(jb_t *jb) {
+    if LREDIS return L_getJoinQueriedCnames(jb);
     sds s = sdsempty();
     if OREDIS s = sdscatprintf(s, "*%d\r\n", jb->qcols);
     for (int i = 0; i < jb->qcols; i++) {
@@ -987,31 +1046,32 @@ static sds getJoinQueriedCnames(jb_t *jb) {
     }
     return s;
 }
-
 void setDMBcard_cnames(cli  *c,    cswc_t *w,    icol_t *ics, int qcols,
                        long  card, void   *rlen, lfca_t *lfca) {
+    //TODO handle this in Lua: OutputLuaFunc_Start()
+    sds trows = startOutput(card);
     if (card) {
-        sds trows = sdscatprintf(sdsempty(),"*%ld\r\n", (card + 1));
-        sds s     = getQueriedCnames(w->wf.tmatch, ics, qcols, lfca);// FREE 149
-        if OREDIS trows = sdscatlen   (trows, s, sdslen(s));
-        else      trows = sdscatprintf(trows, "$%lu\r\n%s\r\n", sdslen(s), s);
+        sds s     = getQueriedCnames(w->wf.tmatch, ics, 0, qcols, lfca);//FRE149
+        if (OREDIS || LREDIS) {
+            trows = sdscatlen   (trows, s, sdslen(s));
+        } else {
+            trows = sdscatprintf(trows, "$%lu\r\n%s\r\n", sdslen(s), s);
+        }
         sdsfree(s);                                              // FREED 149
-        setDeferredMultiBulkSDS(c, rlen, trows);
-    } else {
-        sds s     = sdsnewlen("*-1\r\n", 5);
-        setDeferredMultiBulkSDS(c, rlen, s);
     }
+    setDeferredMultiBulkSDS(c, rlen, trows);
 }
 void setDMB_Join_card_cnames(cli *c, jb_t *jb, long card, void *rlen) {
+    //TODO handle this in Lua: OutputLuaFunc_Start()
+    sds trows = startOutput(card);
     if (card) {
-        sds trows = sdscatprintf(sdsempty(),"*%ld\r\n", (card + 1));
         sds s     = getJoinQueriedCnames(jb);                // FREE 150
-        if OREDIS trows = sdscatlen   (trows, s, sdslen(s));
-        else      trows = sdscatprintf(trows, "$%lu\r\n%s\r\n", sdslen(s), s);
+        if (OREDIS || LREDIS) {
+            trows = sdscatlen   (trows, s, sdslen(s));
+        } else {
+            trows = sdscatprintf(trows, "$%lu\r\n%s\r\n", sdslen(s), s);
+        }
         sdsfree(s);                                          // FREED 150
-        setDeferredMultiBulkSDS(c, rlen, trows);
-    } else {
-        sds s     = sdsnewlen("*-1\r\n", 5);
-        setDeferredMultiBulkSDS(c, rlen, s);
     }
+    setDeferredMultiBulkSDS(c, rlen, trows);
 }

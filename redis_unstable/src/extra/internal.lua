@@ -149,3 +149,27 @@ function get_lua_universe()
   buf           = open_or_error(IEL_dump_file);
   IEL           = pluto.unpersist(perms, buf)
 end
+
+-- SAMPLE_LUA_RESPONSE_ROUTINES SAMPLE_LUA_RESPONSE_ROUTINES
+function output_start(card)
+    --print ('LUA: output_start: card: ' .. card);
+    if (card > 0) then return '*' .. (card + 1) .. '\r\n';
+    else               return '*-1\r\n';                    end
+end
+function output_delim(...)
+   local printResult = '|';
+   for i,v in ipairs(arg) do
+     if (string.len(printResult) > 1) then printResult = printResult .. "|"; end
+     printResult = printResult .. tostring(v);
+   end
+   printResult = printResult .. "|";
+   return '$' .. string.len(printResult) .. '\r\n' .. printResult .. '\r\n';
+end
+function output_cnames(...)
+   --print ('LUA: output_cnames');
+   return output_delim(...)
+end
+function output_row(...)
+   --print ('LUA: output_row');
+   return output_delim(...)
+end

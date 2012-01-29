@@ -45,6 +45,7 @@ aobj   getCol    (bt   *btr, uchar *rrow, icol_t ic, aobj *apk, int tmatch,
 aobj   getSCol   (bt   *btr, uchar *rrow, icol_t ic, aobj *apk, int tmatch,
                   lfca_t *lfca);
 
+// REPLY REPLY REPLY REPLY REPLY REPLY REPLY REPLY REPLY REPLY REPLY
 robj *cloneRobjErow(robj *r);   // EMBEDDED
 void decrRefCountErow(robj *r); // EMBEDDED
 
@@ -61,11 +62,12 @@ robj *write_output_row(int   qcols,   uint32  prelen, char *pbuf,
 #define OR_LUA_FAIL  3
 robj *outputRow(bt   *btr, void *rrow,   int     qcols, icol_t *ics,
                 aobj *apk, int   tmatch, lfca_t *lfca,  bool   *ostt);
-void outputColumnNames(cli *c,     int     tmatch, bool cstar, icol_t *ics,
-                       int  qcols, lfca_t *lfca);
 
-int   deleteRow(int tmatch, aobj *apk, int matches, int inds[]);
+// DELETE DELETE DELETE DELETE DELETE DELETE DELETE DELETE DELETE
+void  deleteLuaObj(int tmatch, int cmatch, aobj *apk);
+int   deleteRow   (int tmatch, aobj *apk, int matches, int inds[]);
 
+// UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE
 typedef struct update_ctl {
     bt      *btr;
     aobj    *apk;
@@ -88,8 +90,6 @@ void init_uc(uc_t  *uc,     bt     *btr,
 void release_uc(uc_t *uc);
 
 int updateRow(cli *c, uc_t *uc, aobj *apk, void *orow);
-
-void deleteLuaObj(int tmatch, int cmatch, aobj *apk);
 
 // DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
 void dumpRow(printer *prn, bt *btr, void *rrow, aobj *apk, int tmatch);

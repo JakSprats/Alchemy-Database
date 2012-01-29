@@ -106,6 +106,7 @@ typedef struct alchemy_server_extensions_t {
     struct redisClient *CurrClient;
 
     uchar                OutputMode;
+    char                *OutputLuaFunc_Start;
     char                *OutputLuaFunc_Cnames;
     char                *OutputLuaFunc_Row;
 
@@ -132,32 +133,32 @@ typedef struct alchemy_server_extensions_t {
 
 #define ALCHEMY_SERVER_EXTENSIONS alchemy_server_extensions_t alc;
 
-#define SHARED_OBJ_DECLARATION \
-    robj \
-    *singlerow,           *inserted,               *upd8ed, \
-    *undefinedcolumntype, *insert_ovrwrt, \
-    *toofewcolumns,       *nonuniquecolumns, \
-    *nonuniquetablenames, *nonuniqueindexnames,    *indextargetinvalid, \
-    *nonuniquekeyname,    *indexedalready,         *index_wrong_nargs, \
-    *trigger_wrong_nargs, *luatrigger_wrong_nargs, \
-    *nonexistenttable,    *insertcolumn, \
-    *nonexistentcolumn,   *nonexistentindex, \
+#define SHARED_OBJ_DECLARATION                                            \
+    robj                                                                  \
+    *inserted,            *upd8ed,                                        \
+    *undefinedcolumntype, *insert_ovrwrt,                                 \
+    *toofewcolumns,       *nonuniquecolumns,                              \
+    *nonuniquetablenames, *nonuniqueindexnames,    *indextargetinvalid,   \
+    *nonuniquekeyname,    *indexedalready,         *index_wrong_nargs,    \
+    *trigger_wrong_nargs, *luatrigger_wrong_nargs,                        \
+    *nonexistenttable,    *insertcolumn,                                  \
+    *nonexistentcolumn,   *nonexistentindex,                              \
     *invalidrange,        *toofewindicesinjoin,    *toomanyindicesinjoin, \
-    *invalidupdatestring, *badindexedcolumnsyntax, \
-    *u2big, *col_uint_string_too_long, *col_float_string_too_long, *uint_pkbig,\
-    *toomany_nob, \
-    *accesstypeunknown, \
-    *createsyntax,       *dropsyntax,    *altersyntax,  *alter_other, \
-    *createsyntax_dn,                                                 \
-    *lru_other,          *lru_repeat,    *col_lru, \
-    *update_lru,         *insert_lru,    *insert_replace_update, \
-    *drop_virtual_index, *drop_lru,      *drop_ind_on_sk, \
-    *drop_luatrigger, \
+    *invalidupdatestring, *badindexedcolumnsyntax,                        \
+    *u2big,               *col_uint_string_too_long,                      \
+    *col_float_string_too_long,                                           \
+    *uint_pkbig,          *toomany_nob,            *accesstypeunknown,    \
+    *createsyntax,       *dropsyntax,    *altersyntax,  *alter_other,     \
+    *createsyntax_dn,                                                     \
+    *lru_other,          *lru_repeat,    *col_lru,                        \
+    *update_lru,         *insert_lru,    *insert_replace_update,          \
+    *drop_virtual_index, *drop_lru,      *drop_ind_on_sk,                 \
+    *drop_luatrigger,                                                     \
     *mci_on_pk,          *UI_SC,         *two_uniq_mci, *uniq_mci_notint, \
-    *uniq_mci_pk_notint, \
-    *insertsyntax,           *insertsyntax_no_into, *part_insert_other, \
-    *insertsyntax_no_values, *luat_decl_fmt,        *luat_c_decl, \
-    *key_query_mustbe_eq, \
+    *uniq_mci_pk_notint,                                                  \
+    *insertsyntax,           *insertsyntax_no_into, *part_insert_other,   \
+    *insertsyntax_no_values, *luat_decl_fmt,        *luat_c_decl,         \
+    *key_query_mustbe_eq,                                                 \
     *whereclause_in_err,         *where_in_select, \
     *wc_orderby_no_by, \
     *order_by_col_not_found, \

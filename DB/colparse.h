@@ -103,7 +103,9 @@ uchar *serialiseJTA  (int jtsize);
 int    deserialiseJTA(uchar *x);
 
 // REPLY
-sds  getQueriedCnames(int tmatch, icol_t *ics, int qcols, lfca_t *lfca);
+sds  startOutput(long card);
+void outputColumnNames(cli *c,     int     tmatch, bool cstar, icol_t *ics,
+                       int  qcols, lfca_t *lfca);
 void setDMBcard_cnames(cli  *c,    cswc_t *w,    icol_t *ics, int qcols,
                        long  card, void   *rlen, lfca_t *lfca);
 void setDMB_Join_card_cnames(cli *c, jb_t *jb, long card, void *rlen);

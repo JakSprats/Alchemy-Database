@@ -74,6 +74,7 @@ uint32  Ind_HW = 0; list   *DropI = NULL; dict   *IndD;
 dict   *StmtD; dict *DynLuaD;
 
 /* PROTOTYPES */
+int  usleep(ulong usec);
 int  yesnotoi(char *s);
 int *getKeysUsingCommandTable(rcommand *cmd, robj **argv, int argc, int *nkeys);
 // from scripting.c
@@ -339,6 +340,11 @@ int DXDB_loadServerConfig(int argc, sds *argv) {
     } else if (!strcasecmp(argv[0], "basedir")       && argc == 2) {
         if (server.alc.Basedir) zfree(server.alc.Basedir);
         server.alc.Basedir = zstrdup(argv[1]); return 0;
+    } else if (!strcasecmp(argv[0], "lua_output_start") && argc == 2) {
+        if (server.alc.OutputLuaFunc_Start) {
+            zfree(server.alc.OutputLuaFunc_Start);
+        }
+        server.alc.OutputLuaFunc_Start = zstrdup(argv[1]); return 0;
     } else if (!strcasecmp(argv[0], "lua_output_cnames") && argc == 2) {
         if (server.alc.OutputLuaFunc_Cnames) {
             zfree(server.alc.OutputLuaFunc_Cnames);
@@ -355,10 +361,11 @@ int DXDB_loadServerConfig(int argc, sds *argv) {
         } else if (!strcasecmp(argv[1], "normal")) {
             server.alc.OutputMode = OUTPUT_NORMAL;
         } else if (!strcasecmp(argv[1], "lua")) {
-            if (!server.alc.OutputLuaFunc_Cnames ||
+            if (!server.alc.OutputLuaFunc_Start ||
+                !server.alc.OutputLuaFunc_Cnames ||
                 !server.alc.OutputLuaFunc_Row) {
-                char *err = "outputmode lua requires lua_output_cnames &"\
-                            " lua_output_row";
+                char *err = "OUTPUTMODE lua requires [lua_output_start, "\
+                            "lua_output_cnames, lua_output_row]";
                 fprintf(stderr, "%s\n", err);
                 return -1;
             }
@@ -456,9 +463,7 @@ bool DXDB_processInputBuffer_begin(redisClient *c) {// NOTE: used for POST BODY
         c->http.post_body = c->querybuf;
         c->querybuf       = sdsempty();
         c->http.mode      = HTTP_MODE_ON;
-        end_http_session(c);
-        c->http.mode      = HTTP_MODE_OFF;
-        return 1;
+        end_http_session(c); c->http.mode = HTTP_MODE_OFF; return 1;
     }
     return 0;
 }
@@ -478,6 +483,11 @@ int DXDB_configSetCommand(cli *c, robj *o) {
     if (!strcasecmp(c->argv[2]->ptr,"luacronfunc")) {
         if (server.alc.LuaCronFunc) zfree(server.alc.LuaCronFunc);
         server.alc.LuaCronFunc = zstrdup(o->ptr); return 0;
+    } else if (!strcasecmp(c->argv[2]->ptr, "lua_output_start")) {
+        if (server.alc.OutputLuaFunc_Start) {
+            zfree(server.alc.OutputLuaFunc_Start);
+        }
+        server.alc.OutputLuaFunc_Start = zstrdup(o->ptr); return 0;
     } else if (!strcasecmp(c->argv[2]->ptr, "lua_output_cnames")) {
         if (server.alc.OutputLuaFunc_Cnames) {
             zfree(server.alc.OutputLuaFunc_Cnames);
@@ -494,10 +504,12 @@ int DXDB_configSetCommand(cli *c, robj *o) {
         } else if (!strcasecmp(o->ptr, "normal")) {
             server.alc.OutputMode = OUTPUT_NORMAL;
         } else if (!strcasecmp(o->ptr, "lua")) {
-            if (!server.alc.OutputLuaFunc_Cnames ||
+            if (!server.alc.OutputLuaFunc_Start ||
+                !server.alc.OutputLuaFunc_Cnames ||
                 !server.alc.OutputLuaFunc_Row) {
-                sds err = sdsnew("-ERR: OUTPUTMODE: lua requires "\
-                                 "lua_output_cnames & lua_output_row\r\n");
+                sds err = sdsnew("-ERR: OUTPUTMODE lua requires "         \
+                                 "[lua_output_start, lua_output_cnames, " \
+                                 "lua_output_row]\r\n");
                 addReplySds(c, err); decrRefCount(o); return -1;
             }
             server.alc.OutputMode = OUTPUT_LUA;
@@ -662,6 +674,10 @@ void DBXD_genRedisInfoString(sds info) {
               LREDIS ? "lua"        : "normal"),
              (server.alc.WebServerMode == -1) ? "no" : "yes",
              server.alc.WebServerIndexFunc);
+    if (server.alc.OutputLuaFunc_Start) {
+        info = sdscatprintf(info, "lua_output_start:%s\r\n",
+                            server.alc.OutputLuaFunc_Start);
+    }
     if (server.alc.OutputLuaFunc_Cnames) {
         info = sdscatprintf(info, "lua_output_cnames:%s\r\n",
                             server.alc.OutputLuaFunc_Cnames);
@@ -710,6 +726,8 @@ static bool checkPurge() {
     sdsfree(ds);
     return (server.slaves->len == num_ok);
 }
+
+
 void purgeCommand(redisClient *c) {
     uint32 check_purge_usleep = 10000; // 10ms
     while (!checkPurge()) {

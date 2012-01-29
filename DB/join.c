@@ -182,9 +182,26 @@ static robj *join_reply_norm(range_t *g) {
     totlen--; /* -1 no final comma */
     return write_output_row(g->se.qcols, 0, NULL, totlen, Jcols);
 }
+static robj *join_reply_lua(range_t *g) {
+    //printf("join_reply_lua: func: %s\n", server.alc.OutputLuaFunc_Row);
+    CLEAR_LUA_STACK lua_getglobal(server.lua, server.alc.OutputLuaFunc_Row);
+    for (int i = 0; i < g->se.qcols; i++) {
+        aobj a; initAobjFromStr(&a, Jcols[i].s, Jcols[i].len, COL_TYPE_STRING);
+        sds cval = sdsnewlen(a.s, a.len);                // FREE 155
+        lua_pushstring(server.lua, cval); sdsfree(cval); // FREED 155
+    }
+    int ret = lua_pcall(server.lua, g->se.qcols, 1, 0);
+    sds s   = ret ? sdsempty()                                    :
+                    sdsnewlen((char*)lua_tostring(server.lua, -1),
+                              lua_strlen(server.lua, -1));
+    CLEAR_LUA_STACK
+    return createObject(REDIS_STRING, s);
+}
+
 static robj *outputJoinRow(range_t *g) {
     if      (EREDIS) return join_reply_embedded(g);
     else if (OREDIS) return join_reply_redis   (g);
+    else if (LREDIS) return join_reply_lua     (g);
     else             return join_reply_norm    (g);
 }
 static bool addReplyJoinRow(cli *c, robj *r) {
@@ -389,7 +406,7 @@ bool joinGeneric(redisClient *c, jb_t *jb) {
     void *rlen        = jb->cstar ? NULL : addDeferredMultiBulkLength(c);
     long  card        = 0;
     if (Op(&g, join_op) == -1) JoinMiss = 1;
-    if (JoinMiss) { replaceDMB(c, rlen, shared.dirty_miss); goto join_gen_err; }
+    if (JoinMiss) { replaceDMB(c, rlen, shared.dirty_miss);  goto join_gen_err;}
     if (JoinErr)  { replaceDMB(c, rlen, shared.join_qo_err); goto join_gen_err;}
     card              = JoinCard;
     long sent         =  0;

@@ -316,6 +316,7 @@ static char *outputNil(int *rlen) {
 static char *outputAobj(aobj *a, int *rlen) {
     if      (C_IS_I(a->type)) return outputInt  (a->i,         rlen);
     else if (C_IS_P(a->type)) return outputInt  (a->i,         rlen);
+    else if (C_IS_B(a->type)) return outputInt  (a->b,         rlen);
     else if (C_IS_L(a->type)) return outputLong (a->l,         rlen);
     else if (C_IS_F(a->type)) return outputFloat(a->f,         rlen);
     else if (C_IS_S(a->type)) return outputS    (a->s, a->len, rlen);

@@ -435,7 +435,9 @@ bool sqlSelectBinary(cli  *c,     int     tmatch, bool   cstar, icol_t *ics,
         }
         if (!r)                  { addReply(c, shared.nullbulk);    return 1; }
         if (!EREDIS) {
-            addReply(c, shared.singlerow);
+            sds   s = startOutput(1); 
+            robj *o = createObject(REDIS_STRING, s);
+            addReply(c, o); decrRefCount(o);
             outputColumnNames(c, tmatch, cstar, ics, qcols, lfca);
         }
         GET_LRUC GET_LFUC
