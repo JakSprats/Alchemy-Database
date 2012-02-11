@@ -605,8 +605,7 @@ bool passFilts(bt   *btr, aobj *apk, void *rrow, list *flist, int tmatch,
                bool *hf) {
     if (!flist) return 1; /* no filters always passes */
     listNode *ln, *ln2;
-    bool      ret = 1;
-printf("passFilts: nfliters: %d\n", flist->len);
+    bool      ret = 1;       //printf("passFilts: nfliters: %d\n", flist->len);
     listIter *li  = listGetIterator(flist, AL_START_HEAD);
     while ((ln = listNext(li))) {
         f_t *flt  = ln->value;

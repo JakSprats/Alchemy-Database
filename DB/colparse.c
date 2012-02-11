@@ -186,10 +186,13 @@ bool parseU128n(char *s, uint32 len, uint128 *x) {
 char *parseRowVals(sds vals,  char   **pk,       int  *pklen,
                    int ncols, twoint   cofsts[], int   tmatch,
                    int pcols, icol_t  *ics,      int   lncols, bool *ai) {
-    if (vals[sdslen(vals) - 1] != ')' || *vals != '(') return NULL;
+printf("parseRowVals: vals: (%s)\n", vals);
     int      cmatch; uchar ctype;
+    char    *evals = vals + sdslen(vals) - 1; REV_SKIP_SPACES(evals)
+    char    *svals = vals;                    SKIP_SPACES    (svals)
+    if (*svals != '(' || *evals != ')') return NULL;
     r_tbl_t *rt     = &Tbl[tmatch];
-    char    *mvals  = vals + 1; SKIP_SPACES(mvals)
+    char    *mvals  = svals + 1; SKIP_SPACES(mvals)
     char    *token  = mvals, *nextc = mvals;
     int      numc   = 0;
     while (1) {

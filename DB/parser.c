@@ -54,76 +54,7 @@ inline char *_strnchr(char *s, int c, int len) {
     return NULL;
 }
 
-//TODO "if (endptr && !*endptr)" is a better check
-bool is_int(char *s) { // Used in UPDATE EXPRESSIONS
-    char *endptr;
-    long val = strtol(s, &endptr, 10);
-    val = 0; /* compiler warning */
-    if (endptr[0] != '\0') return 0;
-    else                   return 1;
-}
-
-bool is_u128(char *s) { // Used in UPDATE EXPRESSIONS
-    uint128 x; return parseU128(s, &x);
-}
-bool is_float(char *s) { // Used in UPDATE EXPRESSIONS
-    char *endptr;
-    long val = strtod(s, &endptr);
-    val = 0; /* compiler warning */
-    if (endptr[0] != '\0') return 0;
-    else                   return 1;
-}
-
-bool is_text(char *beg, int len) { // Used in assignMisses for simple UPDATEs
-    char *s = beg; char dlm;
-    if      (*s == '\'') dlm = '\'';
-    else if (*s == '"')  dlm = '"';
-    else return 0;
-    s++;
-    s = strn_next_unescaped_chr(s, s, dlm, (len - 1));
-    if (!s) return 0;
-    if ((s - beg) == (len - 1)) return 1;
-    else                        return 0;
-}
-
-char *extract_string_col(char *start, int *len) {
-    if (*start == '\'') {
-        start++; /* ignore leading \' in string col */
-        DECR(*len)
-        if (*(start + *len - 1) == '\'') DECR(*len)
-    }
-    return start;
-}
-char *strcasestr_blockchar(char *haystack, char *needle, char blockchar) {
-    char *bstart       = haystack;
-    while (1) {
-        char *found    = strcasestr(bstart, needle);
-        if (!found)         return NULL;
-        while (1) {
-            bstart     = str_next_unescaped_chr(bstart, bstart, blockchar);
-            if (!bstart)        return found; /* no block */
-            if (bstart > found) return found; /* block after found */
-            bstart++;
-            char *bend = str_next_unescaped_chr(bstart, bstart, blockchar);
-            if (!bend)          return NULL; /* block doesnt end */
-            bstart     = bend + 1;
-            if (bstart >= found) break;      /* found w/in block, look again */
-        }
-    }
-}
-char *next_token_wc_key(char *tkn, uchar ctype) {
-    if (C_IS_S(ctype)) {
-        if (*tkn != '\'') return NULL;
-        tkn++; /* skip leading  \' */
-        tkn = str_next_unescaped_chr(tkn, tkn, '\'');
-        if (!tkn)         return NULL;
-        tkn++; /* skip trailing \' */
-    } else {
-        tkn = strchr(tkn, ' ');
-    }
-    return tkn;
-}
-
+// HELPERS HELPERS HELPERS HELPERS HELPERS HELPERS HELPERS HELPERS HELPERS
 robj *_createStringObject(char *s) {
     return createStringObject(s, strlen(s));
 }
@@ -161,6 +92,80 @@ char *rem_backticks(char *token, int *len) {
     if (*token == '`') { token++;  *len = *len - 1; }
     if (otoken[olen - 1] == '`') { *len = *len - 1; }
     return token;
+}
+
+
+// TYPE_CHECK TYPE_CHECK TYPE_CHECK TYPE_CHECK TYPE_CHECK TYPE_CHECK
+//TODO "if (endptr && !*endptr)" is a better check
+bool is_int(char *s) { // Used in UPDATE EXPRESSIONS
+    char *endptr;
+    long val = strtol(s, &endptr, 10);
+    val = 0; /* compiler warning */
+    if (endptr[0] != '\0') return 0;
+    else                   return 1;
+}
+
+bool is_u128(char *s) { // Used in UPDATE EXPRESSIONS
+    uint128 x; return parseU128(s, &x);
+}
+bool is_float(char *s) { // Used in UPDATE EXPRESSIONS
+    char *endptr;
+    long val = strtod(s, &endptr);
+    val = 0; /* compiler warning */
+    if (endptr[0] != '\0') return 0;
+    else                   return 1;
+}
+
+bool is_text(char *beg, int len) { // Used in assignMisses for simple UPDATEs
+    char *s = beg; char dlm;
+    if      (*s == '\'') dlm = '\'';
+    else if (*s == '"')  dlm = '"';
+    else return 0;
+    s++;
+    s = strn_next_unescaped_chr(s, s, dlm, (len - 1));
+    if (!s) return 0;
+    if ((s - beg) == (len - 1)) return 1;
+    else                        return 0;
+}
+
+// GEN_1_WC_PARSE GEN_1_WC_PARSE GEN_1_WC_PARSE GEN_1_WC_PARSE GEN_1_WC_PARSE
+char *extract_string_col(char *start, int *len) { //NOTE: used in pRangeReply()
+    if (*start == '\'') { /* ignore leading \' in string col */
+        start++; DECR(*len)
+        if (*(start + *len - 1) == '\'') DECR(*len)
+        else                             return NULL;
+    }
+    return start;
+}
+//NOTE: used in parseWC()
+char *strcasestr_blockchar(char *haystack, char *needle, char blockchar) {
+    char *bstart       = haystack;
+    while (1) {
+        char *found    = strcasestr(bstart, needle);
+        if (!found)         return NULL;
+        while (1) {
+            bstart     = str_next_unescaped_chr(bstart, bstart, blockchar);
+            if (!bstart)        return found; /* no block */
+            if (bstart > found) return found; /* block after found */
+            bstart++;
+            char *bend = str_next_unescaped_chr(bstart, bstart, blockchar);
+            if (!bend)          return NULL; /* block doesnt end */
+            bstart     = bend + 1;
+            if (bstart >= found) break;      /* found w/in block, look again */
+        }
+    }
+}
+char *next_token_wc_key(char *tkn, uchar ctype) {
+    if (C_IS_S(ctype)) {
+        if (*tkn != '\'') return NULL;
+        tkn++; /* skip leading  \' */
+        tkn = str_next_unescaped_chr(tkn, tkn, '\'');
+        if (!tkn)         return NULL;
+        tkn++; /* skip trailing \' */
+    } else {
+        tkn = strchr(tkn, ' ');
+    }
+    return tkn;
 }
 
 static char *_strn_next_unescaped_chr(char *beg, char *s, int x, int len) {
@@ -203,7 +208,7 @@ static char *str_matching_end_delim(char *beg, char sdelim, char fdelim) {
     }
     return NULL;
 }
-char *str_matching_end_paren(char *beg) {
+char *str_matching_end_paren(char *beg) { //NOTE: used in checkIN_Clause()
     return str_matching_end_delim(beg, '(', ')');
 }
 
@@ -220,89 +225,7 @@ int get_token_len(char *tok) {
     return x ? x - tok : (int)strlen(tok);
 }
 
-char *min2(char *p, char *q) {
-    if      (!p)    return q;
-    else if (!q)    return p;
-    else if (p < q) return p;
-    else            return q;
-}
-
-static char *min3(char *p, char *q, char *o) {
-    if      (!p) return min2(q, o);
-    else if (!q) return min2(p, o);
-    else if (!o) return min2(p, q);
-    else { /* p && q && o */
-        if (p < q) {
-            if (p < o) return p;
-            else       return o;
-        } else { /* p > q */
-            if (q < o) return q;
-            else       return o;
-        }
-    }
-}
-
-int get_tlen_delim2(char *nextp, char x) {
-    char *p  = strchr(nextp, x);
-    char *o  = strchr(nextp, ' ');
-    char *mn = min2(p, o);
-    return mn ? mn - nextp : 0;
-}
-
-char *next_token_delim2(char *p, char x) {
-    int len  = get_tlen_delim2(p, x);
-    if (!len) return NULL;
-    p       += len + 1;
-    while (ISBLANK(*p)) p++;
-    return *p ? p : NULL;
-}
-
-int get_tlen_delim3(char *nextp, char x, char z) {
-    char *p  = strchr(nextp, x);
-    char *q  = strchr(nextp, z);
-    char *o  = strchr(nextp, ' ');
-    char *mn = min3(q, p, o);
-    return mn ? mn - nextp : 0;
-}
-
-char *next_token_delim3(char *p, char x, char z) {
-    int len  = get_tlen_delim3(p, x, z);
-    if (!len) return NULL;
-    p       += len + 1;
-    while (ISBLANK(*p)) p++;
-    return *p ? p : NULL;
-}
-
-
-//TODO double check that this covers ALL "CREATE TABLE column def" syntaxes
-// NOTE: undefined behavior for fubared strings (e.g. start w/: "xxx)xxx(xxx,")
-/* Parses for next ',' not in a "(...)"
-     Matches:        ",", "(,),"
-     Does not match: "(,)" */
-char *get_next_token_nonparaned_comma(char *token) {
-   bool got_oparn = 0;
-   while (token) {
-       char *x    = token;
-       int   xlen = get_token_len(x);
-       if (_strnchr(x, '(', xlen)) got_oparn = 1;
-       if (got_oparn) {
-           char *y = _strnchr(x, ')', xlen);
-           if (y) {
-               got_oparn  = 0;
-               int   ylen = get_token_len(y);
-               char *z    = _strnchr(y, ',', ylen);
-               if (z) { token = z + 1; break; }
-           }
-       } else {
-           char *z = _strnchr(x, ',', xlen);
-           if (z) { token = z + 1; break; }
-       }
-       token = next_token(token);
-   }
-   if (token) while (ISBLANK(*token)) token++;
-   return token;
-}
-
+//NOTE: used by pWC_checkLuaFunc() & parseOBYcol() 
 inline char *strstr_not_quoted(char *h, char *n) {
     int nlen = strlen(n);
     while (*h) {
@@ -312,7 +235,7 @@ inline char *strstr_not_quoted(char *h, char *n) {
     }
     return NULL;
 }
-inline char *get_after_parens(char *p) {
+inline char *get_after_parens(char *p) { //NOTE used by isLuaFunc()
     int parens = 0;
     while (*p) {
         if      (*p == '(')  parens++;
@@ -345,37 +268,6 @@ char *get_next_insert_value_token(char *tkn) {
     }
     return NULL;
 }
-
-char *new_unescaped(char *s, char x, uint32 len, uint32 *nlen) {
-    if (!len) { *nlen = 0; return NULL; }
-    char *news  = malloc(len + 1);
-    char *onews = news;
-    char *beg   = s;
-    while (*s && len) {
-        char *nextc = _strnchr(s, x, len);
-        if (!nextc) break;
-        bool xcpd = 0;
-        if  (nextc != beg && *(nextc - 1) == '\\') {
-            char *backslash = nextc - 1;
-            while (backslash >= beg) {
-                if (*backslash != '\\') break;
-                backslash--;
-            }
-            int num_backslash = nextc - backslash - 1;
-            if (num_backslash % 2 == 1) xcpd = 1;
-        }
-        int plen = (nextc - s + 1);
-        int tlen = xcpd ? (nextc - s - 1) : plen;
-        memcpy(news, s, tlen); news += tlen; len -= plen;
-        if (xcpd) { *news = '\''; news++; } // add in the escaped quote
-        s     = nextc + 1;
-    }
-    memcpy(news, s, len); news += len;
-    *nlen = news - onews;
-    *news = '\0'; news++; // NULL TERMINTATE
-    return onews;
-}
-
 
 /* PIPE_PARSING PIPE_PARSING PIPE_PARSING PIPE_PARSING PIPE_PARSING */
 robj **parseScanCmdToArgv(char *as_cmd, int *argc) {

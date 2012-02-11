@@ -22,6 +22,7 @@ TEST:
 CACHE:
   0.) rdbSave/Load DirtyStream
   1.) specify "PRIMARY KEY AUTO INCREMENT" in "CREATE TABLE" declaration
+      -> specifying a PRIMARY KEY is mandatory and it must be the 1st column
   3.) slab allocator for the myriad of different btree-node sizes
 
 MISC:
@@ -44,4 +45,5 @@ FIX:
   1.) [shard-key & foreign-key] info not in RDB
       [sk, fk_cmatch, fk_otmatch, fk_ocmatch] -> MAKE PERSISTENT
   2.) bt_output(debug) of Compound Indexes does not recurse
-  4.) FLUSHDB & FLUSHALL should be "DROP DATABASE" in sqlappendfile
+  4.) sqlappendfile -> deprecate
+  5.) ALTER TABLE SET GLOBAL -> global (i.e. not sharded tables)

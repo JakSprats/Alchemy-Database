@@ -288,8 +288,10 @@ static bool pRangeReply(cli *c, char *frst, char **fin, uchar ctype, f_t *flt) {
         *fin     = NULL;
     }
     frst         = extract_string_col(frst,  &flen);
+    if (!frst) return 0;
     flt->low     = sdsnewlen(frst,  flen);
     second       = extract_string_col(second, &slen);
+    if (!second) return 0;
     flt->high    = sdsnewlen(second, slen);
     return 1;
 
@@ -447,6 +449,7 @@ static uchar parseWCTokRelation(cli *c,   cswc_t *w,   sds    tkn, char **fin,
         int   len     = tfin ? tfin - start : (uint32)strlen(start);
         if (*start == '\'') flt->iss = 1; // TODO COL_STRING must be iss
         start         = extract_string_col(start, &len);
+        if (!start)                                       PARSE_WC_CHECK_LUA
         flt->key      = sdsnewlen(start, len);
         if (tfin) SKIP_SPACES(tfin)
         *fin       = tfin;

@@ -30,39 +30,41 @@ ALL RIGHTS RESERVED
 
 #include "common.h"
 
+// HELPERS
+robj  *_createStringObject(char *s);
+robj  *cloneRobj(robj *r);
+void   destroyCloneRobj(robj *r);
+robj **copyArgv(robj **argv, int argc);
+robj  *convertRobj(robj *r, int type);
+char  *rem_backticks(char *token, int *len);
+
 char *_strdup(char *s);
 char *_strnchr(char *s, int c, int len);
+
+// TYPE_CHECK
 bool is_int  (char *s);
 bool is_u128 (char *s);
 bool is_float(char *s);
 bool is_text (char *beg, int len);
 
+// PARSER
 char *extract_string_col(char *start, int *len);
 char *strcasestr_blockchar(char *haystack, char *needle, char blockchar);
 char *next_token_wc_key(char *tkn, uchar ctype);
 
-robj *_createStringObject(char *s);
-robj *cloneRobj(robj *r);
-void destroyCloneRobj(robj *r);
-
-robj **copyArgv(robj **argv, int argc);
-robj *convertRobj(robj *r, int type);
-
-void StaticRobjInit(robj *r, int type);
-#define INIT_ROBJ(X, T) \
-    { \
-        static bool X ## _inited = 0; \
-        if (! X ## _inited ) { \
-            StaticRobjInit( & X , T); \
-            X ## _inited  = 1; \
-        } \
-    }
-
-char *rem_backticks(char *token, int *len);
 char *str_next_unescaped_chr(char *beg, char *s, int x);
 char *strn_next_unescaped_chr(char *beg, char *s, int x, int len);
 char *str_matching_end_paren(char *beg);
 
+char *next_token(char *nextp);
+int   get_token_len(char *tok);
+char *get_next_insert_value_token(char *tkn);
+
+char *strstr_not_quoted(char *h, char *n);
+char *get_after_parens(char *p);
+char *get_next_nonparaned_comma(char *token);
+
+// UTILS
 #define ISDIGIT(c) (c >= 48 && c <= 57)
 #define ISALPHA(c) ((c >= 65 && c <= 90) || (c >= 97 && c <= 122))
 #define ISALNUM(c) (ISDIGIT(c) || ISALPHA(c))
@@ -75,25 +77,7 @@ char *str_matching_end_paren(char *beg);
 #define REV_SKIP_RPAREN(tok) \
   while (ISRPAREN(*tok) || !*tok || ISBLANK(*tok)) tok--;
 
-#define S_CR8_SOBJ(s) createStringObject(s, sdslen(s))
-
-char *min2(char *p, char *q);
-
-char *next_token(char *nextp);
-int   get_token_len(char *tok);
-int   get_tlen_delim2(char *nextp, char x);
-char *next_token_delim2(char *p, char x);
-int   get_tlen_delim3(char *nextp, char x, char z);
-char *next_token_delim3(char *p, char x, char z);
-char *get_next_token_nonparaned_comma(char *token);
-char *get_next_insert_value_token(char *tkn);
-
-char *strstr_not_quoted(char *h, char *n);
-char *get_after_parens(char *p);
-char *get_next_nonparaned_comma(char *token);
-
-char *new_unescaped(char *s, char x, uint32 len, uint32 *nlen);
-
+//PIPE_PARSING
 robj **parseScanCmdToArgv(char *as_cmd, int *argc);
 
 #endif /* __ALC_PARSER__H */

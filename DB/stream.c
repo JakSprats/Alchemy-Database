@@ -276,10 +276,8 @@ void pushLuaVar(int tmatch, icol_t ic, aobj *apk) {
 }
 bool writeLuaObjCol(cli *c,    aobj   *apk, int tmatch, int cmatch,
                     char *val, uint32  vlen) {
-    uint32  nlen;
     r_tbl_t *rt   = &Tbl[tmatch];
-    char    *xcpd = new_unescaped(val, '\'', vlen, &nlen); if (!xcpd) return 1;
-    sds      luac = sdsnewlen(xcpd, nlen);                   DEBUG_WRITE_LUAOBJ
+    sds      luac = sdsnewlen(val, vlen);                    DEBUG_WRITE_LUAOBJ
     CLEAR_LUA_STACK
     lua_getfield  (server.lua, LUA_GLOBALSINDEX, "luaobj_assign");
     lua_pushstring(server.lua, LUA_OBJ_TABLE);
