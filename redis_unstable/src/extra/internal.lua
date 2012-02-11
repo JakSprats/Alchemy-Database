@@ -156,7 +156,7 @@ function output_start(card)
     if (card > 0) then return '*' .. (card + 1) .. '\r\n';
     else               return '*-1\r\n';                    end
 end
-function output_delim(...)
+local function output_delim(...)
    local printResult = '|';
    for i,v in ipairs(arg) do
      if (string.len(printResult) > 1) then printResult = printResult .. "|"; end
@@ -172,4 +172,23 @@ end
 function output_row(...)
    --print ('LUA: output_row');
    return output_delim(...)
+end
+
+-- HTTP_LUA_RESPONSE_ROUTINES HTTP_LUA_RESPONSE_ROUTINES
+function output_start_http(card)
+    return "nrows=" .. card .. '\r\n';
+end
+local function output_delim_http(...)
+   local printResult = '';
+   for i,v in ipairs(arg) do
+     if (string.len(printResult) > 0) then printResult = printResult .. ","; end
+     printResult = printResult .. tostring(v);
+   end
+   return printResult .. '\r\n';
+end
+function output_cnames_http(...)
+   return 'ColumnNames: ' .. output_delim_http(...);
+end
+function output_row_http(...)
+  return output_delim_http(...);
 end

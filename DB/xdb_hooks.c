@@ -219,8 +219,11 @@ static void initServer_Extra() {
 
 void DXDB_initServer() { //printf("DXDB_initServer\n");
     bzero(&server.alc, sizeof(alchemy_server_extensions_t));
-    server.alc.Basedir       = zstrdup("./extra/");//Alchemy's DEFAULT dir
-    server.alc.WebServerMode = -1;
+    server.alc.Basedir            = zstrdup("./extra/"); //Alchemy's DEFAULT dir
+    server.alc.WebServerMode      = -1;
+    server.alc.RestAPIMode        = -1;
+    server.alc.RestClient         = createClient(-1);
+    server.alc.RestClient->flags |= REDIS_LUA_CLIENT;
     aeCreateTimeEvent(server.el, 1, luaCronTimeProc, NULL, NULL);
     initX_DB_Range(); initAccessCommands(); init_six_bit_strings();
     init_DXDB_PersistentStorageItems(INIT_MAX_NUM_TABLES, INIT_MAX_NUM_INDICES);
@@ -382,6 +385,13 @@ int DXDB_loadServerConfig(int argc, sds *argv) {
             fprintf(stderr, "%s\n", err);
             return -1;
         }
+#if 0 //TODO webserver_mode & rest_api_mode can run in tandem??? right???
+        if (server.alc.RestAPIMode != -1) {
+            char *err = "CHOOSE: webserver_mode OR rest_api_mode ";
+            fprintf(stderr, "%s\n", err);
+            return -1;
+        }
+#endif
         return 0;
     } else if (!strcasecmp(argv[0], "webserver_index_function") && argc == 2) {
         if (server.alc.WebServerIndexFunc) zfree(server.alc.WebServerIndexFunc);
@@ -402,6 +412,20 @@ int DXDB_loadServerConfig(int argc, sds *argv) {
             return -1;
         }
         computeWS_WL_MinMax();
+        return 0;
+    } else if (!strcasecmp(argv[0], "rest_api_mode") && argc == 2) {
+        if ((server.alc.RestAPIMode = yesnotoi(argv[1])) == -1) {
+            char *err = "argument must be 'yes' or 'no'";
+            fprintf(stderr, "%s\n", err);
+            return -1;
+        }
+#if 0 //TODO webserver_mode & rest_api_mode can run in tandem??? right???
+        if (server.alc.WebServerMode != -1) {
+            char *err = "CHOOSE: webserver_mode OR rest_api_mode ";
+            fprintf(stderr, "%s\n", err);
+            return -1;
+        }
+#endif
         return 0;
     } else if (!strcasecmp(argv[0],"sqlappendonly") && argc == 2) {
         if        (!strcasecmp(argv[1], "no")) {
@@ -470,15 +494,14 @@ bool DXDB_processInputBuffer_begin(redisClient *c) {// NOTE: used for POST BODY
 void  DXDB_processInputBuffer_ZeroArgs(redisClient *c) {//HTTP Request End-Delim
     if (c->http.mode == HTTP_MODE_ON) {
         if (c->http.post && c->http.req_clen) c->http.mode = HTTP_MODE_POSTBODY;
-        else { 
-            end_http_session(c);
-            c->http.mode = HTTP_MODE_OFF;
-        }
+        else { end_http_session(c); c->http.mode = HTTP_MODE_OFF; }
     } else c->http.mode = HTTP_MODE_OFF;
     return;
 }
 
-//TODO webserver_mode, webserver_whitelist_address, webserver_whitelist_netmask, webserver_index_function, sqlslaveof
+//TODO webserver_mode,              webserver_index_function,
+//     webserver_whitelist_address, webserver_whitelist_netmask,
+//     sqlslaveof
 int DXDB_configSetCommand(cli *c, robj *o) {
     if (!strcasecmp(c->argv[2]->ptr,"luacronfunc")) {
         if (server.alc.LuaCronFunc) zfree(server.alc.LuaCronFunc);
@@ -496,6 +519,10 @@ int DXDB_configSetCommand(cli *c, robj *o) {
     } else if (!strcasecmp(c->argv[2]->ptr, "lua_output_row")) {
         if (server.alc.OutputLuaFunc_Row) zfree(server.alc.OutputLuaFunc_Row);
         server.alc.OutputLuaFunc_Row = zstrdup(o->ptr); return 0;
+    } else if (!strcasecmp(c->argv[2]->ptr, "rest_api_mode")) {
+        int yn = yesnotoi(o->ptr);
+        if (yn == -1) goto badfmt;
+        server.alc.RestAPIMode = yn ? 1 : -1; return 0;
     } else if (!strcasecmp(c->argv[2]->ptr, "outputmode")) {
         if        (!strcasecmp(o->ptr, "embedded")) {
             server.alc.OutputMode = OUTPUT_EMBEDDED;
@@ -523,6 +550,13 @@ int DXDB_configSetCommand(cli *c, robj *o) {
         return 0;
     }
     return 1;
+
+badfmt: /* Bad format errors */
+    addReplyErrorFormat(c,"Invalid argument '%s' for CONFIG SET '%s'",
+            (char*)o->ptr,
+            (char*)c->argv[2]->ptr);
+    return -1;
+
 }
 
 static void configAddCommand(redisClient *c) {
@@ -667,13 +701,15 @@ void DBXD_genRedisInfoString(sds info) {
             "basedir:%s\r\n"
             "outputmode:%s\r\n"
             "webserver_mode:%s\r\n"
-            "webserver_index_function:%s\r\n",
+            "webserver_index_function:%s\r\n"
+            "rest_api_mode:%s\r\n",
              server.alc.LuaCronFunc, server.alc.Basedir,
              (EREDIS ? "embedded"   :
               OREDIS ? "pure_redis" : 
               LREDIS ? "lua"        : "normal"),
              (server.alc.WebServerMode == -1) ? "no" : "yes",
-             server.alc.WebServerIndexFunc);
+             server.alc.WebServerIndexFunc,
+             (server.alc.RestAPIMode == -1)   ? "no" : "yes");
     if (server.alc.OutputLuaFunc_Start) {
         info = sdscatprintf(info, "lua_output_start:%s\r\n",
                             server.alc.OutputLuaFunc_Start);

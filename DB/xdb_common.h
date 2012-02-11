@@ -103,7 +103,7 @@ typedef struct icol_t {
 struct redisClient;
 typedef struct alchemy_server_extensions_t {
     long long            stat_num_dirty_commands; // number of dirty commands
-    struct redisClient *CurrClient;
+    struct redisClient  *CurrClient;
 
     uchar                OutputMode;
     char                *OutputLuaFunc_Start;
@@ -125,6 +125,9 @@ typedef struct alchemy_server_extensions_t {
     struct in_addr       WS_WL_Mask;
     unsigned int         WS_WL_Broadcast;
     unsigned int         WS_WL_Subnet;
+
+    int                  RestAPIMode;
+    struct redisClient  *RestClient;
 
     bool                 SQL_AOF;
     bool                 SQL_AOF_MYSQL;
@@ -209,7 +212,8 @@ typedef struct alchemy_server_extensions_t {
     *updatemiss,             *dirtypk,                     \
     *update_luaobj_complex,  *unsupported_pk,              \
     *order_by_luaobj,        *buildindexdirty,             \
-    *cr8tablesyntax,         *joindotnotation;
+    *cr8tablesyntax,         *joindotnotation,             \
+    *http_not_on;
 
 #define DEBUG_C_ARGV(c) \
   for (int i = 0; i < c->argc; i++) \

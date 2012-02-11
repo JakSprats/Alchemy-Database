@@ -234,7 +234,7 @@ void sqlDumpCommand(redisClient *c) {
             sds err = sdsnewlen(EMPTY_DUMP2FILE, strlen(EMPTY_DUMP2FILE));
             prependDeferredMultiBulkError(c, rlen, err); 
         }
-    } else setDeferredMultiBulkLength(c, rlen, (card + 1));
+    } else setDeferredMultiBulkLength(c, rlen, card ? (card + 1) : 0);
 }
  
 ull get_sum_all_index_size_for_table(int tmatch) {

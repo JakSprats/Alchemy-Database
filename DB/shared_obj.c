@@ -380,4 +380,6 @@ void DXDB_createSharedObjects() {
     shared.joindotnotation       = createObject(REDIS_STRING,sdsnew(
         "-ERR NOT_SUPPORTED: JOINs on DotNotationIndexes (i.e. luaobj.x) are not yet supported, if you have a good use-case, please email us\r\n"));
 
+    shared.http_not_on           = createObject(REDIS_STRING,sdsnew(
+        "-ERR CONFIGURATION: HTTP must be turned on, use [webserver_mode, rest_api_mode]\r\n"));
 }

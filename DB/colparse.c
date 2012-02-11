@@ -186,7 +186,6 @@ bool parseU128n(char *s, uint32 len, uint128 *x) {
 char *parseRowVals(sds vals,  char   **pk,       int  *pklen,
                    int ncols, twoint   cofsts[], int   tmatch,
                    int pcols, icol_t  *ics,      int   lncols, bool *ai) {
-printf("parseRowVals: vals: (%s)\n", vals);
     int      cmatch; uchar ctype;
     char    *evals = vals + sdslen(vals) - 1; REV_SKIP_SPACES(evals)
     char    *svals = vals;                    SKIP_SPACES    (svals)

@@ -36,6 +36,7 @@ char *strcasestr(const char *haystack, const char *needle); /*compiler warning*/
 #include "redis.h"
 #include "adlist.h"
 
+#include "debug.h"
 #include "parser.h"
 #include "alsosql.h"
 #include "webserver.h"
@@ -45,6 +46,8 @@ static robj *luaReplyToHTTPReply(lua_State *lua);
 // from scripting.c
 void luaPushError(lua_State *lua, char *error);
 void luaMaskCountHook(lua_State *lua, lua_Debug *ar);
+// from networking.c
+void addReplyString(redisClient *c, char *s, size_t len);
 
 
 typedef struct two_sds {
@@ -63,23 +66,8 @@ static void free_two_sds(void *v) {
     sdsfree(ss->a); sdsfree(ss->b); free(ss);
 }
 
-#define SEND_REPLY_FROM_STRING(s)                 \
-  { robj *r = createStringObject(s, sdslen(s));   \
-    addReply(c, r);                               \
-    decrRefCount(r); }
 
-#define SEND_404                                                             \
-  { sds s = c->http.proto_1_1 ?                                              \
-             sdsnew("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n") : \
-             sdsnew("HTTP/1.0 404 Not Found\r\nContent-Length: 0\r\n\r\n");  \
-  SEND_REPLY_FROM_STRING(s) }
-#define SEND_405                                                 \
-  { sds s = c->http.proto_1_1 ?                                  \
-      sdsnew("HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\n\r\n") : \
-      sdsnew("HTTP/1.0 405 Method Not Allowed\r\nContent-Length: 0\r\n\r\n");  \
-  SEND_REPLY_FROM_STRING(s) }
-
-static void send_http_response_header_extended(cli *c, sds s) {
+static sds send_http_response_header_extended(cli *c, sds s) {
     if (c->http.resp_hdr) {
         listNode *ln;
         listIter *li = listGetIterator(c->http.resp_hdr, AL_START_HEAD);
@@ -88,39 +76,56 @@ static void send_http_response_header_extended(cli *c, sds s) {
             s = sdscatprintf(s, "%s: %s\r\n", ss->a, ss->b);
          } listReleaseIterator(li);
     }
-    s = sdscatlen(s, "\r\n", 2);
-    SEND_REPLY_FROM_STRING(s)
+    return sdscatlen(s, "\r\n", 2);
 }
-static void send_http_200_reponse_header(cli *c, sds body) {
+static sds send_http200_reponse_header(cli *c, long bodylen) {
     sds s = sdscatprintf(sdsempty(), 
                         "HTTP/1.%d 200 OK\r\nContent-length: %ld\r\n%s",
-                         c->http.proto_1_1 ? 1 : 0,
-                         sdslen(body), 
+                         c->http.proto_1_1 ? 1 : 0, bodylen,
                          c->http.ka ? "Connection: Keep-Alive\r\n": "");
-    send_http_response_header_extended(c, s);
+    return send_http_response_header_extended(c, s);
 }
-static void send_http_302_reponse_header(cli *c) {
+static sds send_http302_reponse_header(cli *c) {
     sds s = sdscatprintf(sdsempty(), 
                "HTTP/1.%d 302 Found\r\nContent-Length: 0\r\nLocation: %s\r\n%s",
                          c->http.proto_1_1 ? 1 : 0,
                          c->http.redir,
                          c->http.ka ? "Connection: Keep-Alive\r\n": "");
-    send_http_response_header_extended(c, s);
+    sds s2 = send_http_response_header_extended(c, s);
     sdsfree(c->http.redir); c->http.redir = NULL; // DESTROYED 079
+    return s2;
 }
-static void send_http_304_reponse_header(cli *c) {
+static sds send_http304_reponse_header(cli *c) {
     sds s = sdscatprintf(sdsempty(), 
                "HTTP/1.%d 304 Not Modified\r\nContent-Length: 0\r\n%s",
                          c->http.proto_1_1 ? 1 : 0,
                          c->http.ka ? "Connection: Keep-Alive\r\n": "");
-    send_http_response_header_extended(c, s);
+    sds s2 = send_http_response_header_extended(c, s);
     sdsfree(c->http.redir); c->http.redir = NULL; // DESTROYED 079
+    return s2;
 }
-static void send_http_reponse_header(cli *c, sds body) {
-  if      (c->http.retcode == 200)   send_http_200_reponse_header(c, body);
-  else if (c->http.retcode == 302)   send_http_302_reponse_header(c);
-  else                     /* 304 */ send_http_304_reponse_header(c);
+static sds send_http404_reponse_header(cli *c, long bodylen) {
+    sds s = sdscatprintf(sdsempty(), 
+                        "HTTP/1.%d 404 Not Found\r\nContent-length: %ld\r\n%s",
+                         c->http.proto_1_1 ? 1 : 0, bodylen,
+                         c->http.ka ? "Connection: Keep-Alive\r\n": "");
+    return send_http_response_header_extended(c, s);
 }
+static sds send_http_reponse_header(cli *c, long bodylen) {
+  return (c->http.retcode == 200) ? send_http200_reponse_header(c, bodylen) :
+         (c->http.retcode == 302) ? send_http302_reponse_header(c)          :
+                          /* 304 */ send_http304_reponse_header(c);
+}
+#define SEND_REPLY_FROM_STRING(s)               \
+  { robj *r = createStringObject(s, sdslen(s)); \
+    addReply(c, r); decrRefCount(r); }
+#define SEND_404                                                               \
+  { sds s = send_http404_reponse_header(c, 0); SEND_REPLY_FROM_STRING(s) }
+#define SEND_405                                                               \
+  { sds s = c->http.proto_1_1 ?                                                \
+      sdsnew("HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\n\r\n") : \
+      sdsnew("HTTP/1.0 405 Method Not Allowed\r\nContent-Length: 0\r\n\r\n");  \
+  SEND_REPLY_FROM_STRING(s) }
 
 // HTTP_LUA_COMMANDS HTTP_LUA_COMMANDS HTTP_LUA_COMMANDS HTTP_LUA_COMMANDS
 static void addHttpResponseHeader(sds name, sds value) {
@@ -164,23 +169,22 @@ int luaSetHttp304Command(lua_State *lua) {
 // HTTP_REQ_RESP_SESSION HTTP_REQ_RESP_SESSION HTTP_REQ_RESP_SESSION
 int start_http_session(cli *c) {
     if      (!strcasecmp(c->argv[2]->ptr, "HTTP/1.1")) {
-        c->http.ka        = 1; // Default: keep-alive -> ON in HTTP 1.1
         c->http.proto_1_1 = 1;
+        c->http.ka        = 1; // Default: keep-alive -> ON in HTTP 1.1
     }
     if      (!strcasecmp(c->argv[0]->ptr, "GET"))      c->http.get  = 1;
     else if (!strcasecmp(c->argv[0]->ptr, "POST"))     c->http.post = 1;
     else if (!strcasecmp(c->argv[0]->ptr, "HEAD"))     c->http.head = 1;
     else                                               { SEND_405; return 1; }
-    c->http.mode          = HTTP_MODE_ON;
+    c->http.mode     = HTTP_MODE_ON;
     if (c->http.resp_hdr) listRelease(c->http.resp_hdr);
-    c->http.resp_hdr      = NULL;
+    c->http.resp_hdr = NULL;
     if (c->http.req_hdr) listRelease(c->http.req_hdr);
-    c->http.req_hdr       = listCreate(); 
-    c->http.req_hdr->free = free_two_sds;
-    char *fname           = c->argv[1]->ptr;
-    int   fnlen           = sdslen(c->argv[1]->ptr);
+    c->http.req_hdr  = listCreate(); c->http.req_hdr->free = free_two_sds;
+    char *fname      = c->argv[1]->ptr;
+    int   fnlen      = sdslen(c->argv[1]->ptr);
     if (*fname == '/') { fname++; fnlen--; }
-    c->http.file          = createStringObject(fname, fnlen);
+    c->http.file     = createStringObject(fname, fnlen); //TODO use sds
     return 1;
 }
 
@@ -204,80 +208,179 @@ int continue_http_session(cli *c) {
     return 1;
 }
 
+static void sendStaticFileReply(cli *c) {
+    robj *o;
+    if ((o = lookupKeyRead(c->db, c->http.file)) == NULL) SEND_404
+    else if (o->type != REDIS_STRING)                     SEND_404
+    else { //NOTE: STATIC expire in 10 years (HARDCODED)
+        listNode *ln;
+        bool      dfl = 0;
+        listIter *li  = listGetIterator(c->http.req_hdr, AL_START_HEAD);
+        while((ln = listNext(li))) { // check for "deflate"
+            two_sds *ss = ln->value;
+            if (!strncasecmp(ss->a, "Accept-Encoding", 15)) {
+                if (strcasestr(ss->b, "deflate")) { dfl = 1; break; }
+            }
+        } listReleaseIterator(li);
+        if (dfl) {
+            robj *dfile = _createStringObject("DEFLATE/");
+            dfile->ptr  = sdscatlen(dfile->ptr, c->http.file->ptr,
+                                                sdslen(c->http.file->ptr));
+            robj *od;
+            if ((od = lookupKeyRead(c->db, dfile)) && od->type == REDIS_STRING){
+                o = od;
+                addHttpResponseHeader(sdsnew("Content-Encoding"),
+                                      sdsnew("deflate"));
+            }
+        }
+        addHttpResponseHeader(sdsnew("Expires"),
+                              sdsnew("Wed, 09 Jun 2021 10:18:14 GMT;"));
+        SEND_REPLY_FROM_STRING(send_http200_reponse_header(c, sdslen(o->ptr)));
+        addReply(c, o);
+    }
+}
+static void sendLuaFuncReply(cli *c, sds file) {
+    int argc; robj **rargv = NULL;
+    if (!sdslen(file) || !strcmp(file, "/")) {
+        argc      = 2; //NOTE: rargv[0] is ignored
+        rargv     = zmalloc(sizeof(robj *) * argc);
+        rargv[1]  = _createStringObject(server.alc.WebServerIndexFunc);
+    } else if (c->http.post && c->http.req_clen) {
+        int  urgc;
+        sds *urgv = sdssplitlen(file, sdslen(file), "/", 1, &urgc);
+        sds  pb   = c->http.post_body;
+        sds *argv = sdssplitlen(pb, sdslen(pb), "&", 1, &argc);
+        rargv     = zmalloc(sizeof(robj *) * (argc + urgc + 1));
+        for (int i = 0; i < urgc; i++) {
+            rargv[i + 1] = createStringObject(urgv[i], sdslen(urgv[i]));
+        }
+        for (int i = 0; i < argc; i++) {
+            char *x = strchr(argv[i], '=');
+            if (!x) continue; x++;
+            rargv[i + urgc + 1] = createStringObject(x, strlen(x));
+        }
+        argc += (urgc + 1); //NOTE: rargv[0] is ignored
+        zfree(urgv); zfree(argv);
+    } else {
+        sds *argv = sdssplitlen(file, sdslen(file), "/", 1, &argc);
+        rargv     = zmalloc(sizeof(robj *) * (argc + 1));
+        for (int i = 0; i < argc; i++) {
+            rargv[i + 1] = createStringObject(argv[i], sdslen(argv[i]));
+        }
+        argc++; //NOTE: rargv[0] is ignored
+        zfree(argv);
+    }
+    if (!luafunc_call(c, argc, rargv)) {
+        robj *resp = luaReplyToHTTPReply(server.lua);
+        SEND_REPLY_FROM_STRING(send_http_reponse_header(c, sdslen(resp->ptr)));
+        if (c->http.get || c->http.post) addReply(c, resp);
+        decrRefCount(resp);
+    }
+    for (int i = 1; i < argc; i++) decrRefCount(rargv[i]);
+    zfree(rargv);
+}
+static bool sendRestAPIReply(cli *c, sds file) { //printf("sendRestAPIReply\n");
+    int argc; bool ret = 0;
+    sds pb  = c->http.post_body;
+    sds url = pb ? sdscatprintf(sdsempty(), "%s%s", file, pb) :
+                   sdsdup(file);                                     //FREE 156
+    sds       *argv  = sdssplitlen(url, sdslen(url), "/", 1, &argc); //FREE 157
+    rcommand  *cmd   = lookupCommand(argv[0]);
+    if (!cmd) goto send_rest_end;
+    ret = 1;
+    printf("sendRestAPIReply: found cmd: %s\n", cmd->name);
+    if ((cmd->arity > 0 && cmd->arity != argc) || (argc < -cmd->arity)) {
+        addReplyErrorFormat(c,"wrong number of arguments for '%s' command",
+            cmd->name);
+        goto send_rest_end;
+    }
+    //NOTE: rest is copy of redis.c processCommand()
+    if (server.maxmemory) freeMemoryIfNeeded();
+    if (server.maxmemory && (cmd->flags & REDIS_CMD_DENYOOM) &&
+        zmalloc_used_memory() > server.maxmemory) {
+        addReplyError(c, "command not allowed when used memory > 'maxmemory'");
+        goto send_rest_end;
+    }
+    if ((dictSize(c->pubsub_channels) > 0 || listLength(c->pubsub_patterns) > 0)
+        &&
+        cmd->proc != subscribeCommand && cmd->proc != unsubscribeCommand &&
+        cmd->proc != psubscribeCommand && cmd->proc != punsubscribeCommand) {
+        addReplyError(c, 
+           "only (P)SUBSCRIBE / (P)UNSUBSCRIBE / QUIT allowed in this context");
+        goto send_rest_end;
+    }
+    if (server.masterhost && server.replstate != REDIS_REPL_CONNECTED &&
+        server.repl_serve_stale_data == 0 &&
+        cmd->proc != infoCommand && cmd->proc != slaveofCommand) {
+        addReplyError(c,
+            "link with MASTER is down and slave-serve-stale-data is set to no");
+        goto send_rest_end;
+    }
+    if (server.loading && cmd->proc != infoCommand) {
+        addReply(c, shared.loadingerr);
+        goto send_rest_end;
+    }
+    if (c->flags & REDIS_MULTI &&
+        cmd->proc != execCommand && cmd->proc != discardCommand &&
+        cmd->proc != multiCommand && cmd->proc != watchCommand) {
+        queueMultiCommand(c, cmd); addReply(c, shared.queued);
+        goto send_rest_end;
+    }
+    listNode *ln; listIter *li; cli *restc = server.alc.RestClient;
+    // 1.) call() cmd in RestClient
+    { // REST CLIENT call
+        robj **rargv = zmalloc(sizeof(robj *) * argc);
+        for (int i = 0; i < argc; i++) {
+            rargv[i] = createStringObject(argv[i], sdslen(argv[i]));
+        }
+        restc->argc = argc; restc->argv = rargv; call(restc, cmd);
+        for (int i = 0; i < argc; i++) decrRefCount(rargv[i]);
+        zfree(rargv);
+    }
+    // 2.) calculate Content-Length from RestClient's response
+    ulong brlen = restc->bufpos; ulong trlen = brlen;
+    if (restc->reply->len) {
+        li = listGetIterator(restc->reply, AL_START_HEAD);
+        while((ln = listNext(li))) {
+            robj *r = ln->value; trlen += sdslen(r->ptr);
+        } listReleaseIterator(li);
+    }
+    bool err = brlen && (*restc->buf == '-');
+    //TODO check for "+OK" and return 201 w/ no body
+    // 3.) create header w/ Content-Length
+    sds   s  = err ? send_http404_reponse_header(c, trlen) :
+                     send_http200_reponse_header(c, trlen);
+    robj *ho = createObject(REDIS_STRING, s);
+    addReply(c, ho);
+    // 4.) tack on RestClient's response as HTTP Body
+    if (brlen) { addReplyString(c, restc->buf, brlen); }
+    if (restc->reply->len) {
+        li = listGetIterator(restc->reply, AL_START_HEAD);
+        while((ln = listNext(li))) {
+            robj *r = ln->value; addReply(c, r);
+        } listReleaseIterator(li);
+    }
+    // 5.) reset RestClient
+    restc->bufpos = 0;
+    while (restc->reply->len) {
+        listDelNode(restc->reply, listFirst(restc->reply));
+    }
+
+send_rest_end:
+    sdsfree(url); zfree(argv); return ret;               // FREED 156 & 157
+}
 void end_http_session(cli *c) {
     if (c->http.get || c->http.post || c->http.head) {
-        sds  file = c->http.file->ptr;
-        if (!strncasecmp(file, "STATIC/", 7)) {
-            robj *o;
-            if ((o = lookupKeyRead(c->db, c->http.file)) == NULL) SEND_404
-            else if (o->type != REDIS_STRING)                     SEND_404
-            else { //NOTE: STATIC expire in 10 years (HARDCODED)
-                listNode *ln;
-                bool      dfl = 0;
-                listIter *li  = listGetIterator(c->http.req_hdr, AL_START_HEAD);
-                while((ln = listNext(li))) { // check for "deflate"
-                    two_sds *ss = ln->value;
-                    if (!strncasecmp(ss->a, "Accept-Encoding", 15)) {
-                        if (strcasestr(ss->b, "deflate")) { dfl = 1; break; }
-                    }
-                } listReleaseIterator(li);
-                if (dfl) {
-                    robj *dfile = _createStringObject("DEFLATE/");
-                    dfile->ptr  = sdscatlen(dfile->ptr, c->http.file->ptr,
-                                                     sdslen(c->http.file->ptr));
-                    robj *od;
-                    if ((od = lookupKeyRead(c->db, dfile)) &&
-                         od->type == REDIS_STRING) {
-                        o = od;
-                        addHttpResponseHeader(sdsnew("Content-Encoding"),
-                                              sdsnew("deflate"));
-                    }
-                }
-                addHttpResponseHeader(sdsnew("Expires"),
-                                      sdsnew("Wed, 09 Jun 2021 10:18:14 GMT;"));
-                send_http_200_reponse_header(c, o->ptr);
-                addReply(c, o);
+        bool ws = (server.alc.WebServerMode != -1);
+        bool rs = (server.alc.RestAPIMode   != -1);
+        if (!ws && !rs) addReply(c, shared.http_not_on);
+        else {
+            sds  file = c->http.file->ptr;
+            bool done = rs ? sendRestAPIReply(c, file) : 0;
+            if (!done) {
+                if (!strncasecmp(file, "STATIC/", 7)) sendStaticFileReply(c);
+                else                                  sendLuaFuncReply(c, file);
             }
-        } else {
-            int argc; robj **rargv = NULL;
-            if (!sdslen(file) || !strcmp(file, "/")) {
-                argc      = 2; //NOTE: rargv[0] is ignored
-                rargv     = zmalloc(sizeof(robj *) * argc);
-                rargv[1]  = _createStringObject(server.alc.WebServerIndexFunc);
-            } else if (c->http.post && c->http.req_clen) {
-                int  urgc;
-                sds *urgv = sdssplitlen(file, sdslen(file), "/", 1, &urgc);
-                sds  pb   = c->http.post_body;
-                sds *argv = sdssplitlen(pb, sdslen(pb), "&", 1, &argc);
-                rargv     = zmalloc(sizeof(robj *) * (argc + urgc + 1));
-                for (int i = 0; i < urgc; i++) {
-                    rargv[i + 1] = createStringObject(urgv[i], sdslen(urgv[i]));
-                }
-                for (int i = 0; i < argc; i++) {
-                    char *x = strchr(argv[i], '=');
-                    if (!x) continue; x++;
-                    rargv[i + urgc + 1] = createStringObject(x, strlen(x));
-                }
-                argc += (urgc + 1); //NOTE: rargv[0] is ignored
-                zfree(urgv); zfree(argv);
-            } else {
-                sds *argv = sdssplitlen(file, sdslen(file), "/", 1, &argc);
-                rargv     = zmalloc(sizeof(robj *) * (argc + 1));
-                for (int i = 0; i < argc; i++) {
-                    rargv[i + 1] = createStringObject(argv[i], sdslen(argv[i]));
-                }
-                argc++; //NOTE: rargv[0] is ignored
-                zfree(argv);
-            }
-            //TODO do lookupCommand(argv[0]) -> REST API
-            if (!luafunc_call(c, argc, rargv)) {
-                robj *resp = luaReplyToHTTPReply(server.lua);
-                send_http_reponse_header(c, resp->ptr);
-                if (c->http.get || c->http.post) addReply(c, resp);
-                decrRefCount(resp);
-            }
-            for (int i = 1; i < argc; i++) decrRefCount(rargv[i]);
-            zfree(rargv);
         }
         if (c->http.post_body) sdsfree(c->http.post_body);
     }
@@ -444,7 +547,7 @@ bool luafunc_call(redisClient *c, int argc, robj **argv) {
         sds err = sdscatprintf(sdsempty(), "Error running script (%s): %s\n",
                                            fname, lua_tostring(server.lua, -1));
         if (c->http.mode == HTTP_MODE_ON) {
-            send_http_200_reponse_header(c, err);
+            SEND_REPLY_FROM_STRING(send_http200_reponse_header(c, sdslen(err)));
             SEND_REPLY_FROM_STRING(err); sdsfree(err);
         } else {
             addReplyErrorFormat(c, "%s", err);

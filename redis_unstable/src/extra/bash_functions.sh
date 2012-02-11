@@ -823,6 +823,7 @@ function all_tests() {
   all_tests_4
   all_tests_5
   all_tests_6
+  rest_api_first_test
 }
 function all_tests_plus_benchmarks() {
   all_tests
@@ -3306,4 +3307,20 @@ function wiki_lua_tests() {
   $CLI SELECT "update_weight(info)" FROM users WHERE "userid = 1"
   echo "2 rows - with ORDERBY func"
   $CLI SELECT "format_name(info)" FROM users WHERE "zipcode = 44555 ORDER BY string.sub(info.fname,1,3)"
+}
+
+function rest_api_first_test() {
+  $CLI CONFIG SET rest_api_mode yes
+  $CLI CONFIG SET lua_output_start output_start_http;
+  $CLI CONFIG SET lua_output_cnames output_cnames_http;
+  $CLI CONFIG SET lua_output_row output_row_http;
+  $CLI CONFIG SET OUTPUTMODE LUA
+  curl -D - 127.0.0.1:6379"/DROP/TABLE/rest"
+  curl -D - -d "(pk INT, fk INT, col TEXT)" 127.0.0.1:6379/CREATE/TABLE/rest/
+  curl -D - 127.0.0.1:6379"/CREATE/INDEX/i_rest/ON/rest/(fk)"
+  curl -D - -d "(,2,'TOPDAWG')/RETURN SIZE" "127.0.0.1:6379/INSERT/INTO/rest/VALUES/"
+  curl -D - -d "(,2,'TEST')/RETURN SIZE" "127.0.0.1:6379/INSERT/INTO/rest/VALUES/"
+  curl -D - 127.0.0.1:6379/SCAN/\*/FROM/rest
+  $CLI CONFIG SET rest_api_mode no
+  $CLI CONFIG SET OUTPUTMODE NORMAL
 }
