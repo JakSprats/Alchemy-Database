@@ -29,5 +29,14 @@ function retrieve (Q)
   return v
 end
 
+function retrieveFromEnd (Q)
+  local last  = Q.last
+  assert(last >= Q.first, "cannot retrieveFromEnd from empty queue")
+  local v = Q[last]
+  Q[last] = nil -- allow GC
+  Q.last = last - 1
+  return v
+end
+
 function isempty (Q) return Q.last < Q.first end
 

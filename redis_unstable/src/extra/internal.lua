@@ -175,8 +175,10 @@ function output_row(...)
 end
 
 -- HTTP_LUA_RESPONSE_ROUTINES HTTP_LUA_RESPONSE_ROUTINES
+RowCounter = 0;
 function output_start_http(card)
-    return "nrows=" .. card .. '\r\n';
+    RowCounter = 0;
+    return "nrows=" .. card .. ';\r\n';
 end
 local function output_delim_http(...)
    local printResult = '';
@@ -184,11 +186,12 @@ local function output_delim_http(...)
      if (string.len(printResult) > 0) then printResult = printResult .. ","; end
      printResult = printResult .. tostring(v);
    end
-   return printResult .. '\r\n';
+   return printResult .. ';\r\n';
 end
 function output_cnames_http(...)
-   return 'ColumnNames: ' .. output_delim_http(...);
+   return 'ColumnNames=' .. output_delim_http(...);
 end
 function output_row_http(...)
-  return output_delim_http(...);
+  RowCounter = RowCounter + 1;
+  return 'row[' .. RowCounter .. ']=' .. output_delim_http(...);
 end
