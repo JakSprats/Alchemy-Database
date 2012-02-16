@@ -1,12 +1,20 @@
-
 local math  = math
 local Queue = require "Queue"
 local Heap  = require "Heap"
 
+--NOTE: Vset[] used by shortestpath()
 Vset = {}; -- table(unique-list) of vertices
 
-DIRECTION_OUT = 2;
-DIRECTION_IN  = 1;
+-- CONSTANTS CONSTANTS CONSTANTS CONSTANTS CONSTANTS CONSTANTS CONSTANTS
+Direction      = {}; -- RELATIONSHIP Directions
+Direction.OUT  = 2;
+Direction.IN   = 1;
+Direction.BOTH = 0;
+
+Uniqueness             = {};
+Uniqueness.NODE_GLOBAL = 1;
+Uniqueness.NONE        = 2;
+Uniqueness.PATH_GLOBAL = 3;
 
 -- NODES NODES NODES NODES NODES NODES NODES NODES NODES NODES NODES NODES
 function createNode(tname, lo, pk)
@@ -115,14 +123,14 @@ function addPropertyToRelationship(snode, rtype, tnode, prop, value)
 end
 
 -- DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
---TODO direction==0 means either direction
-local function getDirections(direction)
-  if     (direction == DIRECTION_IN)  then return 1;
-  elseif (direction == DIRECTION_OUT) then return 2; 
-  else   error("direction must be:[INCOMING|OUTGOING]"); end
+--TODO Direction.BOTH
+local function getDirection(direction)
+  if     (direction == Direction.IN or
+          direction == Direction.OUT) then return direction; 
+  else error("direction must be:[INCOMING|OUTGOING]"); end
 end
 function getAllNodesFromRelationship(snode, rtype, direction)
-  local sd = getDirections(direction);
+  local sd = getDirection(direction);
   if (snode.r == nil or snode.r[rtype] == nil or snode.r[rtype][sd] == nil) then
       return {};
   end
@@ -135,10 +143,10 @@ function printNameFromRel(snode, rtype, direction)
   end
 end
 
---TODO getAllRelatedNodesByRelation(snode, relt[], direction)
---TODO direction = 0, means EITHER direction
-local function getAllRelatedNodes(snode, direction)
-  local sd = getDirections(direction);
+--TODO getNeighborhoodByRelation(snode, rel_and_dir_t[])
+
+local function getNeighborhood(snode, direction)
+  local sd = getDirection(direction);
   if (snode.r == nil) then return {}; end
   local t = {};
   for rtype, relt in pairs(snode.r) do
@@ -151,8 +159,9 @@ local function getAllRelatedNodes(snode, direction)
   end
   return t;
 end
-local function getAllRelNodesWithRelProp(snode, direction, prop)
-  local sd = getDirections(direction);
+--TODO combine getHood_MatchRelProp & getNeighborhood
+local function getHood_MatchRelProp(snode, direction, prop)
+  local sd = getDirection(direction);
   if (snode.r == nil) then return {}; end
   local t = {};
   for rtype, relt in pairs(snode.r) do
@@ -188,30 +197,68 @@ function getPath(x)
   return paths;
 end
 
+local function getDepths(depth)
+  local mind, maxd = 0, math.huge;
+  if (depth ~= nil and type(depth) == 'table') then
+    maxd = depth.max; mind = depth.min;
+  end
+  return {min = mind; max = maxd};
+end
+local function getUniqueness(uniq)
+  if     (uniq == nil)                    then return Uniqueness.NODE_GLOBAL;
+  elseif (uniq == Uniqueness.NODE_GLOBAL or
+          uniq == Uniqueness.NONE        or
+          uniq == Uniqueness.PATH_GLOBAL) then return uniq;
+  else error("Uniquness.[NODE_GLOBAL|NONE|PATH_GLOBAL]"); end
+end
+local function getVirgin(u, x, vizd)
+  local doit;
+  local which;
+  if     (u == Uniqueness.NODE_GLOBAL and not vizd[x.node]) then
+    doit = true; which = x.node;
+  elseif (u == Uniqueness.NONE)                             then
+    doit = true; which = x.node;
+  elseif (u == Uniqueness.PATH_GLOBAL) then
+    if (x.parent == nil) then
+      doit = true; which = 0;
+    else
+      which = x.parent.node.name .. '.' .. x.node.name;
+      doit  = (not vizd[which]);
+    end
+  else
+    doit = false;
+  end
+  return doit, which;
+end
+
 -- REPLY_FUNC REPLY_FUNC REPLY_FUNC REPLY_FUNC REPLY_FUNC REPLY_FUNC
-function rf_node_name    (x) return x.node.name;   end
-function rf_path         (x) return getPath(x); end
+function rf_node_name    (x) return x.node.name;                        end
+function rf_path         (x) return getPath(x);                         end
 function rf_node_and_path(x) return {node = x.node, path = getPath(x)}; end
 
 -- BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS
-function traverse_bfs(v, reply_func)
+function traverse_bfs(v, reply_func, depth, uniq)
   assert(Vset[v]    ~= nil, "vertex not in graph");
   assert(reply_func ~= nil, "arg: reply_func not defined");
-  local visited    = {}; -- control set
-  local t          = {}; -- return table
-  local Q          = Queue.new();
-  Q:insert({node = v; parent = nil;});
+  local d     = getDepths(depth);
+  local u     = getUniqueness(uniq);
+  local vizd  = {}; -- control set
+  local t     = {}; -- return table
+  local Q     = Queue.new();
+  local x     = {node = v; parent = nil; depth = 1;};
+  Q:insert(x);
   while (not Q:isempty()) do
-    local x = Q:retrieve();
-    local u = x.node;
-    if (not visited[u]) then
-      visited[u]      = true;
-      table.insert(t, reply_func(x));
-      local newparent = x;
-      for k, w in pairs(getAllRelatedNodes(u, DIRECTION_OUT)) do
-        if (not visited[w]) then
-          Q:insert({node=w; parent=newparent});
-        end
+    local x  = Q:retrieve();
+    if (x.depth > d.max) then break; end
+    local n      = x.node;
+    local doit, which = getVirgin(u, x, vizd);
+    if (doit) then
+      vizd [which] = true;
+      if (x.depth >= d.min) then table.insert(t, reply_func(x)); end
+      for k, w in pairs(getNeighborhood(n, Direction.OUT)) do
+        local y  = {node = w; parent = x; depth = (x.depth + 1)};
+        local doity, whichy = getVirgin(u, y, vizd);
+        if (doity) then Q:insert(y); end
       end
     end
   end
@@ -219,24 +266,29 @@ function traverse_bfs(v, reply_func)
 end
 
 -- DFS DFS DFS DFS DFS DFS DFS DFS DFS DFS DFS DFS DFS DFS DFS DFS DFS DFS
-local function search(v, visited, t, par, reply_func)
-  visited[v] = true -- mark v as visited
-  for k, w in pairs(getAllRelatedNodes(v, DIRECTION_OUT)) do
-    if (not visited[w]) then -- search deeper?
-      local child = {node = w; parent = par;};
-      table.insert(t, reply_func(child)); 
-      search(w, visited, t, child, reply_func)
+local function dfs_search(v, vizd, t, x, reply_func, d, u)
+  local doit, which = getVirgin(u, x, vizd);
+  vizd[which] = true
+  if (x.depth >= d.max) then return; end
+  for k, n in pairs(getNeighborhood(v, Direction.OUT)) do
+    local child = {node = n; parent = x; depth = (x.depth + 1)};
+    local doity, whichy = getVirgin(u, child, vizd);
+    if (doity) then
+      if (child.depth >= d.min) then table.insert(t, reply_func(child)); end
+      dfs_search(n, vizd, t, child, reply_func, d, u)
     end
   end
 end
-function traverse_dfs(v, reply_func)
+function traverse_dfs(v, reply_func, depth, uniq)
   assert(Vset[v]    ~= nil, "vertex not in graph");
   assert(reply_func ~= nil, "arg: reply_func not defined");
-  local visited = {}; -- control set
-  local t       = {}; -- return table
-  local par = {node = v; parent = nil;};
-  table.insert(t, reply_func(par)); 
-  search(v, visited, t, par, reply_func)
+  local d     = getDepths(depth);
+  local u     = getUniqueness(uniq);
+  local vizd  = {}; -- control set
+  local t     = {}; -- return table
+  local x     = {node = v; parent = nil; depth = 1;};
+  if (x.depth >= d.min) then table.insert(t, reply_func(x));  end
+  dfs_search(v, vizd, t, x, reply_func, d, u)
   return t;
 end
 
@@ -262,7 +314,7 @@ function shortestpath(snode, tnode)
     local u, x = H:retrieve()
     local du   = x.cost;
     if (u == tnode) then break; end
-    for wt, n in pairs(getAllRelNodesWithRelProp(u, DIRECTION_OUT, 'weight')) do
+    for wt, n in pairs(getHood_MatchRelProp(u, Direction.OUT, 'weight')) do
       local dn = dist[n];
       local d  = du + wt;
       if (d < min) then
@@ -304,17 +356,17 @@ function initial_test()
   addNodeRelationShip(lo4.node, 'KNOWS', loa.node);
 
   print ('3 matches: KNOWS: 2 OUT');
-  printNameFromRel(lo2.node, 'KNOWS', DIRECTION_OUT);
+  printNameFromRel(lo2.node, 'KNOWS', Direction.OUT);
   print ('1 match: LIKE: 2 IN');
-  printNameFromRel(lo2.node, 'LIKES', DIRECTION_IN);
+  printNameFromRel(lo2.node, 'LIKES', Direction.IN);
 
   deleteNodeRelationShip(lo1.node, 'LIKES', lo2.node);
   print ('0 matches: LIKE: 2 IN - deleted');
-  printNameFromRel(lo2.node, 'LIKES', DIRECTION_IN);
+  printNameFromRel(lo2.node, 'LIKES', Direction.IN);
 
   addPropertyToRelationship(lo2.node, 'KNOWS', lo3.node, 'weight', 10);
   print ('3 matches: KNOWS: 2 OUT - one w/ weight');
-  printNameFromRel(lo2.node, 'KNOWS', DIRECTION_OUT);
+  printNameFromRel(lo2.node, 'KNOWS', Direction.OUT);
 
   local x = traverse_bfs(lo2.node, rf_path);
   print('BreadthFirst: rf_path');
@@ -324,8 +376,8 @@ function initial_test()
   print('BreadthFirst: reply_func_node_name');
   for k,v in pairs(y) do print("\tNAME: " .. v); end
 
-  print('BreadthFirst: rf_node_and_path');
-  local z = traverse_bfs(lo2.node, rf_node_and_path);
+  print('BreadthFirst: rf_node_and_path {min=2; max=3;}');
+  local z = traverse_bfs(lo2.node, rf_node_and_path, {min=2; max=3;});
   for k,v in pairs(z) do
     print("\tNAME: " .. v.node.name .. "\tPATH: " .. v.path);
   end
@@ -335,6 +387,10 @@ function initial_test()
   for k,v in pairs(z) do
     print("\tNAME: " .. v.node.name .. "\tPATH: " .. v.path);
   end
+
+  x = traverse_dfs(lo2.node, rf_path, {min=2; max=3;});
+  print('DepthFirst: rf_path {min=2; max=3;}');
+  for k,v in pairs(x) do print("\tPATH: " .. v); end
 end
 
 function best_path_test()
@@ -392,4 +448,62 @@ function best_path_test()
 
   local t = shortestpath(loA.node, loB.node);
   print('shortestpath[A->B]: cost: ' .. t.cost .. ' path: ' .. t.path);
+end
+
+function unique_none_test()
+  loX = {}; createNode(tbl, loX, 11) addNodeProperty(loX.node, 'name', 'X');
+  loY = {}; createNode(tbl, loY, 12) addNodeProperty(loY.node, 'name', 'Y');
+  loZ = {}; createNode(tbl, loZ, 14) addNodeProperty(loZ.node, 'name', 'Z');
+  addNodeRelationShip(loX.node, 'KNOWS', loY.node);
+  addNodeRelationShip(loY.node, 'KNOWS', loZ.node);
+  addNodeRelationShip(loZ.node, 'KNOWS', loX.node);
+
+  print('BreadthFirst: rf_node_and_path - UNIQ: NONE max_depth=10');
+  local z = traverse_bfs(loX.node, rf_node_and_path,
+                         {min=1; max=10;}, Uniqueness.NONE);
+  for k,v in pairs(z) do
+    print("\tNAME: " .. v.node.name .. "\tPATH: " .. v.path);
+  end
+end
+
+function unique_path_test()
+  loU = {}; createNode(tbl, loU,  8) addNodeProperty(loU.node, 'name', 'U');
+  loV = {}; createNode(tbl, loV,  9) addNodeProperty(loV.node, 'name', 'V');
+  loW = {}; createNode(tbl, loW, 10) addNodeProperty(loW.node, 'name', 'W');
+  loX = {}; createNode(tbl, loX, 11) addNodeProperty(loX.node, 'name', 'X');
+  loY = {}; createNode(tbl, loY, 12) addNodeProperty(loY.node, 'name', 'Y');
+  loZ = {}; createNode(tbl, loZ, 14) addNodeProperty(loZ.node, 'name', 'Z');
+  addNodeRelationShip(loX.node, 'KNOWS', loY.node);
+  addNodeRelationShip(loY.node, 'KNOWS', loZ.node);
+  addNodeRelationShip(loZ.node, 'KNOWS', loX.node);
+
+  addNodeRelationShip(loX.node, 'KNOWS', loW.node);
+  addNodeRelationShip(loW.node, 'KNOWS', loZ.node);
+
+  addNodeRelationShip(loW.node, 'KNOWS', loV.node);
+  addNodeRelationShip(loV.node, 'KNOWS', loZ.node);
+
+  addNodeRelationShip(loZ.node, 'KNOWS', loU.node);
+  addNodeRelationShip(loU.node, 'KNOWS', loV.node);
+
+  print('BreadthFirst: rf_node_and_path - UNIQ: NONE max_depth=10');
+  local z = traverse_bfs(loX.node, rf_node_and_path,
+                         {min=1; max=10;}, Uniqueness.PATH_GLOBAL);
+  for k,v in pairs(z) do
+    print("\tNAME: " .. v.node.name .. "\tPATH: " .. v.path);
+  end
+
+  print('DepthFirst: rf_node_and_path - UNIQ: NONE max_depth=10');
+  z = traverse_dfs(loX.node, rf_node_and_path,
+                         {min=1; max=10;}, Uniqueness.PATH_GLOBAL);
+  for k,v in pairs(z) do
+    print("\tNAME: " .. v.node.name .. "\tPATH: " .. v.path);
+  end
+end
+
+function run_tests()
+  initial_test();
+  best_path_test();
+  unique_none_test();
+  unique_path_test();
 end
