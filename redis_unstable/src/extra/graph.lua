@@ -23,8 +23,7 @@ Evaluation.EXCLUDE_AND_CONTINUE = 3;
 Evaluation.EXCLUDE_AND_PRUNE    = 4;
 
 -- NODES NODES NODES NODES NODES NODES NODES NODES NODES NODES NODES NODES
---TODO this should be private, createNamedNode() should be public
-function createNode(tname, lo, pk)
+local function createNode(tname, lo, pk)
   if     (lo      == nil) then error("createNode(x) - x does not exist");
   elseif (lo.node ~= nil) then error("createNode - Node already exists");
   elseif (pk      == nil) then error("createNode(x, pk) - pk not defined"); end
@@ -34,9 +33,8 @@ function createNode(tname, lo, pk)
   --      (need bool in mod funcs to turn off/on READONLY)
   --     should also be recursively to lo.node.r[]
 end
---TODO change lo.node.name -> lo.node.__name
 function createNamedNode(tname, lo, pk, name)
-  createNode(tname, lo, pk); lo.node.name= name;
+  createNode(tname, lo, pk); lo.node.__name = name;
 end
 
 function deleteNode(lo)
@@ -133,32 +131,19 @@ function addPropertyToRelationship(snode, rtype, tnode, prop, value)
   tnode.r[rtype][td][snode.__pk][prop] = value;
 end
 
--- DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
---TODO deprecate
-local function getDirection(direction)
-  if     (direction == Direction.INCOMING or
-          direction == Direction.OUTGOING) then return direction; 
-  else error("direction must be:[INCOMING|OUTGOING]"); end
-end
---TODO deprecate
-function getAllNodesFromRelationship(snode, rtype, direction)
-  local sd = getDirection(direction);
-  if (snode.r == nil or snode.r[rtype] == nil or snode.r[rtype][sd] == nil) then
-      return {};
-  end
-  return snode.r[rtype][sd];
-end
---TODO deprecate
-function printNameFromRel(snode, rtype, direction)
-  for k,v in pairs(getAllNodesFromRelationship(snode, rtype, direction)) do
-    print ("\tPK: " .. k .. ' NAME: ' .. v.target.name);
-    if (v.weight) then print("\t\tWEIGHT: " .. v.weight); end
-  end
-end
-
 -- NEIGHBORHOOD NEIGHBORHOOD NEIGHBORHOOD NEIGHBORHOOD NEIGHBORHOOD
-local function defaultExpanderFunc(x, rtype, relation)
+local function expanderOutgoing(x, rtype, relation)
   return (relation[Direction.OUTGOING] ~= nil), Direction.OUTGOING;
+end
+local function expanderIncoming(x, rtype, relation)
+  return (relation[Direction.INCOMING] ~= nil), Direction.INCOMING;
+end
+local function expanderBoth(x, rtype, relation)
+  return ((relation[Direction.INCOMING] ~= nil) or
+          (relation[Direction.OUTGOING] ~= nil)), Direction.BOTH;
+end
+local function defaultExpanderFunc(x, rtype, relation)
+  return expanderOutgoing(x, rtype, relation);
 end
 
 local function validateRelEvalFunc(doit, dir)
@@ -166,44 +151,47 @@ local function validateRelEvalFunc(doit, dir)
          dir >= Direction.BOTH and dir <= Direction.OUTGOING,
          "RelationEvaluationFuncs: return [yes,direction]");
 end
-local function getNeighborhoodInDirection(t, x, relation, dir, nopts)
+local function getSingleNBhoodRel(t, x, rtype, relation, dir, nopts)
   local pkt = relation[dir];
   if (pkt == nil) then return; end
-  for pk, targt in pairs(pkt) do
+  for pk, trgt in pairs(pkt) do
     if     (nopts.rel_cost_func ~= nil) then 
-      local pval = nopts.rel_cost_func(targt);
-      table.insert(t, pval, targt.target);
+      local pval = nopts.rel_cost_func(trgt);
+      table.insert(t, pval, 
+                   {node = trgt.target; rtype = rtype; relation = relation;});
     elseif (nopts.node_diff_func ~= nil) then 
-      local pval = nopts.node_diff_func(x.node, targt.target);
-      table.insert(t, pval, targt.target);
+      local pval = nopts.node_diff_func(x.w.node, trgt.target);
+      table.insert(t, pval,
+                   {node = trgt.target; rtype = rtype; relation = relation;});
     else
-      table.insert(t, targt.target);
+      table.insert(t,
+                   {node = trgt.target; rtype = rtype; relation = relation;});
     end
   end
 end
-local function getNeighborhoodRelation(x, nopts, t, rtype, relation)
-    local doit, dir = nopts.expander_func(x, rtype, relation, x.node.r);
+local function getNBhoodRel(x, nopts, t, rtype, relation)
+    local doit, dir = nopts.expander_func(x, rtype, relation, x.w.node.r);
     validateRelEvalFunc(doit, dir);
     if (doit) then
       if (dir == Direction.BOTH) then
-        getNeighborhoodInDirection(t, x, relation, Direction.OUTGOING, nopts);
-        getNeighborhoodInDirection(t, x, relation, Direction.INCOMING, nopts);
+        getSingleNBhoodRel(t, x, rtype, relation, Direction.OUTGOING, nopts);
+        getSingleNBhoodRel(t, x, rtype, relation, Direction.INCOMING, nopts);
       else
-        getNeighborhoodInDirection(t, x, relation, dir,                nopts);
+        getSingleNBhoodRel(t, x, rtype, relation, dir,                nopts);
       end
     end
 end
 local function getNeighborhood(x, nopts) 
-  if (x.node.r == nil) then return {}; end
+  if (x.w.node.r == nil) then return {}; end
   local t = {};
   if (nopts.all_rel_expander_func ~= nil) then 
-    local do_us = nopts.all_rel_expander_func(x, x.node.r);
+    local do_us = nopts.all_rel_expander_func(x, x.w.node.r);
     for k, v in pairs(do_us) do
-      getNeighborhoodRelation(x, nopts, t, v.rtype, v.relation);
+      getNBhoodRel(x, nopts, t, v.rtype, v.relation);
     end
   else
-    for rtype, relation in pairs(x.node.r) do
-      getNeighborhoodRelation(x, nopts, t, rtype, relation);
+    for rtype, relation in pairs(x.w.node.r) do
+      getNBhoodRel(x, nopts, t, rtype, relation);
     end
   end
   return t;
@@ -252,38 +240,47 @@ end
 -- TRAVERSERS TRAVERSERS TRAVERSERS TRAVERSERS TRAVERSERS TRAVERSERS TRAVERSERS
 StartPK = 0; -- Used to Include/Exclude start-node
 
---TODO add direction to path (e.g. A->B<-C)
+function getRelationText(rtype, relation)
+  if (relation[Direction.OUTGOING] ~= nil) then
+    return '-[' .. rtype .. ']->';
+  else -- Direction.INCOMING
+    return '<-[' .. rtype .. ']-';
+  end
+end
 function getPath(x)
   local Q      = Queue.new();
   local parent = x.parent;
   while (parent ~= nil) do
-    Q:insert(parent.node);
+    Q:insert(parent.w);
     local gparent = parent.parent;
     parent        = gparent;
   end
   local paths = '';
   while (not Q:isempty()) do
-    local u = Q:retrieveFromEnd();
-    if (string.len(paths) > 0) then paths = paths .. '.'; end
-    paths = paths .. u.name;
+    local w = Q:retrieveFromEnd();
+    if (string.len(paths) > 0) then
+      paths = paths .. getRelationText(w.rtype, w.relation);
+    end
+    paths = paths .. w.node.__name;
   end
-  if (string.len(paths) > 0) then paths = paths .. '.'; end
-  paths = paths .. x.node.name;
+  if (string.len(paths) > 0) then
+    paths = paths .. getRelationText(x.w.rtype, x.w.relation);
+  end
+  paths = paths .. x.w.node.__name;
   return paths;
 end
 
-local function getVirgin(u, x, vizd)
-  local doit;
-  local which;
-  if     (u == Uniqueness.NODE_GLOBAL and not vizd[x.node]) then
-    doit = true; which = x.node;
+local function isVirgin(u, x, vizd)
+  local doit; local which;
+  if     (u == Uniqueness.NODE_GLOBAL and not vizd[x.w.node]) then
+    doit = true; which = x.w.node;
   elseif (u == Uniqueness.NONE)                             then
-    doit = true; which = x.node;
+    doit = true; which = x.w.node;
   elseif (u == Uniqueness.PATH_GLOBAL)                      then
     if (x.parent == nil) then
       doit = true; which = 0;
-    else
-      which = x.parent.node.name .. '.' .. x.node.name;
+    else --TODO '.' means direction is not specified
+      which = x.parent.w.node.__name .. '.' .. x.w.node.__name;
       doit  = (not vizd[which]);
     end
   else
@@ -306,9 +303,9 @@ local function validateEvaled(eed)
 end
 
 -- REPLY_FUNC REPLY_FUNC REPLY_FUNC REPLY_FUNC REPLY_FUNC REPLY_FUNC
-function rf_node_name    (x) return x.node.name;                        end
-function rf_path         (x) return getPath(x);                         end
-function rf_node_and_path(x) return {node = x.node, path = getPath(x)}; end
+function rf_node_name    (x) return x.w.node.__name;                      end
+function rf_path         (x) return getPath(x);                           end
+function rf_node_and_path(x) return {node = x.w.node, path = getPath(x)}; end
 
 -- BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS
 function traverse_bfs(v, reply_func, options)
@@ -323,12 +320,12 @@ function traverse_bfs(v, reply_func, options)
   local vizd  = {}; -- control set
   local t     = {}; -- return table
   local Q     = Queue.new();
-  local x     = {node = v; parent = nil; depth = 1;};
+  local x     = {w = {node = v;}; parent = nil; depth = 1;};
   Q:insert(x);
   while (not Q:isempty()) do
     local x  = Q:retrieve();
     if (x.depth > d.max) then break; end
-    local doit, which = getVirgin(u, x, vizd);
+    local doit, which = isVirgin(u, x, vizd);
     if (doit) then
       vizd [which]          = true;
       local eed             = evalf(x);
@@ -339,9 +336,9 @@ function traverse_bfs(v, reply_func, options)
         end
         if (not prun) then
           for k, w in pairs(getNeighborhood(x, nopts)) do
-            local y  = {node = w; parent = x; depth = (x.depth + 1)};
-            local doity, whichy = getVirgin(u, y, vizd);
-            if (doity) then Q:insert(y); end
+            local child = {w = w; parent = x; depth = (x.depth + 1);};
+            local doity, whichy = isVirgin(u, child, vizd);
+            if (doity) then Q:insert(child); end
           end
         end
       end
@@ -352,7 +349,7 @@ end
 
 -- DFS DFS DFS DFS DFS DFS DFS DFS DFS DFS DFS DFS DFS DFS DFS DFS DFS DFS
 local function dfs_search(vizd, t, x, reply_func, d, u, nopts, evalf)
-  local doit, which = getVirgin(u, x, vizd);
+  local doit, which = isVirgin(u, x, vizd);
   if (doit) then
     vizd[which] = true
     local eed             = evalf(x);
@@ -362,9 +359,9 @@ local function dfs_search(vizd, t, x, reply_func, d, u, nopts, evalf)
     end
     if (x.depth >= d.max) then return; end
     if (cont) then
-      for k, n in pairs(getNeighborhood(x, nopts)) do
-        local child = {node = n; parent = x; depth = (x.depth + 1)};
-        local doity, whichy = getVirgin(u, child, vizd);
+      for k, w in pairs(getNeighborhood(x, nopts)) do
+        local child = {w = w; parent = x; depth = (x.depth + 1)};
+        local doity, whichy = isVirgin(u, child, vizd);
         if (doity) then
           dfs_search(vizd, t, child, reply_func, d, u, nopts, evalf)
         end
@@ -383,7 +380,7 @@ function traverse_dfs(v, reply_func, options)
                  all_rel_expander_func = getEvalAllRelFunc(options);}
   local vizd  = {}; -- control set
   local t     = {}; -- return table
-  local x     = {node = v; parent = nil; depth = 1;};
+  local x     = {w = {node = v;}; parent = nil; depth = 1;};
   dfs_search(vizd, t, x, reply_func, d, u, nopts, evalf)
   return t;
 end
@@ -410,19 +407,20 @@ function shortestpath(snode, tnode, so_options)
   for u in vertices() do dist[u] = math.huge end
   dist[snode] = 0;
   for u, d in pairs(dist) do -- build heap
-    H:insert(u, {node = u; parent = nil; cost = d;})
+    H:insert(u, {w = {node = u;}; parent = nil; cost = d;})
   end
   while (not H:isempty()) do
     local u, x = H:retrieve()
     local du   = x.cost;
     if (u == tnode) then break; end
-    for wt, n in pairs(getNeighborhood(x, nopts)) do
+    for wt, w in pairs(getNeighborhood(x, nopts)) do
+      local n  = w.node;
       local dn = dist[n];
       local d  = du + wt;
       if (d < min) then
         if (dn > d) then
           dist[n] = d;
-          local path = {node = n; parent = x; cost = d;};
+          local path = {w = w; parent = x; cost = d;};
           paths[n] = path;
           if (n == tnode and d < min) then min = d; end
           H:update(n, path);
@@ -432,3 +430,23 @@ function shortestpath(snode, tnode, so_options)
   end
   return {cost = dist[tnode]; path=getPath(paths[tnode])};
 end
+
+-- DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
+function debugPrintNameFromRel(v, rtype, direction)
+  local nopts = {};
+  if     (direction == Direction.INCOMING) then 
+    nopts.expander_func = expanderIncoming;
+  elseif (direction == Direction.OUTGOING) then
+    nopts.expander_func = expanderOutgoing;
+  elseif (direction == Direction.BOTH)     then
+    nopts.expander_func = expanderBoth;
+  else 
+    error("Direction must be [Direction.INCOMING|OUTGOING|BOTH]");
+  end
+  local x = {w = {node = v;}; parent = nil; depth = 1;};
+  for k, w in pairs(getNeighborhood(x, nopts)) do
+    print ("\tPK: " .. k .. ' NAME: ' .. w.node.__name);
+    if (w.weight) then print("\t\tWEIGHT: " .. w.weight); end
+  end
+end
+
