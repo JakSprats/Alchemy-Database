@@ -8,6 +8,8 @@ require "pluto"
 dofile 'extra/dumper.lua';
 
 -- DOT_NOTATION_INDEX DOT_NOTATION_INDEX DOT_NOTATION_INDEX DOT_NOTATION_INDEX
+IndexKeywords = {node = true;}
+
 function setIndex(tbl, col, el, pk, val)
   return alchemySetIndex(tbl, col, el, pk, val);
 end
@@ -43,6 +45,10 @@ function dropIndLuaEl(tbl, col, el)
 end
 -- NOTE this MUST not be called from Lua (only From C)
 function createIndLuaEl(tbl, col, el)
+  if (IndexKeywords[el]) then
+    error("ERROR: '" .. el .. "' is an IndexKeywords");
+  end
+  print ('createIndLuaEl: ' .. el);
   if (IEL[tbl][col] == nil) then IEL[tbl][col] = {}; end
   IEL[tbl][col][el] = true;
   --print('LUA: createIndLuaEl: IEL: '); dump(IEL);
