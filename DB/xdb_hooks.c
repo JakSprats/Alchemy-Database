@@ -577,7 +577,6 @@ static void configAddCommand(redisClient *c) {
     } else if (!strcasecmp(c->argv[2]->ptr, "lua")) {
         CLEAR_LUA_STACK
         if (luaL_dostring(server.lua, o->ptr)) {
-            lua_pop(server.lua, 1);
             addReplySds(c,sdscatprintf(sdsempty(),
                "-ERR problem adding lua: (%s) msg: (%s)\r\n",
                (char *)o->ptr, lua_tostring(server.lua, -1)));

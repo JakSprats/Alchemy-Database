@@ -23,6 +23,9 @@ end
 STBL = {}; IEL = {};
 
 function ASQL_setter(rname, k, v)
+  if (IndexKeywords[k]) then
+    error("ERROR: '" .. k .. "' is an IndexKeyword");
+  end
   local tbl, col, pk = rname._tbl, rname._col, rname._pk;
   --print('LUA: ASQL_setter: tbl: ' .. tbl .. ' col: ' .. col .. ' pk: ' .. pk);
   local ok = true;
@@ -46,9 +49,8 @@ end
 -- NOTE this MUST not be called from Lua (only From C)
 function createIndLuaEl(tbl, col, el)
   if (IndexKeywords[el]) then
-    error("ERROR: '" .. el .. "' is an IndexKeywords");
+    error("ERROR: '" .. el .. "' is an IndexKeyword");
   end
-  print ('createIndLuaEl: ' .. el);
   if (IEL[tbl][col] == nil) then IEL[tbl][col] = {}; end
   IEL[tbl][col][el] = true;
   --print('LUA: createIndLuaEl: IEL: '); dump(IEL);
