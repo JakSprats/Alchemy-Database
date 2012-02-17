@@ -976,6 +976,7 @@ static robj *orow_lua(bt   *btr, void *rrow,   int     qcols, icol_t *ics,
         if C_IS_E(acol.type) { faili = i;               goto orowl_err; }
         if C_IS_B(acol.type) { if (acol.b) bool_ok = 1; continue; }
         allbools        = 0;
+        //TODO dont push as arg, but add to table, pass single table
         pushAobjLua(&acol, COL_TYPE_STRING);
     }
     if (allbools) { *ost = bool_ok ? OR_ALLB_OK : OR_ALLB_NO; return NULL; }

@@ -1,23 +1,53 @@
 
-LUAOBJ
+GRAND_PLAN:
+  1.) Luaobj                    -> 2 days
+  2.) LuaFuncIndex              -> 2 days
+  3.) GraphDB (rev1)            -> 3 days
+  3.) Luvit w/ EmbeddedAlchemy  -> 2 weeks
+  4.) EvictedRowSQL_Slave       -> 3 weeks
+IMPROVEMENTS:
+  1.) Tokenizer                 -> 1 week
+  2.) QueryOptimiser V3         -> 3 weeks
+
+LUAOBJ:
   8.) UPDATE dot-notation directly (UPDATE tbl SET doc.age = 45)
-      a.) UPDATE SET lo.x = 20              -> Simple Update
-      b.) UPDATE SET lo.x = lo.x + 20       -> Simple Expression
-      c.) UPDATE SET lo.x = func(fk, lo.y)  -> CompiledLuaFunction
-      d.) UPDATE SET lo.x = sqrt(lo.x) * 44 -> DynamicLuaFunction
-  H.) test w/ nested luaobjs (e.g. lo.x.y.z) -> DN_Index also
-  I.) LuaTriggers, calling (lo.x.y) - ???
+      a.) UPDATE SET lo.x = 20               -> Simple Update
+      b.) UPDATE SET lo.x = lo.x + 20        -> Simple Expression
+      c.) UPDATE SET lo.x = func(fk, lo.y)   -> CompiledLuaFunction
+      d.) UPDATE SET lo.x = sqrt(lo.x) * 44  -> DynamicLuaFunction
+      e.) UPDATE SET lo   = { lua-obj-decl } -> Set to Table
+  H.) prohibit Indexing nested luaobjs (e.g. lo.x.y.z)
+      |-> FOR NOW (implement when needed)
+  Q.) test optimal lookup of nested luaobj (e.g. SELECT lo.x.y.z)
+  I.) LuaTriggers, calling (lo.x.y.z) - ???
   K.) Test STRING DNI
   O.) in checkOrCr8LFunc, joins have precedence over nested luaobjs
         in '.' delimited parsing
   P.) icol_t mem-leaks
+  R.) test "SELECT ... IN (luafunc(lo))"
+  S.) Lua U128 bindings
 
-PROTOCOL
+LUATRIGGER
+  1.) Syntax: CREATE LUATRIGGER trigname ON tbl PRE/POST insfunc(a,b,c) delfunc(a,b,c) upfunc(a,b,c)
+
+REST_API:
+  1.) push EREDIS down into responsefunctions (better code modularity)
+  2.) Lua output_* should take a single table (w/ many args as an arg)
+      |-> not many args (e.g. DO: output_row(argt) NOT: output_row(...))
+  3.) Announce REST API -> deprecate clients, and old server tarballs
+
+PROTOCOL:
   2.) ADD "SELECT col AS othername"
   3.) Merge SCAN into SELECT
+  4.) INSERT/REPLACE SELECT (in Lua)
+  5.) INTERPRET_LUA command, replaces "CONFIG ADD LUA"
+      |-> ADD_LUA_FILE, replaces "CONFIG ADD LUAFILE" ???
+  6.) WHERE indexed_col OP value (e.g. index_col > 10)
 
 TEST:
   1.) make sure IN_Ops are up to date w/ scion & so on
+      |-> IN() filters should be Btrees not LinkedLists
+  2.) ADD: "SELECT WHERE NOT IN()" as negative filter
 
 CACHE:
   0.) rdbSave/Load DirtyStream
@@ -28,6 +58,7 @@ CACHE:
 MISC:
   1.) LOAD DATA FROM INFILE ... 1st rev as Lua routine reading in CSV file
   2.) LRU/LFU indexes should be UNIQUE U128 indexes [lru|pk]
+      |-> add ROWSIZE index (possibly as LuaFuncIndex)
   3.) LuaTrigger takes fknames as first args (like "table") 
         |-> can be used for FK integrity checks
         |-> clean up parsing, use checkOrCr8LFunc()

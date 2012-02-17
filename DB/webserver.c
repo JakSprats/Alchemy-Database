@@ -281,14 +281,14 @@ static void sendLuaFuncReply(cli *c, sds file) {
 }
 static bool sendRestAPIReply(cli *c, sds file) { //printf("sendRestAPIReply\n");
     int argc; bool ret = 0;
-    sds pb  = c->http.post_body;
+    sds pb  = c->http.post_body; //TODO cat [file,pb] is too much copying
     sds url = pb ? sdscatprintf(sdsempty(), "%s%s", file, pb) :
                    sdsdup(file);                                     //FREE 156
     sds       *argv  = sdssplitlen(url, sdslen(url), "/", 1, &argc); //FREE 157
     rcommand  *cmd   = lookupCommand(argv[0]);
     if (!cmd) goto send_rest_end;
     ret = 1;
-    printf("sendRestAPIReply: found cmd: %s\n", cmd->name);
+    //printf("sendRestAPIReply: found cmd: %s\n", cmd->name);
     if ((cmd->arity > 0 && cmd->arity != argc) || (argc < -cmd->arity)) {
         addReplyErrorFormat(c,"wrong number of arguments for '%s' command",
             cmd->name);
