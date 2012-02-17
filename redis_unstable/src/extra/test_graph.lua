@@ -161,18 +161,18 @@ function unique_path_test()
   V.loX = {}; createNamedNode(tbl, V.loX, 11, 'X');
   V.loY = {}; createNamedNode(tbl, V.loY, 12, 'Y');
   V.loZ = {}; createNamedNode(tbl, V.loZ, 14, 'Z');
-  addNodeRelationShip(V.loX.node, 'KNOWS', V.loY.node);
-  addNodeRelationShip(V.loY.node, 'KNOWS', V.loZ.node);
-  addNodeRelationShip(V.loZ.node, 'KNOWS', V.loX.node);
+  addNodeRelationShip(V.loX.node, 'KNOWS',   V.loY.node);
+  addNodeRelationShip(V.loY.node, 'LIKES',   V.loZ.node);
+  addNodeRelationShip(V.loZ.node, 'KNOWS',   V.loX.node);
 
-  addNodeRelationShip(V.loX.node, 'KNOWS', V.loW.node);
-  addNodeRelationShip(V.loW.node, 'KNOWS', V.loZ.node);
+  addNodeRelationShip(V.loX.node, 'KNOWS',   V.loW.node);
+  addNodeRelationShip(V.loW.node, 'BLOCKS',  V.loZ.node);
 
-  addNodeRelationShip(V.loW.node, 'KNOWS', V.loV.node);
-  addNodeRelationShip(V.loV.node, 'KNOWS', V.loZ.node);
+  addNodeRelationShip(V.loW.node, 'KNOWS',   V.loV.node);
+  addNodeRelationShip(V.loV.node, 'KNOWS',   V.loZ.node);
 
-  addNodeRelationShip(V.loZ.node, 'KNOWS', V.loU.node);
-  addNodeRelationShip(V.loU.node, 'KNOWS', V.loV.node);
+  addNodeRelationShip(V.loZ.node, 'FRIENDS', V.loU.node);
+  addNodeRelationShip(V.loU.node, 'KNOWS',   V.loV.node);
 
   print('BreadthFirst: rf_node_and_path - UNIQ: PATH_GLOBAL');
   local z = traverse_bfs(V.loX.node, rf_node_and_path,
@@ -334,9 +334,6 @@ function fof_complicated_test()
 end
 
 -- BOTH_DIRECTIONS BOTH_DIRECTIONS BOTH_DIRECTIONS BOTH_DIRECTIONS
-local function both_directions_expander(x, rtype, relation)
-  return true, Direction.BOTH;
-end
 function both_direction_test()
   V.loA = {}; createNamedNode(tbl, V.loA, 110, 'A');
   V.loB = {}; createNamedNode(tbl, V.loB, 120, 'B');
@@ -346,7 +343,7 @@ function both_direction_test()
 
   print('both directions test A->B<-C');
   local z = traverse_bfs(V.loA.node, rf_node_and_path, 
-                         {expander_func = both_directions_expander;});
+                         {expander_func = expanderBoth;});
   dump_node_and_path(z);
 end
 

@@ -34,6 +34,7 @@ local function createNode(tname, lo, pk)
   --     should also be recursively to lo.node.r[]
 end
 function createNamedNode(tname, lo, pk, name)
+  if (name == nil) then error("createNamedNode(,,name) - name not defined"); end
   createNode(tname, lo, pk); lo.node.__name = name;
 end
 
@@ -132,13 +133,13 @@ function addPropertyToRelationship(snode, rtype, tnode, prop, value)
 end
 
 -- NEIGHBORHOOD NEIGHBORHOOD NEIGHBORHOOD NEIGHBORHOOD NEIGHBORHOOD
-local function expanderOutgoing(x, rtype, relation)
+function expanderOutgoing(x, rtype, relation)
   return (relation[Direction.OUTGOING] ~= nil), Direction.OUTGOING;
 end
-local function expanderIncoming(x, rtype, relation)
+function expanderIncoming(x, rtype, relation)
   return (relation[Direction.INCOMING] ~= nil), Direction.INCOMING;
 end
-local function expanderBoth(x, rtype, relation)
+function expanderBoth(x, rtype, relation)
   return ((relation[Direction.INCOMING] ~= nil) or
           (relation[Direction.OUTGOING] ~= nil)), Direction.BOTH;
 end
@@ -240,11 +241,11 @@ end
 -- TRAVERSERS TRAVERSERS TRAVERSERS TRAVERSERS TRAVERSERS TRAVERSERS TRAVERSERS
 StartPK = 0; -- Used to Include/Exclude start-node
 
-function getRelationText(rtype, relation)
-  if (relation[Direction.OUTGOING] ~= nil) then
-    return '-[' .. rtype .. ']->';
+function getRelationText(w)
+  if (w.relation[Direction.OUTGOING] ~= nil) then
+    return '-['  .. w.rtype .. ']->';
   else -- Direction.INCOMING
-    return '<-[' .. rtype .. ']-';
+    return '<-[' .. w.rtype .. ']-';
   end
 end
 function getPath(x)
@@ -258,14 +259,10 @@ function getPath(x)
   local paths = '';
   while (not Q:isempty()) do
     local w = Q:retrieveFromEnd();
-    if (string.len(paths) > 0) then
-      paths = paths .. getRelationText(w.rtype, w.relation);
-    end
+    if (string.len(paths) > 0) then paths = paths .. getRelationText(w); end
     paths = paths .. w.node.__name;
   end
-  if (string.len(paths) > 0) then
-    paths = paths .. getRelationText(x.w.rtype, x.w.relation);
-  end
+  if (string.len(paths) > 0) then paths = paths .. getRelationText(x.w); end
   paths = paths .. x.w.node.__name;
   return paths;
 end
@@ -279,8 +276,8 @@ local function isVirgin(u, x, vizd)
   elseif (u == Uniqueness.PATH_GLOBAL)                      then
     if (x.parent == nil) then
       doit = true; which = 0;
-    else --TODO '.' means direction is not specified
-      which = x.parent.w.node.__name .. '.' .. x.w.node.__name;
+    else
+      which = x.parent.w.node.__name .. getRelationText(x.w) .. x.w.node.__name;
       doit  = (not vizd[which]);
     end
   else
