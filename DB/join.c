@@ -29,6 +29,8 @@ ALL RIGHTS RESERVED
 #include <strings.h>
 #include <unistd.h>
 
+#include "xdb_hooks.h"
+
 #include "redis.h"
 
 #include "debug.h"
@@ -190,7 +192,7 @@ static robj *join_reply_lua(range_t *g) {
         sds cval = sdsnewlen(a.s, a.len);                // FREE 155
         lua_pushstring(server.lua, cval); sdsfree(cval); // FREED 155
     }
-    int ret = lua_pcall(server.lua, g->se.qcols, 1, 0);
+    int ret = DXDB_lua_pcall(server.lua, g->se.qcols, 1, 0);
     sds s   = ret ? sdsempty()                                    :
                     sdsnewlen((char*)lua_tostring(server.lua, -1),
                               lua_strlen(server.lua, -1));

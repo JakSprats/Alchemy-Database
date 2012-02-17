@@ -36,6 +36,8 @@ ALL RIGHTS RESERVED
 #include <lauxlib.h>
 #include <lualib.h>
 
+#include "xdb_hooks.h"
+
 #include "dict.h"
 #include "zmalloc.h"
 #include "redis.h"
@@ -948,7 +950,7 @@ sds startOutput(long card) {
     }
     CLEAR_LUA_STACK lua_getglobal(server.lua, server.alc.OutputLuaFunc_Start);
     lua_pushinteger(server.lua, card);
-    int ret = lua_pcall(server.lua, 1, 1, 0);
+    int ret = DXDB_lua_pcall(server.lua, 1, 1, 0);
     sds s   = ret ? sdsempty() :
                     sdsnewlen((char*)lua_tostring(server.lua, -1),
                               lua_strlen(server.lua, -1));
@@ -978,7 +980,7 @@ static sds L_getQueriedCnames(int tmatch, icol_t *ics, bool cstar,
         lua_pushstring(server.lua, cname);
         if (frcn) sdsfree(cname);                        // FREED 153
     }
-    int ret = lua_pcall(server.lua, qcols, 1, 0);
+    int ret = DXDB_lua_pcall(server.lua, qcols, 1, 0);
     sds s   = ret ? sdsempty() :
                     sdsnewlen((char*)lua_tostring(server.lua, -1),
                               lua_strlen(server.lua, -1));
@@ -1026,7 +1028,7 @@ static sds L_getJoinQueriedCnames(jb_t *jb) {
         lua_pushstring(server.lua, fullc);
         sdsfree(fullc);                                             // FREED 152
     }
-    int ret = lua_pcall(server.lua, jb->qcols, 1, 0);
+    int ret = DXDB_lua_pcall(server.lua, jb->qcols, 1, 0);
     sds s   = ret ? sdsempty() :
                     sdsnewlen((char*)lua_tostring(server.lua, -1),
                               lua_strlen(server.lua, -1));

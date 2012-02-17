@@ -540,7 +540,7 @@ bool luafunc_call(redisClient *c, int argc, robj **argv) {
     /* Select the right DB in the context of the Lua client */
     selectDb(server.lua_client, c->db->id);
     c->InternalRequest = 1;
-    int ret = lua_pcall(server.lua, (argc - 2), 1, 0);
+    int ret = DXDB_lua_pcall(server.lua, (argc - 2), 1, 0);
     c->InternalRequest = 0;
     selectDb(c, server.lua_client->db->id); /* set DB ID from Lua client */
     if (ret) {

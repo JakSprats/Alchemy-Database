@@ -33,6 +33,8 @@ ALL RIGHTS RESERVED
 #include <lauxlib.h>
 #include <lualib.h>
 
+#include "xdb_hooks.h"
+
 #include "find.h"
 #include "bt.h"
 #include "parser.h"
@@ -285,7 +287,7 @@ bool writeLuaObjCol(cli *c,    aobj   *apk, int tmatch, int cmatch,
     lua_pushstring(server.lua, rt->col[cmatch].name);
     pushAobjLua(apk, apk->type);
     lua_pushstring(server.lua, luac);
-    int ret = lua_pcall(server.lua, 5, 0, 0);
+    int ret = DXDB_lua_pcall(server.lua, 5, 0, 0);
     if (ret) {
         ADD_REPLY_FAILED_LUA_STRING_CMD("luaobj_assign")
     }

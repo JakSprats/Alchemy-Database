@@ -34,6 +34,8 @@ ALL RIGHTS RESERVED
 #include <limits.h>
 #include <math.h>
 
+#include "xdb_hooks.h"
+
 #include "adlist.h"
 #include "redis.h"
 
@@ -533,7 +535,7 @@ static bool createLuaElementIndex(cli *c, int tmatch, icol_t ic, int imatch) {
     for (uint32 i = 0; i < ri->icol.nlo; i++) {
         lua_pushstring(server.lua, ri->icol.lo[i]); argc++;
     }
-    if (lua_pcall(server.lua, argc, 0, 0)) { ret = 0;
+    if (DXDB_lua_pcall(server.lua, argc, 0, 0)) { ret = 0;
         ADD_REPLY_FAILED_LUA_STRING_CMD("indexLORfield")
     }
     CLEAR_LUA_STACK return ret;
@@ -801,7 +803,7 @@ static void emptyLuaObjectElementIndex(int imatch) {
     for (uint32 i = 0; i < ri->icol.nlo; i++) {
         lua_pushstring(server.lua, ri->icol.lo[i]); argc++;
     }
-    lua_pcall(server.lua, argc, 0, 0); CLEAR_LUA_STACK
+    DXDB_lua_pcall(server.lua, argc, 0, 0); CLEAR_LUA_STACK
 }
 void emptyIndex(int imatch) { //printf("emptyIndex: imatch: %d\n", imatch);
     r_ind_t *ri = &Index[imatch];

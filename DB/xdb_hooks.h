@@ -77,6 +77,8 @@ unsigned char isWhiteListedIp(redisClient *c); //TODO move to another file?
 
 sds DXDB_SQL_feedAppendOnlyFile(rcommand *cmd, robj **argv, int argc);
 
+int DXDB_lua_pcall(lua_State *L, int nargs, int nresults, int errfunc);
+
 // EMBEDDED EMBEDDED EMBEDDED EMBEDDED EMBEDDED EMBEDDED EMBEDDED EMBEDDED
 void initClient(redisClient *c);
 

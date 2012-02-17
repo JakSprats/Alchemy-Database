@@ -89,7 +89,6 @@ void bt_dumptree(printer *prn, bt *btr, bool is_index, bool is_inode) {
 }
 void dump_single_node(bt *btr, bt_n *x, bool is_inode) {
     printf(" NODE: n: %d scion: %d -> (%p)\n", x->n, x->scion, (void *)x);
-    bool is_node = INODE(btr);
     for (int i = 0; i < x->n; i++) {
         void *be = KEYS(btr, x, i);
         aobj  akey; convertStream2Key(be, &akey, btr);

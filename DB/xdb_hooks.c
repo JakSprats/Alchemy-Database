@@ -233,7 +233,8 @@ void DXDB_initServer() { //printf("DXDB_initServer\n");
 static bool loadLuaHelperFile(cli *c, char *fname) {
     sds  fwpath = sdscatprintf(sdsempty(), "%s%s", server.alc.Basedir, fname);
     bool ret    = 1;
-    if (luaL_loadfile(server.lua, fwpath) || lua_pcall(server.lua, 0, 0, 0)) {
+    if (luaL_loadfile(server.lua, fwpath) || 
+        DXDB_lua_pcall(server.lua, 0, 0, 0)) {
         const char *lerr = lua_tostring(server.lua, -1);
         if (c) addReplySds(c, sdscatprintf(sdsempty(),
                            "-ERR luaL_loadfile: %s err: %s\r\n", fwpath, lerr));
@@ -323,6 +324,7 @@ rcommand *DXDB_lookupCommand(sds name) {
 void DXDB_call(struct redisCommand *cmd, long long *dirty) {
     if (cmd->proc == luafuncCommand || cmd->proc == messageCommand) *dirty = 0;
     if (*dirty) server.alc.stat_num_dirty_commands++;
+    if (server.alc.lua_dirty) lua_gc(server.lua, LUA_GCCOLLECT, 0);
 }
 
 static void computeWS_WL_MinMax() {
@@ -470,6 +472,7 @@ int DXDB_processCommand(redisClient *c) { //printf("DXDB_processCommand\n");
     server.alc.CurrClient  = c;
     server.alc.CurrCard    = 0;
     server.alc.CurrUpdated = 0;
+    server.alc.lua_dirty   = 0;
     server.alc.CurrError   = NULL;//TODO if(CurrError) decrRefCount(CurError) ??
     initClient(c);
     sds arg0       = c->argv[0]->ptr;
@@ -634,7 +637,7 @@ int DXDB_rdbSave(FILE *fp) { //printf("DXDB_rdbSave\n");
     if (rdbSaveType(fp, REDIS_EOF) == -1) return -1; /* SQL delim REDIS_EOF */
     int ret = 0;
     CLEAR_LUA_STACK lua_getglobal(server.lua, "save_lua_universe");
-    int r = lua_pcall(server.lua, 0, 0, 0);
+    int r = DXDB_lua_pcall(server.lua, 0, 0, 0);
     if (r) { ret = -1;
         redisLog(REDIS_WARNING, "ERROR SAVING LUA UNIVERSE: %s",
                                  lua_tostring(server.lua, -1));
@@ -659,7 +662,7 @@ int DXDB_rdbLoad(FILE *fp) { //printf("DXDB_rdbLoad\n");
         }
     }
     CLEAR_LUA_STACK lua_getglobal(server.lua, "get_lua_universe");
-    int r = lua_pcall(server.lua, 0, 0, 0);
+    int r = DXDB_lua_pcall(server.lua, 0, 0, 0);
     if (r) {
         redisLog(REDIS_WARNING, "ERROR GETTING LUA UNIVERSE: %s",
                                  lua_tostring(server.lua, -1)); //return -1;
@@ -822,3 +825,10 @@ sds DXDB_SQL_feedAppendOnlyFile(rcommand *cmd, robj **argv, int argc) {
     }
     return sdsempty();
 }
+
+// LUA_GC LUA_GC LUA_GC LUA_GC LUA_GC LUA_GC LUA_GC LUA_GC LUA_GC LUA_GC
+int DXDB_lua_pcall(lua_State *L, int nargs, int nresults, int errfunc) {
+    server.alc.lua_dirty = 1;
+    return lua_pcall(L, nargs, nresults, errfunc);
+}
+

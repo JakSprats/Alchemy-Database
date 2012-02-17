@@ -37,6 +37,8 @@ ALL RIGHTS RESERVED
 #include <errno.h>
 #include <fenv.h>
 
+#include "xdb_hooks.h"
+
 #include "redis.h"
 #include "lzf.h"
 
@@ -570,7 +572,7 @@ static aobj getRC_LFunc(bt   *btr, uchar  *orow, int tmatch, aobj *apk,
     for (int i = 0; i < le->ncols; i++) {
         pushColumnLua(btr, orow, tmatch, le->as[i], apk);
     }
-    int ret = lua_pcall(server.lua, le->ncols + 1, 1, 0); // +1 for Wrapper
+    int ret = DXDB_lua_pcall(server.lua, le->ncols + 1, 1, 0); // +1 for Wrapper
     if (ret) {
         a.err = 1; a.type = COL_TYPE_ERR;
         CURR_ERR_CREATE_OBJ
@@ -802,7 +804,7 @@ static void initLOFromCM(aobj *a, aobj *apk, icol_t ic, int tmatch, bool fs) {
         lua_pushstring(server.lua, rt->name);
         lua_pushstring(server.lua, rt->col[ic.cmatch].name);
         pushAobjLua(apk, apk->type);
-        int ret = lua_pcall(server.lua, 3, 1, 0);
+        int ret = DXDB_lua_pcall(server.lua, 3, 1, 0);
         if (ret) {
             initAobjString(a, UnprintableLuaObject, lenUnplo);
         } else { // DataDumper only returns STRINGs
@@ -980,7 +982,7 @@ static robj *orow_lua(bt   *btr, void *rrow,   int     qcols, icol_t *ics,
         pushAobjLua(&acol, COL_TYPE_STRING);
     }
     if (allbools) { *ost = bool_ok ? OR_ALLB_OK : OR_ALLB_NO; return NULL; }
-    int ret = lua_pcall(server.lua, qcols, 1, 0);
+    int ret = DXDB_lua_pcall(server.lua, qcols, 1, 0);
     sds s   = ret ? sdsempty()                                    :
                     sdsnewlen((char*)lua_tostring(server.lua, -1),
                               lua_strlen(server.lua, -1));
@@ -1028,7 +1030,7 @@ void deleteLuaObj(int tmatch, int cmatch, aobj *apk) {
     lua_pushstring(server.lua, rt->name);
     lua_pushstring(server.lua, rt->col[cmatch].name);
     pushAobjLua(apk, apk->type);
-    lua_pcall(server.lua, 4, 0, 0); CLEAR_LUA_STACK
+    DXDB_lua_pcall(server.lua, 4, 0, 0); CLEAR_LUA_STACK
 }
 int deleteRow(int tmatch, aobj *apk, int matches, int inds[]) {
 printf("\n\nSTART: deleteRow: key: "); dumpAobj(printf, apk);
@@ -1330,7 +1332,7 @@ printf("evalLuaExpr: fname: %s ncols: %d\n", le->fname, le->ncols);
     for (int i = 0; i < le->ncols; i++) {
         pushColumnLua(uc->btr, orow, uc->tmatch, le->as[i], apk);
     }
-    int ret = lua_pcall(server.lua, le->ncols, 1, 0);
+    int ret = DXDB_lua_pcall(server.lua, le->ncols, 1, 0);
 printf("evalLuaExpr: lua_pcall: ret: %d\n", ret);
     if (ret) {
         ADD_REPLY_FAILED_LUA_STRING_CMD(le->fname) return 0;

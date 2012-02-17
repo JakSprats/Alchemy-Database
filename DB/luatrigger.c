@@ -32,6 +32,8 @@ ALL RIGHTS RESERVED
 #include <sys/time.h>
 #include <ctype.h>
 
+#include "xdb_hooks.h"
+
 #include "zmalloc.h"
 #include "redis.h"
 
@@ -63,7 +65,7 @@ int luaCronTimeProc(struct aeEventLoop *eventLoop, lolo id, void *clientData) {
         lua_pushinteger(server.lua, server.alc.Operations);
         struct timeval t1, t2; gettimeofday(&t1, NULL);
         server.alc.CurrClient = server.lua_client;
-        int ret = lua_pcall(server.lua, 1, 0, 0);
+        int ret = DXDB_lua_pcall(server.lua, 1, 0, 0);
         if (ret) redisLog(REDIS_WARNING, "Error running luaCron: %s",
                            lua_tostring(server.lua, -1));
         CLEAR_LUA_STACK
@@ -212,8 +214,9 @@ static void luatDo(bt  *btr,    luat_t *luat, aobj *apk,
         }
         releaseAobj(&acol);
     }
-    lua_call(server.lua, tcols, 0);
-
+    int ret = DXDB_lua_pcall(server.lua, tcols, 0, 0);
+    if (ret) redisLog(REDIS_WARNING, "Error running LUATRIGGER: %s ERROR: %s",
+                                      ltc->fname, lua_tostring(server.lua, -1));
 }
 void luatAdd(bt *btr, luat_t *luat, aobj *apk, int imatch, void *rrow) {
     luatDo(btr, luat, apk, imatch, rrow, 1);

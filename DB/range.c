@@ -30,6 +30,8 @@ ALL RIGHTS RESERVED
 #include <unistd.h>
 #include <assert.h>
 
+#include "xdb_hooks.h"
+
 #include "adlist.h"
 #include "redis.h"
 
@@ -580,7 +582,7 @@ static bool runLuaFilter(lue_t *le, bt *btr, aobj *apk, void *rrow, int tmatch,
         pushColumnLua(btr, rrow, tmatch, le->as[i], apk);
     }
     bool ret = 1;
-    int  r   = lua_pcall(server.lua, le->ncols, 1, 0);
+    int  r   = DXDB_lua_pcall(server.lua, le->ncols, 1, 0);
     if (r) { *hf = 1; ret = 0;
         CURR_ERR_CREATE_OBJ "-ERR: running LUA FILTER (%s): %s [CARD: %ld]\r\n",
                  le->fname, lua_tostring(server.lua, -1), server.alc.CurrCard));

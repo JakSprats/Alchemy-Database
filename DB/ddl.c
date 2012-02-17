@@ -124,7 +124,7 @@ static bool createLuaObjectBaseTable(cli *c, int tmatch, int cmatch) {
     lua_pushstring(server.lua, LUA_OBJ_TABLE);
     lua_pushstring(server.lua, rt->name);
     lua_pushstring(server.lua, rt->col[cmatch].name);
-    int r = lua_pcall(server.lua, 3, 0, 0);
+    int r = DXDB_lua_pcall(server.lua, 3, 0, 0);
     if (r) { ret = 0;
         ADD_REPLY_FAILED_LUA_STRING_CMD("create_nested_table")
     }

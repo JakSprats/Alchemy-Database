@@ -132,6 +132,7 @@ typedef struct alchemy_server_extensions_t {
     bool                 SQL_AOF;
     bool                 SQL_AOF_MYSQL;
 
+    bool                 lua_dirty;
 } alchemy_server_extensions_t;
 
 #define ALCHEMY_SERVER_EXTENSIONS alchemy_server_extensions_t alc;

@@ -31,6 +31,8 @@ ALL RIGHTS RESERVED
 #include <float.h>
 #include <assert.h>
 
+#include "xdb_hooks.h"
+
 #include "redis.h"
 #include "adlist.h"
 
@@ -190,7 +192,7 @@ printf("OB LE: i: %d fname: %s ncols: %d\n", i, wb->le[i].fname, wb->le[i].ncols
         pushColumnLua(btr, rrow, tmatch, wb->le[i].as[k], apk);
     }
     bool ret = 1;
-    int  r   = lua_pcall(server.lua, wb->le[i].ncols, 1, 0);
+    int  r   = DXDB_lua_pcall(server.lua, wb->le[i].ncols, 1, 0);
     if (r) { ret = 0;
         CURR_ERR_CREATE_OBJ
         "-ERR: running ORDER BY FUNCTION (%s): %s [CARD: %ld]\r\n",

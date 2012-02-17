@@ -29,6 +29,8 @@ ALL RIGHTS RESERVED
 #include <strings.h>
 #include <unistd.h>
 
+#include "xdb_hooks.h"
+
 #include "redis.h"
 #include "zmalloc.h"
 
@@ -168,7 +170,7 @@ void createTableSelect(redisClient *c) {
         lua_pushlstring(server.lua, clist, sdslen(clist));
         lua_pushlstring(server.lua, tlist, sdslen(tlist));
         lua_pushlstring(server.lua, wc, sdslen(wc));
-        int ret = lua_pcall(server.lua, 4, 1, 0);
+        int ret = DXDB_lua_pcall(server.lua, 4, 1, 0);
         if (ret) {
             ADD_REPLY_FAILED_LUA_STRING_CMD("internal_copy_table_from_select")
         } else addReply(c, shared.ok);
