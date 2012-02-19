@@ -172,7 +172,8 @@ static void newTable(cli *c, list *ctypes, list *cnames, int ccount, sds tname){
     sds  pkname  = rt->col[0].name;
     sds  iname   = P_SDS_EMT "%s_%s_%s", rt->name, pkname, INDEX_DELIM); //D073
     DECLARE_ICOL(pkic, 0) DECLARE_ICOL(ic, -1)
-    newIndex(c, iname, tmatch, pkic, NULL, 0, 1, 0, NULL, ic, 0, 0, 0);
+    newIndex(c, iname, tmatch, pkic, NULL, 0, 1, 0, NULL, ic, 0, 0, 0,
+             NULL, NULL);
     sdsfree(iname);                                      /* DESTROYED 073 */
 }
 

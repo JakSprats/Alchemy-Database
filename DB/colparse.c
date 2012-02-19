@@ -671,8 +671,10 @@ static bool isLuaFunc(char *expr, sds *fname, sds *argt) {
                     char *begfn = sexpr; char *endfn = sexpr;
                     lparen--; REV_SKIP_SPACES(lparen)
                     while (sexpr <= lparen) {
-                        bool isan = ISALNUM(*sexpr); bool isb = ISBLANK(*sexpr);
-                        bool isun = (*sexpr == '_');
+                        char x    = *sexpr;
+                        bool isan = ISALNUM(x);
+                        bool isb  = ISBLANK(x);
+                        bool isun = (x == '_');
                         if (!isan && !isb && !isun) return 0;
                         if (isan || !isun) endfn = sexpr;
                         sexpr++;
@@ -688,8 +690,9 @@ static bool isLuaFunc(char *expr, sds *fname, sds *argt) {
     return 0;
 }
 static bool luaFuncDefined(sds fname) {
-    lua_getglobal(server.lua, fname);
+    CLEAR_LUA_STACK lua_getglobal(server.lua, fname);
     int t = lua_type(server.lua, 1); CLEAR_LUA_STACK
+    //printf("luaFuncDefined: fname: %s t: %d\n", fname, t);
     return (t == LUA_TFUNCTION);
 }
 static bool checkExprIsFunc(char *expr, lue_t *le, int tmatch) {

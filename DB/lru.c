@@ -101,7 +101,7 @@ void createLruIndex(cli *c) {
     sds  iname     = P_SDS_EMT "%s_%s", LRUINDEX_DELIM, tname); /* DEST 072 */
     DECLARE_ICOL(lruic, rt->lruc) DECLARE_ICOL(ic, -1)
     rt->lrui       = newIndex(c, iname, tmatch, lruic, NULL, 0,
-                              0, 1, NULL, ic, 0, 0, 0); // Can not fail
+                              0, 1, NULL, ic, 0, 0, 0, NULL, NULL); //Cant fail
     sdsfree(iname);                                            /*DESTROYED 072*/
     addReply(c, shared.ok);
 }

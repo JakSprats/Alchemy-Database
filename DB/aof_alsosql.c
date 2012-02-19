@@ -51,13 +51,14 @@ static bool SQLappendOnlyDumpIndices(FILE *fp, int tmatch) {
     MATCH_INDICES(tmatch)
     for (int i = 0; i < matches; i++) {
         r_ind_t *ri = &Index[inds[i]];
-        if (ri->virt || ri->luat) continue;
+        if (ri->virt || ri->luat || ri->fname) continue;
         sds      s  = dumpSQL_Index(NULL, rt, ri, tmatch, 1);
         if (fwrite(s, strlen(s), 1, fp) == 0) return 0;
         sdsfree(s);
     }
     return 1;
 }
+//TODO dump LuaFunctions
 bool appendOnlyDumpIndices(FILE *fp, int tmatch) {
     if (server.alc.SQL_AOF) return SQLappendOnlyDumpIndices(fp, tmatch);
     //printf("appendOnlyDumpIndices: fp: %p tmatch: %d\n", fp, tmatch);

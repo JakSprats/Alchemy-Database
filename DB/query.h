@@ -102,6 +102,7 @@ typedef struct r_ind { // 68 bytes -> 72B
     bool    iposon;  /* Index Position On (i.e. SELECT "index.pos()"       */
     uint32  cipos;   /* Current Index position, when iposon                */
     uchar   dtype;   /* DotNotation Index Type (e.g. luaobj.x.y.z -> INT)  */
+    sds     fname;   /* LuaFunctionIndex: functionname                     */
 } r_ind_t;
 
 typedef struct update_expression {

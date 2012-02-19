@@ -730,7 +730,7 @@ extern struct sockaddr_in AcceptedClientSA;
 void DXDB_setClientSA(redisClient *c) { c->sa = AcceptedClientSA; }
 
 // LUA_COMMAND LUA_COMMAND LUA_COMMAND LUA_COMMAND LUA_COMMAND LUA_COMMAND
-void luafuncCommand(redisClient *c) {
+void luafuncCommand(redisClient *c) { //printf("luafuncCommand\n");
     if (luafunc_call(c, c->argc, c->argv)) return;
     luaReplyToRedisReply(c, server.lua);
 }

@@ -26,6 +26,8 @@ ALL RIGHTS RESERVED
 #ifndef __A_DDL__H
 #define __A_DDL__H
 
+#include "xdb_hooks.h"
+
 #include "dict.h"
 #include "redis.h"
 

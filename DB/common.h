@@ -136,9 +136,9 @@ typedef struct twoint {
 } twoint;
 
 //TODO this is dangerous
-#define STACK_STRDUP(dest, src, len) \
-  char dest[len + 1];                \
-  memcpy(dest, src, len);            \
+#define STACK_STRDUP(dest, src, len) /* TODO DEPRECATE */ \
+  char dest[len + 1];                                     \
+  memcpy(dest, src, len);                                 \
   dest[len] = '\0';
 
 #define P_SDS_EMT sdscatprintf(sdsempty(),

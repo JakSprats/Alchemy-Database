@@ -40,10 +40,10 @@ void iAddUniq(bt *ibtr, uchar pktyp, aobj *apk, aobj *acol); // OBYI uses also
 sds  getMCIlist(list *clist, int tmatch);        //NOTE: Used in DESC command
 bool addC2MCI  (cli *c, icol_t ic, list *clist); //NOTE: Used in rdbLoad()
 
-int  newIndex(cli    *c,     sds    iname, int  tmatch, icol_t ic,
-              list   *clist, uchar  cnstr, bool virt,   bool   lru,
-              luat_t *luat,  icol_t obc,   bool prtl,   bool   lfu,
-              uchar   dtype);
+int  newIndex(cli    *c,     sds    iname, int  tmatch,  icol_t ic,
+              list   *clist, uchar  cnstr, bool virt,    bool   lru,
+              luat_t *luat,  icol_t obc,   bool prtl,    bool   lfu,
+              uchar   dtype, sds    fname, sds  initfunc);
 void createIndex(cli *c);
 
 long buildIndex (cli *c, bt *btr, int imatch, long limit);

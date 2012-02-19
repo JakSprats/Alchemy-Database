@@ -3324,3 +3324,22 @@ function rest_api_first_test() {
   $CLI CONFIG SET rest_api_mode no
   $CLI CONFIG SET OUTPUTMODE NORMAL
 }
+
+function populate_graph_db() { 
+  $CLI DROP   TABLE graphdb >/dev/null;
+  $CLI CREATE TABLE graphdb "(pk INT, fk LONG, lo LUAOBJ)";
+  $CLI INSERT INTO graphdb VALUES "(1, 50, {data='supported';})";
+  $CLI SELECT "createNamedNode('graphdb', lo, pk, 'KEN')" FROM graphdb WHERE pk=1
+  $CLI INSERT INTO graphdb VALUES "(2, 50, {data='supported';})";
+  $CLI SELECT "createNamedNode('graphdb', lo, pk, 'JACK')" FROM graphdb WHERE pk=2
+  $CLI INSERT INTO graphdb VALUES "(3, 49, {data='supported';})";
+  $CLI SELECT "createNamedNode('graphdb', lo, pk, 'JILL')" FROM graphdb WHERE pk=3
+  $CLI LUA addNodeRelationShipByPK 1 "'KNOWS'" 2
+  $CLI LUA addNodeRelationShipByPK 3 "'KNOWS'" 2
+
+  $CLI LUA traverseBfsByPK 1 NODENAME_AND_PATH EXPAND_BOTH
+  $CLI SELECT "traverseBfsByPK(pk, 'NODENAME_AND_PATH', 'EXPAND_BOTH')" FROM graphdb WHERE pk BETWEEN 1 AND 3
+
+  $CLI CREATE INDEX lf_graphdb ON graphdb "(relindx())" LONG initGraphHooks
+
+}

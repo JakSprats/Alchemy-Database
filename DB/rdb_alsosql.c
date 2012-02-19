@@ -123,8 +123,8 @@ bool rdbLoadLuaTrigger(FILE *fp) {
     if (loadLtc(fp, &luat->add)              == 0)                  return 0;
     if (which == LUAT_WITH_DEL && loadLtc(fp, &luat->del) == 0)     return 0;
     DECLARE_ICOL(ic, -1)
-    if ((newIndex(NULL, trname->ptr, tmatch, ic, NULL, 0, 0, 0,
-                  luat, ic,          0,       0, 0)) == -1)         return 0;
+    if ((newIndex(NULL, trname->ptr, tmatch, ic, NULL, 0, 0, 0, luat, ic,
+                  0, 0, 0, NULL, NULL)) == -1)                      return 0;
     decrRefCount(trname);
     return 1;
 }
@@ -342,6 +342,7 @@ bool rdbLoadBT(FILE *fp) { //printf("rdbLoadBT\n");
         ASSERT_OK(dictAdd(IndD, sdsdup(ri->name), VOIDINT(imatch + 1)));
         if (Num_indx < (imatch + 1)) Num_indx = imatch + 1;
     } else {                        /* INDEX */
+//TODO rdbSave/Load LuaFunction Indexes
         int imatch  = tmatch; //DEBUG_LOAD_INDEX_BT
         r_ind_t *ri = &Index[imatch]; bzero(ri, sizeof(r_ind_t));
         robj *r;
@@ -416,7 +417,7 @@ void rdbLoadFinished() { //printf("rdbLoadFinished\n");
     for (int imatch = 0; imatch < Num_indx; imatch++) {
         r_ind_t *ri  = &Index[imatch];
         if (!ri->name) continue; // previously deleted
-        if (ri->virt)  continue;
+        if (ri->virt || ri->fname)  continue;
         bt      *btr = getBtr(ri->tmatch);
         buildIndex(NULL, btr, imatch, -1);
     }

@@ -2,8 +2,10 @@ local math  = math
 local Queue = require "Queue"
 local Heap  = require "Heap"
 
+--TODO Vset && PKset are redundant ... PK is a better idea {all INTs}
 --NOTE: Vset[] used by shortestpath()
-Vset = {}; -- table(unique-list) of vertices
+local Vset  = {}; -- table(unique-list) of nodes    -> {key=node}
+local PKset = {}; -- table(unique-list) of LuaObj's -> {key=pk}
 
 -- CONSTANTS CONSTANTS CONSTANTS CONSTANTS CONSTANTS CONSTANTS CONSTANTS
 Direction           = {}; -- RELATIONSHIP Directions
@@ -22,27 +24,48 @@ Evaluation.INCLUDE_AND_PRUNE    = 2;
 Evaluation.EXCLUDE_AND_CONTINUE = 3;
 Evaluation.EXCLUDE_AND_PRUNE    = 4;
 
--- NODES NODES NODES NODES NODES NODES NODES NODES NODES NODES NODES NODES
-local function createNode(tname, lo, pk)
-  if     (lo      == nil) then error("createNode(x) - x does not exist");
-  elseif (lo.node ~= nil) then error("createNode - Node already exists");
-  elseif (pk      == nil) then error("createNode(x, pk) - pk not defined"); end
-  lo.node       = { __pk=pk; __tname=tname; }
-  Vset[lo.node] = true;
-  --TODO add in __newindex to make lo.node READONLY
-  --      (need bool in mod funcs to turn off/on READONLY)
-  --     should also be recursively to lo.node.r[]
+-- READ_ONLY_TABLES READ_ONLY_TABLES READ_ONLY_TABLES READ_ONLY_TABLES
+local ReadOnlyLock = true;
+local function readOnlyLock_ON()  ReadOnlyLock = true;  end
+local function readOnlyLock_OFF() ReadOnlyLock = false; end
+local function readOnlySetter(rname, k, v)
+  if (ReadOnlyLock) then error("ERROR: trying to set a ReadOnly table");
+  else                   rawset(rname, k, v);                            end
 end
+local function createEmptyReadOnlyTable(t)
+  t = {};
+  setmetatable(t, {__newindex = readOnlySetter});
+  return t;
+end
+
+-- NODES NODES NODES NODES NODES NODES NODES NODES NODES NODES NODES NODES
 function createNamedNode(tname, lo, pk, name)
-  if (name == nil) then error("createNamedNode(,,name) - name not defined"); end
-  createNode(tname, lo, pk); lo.node.__name = name;
+  if     (lo      == nil) then
+    error("createNamedNode(x) - x does not exist");
+  elseif (lo.node ~= nil) then
+    error("createNamedNode - Node already exists");
+  elseif (pk      == nil) then
+    error("createNamedNode(x, pk) - pk not defined");
+  elseif (name    == nil) then
+    error("createNamedNode(,,name) - name not defined");
+  end
+  readOnlyLock_OFF();
+  lo.node = createEmptyReadOnlyTable();
+  lo.node.__tname = tname;
+  lo.node.__pk    = pk;
+  lo.node.__name  = name;
+  readOnlyLock_ON();
+  Vset[lo.node] = true;
+  PKset[pk]     = lo.node;
+  return "CREATED NODE";
 end
 
 function deleteNode(lo)
   if     (lo      == nil) then error("deleteNode(x) - x does not exist");
   elseif (lo.node == nil) then error("deleteNode - Node does not exists"); end
-  Vset[lo.node] = nil;
-  lo.node       = nil;
+  PKset[lo.node.__pk] = nil;
+  readOnlyLock_OFF(); lo.node = nil; readOnlyLock_ON();
+  Vset[lo.node]       = nil;
 end
 
 -- PROPERTIES PROPERTIES PROPERTIES PROPERTIES PROPERTIES PROPERTIES
@@ -52,7 +75,7 @@ function addNodeProperty(node, key, value)
   elseif (node[key] ~= nil) then
     error("addNodePropery(x, key) - key already exists");
   end
-  node[key] = value;
+  readOnlyLock_OFF(); node[key] = value; readOnlyLock_ON();
 end
 function deleteNodeProperty(node, key)
   if     (node      == nil) then
@@ -60,7 +83,7 @@ function deleteNodeProperty(node, key)
   elseif (node[key] == nil) then
     error("deleteNodePropery(x, key) - key does not exists");
   end
-  node[key] = nil;
+  readOnlyLock_OFF(); node[key] = nil; readOnlyLock_ON();
 end
 
 -- RELATIONSHIPS RELATIONSHIPS RELATIONSHIPS RELATIONSHIPS RELATIONSHIPS
@@ -78,19 +101,28 @@ local function validateNodesInRel(snode, rtype, tnode)
   end
 end
 
+local function createRelationship(snode, rtype, sd, tnode)
+  if (snode.r            == nil) then
+    snode.r                      = createEmptyReadOnlyTable();
+  end
+  if (snode.r[rtype]     == nil) then
+    snode.r[rtype]               = createEmptyReadOnlyTable();
+  end
+  if (snode.r[rtype][sd] == nil) then
+    snode.r[rtype][sd]           = createEmptyReadOnlyTable();
+  end
+  snode.r[rtype][sd][tnode.__pk] = createEmptyReadOnlyTable();
+  snode.r[rtype][sd][tnode.__pk].target = tnode;
+end
+
 function addNodeRelationShip(snode, rtype, tnode)
   validateNodesInRel(snode, rtype, tnode)
   local sd, td = 2, 1;
-  if (snode.r            == nil) then snode.r            = {}; end
-  if (snode.r[rtype]     == nil) then snode.r[rtype]     = {}; end
-  if (snode.r[rtype][sd] == nil) then snode.r[rtype][sd] = {}; end
-  if (tnode.r            == nil) then tnode.r            = {}; end
-  if (tnode.r[rtype]     == nil) then tnode.r[rtype]     = {}; end
-  if (tnode.r[rtype][td] == nil) then tnode.r[rtype][td] = {}; end
-  snode.r[rtype][sd][tnode.__pk]        = {};
-  snode.r[rtype][sd][tnode.__pk].target = tnode;
-  tnode.r[rtype][td][snode.__pk]        = {};
-  tnode.r[rtype][td][snode.__pk].target = snode;
+  readOnlyLock_OFF();
+  createRelationship(snode, rtype, sd, tnode);
+  createRelationship(tnode, rtype, td, snode)
+  readOnlyLock_ON();
+  return "ADDED RELATIONSHIP";
 end
 
 local function isTableEmpty(t)
@@ -119,8 +151,11 @@ function deleteNodeRelationShip(snode, rtype, tnode)
   validateNodesInRel(snode, rtype, tnode)
   local sd, td = 2, 1;
   existsRel(snode, rtype, tnode, sd);
+  readOnlyLock_OFF();
   snode.r[rtype][sd][tnode.__pk] = nil; reduceRel(snode, rtype, sd);
   tnode.r[rtype][td][snode.__pk] = nil; reduceRel(tnode, rtype, td);
+  readOnlyLock_ON();
+  return "DELETED RELATIONSHIP";
 end
 
 -- NOTE: example-usage: add weight to a relationship
@@ -128,8 +163,10 @@ function addPropertyToRelationship(snode, rtype, tnode, prop, value)
   validateNodesInRel(snode, rtype, tnode)
   local sd, td = 2, 1;
   existsRel(snode, rtype, tnode, sd);
+  readOnlyLock_OFF();
   snode.r[rtype][sd][tnode.__pk][prop] = value;
   tnode.r[rtype][td][snode.__pk][prop] = value;
+  readOnlyLock_ON();
 end
 
 -- NEIGHBORHOOD NEIGHBORHOOD NEIGHBORHOOD NEIGHBORHOOD NEIGHBORHOOD
@@ -300,9 +337,16 @@ local function validateEvaled(eed)
 end
 
 -- REPLY_FUNC REPLY_FUNC REPLY_FUNC REPLY_FUNC REPLY_FUNC REPLY_FUNC
-function rf_node_name    (x) return x.w.node.__name;                      end
+local ReplyFuncs = {};
+function rf_nodename     (x) return x.w.node.__name;                      end
 function rf_path         (x) return getPath(x);                           end
 function rf_node_and_path(x) return {node = x.w.node, path = getPath(x)}; end
+function rf_nodename_and_path(x)
+  return {x.w.node.__name, getPath(x)};
+end
+ReplyFuncs['NODENAME']          = rf_nodename;
+ReplyFuncs['PATH']              = rf_path;
+ReplyFuncs['NODENAME_AND_PATH'] = rf_nodename_and_path;
 
 -- BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS
 function traverse_bfs(v, reply_func, options)
@@ -447,3 +491,39 @@ function debugPrintNameFromRel(v, rtype, direction)
   end
 end
 
+function dump_node_and_path(z)
+  local i = 1;
+  for k,v in pairs(z) do
+    print("\t" .. i .. ': NAME: ' .. v.node.__name .. "\tPATH: " .. v.path);
+    i = i + 1;
+  end
+end
+
+
+-- BY_PK BY_PK BY_PK BY_PK BY_PK BY_PK BY_PK BY_PK BY_PK BY_PK BY_PK
+function getNodeByPK(pk)
+  print ('getNodeByPK: pk: ' .. pk);
+  return PKset[pk];
+end
+function addNodeRelationShipByPK(spk, rtype, tpk)
+  print ('addNodeRelationShipByPK: spk: ' .. spk);
+  return addNodeRelationShip(PKset[spk], rtype, PKset[tpk]);
+end
+function traverseBfsByPK(pk, reply_fname, args)
+  local reply_func = ReplyFuncs[reply_fname];
+  if (reply_func == nil) then
+    error("reply_fname: [NODENAME, PATH, NODENAME_AND_PATH]");
+  end
+  local options = {};
+  if (args == 'EXPAND_BOTH') then
+    options.expander_func = expanderBoth;
+  end
+  --return traverse_bfs(getNodeByPK(pk), reply_func, options)
+  local z = traverse_bfs(getNodeByPK(pk), reply_func, options)
+  dump(z);
+  return z;
+end
+
+function initGraphHooks(tbl)
+  print ('initGraphHooks: tbl: ' .. tbl);
+end

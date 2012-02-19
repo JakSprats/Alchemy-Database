@@ -479,7 +479,12 @@ bool luafunc_call(redisClient *c, int argc, robj **argv) {
         return 1;
     }
     for (int i = 2; i < argc; i++) {
-        sds arg = argv[i]->ptr; lua_pushlstring(server.lua, arg, sdslen(arg));
+        sds arg = argv[i]->ptr;
+        if        (is_int(arg)) {
+            long l = strtol(arg, NULL, 10); lua_pushinteger(server.lua, l);
+        } else if (is_float(arg)) {
+            double f = strtod(arg, NULL);   lua_pushnumber (server.lua, f);
+        } else                    lua_pushlstring(server.lua, arg, sdslen(arg));
     }
 
     // POPULATE Lua Global HTTP Vars

@@ -1,13 +1,4 @@
 
--- TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST TEST
-function dump_node_and_path(z)
-  local i = 1;
-  for k,v in pairs(z) do
-    print("\t" .. i .. ': NAME: ' .. v.node.__name .. "\tPATH: " .. v.path);
-    i = i + 1;
-  end
-end
-
 -- INITIAL INITIAL INITIAL INITIAL INITIAL INITIAL INITIAL INITIAL INITIAL
 function initial_test()
   V = {};
@@ -53,7 +44,7 @@ function initial_test()
   print('BreadthFirst: rf_path');
   for k,v in pairs(x) do print("\tPATH: " .. v); end
 
-  local y = traverse_bfs(V.lo2.node, rf_node_name);
+  local y = traverse_bfs(V.lo2.node, rf_nodename);
   print('BreadthFirst: reply_func_node_name');
   for k,v in pairs(y) do print("\tNAME: " .. v); end
 
@@ -335,6 +326,7 @@ end
 
 -- BOTH_DIRECTIONS BOTH_DIRECTIONS BOTH_DIRECTIONS BOTH_DIRECTIONS
 function both_direction_test()
+  V = {};
   V.loA = {}; createNamedNode(tbl, V.loA, 110, 'A');
   V.loB = {}; createNamedNode(tbl, V.loB, 120, 'B');
   V.loC = {}; createNamedNode(tbl, V.loC, 130, 'C');

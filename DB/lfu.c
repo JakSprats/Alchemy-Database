@@ -77,7 +77,7 @@ void createLfuIndex(cli *c) {
     sds  iname   = P_SDS_EMT "%s_%s", LFUINDEX_DELIM, tname);  // FREE ME 108
     DECLARE_ICOL(lfuic, rt->lfuc) DECLARE_ICOL(ic, -1)
     rt->lfui     = newIndex(c, iname, tmatch, lfuic, NULL, 0,
-                            0, 0, NULL, ic, 0, 1, 0); // Can not fail
+                            0, 0, NULL, ic, 0, 1, 0, NULL, NULL);// Can NOT fail
     sdsfree(iname);                                            // FREED 108
     addReply(c, shared.ok);
 }

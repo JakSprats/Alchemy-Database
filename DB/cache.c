@@ -68,12 +68,13 @@ void evictCommand(cli *c) {
         void  *rrow = dwm.k;
         bool   gost = IS_GHOST(btr, rrow);
         printf("EVICT: K: %p MISS: %d gost: %d\n", dwm.k, dwm.miss, gost);
-        if (!rrow || dwm.miss || gost)                          continue;
+        if (!rrow || dwm.miss || gost)                            continue;
         MATCH_INDICES(tmatch)
         if (matches) { // EVICT indexes
             for (int j = 0; j < matches; j++) {
                 r_ind_t *ri  = &Index[inds[j]];
-                if (ri->virt || ri->luat || ri->lru || ri->lfu) continue;
+                if (ri->virt || ri->luat || ri->lru || ri->lfu ||
+                    ri->fname)                                    continue;
                 ulong    pre = ri->btr->msize;
                 evictFromIndex(btr, &apk, rrow, inds[j]);
                 rt->nebytes += (pre - ri->btr->msize);

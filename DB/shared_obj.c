@@ -382,4 +382,7 @@ void DXDB_createSharedObjects() {
 
     shared.http_not_on           = createObject(REDIS_STRING,sdsnew(
         "-ERR CONFIGURATION: HTTP must be turned on, use [webserver_mode, rest_api_mode]\r\n"));
+
+    shared.create_findex         = createObject(REDIS_STRING,sdsnew(
+        "-ERR SYNTAX: CREATE INDEX indexname ON tablename (functionname()) TYPE initfunc\r\n"));
 }

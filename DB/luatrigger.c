@@ -143,7 +143,7 @@ void luaTAdd(cli *c, sds trname, sds tname, sds acmd, sds dcmd) {
     }
     DECLARE_ICOL(ic, -1)
     newIndex(c, trname, tmatch, ic, NULL, 0, 0, 0, luat, ic,
-             0, 0, 0); //Cant fail
+             0, 0, 0, NULL, NULL); //Cant fail
     addReply(c, shared.ok);
     return;
 
@@ -194,7 +194,7 @@ static void luatDo(bt  *btr,    luat_t *luat, aobj *apk,
         lua_pushlstring(server.lua, rt->name, sdslen(rt->name));
     }
 
-    //TODO refactor w/ pushLuaVar
+    //TODO refactor w/ pushLuaVar()
     for (int i = 0; i < ltc->ncols; i++) {
         aobj acol = getCol(btr, rrow, ltc->ics[i], apk, ri->tmatch, NULL);
         int ctype = rt->col[ltc->ics[i].cmatch].type;

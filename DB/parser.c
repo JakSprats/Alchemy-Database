@@ -98,8 +98,7 @@ char *rem_backticks(char *token, int *len) {
 // TYPE_CHECK TYPE_CHECK TYPE_CHECK TYPE_CHECK TYPE_CHECK TYPE_CHECK
 //TODO "if (endptr && !*endptr)" is a better check
 bool is_int(char *s) { // Used in UPDATE EXPRESSIONS
-    char *endptr;
-    long val = strtol(s, &endptr, 10);
+    char *endptr; long val = strtol(s, &endptr, 10);
     val = 0; /* compiler warning */
     if (endptr[0] != '\0') return 0;
     else                   return 1;
@@ -109,8 +108,7 @@ bool is_u128(char *s) { // Used in UPDATE EXPRESSIONS
     uint128 x; return parseU128(s, &x);
 }
 bool is_float(char *s) { // Used in UPDATE EXPRESSIONS
-    char *endptr;
-    long val = strtod(s, &endptr);
+    char *endptr; double val = strtod(s, &endptr);
     val = 0; /* compiler warning */
     if (endptr[0] != '\0') return 0;
     else                   return 1;

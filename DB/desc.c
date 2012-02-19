@@ -53,7 +53,7 @@ extern r_ind_t *Index;
 // CONSTANT GLOBALS
 char *Col_type_defs[]       =
   {"NONE", "INT UNSIGNED", "BIGINT UNSIGNED", "TEXT", "FLOAT", "U128",
-   "FUNCTION", "LUAOBJ", "BOOL", "COLUMN_NAME"};
+   "LUAOBJ", "FUNCTION", "BOOL", "COLUMN_NAME"};
 
 #define ADD_REPLY_BULK(r, buf)    \
     r = _createStringObject(buf); \
@@ -216,7 +216,7 @@ void sqlDumpCommand(redisClient *c) {
         MATCH_INDICES(tmatch)
         for (int i = 0; i < matches; i++) {
             r_ind_t *ri = &Index[inds[i]];
-            if (ri->virt || ri->luat) continue;
+            if (ri->virt || ri->luat || ri->fname) continue;
             sds      s  = dumpSQL_Index(mtname, rt, ri, tmatch, 0);
             r           = createObject(REDIS_STRING, s);
             addReplyBulk(c, r); decrRefCount(r); card++;
@@ -242,7 +242,7 @@ ull get_sum_all_index_size_for_table(int tmatch) {
     MATCH_INDICES(tmatch)
     for (int i = 0; i < matches; i++) {
         r_ind_t *ri = &Index[inds[i]];
-        if (!ri->virt && !ri->luat) {
+        if (!ri->virt && !ri->luat && !ri->fname) {
             bt *ibtr = getIBtr(inds[i]); isize += ibtr->msize;
         }
     }
@@ -265,6 +265,11 @@ static void outputAdvancedIndexInfo(redisClient *c, int tmatch, long *card) {
                 desc     = sdscatprintf(desc, " [DEL: %s]", dcmd);
                 sdsfree(dcmd);                           /* DESTROYED 078 */
             }
+            robj *r    = createObject(REDIS_STRING, desc);
+            addReplyBulk(c, r); decrRefCount(r); INCR(*card)
+        } else if (ri->fname) {
+            sds     desc = sdscatprintf(sdsempty(), "LUA_FUNCTION_INDEX: %s()",
+                                                    ri->fname);
             robj *r    = createObject(REDIS_STRING, desc);
             addReplyBulk(c, r); decrRefCount(r); INCR(*card)
         }
@@ -312,7 +317,7 @@ void descCommand(redisClient *c) {
                 r_ind_t *ri      = &Index[imatch];
                 if (ri->icol.cmatch != j) continue;
                 ull      isize   = 0;
-                if (!ri->virt && !ri->luat) {
+                if (!ri->virt && !ri->luat && !ri->fname) {
                     bt *ibtr = getIBtr(imatch); isize = ibtr->msize;
                 }
                 sds idesc = NULL; // DEST 051

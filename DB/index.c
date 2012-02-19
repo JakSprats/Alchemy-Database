@@ -345,7 +345,7 @@ static bool iAddStream(cli *c, bt *btr, uchar *stream, int imatch) {
 }
 bool addToIndex(cli *c, bt *btr, aobj *apk, void *rrow, int imatch) {
     r_ind_t *ri    = &Index[imatch];
-    if (ri->virt)                                                    return 1;
+    if (ri->virt || ri->fname)                                       return 1;
     bt      *ibtr  = getIBtr(imatch);
     if (ri->luat) { luatAdd(btr, (luat_t *)ibtr, apk, imatch, rrow); return 1; }
     int      pktyp = Tbl[ri->tmatch].col[0].type;
@@ -375,7 +375,7 @@ bool addToIndex(cli *c, bt *btr, aobj *apk, void *rrow, int imatch) {
 }
 void delFromIndex(bt *btr, aobj *apk, void *rrow, int imatch, bool gost) {
     r_ind_t *ri   = &Index[imatch];
-    if (ri->virt)                                                     return;
+    if (ri->virt || ri->fname)                                        return;
     bt      *ibtr = getIBtr(imatch);
     if (ri->luat) { luatDel(btr,  (luat_t *)ibtr, apk, imatch, rrow); return; }
     if (ri->clist) {
@@ -400,7 +400,7 @@ void delFromIndex(bt *btr, aobj *apk, void *rrow, int imatch, bool gost) {
 void evictFromIndex(bt *btr, aobj *apk, void *rrow, int imatch) {
     printf("Evict: imatch: %d apk: ", imatch); dumpAobj(printf, apk);
     r_ind_t *ri   = &Index[imatch];
-    if (ri->virt)                                                     return;
+    if (ri->virt || ri->fname)                                        return;
     if (ri->luat) { printf("TODO: EVICT call its own LuatTrigger\n"); return; }
     bt      *ibtr = getIBtr(imatch);
     if (ri->clist) { // MCI
@@ -422,6 +422,7 @@ void evictFromIndex(bt *btr, aobj *apk, void *rrow, int imatch) {
         } releaseAobj(&acol);
     }
 }
+//NOTE: upIndex() called from LRU/LFU
 bool upIndex(cli *c, bt *ibtr, aobj *aopk,  aobj *ocol,
                                aobj *anpk,  aobj *ncol,  int pktyp,
                                aobj *oocol, aobj *nocol, int imatch) {
@@ -439,7 +440,7 @@ bool upIndex(cli *c, bt *ibtr, aobj *aopk,  aobj *ocol,
 bool updateIndex(cli *c, bt *btr, aobj *aopk, void *orow, 
                                   aobj *anpk, void *nrow, int imatch) {
     r_ind_t *ri    = &Index[imatch];
-    if (ri->virt)                                         return 1;
+    if (ri->virt || ri->fname)                            return 1;
     bt      *ibtr  = getIBtr(imatch);
     if (ri->luat) {
         luatAdd(btr, (luat_t *)ibtr, anpk, imatch, nrow); return 1;
@@ -510,7 +511,6 @@ long buildIndex(cli *c, bt *btr, int imatch, long limit) {
 static long buildNewIndex(cli *c, int  tmatch, int imatch, long limit) {
     bt   *btr  = getBtr(tmatch); if (!btr->numkeys) return 0;
     long  card = buildIndex(c, btr, imatch, limit);
-    if (card == -1) emptyIndex(imatch);
     return card;
 }
 static void addIndex() { //printf("addIndex: Ind_HW: %d\n", Ind_HW);
@@ -540,10 +540,20 @@ static bool createLuaElementIndex(cli *c, int tmatch, icol_t ic, int imatch) {
     }
     CLEAR_LUA_STACK return ret;
 }
-int newIndex(cli    *c,     sds    iname, int  tmatch, icol_t ic,
-             list   *clist, uchar  cnstr, bool virt,   bool   lru,
-             luat_t *luat,  icol_t obc,   bool prtl,   bool   lfu,
-             uchar   dtype) {
+static bool runLuaFunctionIndexInitFunc(cli *c, sds initfunc, sds tname) {
+    bool ret = 1;
+    CLEAR_LUA_STACK
+    lua_getfield   (server.lua, LUA_GLOBALSINDEX, initfunc);
+    lua_pushlstring(server.lua, tname, sdslen(tname));
+    if (DXDB_lua_pcall(server.lua, 1, 0, 0)) { ret = 0;
+        ADD_REPLY_FAILED_LUA_STRING_CMD(initfunc);
+    }
+    CLEAR_LUA_STACK return ret;
+}
+int newIndex(cli    *c,     sds    iname, int  tmatch,  icol_t ic,
+             list   *clist, uchar  cnstr, bool virt,    bool   lru,
+             luat_t *luat,  icol_t obc,   bool prtl,    bool   lfu,
+             uchar   dtype, sds    fname, sds  initfunc) {
     int imatch;
     if (!DropI && Num_indx >= (int)Ind_HW) addIndex();
     if (DropI) {
@@ -559,14 +569,15 @@ int newIndex(cli    *c,     sds    iname, int  tmatch, icol_t ic,
     ri->tmatch  = tmatch; ri->icol  = ic;    ri->clist = clist;
     ri->virt    = virt;   ri->cnstr = cnstr; ri->lru   = lru;
     ri->obc     = obc;    ri->lfu   = lfu;
+    if (fname) ri->fname = sdsdup(fname);                // FREE 162
     ri->luat    = luat  ? 1     :  0;
     ri->done    = prtl  ? 0     :  1; 
     ri->dtype   = dtype ? dtype : rt->col[ic.cmatch].type;
     ri->ofst    = prtl  ? 1     : -1; // NOTE: PKs start at 1 (not 0)
-    if (ri->icol.cmatch != -1) rt->col[ri->icol.cmatch].imatch = imatch;
     if (!rt->ilist) rt->ilist  = listCreate();           // DESTROY 088
     listAddNodeTail(rt->ilist, VOIDINT imatch);
-    {
+    if (ri->icol.cmatch != -1) {
+        rt->col[ri->icol.cmatch].imatch = imatch;
         ci_t *ci = dictFetchValue(rt->cdict, rt->col[ri->icol.cmatch].name);
         if (!ci->ilist) ci->ilist = listCreate();        // FREE 148
         listAddNodeTail(ci->ilist, VOIDINT imatch);
@@ -585,23 +596,30 @@ int newIndex(cli    *c,     sds    iname, int  tmatch, icol_t ic,
             rt->col[ic->cmatch].indxd = 1; /* used in updateRow OVRWR */
             i++;
         } listReleaseIterator(li);
-    } else if (!ri->luat) rt->col[ri->icol.cmatch].indxd = 1;
+    } else if (ri->icol.cmatch != -1) rt->col[ri->icol.cmatch].indxd = 1;
     if      (virt) rt->vimatch = imatch;
     else if (ri->luat) { //TODO btr should not point to luat, use ri->luat
         ri->btr = (bt *)luat; luat->num = imatch;
     } else {
+        if (initfunc && !runLuaFunctionIndexInitFunc(c, initfunc, rt->name)) {
+            goto newind_err;
+        }
         if (ri->icol.nlo &&
-            !createLuaElementIndex(c, tmatch, ic, imatch)) return -1;
+            !createLuaElementIndex(c, tmatch, ic, imatch)) goto newind_err;
         uchar pktyp = rt->col[0].type;
         ri->btr = ri->clist       ? createMCI_IBT(ri->clist, imatch, ri->dtype):
                   UNIQ(ri->cnstr) ? createU_S_IBT(ri->dtype, imatch, pktyp) :
         /* normal & lru/lfu */      createIndexBT(ri->dtype, imatch);
     }
     ASSERT_OK(dictAdd(IndD, sdsdup(ri->name), VOIDINT(imatch + 1)));
-    if (!virt && !lru && !lfu && !luat && !prtl) { //NOTE: failure -> emptyIndex
-        if (buildNewIndex(c, tmatch, imatch, -1) == -1) return -1;
+    if (!virt && !lru && !lfu && !luat && !prtl && !fname) {
+        //NOTE: failure -> emptyIndex
+        if (buildNewIndex(c, tmatch, imatch, -1) == -1) goto newind_err;
     }
     return imatch;
+
+newind_err:
+    emptyIndex(imatch); return -1;
 }
 
 bool addC2MCI(cli *c, icol_t ic, list *clist) {
@@ -616,8 +634,9 @@ bool addC2MCI(cli *c, icol_t ic, list *clist) {
     listAddNodeTail(clist, VOIDINT mic);
     return 1;
 }
-static bool ICommit(cli *c,      sds   iname,   sds   tname, char  *cname,
-                    uchar cnstr, sds   obcname, long  limit, uchar  dtype) {
+static bool ICommit(cli   *c,    sds iname,    sds  tname, sds   cname,
+                    uchar cnstr, sds obcname,  long limit, uchar dtype,
+                    sds   fname, sds initfunc) {
     DECLARE_ICOL(ic, -1)
     list    *clist   = NULL;
     bool     prtl    = (limit != -1);
@@ -628,10 +647,11 @@ static bool ICommit(cli *c,      sds   iname,   sds   tname, char  *cname,
     if (prtl && !C_IS_NUM(rt->col[0].type)) { // INDEX CURSOR PK -> NUM
         addReply(c, shared.indexcursorerr);                         return 0;
     }
-    SKIP_SPACES(cname);
-    char *nextc = strchr(cname, ',');
     bool  new   = 1; // Used in Index Cursors
-    if (nextc) {    /* Multiple Column Index */
+    char *nextc = fname ? NULL : strchr(cname, ',');
+    if (fname) { // NOOP
+    } else if (nextc) {    /* Multiple Column Index */
+        char *cn = cname;
         if UNIQ(cnstr) {
             if (rt->nmci) { addReply(c, shared.two_uniq_mci);       return 0;
             } else if (!C_IS_NUM(rt->col[0].type)) { /* INT & LONG */
@@ -643,16 +663,16 @@ static bool ICommit(cli *c,      sds   iname,   sds   tname, char  *cname,
         while (1) {
             char *end = nextc - 1;
             REV_SKIP_SPACES(end)
-            oic       = find_column_n(tmatch, cname, (end + 1 - cname));
+            oic       = find_column_n(tmatch, cn, (end + 1 - cn));
             if (!addC2MCI(c, oic, clist))                           return 0;
             //TODO releaseIC(oic);
             if (ic.cmatch == -1) cloneIC(&ic, &oic); // 1st col can be index
             nextc++;
             SKIP_SPACES(nextc);
-            cname     = nextc;
+            cn        = nextc;
             nextc     = strchr(nextc, ',');
             if (!nextc) {
-                oic = find_column(tmatch, cname);
+                oic = find_column(tmatch, cn);
                 if (!addC2MCI(c, oic, clist))                       return 0;
                 break;
             }
@@ -689,7 +709,7 @@ static bool ICommit(cli *c,      sds   iname,   sds   tname, char  *cname,
             }
         }
     } else {
-        ic = find_column(tmatch, cname);
+        ic = find_column_sds(tmatch, cname);
         if (ic.cmatch <= -1) {
             addReply(c, shared.indextargetinvalid); return 0;
         }
@@ -723,8 +743,8 @@ static bool ICommit(cli *c,      sds   iname,   sds   tname, char  *cname,
         }
     }
     if (new) {
-        if ((newIndex(c, iname, tmatch, ic,   clist, cnstr, 0,
-                      0, NULL,  obc,    prtl, 0,     dtype)) == -1) return 0;
+        if ((newIndex(c,    iname, tmatch, ic,   clist, cnstr, 0, 0, NULL, obc,
+                      prtl, 0,     dtype, fname, initfunc)) == -1) return 0;
     }
     if (prtl) {
         int imatch = find_partial_index(tmatch, ic);
@@ -753,31 +773,46 @@ void createIndex(redisClient *c) {
         addReply(c, shared.nonuniqueindexnames);                      return;
     }
     char *token = c->argv[coln]->ptr;
-    char *end   = strchr(token, ')');
+    char *end   = strrchr(token + sdslen(token) - 1, ')');
     if (!end || (*token != '(')) { addReply(c, shared.createsyntax);  return; }
-    STACK_STRDUP(cname, (token + 1), (end - token - 1))
+    token++; SKIP_SPACES(token);
+    sds  obcname = NULL, fname = NULL, initfunc = NULL;
+    sds cname = sdsnewlen(token, (end - token));         // FREE 158
 
     uchar  dtype = COL_TYPE_NONE;
     char  *dn    = strchr(cname, '.');
     if (dn) {
         if (c->argc < (coln + 2)) {
-            addReply(c, shared.createsyntax_dn); return;
+            addReply(c, shared.createsyntax_dn);               goto cr8i_end;
         }
         coln++;
         if (!parseColType(c, c->argv[coln]->ptr, &dtype)) {
-            addReply(c, shared.createsyntax_dn);                      return;
+            addReply(c, shared.createsyntax_dn);               goto cr8i_end;
         }
     }
-    sds  obcname = NULL;
-    long limit   = -1;
-    if (c->argc > (coln + 1)) {
+    bool findex = (cname[sdslen(cname) - 1] == ')' &&
+                   cname[sdslen(cname) - 2] == '(');
+    long limit  = -1;
+    if (findex) {
+        char *prn = strchr(cname, '(');
+        fname     = sdsnewlen(cname, (prn - cname));     // FREE 159
+        if (c->argc < (coln + 3)) {
+            addReply(c, shared.create_findex);                 goto cr8i_end;
+        }
+        coln++;
+        if (!parseColType(c, c->argv[coln]->ptr, &dtype)) {
+            addReply(c, shared.create_findex);                 goto cr8i_end;
+        }
+        coln++;
+        initfunc  = sdsdup(c->argv[coln]->ptr);           // FREE 160;
+    } else if (c->argc > (coln + 1)) {
         if (strcasecmp(c->argv[coln + 1]->ptr, "ORDER") &&
             (c->argc == (coln + 4))) { 
             if (strcasecmp(c->argv[coln + 1]->ptr, "ORDER") || 
                 strcasecmp(c->argv[coln + 2]->ptr, "BY")) {
-                addReply(c, shared.createsyntax);                     return;
+                addReply(c, shared.createsyntax);              goto cr8i_end;
             } else {
-                coln += 3; obcname = c->argv[coln]->ptr;
+                coln += 3; obcname = sdsdup(c->argv[coln]->ptr); // FREE 161
             }
         }
         if (c->argc > (coln + 1)) {
@@ -788,10 +823,20 @@ void createIndex(redisClient *c) {
                     if (limit > 0) ok = 1;
                 }
             }
-            if (!ok) { addReply(c, shared.createsyntax);              return; }
+            if (!ok) { addReply(c, shared.createsyntax);       goto cr8i_end; }
         }
     }
-    ICommit(c, iname, c->argv[targ]->ptr, cname, cnstr, obcname, limit, dtype);
+    if (limit != -1 && fname) {
+        addReply(c, shared.create_findex);                     goto cr8i_end;
+    }
+    ICommit(c, iname, c->argv[targ]->ptr, cname, cnstr, obcname, limit, dtype,
+            fname, initfunc);
+
+cr8i_end:
+    if (fname)    sdsfree(fname);                        // FREED 158
+    if (initfunc) sdsfree(initfunc);                     // FREED 159
+    if (obcname)  sdsfree(obcname);                      // FREED 161
+    sdsfree(cname);                                      // FREED 158
 }
 static void emptyLuaObjectElementIndex(int imatch) {
     r_ind_t *ri = &Index[imatch];
@@ -809,9 +854,10 @@ void emptyIndex(int imatch) { //printf("emptyIndex: imatch: %d\n", imatch);
     r_ind_t *ri = &Index[imatch];
     if (!ri->name) return; /* previously deleted */
     dictDelete(IndD, ri->name); sdsfree(ri->name);      /* DESTROYED 055 */
+    if (ri->fname) sdsfree(ri->fname);                   // FREED 162
     r_tbl_t *rt = &Tbl[ri->tmatch];
-    rt->col[ri->icol.cmatch].imatch = -1;
     if (ri->icol.cmatch != -1) {
+        rt->col[ri->icol.cmatch].imatch = -1;
         listNode *ln = listSearchKey(rt->ilist, VOIDINT imatch);
         listDelNode(rt->ilist, ln);
     }
@@ -822,7 +868,9 @@ void emptyIndex(int imatch) { //printf("emptyIndex: imatch: %d\n", imatch);
         free(ri->bclist);                                /* FREED 053 */
     }
     // ri->lru & ri->lfu can NOT be dropped, so no need to change rt
-    if (!ri->luat && ri->btr) destroy_index(ri->btr, ri->btr->root, imatch);
+    if (ri->icol.cmatch != -1 && ri->btr) {
+        destroy_index(ri->btr, ri->btr->root, imatch);
+    }
     if (ri->icol.nlo) {
         for (uint32 i = 0; i < ri->icol.nlo; i++) sdsfree(ri->icol.lo[i]);
         emptyLuaObjectElementIndex(imatch);
