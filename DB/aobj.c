@@ -45,6 +45,7 @@ ALL RIGHTS RESERVED
 #include "aobj.h"
 
 extern r_tbl_t *Tbl;
+extern r_ind_t *Index;
 
 void initAobj(aobj *a) {
     bzero(a, sizeof(aobj)); a->type = COL_TYPE_NONE;              a->empty = 1;
@@ -99,6 +100,7 @@ void initAobjDetermineType(aobj *a, char *s, int len, bool fs) {  a->empty = 0;
 //NOTE: does not throw errors
 void initAobjFromStr(aobj *a, char *s, int len, uchar ctype) {
     initAobj(a);                                                  a->empty = 0;
+printf("initAobjFromStr: ctype: %d\n", ctype);
     if         C_IS_S(ctype) {
         a->enc    = a->type   = COL_TYPE_STRING;
         a->freeme = 1;
@@ -113,13 +115,13 @@ void initAobjFromStr(aobj *a, char *s, int len, uchar ctype) {
         a->enc    = a->type = COL_TYPE_INT;
         a->i      = (uint32)strtoul(s, NULL, 10);             // OK: DELIM: \0
     } else if C_IS_X(ctype) {
-        a->enc    = COL_TYPE_U128;     a->type = COL_TYPE_U128;
+        a->enc    = a->type = COL_TYPE_U128;
         parseU128(s, &a->x);
     } else if C_IS_P(ctype) {
-        a->enc    = COL_TYPE_FUNC;      a->type = COL_TYPE_FUNC;
+        a->enc    = a->type = COL_TYPE_FUNC;
         a->i      = (uint32)strtoul(s, NULL, 10);             // OK: DELIM: \0
     } else if C_IS_O(ctype) {
-        a->enc    = COL_TYPE_LUAO;      a->type = COL_TYPE_LUAO;
+        a->enc    = a->type = COL_TYPE_LUAO;
         sds s2 = sdsnewlen(s, len);
         initAobjDetermineType(a, s2, len, 0); sdsfree(s2);
     } else assert(!"initAobjFromStr ERROR\n");

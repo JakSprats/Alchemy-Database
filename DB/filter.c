@@ -50,7 +50,8 @@ extern char *OP_Desc[];
 
 void initFilter(f_t *flt) {
     bzero(flt, sizeof(f_t));
-    flt->jan    = flt->imatch = flt->tmatch = flt->ic.cmatch = -1;
+    flt->jan    = flt->imatch = flt->tmatch = -1;
+    INIT_ICOL(flt->ic, -1)
     flt->op     = NONE;
     initAobj(&flt->akey); initAobj(&flt->alow); initAobj(&flt->ahigh);
 }

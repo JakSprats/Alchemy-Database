@@ -94,7 +94,9 @@ icol_t find_column_n  (int tmatch, char *column, int len);
 
 int get_all_cols(int tmatch, list *cmatchl, bool lru2, bool lfu2);
 
+#define INIT_ICOL(ic, cm) \
+  bzero(&ic, sizeof(icol_t)); ic.fimatch = -1; ic.cmatch = cm;
 #define DECLARE_ICOL(ic, cm) \
-  icol_t ic; bzero(&ic, sizeof(icol_t)); ic.cmatch = cm;
+  icol_t ic; INIT_ICOL(ic, cm)
 
 #endif /* __FIND__H */ 

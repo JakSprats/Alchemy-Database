@@ -82,7 +82,7 @@ enum OP {NONE, EQ, NE, GT, GE, LT, LE, RQ, IN, LFUNC};
 #define LUA_OBJ_SHADOW_TABLE "STBL"
 
 typedef struct icol_t {
-    int cmatch; uint32 nlo; sds *lo;
+    int cmatch; int fimatch; uint32 nlo; sds *lo;
 } icol_t;
 
 //TODO move this into a single struct, that can be bzero'ed
@@ -214,7 +214,8 @@ typedef struct alchemy_server_extensions_t {
     *update_luaobj_complex,  *unsupported_pk,              \
     *order_by_luaobj,        *buildindexdirty,             \
     *cr8tablesyntax,         *joindotnotation,             \
-    *http_not_on,            *create_findex;
+    *http_not_on,            *create_findex,               \
+    *luafuncindex_rpt;
 
 #define DEBUG_C_ARGV(c) \
   for (int i = 0; i < c->argc; i++) \

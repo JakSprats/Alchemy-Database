@@ -118,7 +118,7 @@ static bool evalLuaExpr(cli  *c,    int cmatch, uc_t *uc, aobj *apk,
 
 // PROTOTYPES: LUA_SELECT_FUNCS
 static void initLOFromCM(aobj *a, aobj *apk, icol_t ic, int tmatch, bool fs);
-static void initAobjFromLuaString(lua_State *lua, aobj *a, bool stkd, bool fs);
+static void initAobjFromLuaString(lua_State *lua, aobj *a, bool fs);
 
 /* CREATE_ROW CREATE_ROW CREATE_ROW CREATE_ROW CREATE_ROW CREATE_ROW */
 typedef struct create_row_ctrl {
@@ -580,7 +580,7 @@ static aobj getRC_LFunc(bt   *btr, uchar  *orow, int tmatch, aobj *apk,
                le->fname, lua_tostring(server.lua, -1), server.alc.CurrCard));
         lua_pop(server.lua, 1);
     } else { // DataDumperWrapper returns only strings
-        initAobjFromLuaString(server.lua, &a, 0, fs);
+        initAobjFromLuaString(server.lua, &a, fs);
         lua_pop(server.lua, 1);
     }
     return a;
@@ -766,11 +766,12 @@ static void initFloatAobjFromVal(aobj *a, float f, bool fs, int cmatch) {
 
 //TODO this is inefficient for [INT,FLOAT,BOOL]
 //       ... need slimmer API w/ DataDumper
-static void initAobjFromLuaString(lua_State *lua, aobj *a, bool stkd, bool fs) {
-    int        i    = stkd ? 1 : -1;                              a->empty = 0;
-    int        len  = lua_strlen(lua, i);
+static void initAobjFromLuaString(lua_State *lua, aobj *a, bool fs) {
+    a->empty = 0;
+    int        len  = lua_strlen(lua, -1);
     char      *varr = malloc(len + 1);
-    memcpy(varr, (char*)lua_tostring(lua, i), len); varr[len] = '\0';
+    memcpy(varr, (char*)lua_tostring(lua, -1), len); varr[len] = '\0';
+printf("initAobjDetermineType: len: %d vvar: %s\n", len, varr);
     initAobjDetermineType(a, varr, len, fs);
 }
 
@@ -797,7 +798,9 @@ static void initLOFromCM(aobj *a, aobj *apk, icol_t ic, int tmatch, bool fs) {
     pushLuaVar(tmatch, ic, apk);
     int t     = lua_type(server.lua, -1);
     printf("initLOFromCM: t: %d apk: ", t); dumpAobj(printf, apk);
-    if (t == LUA_TTABLE || t == LUA_TBOOLEAN || t == LUA_TNIL) {
+    if (t == LUA_TNIL) {
+        initAobjString(a, "nil", 3);
+    } else if (t == LUA_TTABLE || t == LUA_TBOOLEAN) {
         r_tbl_t *rt   = &Tbl[tmatch];
         lua_pop(server.lua, 1);
         lua_getglobal(server.lua, "DataDumperLuaObj");
@@ -808,12 +811,12 @@ static void initLOFromCM(aobj *a, aobj *apk, icol_t ic, int tmatch, bool fs) {
         if (ret) {
             initAobjString(a, UnprintableLuaObject, lenUnplo);
         } else { // DataDumper only returns STRINGs
-            initAobjFromLuaString(server.lua, a, 0, fs);
+            initAobjFromLuaString(server.lua, a, fs);
         }
         lua_pop(server.lua, 1);
     } else {
         if        (t == LUA_TSTRING) {
-            initAobjFromLuaString(server.lua, a, 1, fs);
+            initAobjFromLuaString(server.lua, a, fs);
         } else if (t == LUA_TNUMBER) {
             initAobjFromLuaNumber(server.lua, a, 1, fs, tmatch, ic);
         } else {

@@ -152,8 +152,9 @@ sds getJoinAlias(int jan) {
 
 // COL COL COL COL COL COL COL COL COL COL COL COL COL COL COL COL COL COL COL
 static icol_t check_special_column(int tmatch, sds cname) {
+    r_tbl_t *rt = &Tbl[tmatch];
     DECLARE_ICOL(ic, -1)
-    char *sd = strchr(cname, '.');
+    char    *sd = strchr(cname, '.');
     if (sd) {
          if (!strcmp(sd, ".pos()")) {
              sds iname = sdsnewlen(cname, sd - cname);             // FREE 109
@@ -161,9 +162,8 @@ static icol_t check_special_column(int tmatch, sds cname) {
              if (Index[imatch].tmatch != tmatch) return ic;
              if (imatch != -1) ic.cmatch = setOCmatchFromImatch(imatch);
         } else { // CHECK for DotNotation (e.g. "luaobj.x.y.z")
-            r_tbl_t *rt  = &Tbl[tmatch];
-            sds      cn  = sdsnewlen(cname, sd - cname);           // FREE 143
-            ci_t    *ci  = dictFetchValue(rt->cdict, cn);
+            sds   cn = sdsnewlen(cname, sd - cname);           // FREE 143
+            ci_t *ci = dictFetchValue(rt->cdict, cn);
             if (ci) {
                 bool ok = 1;
                 sd++; list *lo = listCreate(); lo->free = v_sdsfree; //FREE 144
@@ -171,7 +171,7 @@ static icol_t check_special_column(int tmatch, sds cname) {
                     char   *nextd = strchr(sd, '.');
                     uint32  len   = nextd ? nextd - sd : (uint32)strlen(sd);
                     char    x     = *sd;
-                    if (!ISALPHA(x)) { ok = 0; break; }
+                    if (!ISALPHA(x) && x != '_') { ok = 0; break; }
                     for (uint32 j = 1; j < len; j++) {
                         x = *(sd + j);
                         if (!ISALNUM(x) && x != '_') { ok = 0; break; }
@@ -195,6 +195,13 @@ static icol_t check_special_column(int tmatch, sds cname) {
             }
             sdsfree(cn);                                           // FREED 143
         }
+    } else if (rt->fdict) { // Check: LuaFunctionIndex Lookup
+        char *lprn = strchr(cname, '(');
+        if (lprn && ((lprn - cname) < (uint32)(sdslen(cname) - 1)) &&
+            (*(lprn + 1) == ')')){
+            sds      fname   = sdsnewlen(cname, lprn - cname); // FREE 163
+            ic.fimatch       = (INTVOID dictFetchValue(rt->fdict, fname) - 1);
+        }
     }
     return ic; // MISS on special also
 }
@@ -206,13 +213,13 @@ icol_t find_column_sds(int tmatch, sds cname) {
 }
 icol_t find_column(int tmatch, char *c) {
     sds    cname = sdsnew(c);                                      // DEST 091
-    icol_t ret   = find_column_sds(tmatch, cname); sdsfree(cname); // DESTD 091
-    return ret;
+    icol_t ic    = find_column_sds(tmatch, cname); sdsfree(cname); // DESTD 091
+    return ic;
 }
 icol_t find_column_n(int tmatch, char *c, int len) {
     sds    cname = sdsnewlen(c, len);                              // DEST 092
-    icol_t ret   = find_column_sds(tmatch, cname); sdsfree(cname); // DESTD 092
-    return ret;
+    icol_t ic    = find_column_sds(tmatch, cname); sdsfree(cname); // DESTD 092
+    return ic;
 }
 int get_all_cols(int tmatch, list *cs, bool lru2, bool lfu2) {
     r_tbl_t *rt = &Tbl[tmatch];

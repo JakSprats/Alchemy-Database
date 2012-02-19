@@ -283,9 +283,6 @@ int deserialiseJTA(uchar *x) {
 #define DEBUG_PARSE_SEL_COL_ISI                          \
   printf("parseSelCol MISS -> ADD COL: %s tcols: %d\n",  \
           rt->tcnames[rt->tcols - 1], rt->tcols - 1);
-#define DEBUG_SEL_LUA                                    \
-  printf("fname: %s t: %d LUA_TFUNCTION: %d\n",          \
-         fname, lua_type(server.lua, 1), LUA_TFUNCTION);
 
 void luasellistRelease(list *ls) {
     if (!ls) return; listRelease(ls);
@@ -297,7 +294,7 @@ static bool parseSelCol(int  tmatch, char   *cname, int   clen,
     if (!strcasecmp(cname, "COUNT(*)")) { *cstar = 1; *qcols = 1;    return 1; }
     icol_t *mic = malloc(sizeof(icol_t));
     *mic        = find_column_n(tmatch, cname, clen);
-printf("parseSelCol: clen: %d cname: %s cmatch: %d nlo: %d\n", clen, cname, mic->cmatch, mic->nlo);
+printf("parseSelCol: clen: %d cname: %s cmatch: %d fimatch: %d nlo: %d\n", clen, cname, mic->cmatch, mic->fimatch, mic->nlo);
     if (mic->cmatch != -1) {
         listAddNodeTail(cs, VOIDINT mic); INCR(*qcols);              return 1;
     } else {

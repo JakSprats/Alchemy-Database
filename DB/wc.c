@@ -193,6 +193,7 @@ printf("parseOBYcol wb->nob: %d tmatch: %d token: %s\n", wb->nob, tmatch, *token
         }
     } else {  // SIMPLE COLUMN [col]
         wb->obc[wb->nob] = find_column_sds(tmatch, t2);
+//TODO fimatch
         if (wb->obc[wb->nob].cmatch == -1) {
             addReply(c, shared.order_by_col_not_found); sdsfree(t2); return 0;
         }
@@ -402,8 +403,13 @@ static robj *parseInumTblCol(char *token, int tlen, f_t *flt) {
 static robj *parseInumCol(char *token, int tlen, f_t *flt) {
     flt->jan = -1;
     flt->ic  = find_column_n(flt->tmatch, token, tlen);
-    if (flt->ic.cmatch == -1) return shared.wc_col_not_found;
-    else                      flt->imatch = find_index(flt->tmatch, flt->ic);
+    if      (flt->ic.fimatch != -1) {
+        flt->imatch = flt->ic.fimatch;
+    } else if (flt->ic.cmatch  == -1) {
+        return shared.wc_col_not_found;
+    } else {
+        flt->imatch = find_index(flt->tmatch, flt->ic);
+    }
     return NULL;
 }
 static uchar pWC_checkLuaFunc(cli *c, f_t *flt, sds tkn, char **fin, robj *ro) {

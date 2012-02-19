@@ -3328,6 +3328,8 @@ function rest_api_first_test() {
 function populate_graph_db() { 
   $CLI DROP   TABLE graphdb >/dev/null;
   $CLI CREATE TABLE graphdb "(pk INT, fk LONG, lo LUAOBJ)";
+  $CLI CREATE INDEX lf_graphdb ON graphdb "(relindx())" LONG initGraphHooks
+
   $CLI INSERT INTO graphdb VALUES "(1, 50, {data='supported';})";
   $CLI SELECT "createNamedNode('graphdb', lo, pk, 'KEN')" FROM graphdb WHERE pk=1
   $CLI INSERT INTO graphdb VALUES "(2, 50, {data='supported';})";
@@ -3340,6 +3342,15 @@ function populate_graph_db() {
   $CLI LUA traverseBfsByPK 1 NODENAME_AND_PATH EXPAND_BOTH
   $CLI SELECT "traverseBfsByPK(pk, 'NODENAME_AND_PATH', 'EXPAND_BOTH')" FROM graphdb WHERE pk BETWEEN 1 AND 3
 
-  $CLI CREATE INDEX lf_graphdb ON graphdb "(relindx())" LONG initGraphHooks
+  $CLI LUA alchemySetIndexByName lf_graphdb 1 999
+  $CLI LUA alchemySetIndexByName lf_graphdb 2 999
+  $CLI LUA alchemySetIndexByName lf_graphdb 3 999
+  $CLI LUA alchemyUpdateIndexByName lf_graphdb 3 999 888
+  $CLI LUA alchemyDeleteIndexByName lf_graphdb 2 999
+
+  echo 999
+  $CLI SELECT "lo.node.__name" FROM graphdb WHERE "relindx() = 999"
+  echo 888
+  $CLI SELECT "lo.node.__name" FROM graphdb WHERE "relindx() = 888"
 
 }

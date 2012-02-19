@@ -78,6 +78,7 @@ typedef struct r_tbl { // 131 bytes -> 136B
     ulong    nerows;     /* Number of Evicted Rows                */
     ulong    nebytes;    /* Number of Evicted Bytes               */
     bool     haslo;      /* Table has LuaObj-Columns              */
+    dict    *fdict;      // USAGE: maps LuaFunctionIndexName to imatch
 } r_tbl_t;
 
 //TODO bool's can all be in a bitmap

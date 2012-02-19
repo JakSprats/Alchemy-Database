@@ -64,7 +64,10 @@ void emptyIndex(int inum);
 void dropIndex (cli *c);
 
 // LUA_INDEX_CALLBACKS
-int luaAlchemySetIndex   (lua_State *lua);
-int luaAlchemyUpdateIndex(lua_State *lua);
-int luaAlchemyDeleteIndex(lua_State *lua);
+int luaAlchemySetIndex         (lua_State *lua);
+int luaAlchemyUpdateIndex      (lua_State *lua);
+int luaAlchemyDeleteIndex      (lua_State *lua);
+int luaAlchemySetIndexByName   (lua_State *lua);
+int luaAlchemyUpdateIndexByName(lua_State *lua);
+int luaAlchemyDeleteIndexByName(lua_State *lua);
 #endif /* __INDEX__H */ 

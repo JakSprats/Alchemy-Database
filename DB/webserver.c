@@ -140,6 +140,7 @@ static void addHttpResponseHeader(sds name, sds value) {
 int luaSetHttpResponseHeaderCommand(lua_State *lua) {
     int argc = lua_gettop(lua);
     if (argc != 2 || !lua_isstring(lua, 1) || !lua_isstring(lua, 2)) {
+        CLEAR_LUA_STACK
         luaPushError(lua, "Lua SetHttpResponseHeader() takes 2 string args");
         return 1;
     }
@@ -151,6 +152,7 @@ int luaSetHttpResponseHeaderCommand(lua_State *lua) {
 int luaSetHttpRedirectCommand(lua_State *lua) {
     int argc = lua_gettop(lua);
     if (argc != 1 || !lua_isstring(lua, 1)) {
+        CLEAR_LUA_STACK
         luaPushError(lua, "Lua SetHttpRedirect() takes 1 string arg"); return 1;
     }
     server.alc.CurrClient->http.retcode = 302;
@@ -160,6 +162,7 @@ int luaSetHttpRedirectCommand(lua_State *lua) {
 int luaSetHttp304Command(lua_State *lua) {
     int argc = lua_gettop(lua);
     if (argc != 0) {
+        CLEAR_LUA_STACK
         luaPushError(lua, "Lua SetHttp304() takes ZERO args"); return 1;
     }
     server.alc.CurrClient->http.retcode = 304;

@@ -690,7 +690,7 @@ bool opSelectSort(cli  *c,    list *ll,   wob_t *wb,
 }
 void iselectAction(cli *c,      cswc_t *w,     wob_t *wb,
                    icol_t *ics, int     qcols, bool   cstar, lfca_t *lfca) {
-    printf("\n\niselectAction\n");
+    printf("\n\niselectAction: imatch: %d\n", w->wf.imatch);
     range_t g; qr_t q; setQueued(w, wb, &q);
     list *ll     = initOBsort(q.qed, wb, 0);
     init_range(&g, c, w, wb, &q, ll, OBY_FREE_ROBJ, NULL);

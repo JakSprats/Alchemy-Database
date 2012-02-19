@@ -518,12 +518,10 @@ function traverseBfsByPK(pk, reply_fname, args)
   if (args == 'EXPAND_BOTH') then
     options.expander_func = expanderBoth;
   end
-  --return traverse_bfs(getNodeByPK(pk), reply_func, options)
-  local z = traverse_bfs(getNodeByPK(pk), reply_func, options)
-  dump(z);
-  return z;
+  return traverse_bfs(getNodeByPK(pk), reply_func, options)
+--[[ local z = traverse_bfs(getNodeByPK(pk), reply_func, options) dump(z); return z; --]]
 end
 
-function initGraphHooks(tbl)
-  print ('initGraphHooks: tbl: ' .. tbl);
+function initGraphHooks(tname, iname)
+  print ('initGraphHooks: tname: ' .. tname .. ' iname: ' .. iname);
 end

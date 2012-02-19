@@ -385,4 +385,6 @@ void DXDB_createSharedObjects() {
 
     shared.create_findex         = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: CREATE INDEX indexname ON tablename (functionname()) TYPE initfunc\r\n"));
+    shared.luafuncindex_rpt      = createObject(REDIS_STRING,sdsnew(
+        "-ERR: CREATE INDEX indexname ON tablename (functionname()) TYPE initfunc - TABLE already has this functionname indexed\r\n"));
 }

@@ -59,9 +59,10 @@ ALL RIGHTS RESERVED
      2.) refactor iEvict() into iRem()
 */
 
-extern r_tbl_t *Tbl;
-extern uint32   Ind_HW; extern dict *IndD; extern list *DropI;
-extern char    *Col_type_defs[];
+extern r_tbl_t  *Tbl;
+extern uint32    Ind_HW; extern dict *IndD; extern list *DropI;
+extern char     *Col_type_defs[];
+extern dictType  sdsDictType;
 
 // GLOBALS
 int      Num_indx;
@@ -540,12 +541,14 @@ static bool createLuaElementIndex(cli *c, int tmatch, icol_t ic, int imatch) {
     }
     CLEAR_LUA_STACK return ret;
 }
-static bool runLuaFunctionIndexInitFunc(cli *c, sds initfunc, sds tname) {
+static bool runLuaFunctionIndexInitFunc(cli *c, sds initfunc, sds tname,
+                                        sds  iname) {
     bool ret = 1;
     CLEAR_LUA_STACK
     lua_getfield   (server.lua, LUA_GLOBALSINDEX, initfunc);
     lua_pushlstring(server.lua, tname, sdslen(tname));
-    if (DXDB_lua_pcall(server.lua, 1, 0, 0)) { ret = 0;
+    lua_pushlstring(server.lua, iname, sdslen(iname));
+    if (DXDB_lua_pcall(server.lua, 2, 0, 0)) { ret = 0;
         ADD_REPLY_FAILED_LUA_STRING_CMD(initfunc);
     }
     CLEAR_LUA_STACK return ret;
@@ -582,6 +585,14 @@ int newIndex(cli    *c,     sds    iname, int  tmatch,  icol_t ic,
         if (!ci->ilist) ci->ilist = listCreate();        // FREE 148
         listAddNodeTail(ci->ilist, VOIDINT imatch);
     }
+    if (fname) {
+        if (!rt->fdict) rt->fdict = dictCreate(&sdsDictType, NULL);
+        int fimatch = INTVOID dictFetchValue(rt->fdict, fname);
+        if (fimatch) {
+             addReply(c, shared.luafuncindex_rpt);         goto newind_err;
+        }
+        ASSERT_OK(dictAdd(rt->fdict, sdsdup(fname), VOIDINT(imatch + 1)));// >0
+    }
     if (ri->luat) rt->nltrgr++;   // this table now has LUA TRIGGERS
     if (ri->clist) {
         listNode *ln; rt->nmci++; // this table now has MCI
@@ -601,8 +612,9 @@ int newIndex(cli    *c,     sds    iname, int  tmatch,  icol_t ic,
     else if (ri->luat) { //TODO btr should not point to luat, use ri->luat
         ri->btr = (bt *)luat; luat->num = imatch;
     } else {
-        if (initfunc && !runLuaFunctionIndexInitFunc(c, initfunc, rt->name)) {
-            goto newind_err;
+        if (initfunc &&
+            !runLuaFunctionIndexInitFunc(c, initfunc, rt->name, iname)) {
+                                                           goto newind_err;
         }
         if (ri->icol.nlo &&
             !createLuaElementIndex(c, tmatch, ic, imatch)) goto newind_err;
@@ -614,7 +626,7 @@ int newIndex(cli    *c,     sds    iname, int  tmatch,  icol_t ic,
     ASSERT_OK(dictAdd(IndD, sdsdup(ri->name), VOIDINT(imatch + 1)));
     if (!virt && !lru && !lfu && !luat && !prtl && !fname) {
         //NOTE: failure -> emptyIndex
-        if (buildNewIndex(c, tmatch, imatch, -1) == -1) goto newind_err;
+        if (buildNewIndex(c, tmatch, imatch, -1) == -1)    goto newind_err;
     }
     return imatch;
 
@@ -910,6 +922,7 @@ void dropIndex(redisClient *c) {
   printf("ocol: "); dumpAobj(printf, &ocol); \
   printf("ncol: "); dumpAobj(printf, &ncol);
 
+//TODO tname, cname, ename can be local variables
 static void getTblColElmntFromLua(lua_State *lua, int stack_size,
                                   sds *tname,  sds    *cname, sds *ename,
                                   int *tmatch, icol_t *ic,    int *imatch) {
@@ -921,21 +934,21 @@ static void getTblColElmntFromLua(lua_State *lua, int stack_size,
     s         = (char *)lua_tolstring(lua, stack_size, &len); stack_size++;
     *cname    = sdsnewlen(s, len);
     s         = (char *)lua_tolstring(lua, stack_size, &len); stack_size++;
-    *ename    = sdsnewlen(s, len); //TODO nested enames
+    *ename    = sdsnewlen(s, len);
     *ic       = find_column_sds(*tmatch, *cname);
-    ic->nlo   = 1;                 //TODO nested enames
+    ic->nlo   = 1;
     ic->lo    = malloc(sizeof(sds) * ic->nlo);   // FREE 146
     ic->lo[0] = sdsdup(*ename);
     *imatch   = find_index(*tmatch, *ic);
 }
 
-/* Usage: Lua: alchemySetIndex(tbl, col, pk, element, val); */
-int luaAlchemySetIndex(lua_State *lua) { //printf("SHA1\n");
+int luaAlchemySetIndex(lua_State *lua) {
     int  ssize = 5;
     int  argc  = lua_gettop(lua);
     if (argc != ssize) {
+        CLEAR_LUA_STACK
         luaPushError(lua, "alchemySetIndex(tbl, col, elmnt, pk, val)");
-        CLEAR_LUA_STACK return 1;
+        return 1;
     }
     sds tname, cname, ename; icol_t ic; int tmatch, imatch;
     getTblColElmntFromLua(lua, ssize, &tname,  &cname, &ename,
@@ -951,13 +964,13 @@ int luaAlchemySetIndex(lua_State *lua) { //printf("SHA1\n");
                         NULL, imatch);
     lua_pushboolean(lua, ret); return 1;
 }
-/* Usage: Lua: alchemyUpdateIndex(tbl, col, pk, element, oldval, newval); */
 int luaAlchemyUpdateIndex(lua_State *lua) {
     int  ssize = 6;
     int  argc  = lua_gettop(lua);
     if (argc != ssize) {
+        CLEAR_LUA_STACK
         luaPushError(lua, "alchemyUpdateIndex(tbl, col, elmnt, pk, old, new)");
-        CLEAR_LUA_STACK return 1;
+        return 1;
     }
     sds tname, cname, ename; icol_t ic; int tmatch, imatch;
     getTblColElmntFromLua(lua, ssize, &tname,  &cname, &ename,
@@ -975,26 +988,122 @@ int luaAlchemyUpdateIndex(lua_State *lua) {
                            NULL, NULL, imatch);
     lua_pushboolean(lua, ret); return 1;
 }
-/* Usage: Lua: alchemyDeleteIndex(tbl, col, pk, element); */
-int luaAlchemyDeleteIndex(lua_State *lua) {
-    printf("luaAlchemyDeleteIndex\n");
+int luaAlchemyDeleteIndex(lua_State *lua) { //printf("luaAlchemyDeleteIndex\n");
     int  ssize = 5;
     int  argc  = lua_gettop(lua);
     if (argc != ssize) {
+        CLEAR_LUA_STACK
         luaPushError(lua, "alchemyDeleteIndex(tbl, col, elmnt, pk, old)");
-        CLEAR_LUA_STACK return 1;
+        return 1;
     }
     sds tname, cname, ename; icol_t ic; int tmatch, imatch;
     getTblColElmntFromLua(lua, ssize, &tname,  &cname, &ename,
                                       &tmatch, &ic,    &imatch);
     uchar  pktyp = Tbl[tmatch].col[0].type;
     uchar  ctype = Index[imatch].dtype;
-    aobj acol; initAobjFromLua(&acol, ctype); lua_pop(lua, 1);
+    aobj ocol; initAobjFromLua(&ocol, ctype); lua_pop(lua, 1);
     aobj apk;  initAobjFromLua(&apk,  pktyp); CLEAR_LUA_STACK
     sdsfree(tname); sdsfree(cname); sdsfree(ename);
     bt    *ibtr  = getIBtr(imatch);
     bool   gost  = 0;
-    iRem(ibtr, &acol, &apk, NULL, imatch, gost);
+    //TODO check that this apk exists -> otherwise SEGV
+    iRem(ibtr, &ocol, &apk, NULL, imatch, gost);
+    lua_pushboolean(lua, (int)1); return 1;
+}
+
+// LUA_INDEX_BY_NAME_CALLBACKS LUA_INDEX_BY_NAME_CALLBACKS
+static int getIndexFromLua(lua_State *lua) {
+    size_t len;
+    char   *s  = (char *)lua_tolstring(lua, 1, &len);
+    sds iname  = sdsnewlen(s, len);                       // FREE  164
+    int imatch = match_index_name(iname); sdsfree(iname); // FREED 164
+    return imatch;
+}
+int luaAlchemySetIndexByName(lua_State *lua) {
+    int  ssize = 3;
+    int  argc  = lua_gettop(lua);
+    if (argc != ssize) {
+        CLEAR_LUA_STACK
+        luaPushError(lua, "alchemySetIndexByName(iname, pk, val)");
+        return 1;
+    }
+    if (lua_type(lua, 1) != LUA_TSTRING || lua_type(lua, 2) != LUA_TNUMBER || 
+        lua_type(lua, 3) != LUA_TNUMBER) {
+        CLEAR_LUA_STACK
+        luaPushError(lua,
+                     "alchemySetIndexByName(iname[STRING], pk[NUM], val[NUM])");
+        return 1;
+    }
+    int   imatch = getIndexFromLua(lua);    int   tmatch = Index[imatch].tmatch;
+    uchar pktyp  = Tbl[tmatch].col[0].type; uchar ctype  = Index[imatch].dtype;
+    long  pk     = lua_tointeger(server.lua, 2);
+    long  val    = lua_tointeger(server.lua, 3);
+    CLEAR_LUA_STACK
+    aobj acol; initAobjFromLong(&acol, val, ctype);
+    aobj apk;  initAobjFromLong(&apk,  pk,  pktyp);
+    bt    *ibtr  = getIBtr(imatch);
+    bool   ret   = iAdd(server.alc.CurrClient, ibtr, &acol, &apk, pktyp,
+                        NULL, imatch);
+    lua_pushboolean(lua, ret); return 1;
+}
+int luaAlchemyUpdateIndexByName(lua_State *lua) { //TODO
+    int  ssize = 4;
+    int  argc  = lua_gettop(lua);
+    if (argc != ssize) {
+        CLEAR_LUA_STACK
+        luaPushError(lua, "alchemyUpdateIndexByName(iname, pk, old, new)");
+        return 1;
+    }
+    if (lua_type(lua, 1) != LUA_TSTRING || lua_type(lua, 2) != LUA_TNUMBER || 
+        lua_type(lua, 3) != LUA_TNUMBER || lua_type(lua, 4) != LUA_TNUMBER)   {
+        CLEAR_LUA_STACK
+        luaPushError(lua,
+                     "alchemyUpdateIndexByName(iname[STRING], pk[NUM]," \
+                                             " oldval[NUM] newval[NUM])");
+        return 1;
+    }
+    int   imatch = getIndexFromLua(lua);    int   tmatch = Index[imatch].tmatch;
+    uchar pktyp  = Tbl[tmatch].col[0].type; uchar ctype  = Index[imatch].dtype;
+    long  pk     = lua_tointeger(server.lua, 2);
+    long  oval   = lua_tointeger(server.lua, 3);
+    long  nval   = lua_tointeger(server.lua, 4);
+    CLEAR_LUA_STACK
+    aobj ocol; initAobjFromLong(&ocol, oval, ctype);
+    aobj ncol; initAobjFromLong(&ncol, nval, ctype);
+    aobj apk;  initAobjFromLong(&apk,  pk,   pktyp);
+    bt    *ibtr  = getIBtr(imatch);
+    bool   ret   = upIndex(server.alc.CurrClient, ibtr, &apk, &ocol, &apk,
+                           &ncol, pktyp,
+                           NULL, NULL, imatch);
+    lua_pushboolean(lua, ret); return 1;
+}
+int luaAlchemyDeleteIndexByName(lua_State *lua) { //TODO
+    int  ssize = 3;
+    int  argc  = lua_gettop(lua);
+    if (argc != ssize) {
+        CLEAR_LUA_STACK
+        luaPushError(lua, "alchemyDeleteIndexByName(iname, pk, old)");
+        return 1;
+    }
+    if (lua_type(lua, 1) != LUA_TSTRING || lua_type(lua, 2) != LUA_TNUMBER || 
+        lua_type(lua, 3) != LUA_TNUMBER) {
+        CLEAR_LUA_STACK
+        luaPushError(lua,
+                     "alchemyDeleteIndexByName(iname[STRING], pk[NUM], "\
+                                              "oval[NUM])");
+        return 1;
+    }
+    int   imatch = getIndexFromLua(lua);    int   tmatch = Index[imatch].tmatch;
+    uchar pktyp  = Tbl[tmatch].col[0].type; uchar ctype  = Index[imatch].dtype;
+    long  pk     = lua_tointeger(server.lua, 2);
+    long  oval   = lua_tointeger(server.lua, 3);
+    CLEAR_LUA_STACK
+    aobj ocol; initAobjFromLong(&ocol, oval, ctype);
+    aobj apk;  initAobjFromLong(&apk,  pk,   pktyp);
+    bt    *ibtr  = getIBtr(imatch);
+    bool   gost  = 0;
+    //TODO check that this apk exists -> otherwise SEGV
+    iRem(ibtr, &ocol, &apk, NULL, imatch, gost);
     lua_pushboolean(lua, (int)1); return 1;
 }
 

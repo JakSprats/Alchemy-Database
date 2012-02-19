@@ -282,6 +282,13 @@ static bool initLua(cli *c) {
     lua_pushcfunction(server.lua, luaAlchemyDeleteIndex);
     lua_setglobal(server.lua, "alchemyDeleteIndex");
 
+    lua_pushcfunction(server.lua, luaAlchemySetIndexByName);
+    lua_setglobal(server.lua, "alchemySetIndexByName");
+    lua_pushcfunction(server.lua, luaAlchemyUpdateIndexByName);
+    lua_setglobal(server.lua, "alchemyUpdateIndexByName");
+    lua_pushcfunction(server.lua, luaAlchemyDeleteIndexByName);
+    lua_setglobal(server.lua, "alchemyDeleteIndexByName");
+
     if   (!loadLuaHelperFile(c, LUA_INTERNAL_FILE)) return 0;
     else                                            return 1;
 }
