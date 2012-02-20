@@ -3,11 +3,11 @@
 -- this file is loaded when the server starts and 
 -- the server relies on these functions
 --
-package.path = package.path .. ";./extra/?.lua"
+package.path = package.path .. ";./core/?.lua"
 
 require "pluto"
 
-dofile 'extra/dumper.lua';
+dofile './core/dumper.lua';
 
 -- DOT_NOTATION_INDEX DOT_NOTATION_INDEX DOT_NOTATION_INDEX DOT_NOTATION_INDEX
 local ReadOnlyKeywords = {node = true;}

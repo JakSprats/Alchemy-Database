@@ -124,7 +124,7 @@ bool rdbLoadLuaTrigger(FILE *fp) {
     if (which == LUAT_WITH_DEL && loadLtc(fp, &luat->del) == 0)     return 0;
     DECLARE_ICOL(ic, -1)
     if ((newIndex(NULL, trname->ptr, tmatch, ic, NULL, 0, 0, 0, luat, ic,
-                  0, 0, 0, NULL, NULL)) == -1)                      return 0;
+                  0, 0, 0, NULL, NULL, NULL)) == -1)                return 0;
     decrRefCount(trname);
     return 1;
 }

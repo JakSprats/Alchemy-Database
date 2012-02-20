@@ -64,8 +64,8 @@ extern int       Num_indx; extern r_ind_t *Index;
 extern dictType  sdsDictType;
 extern dictType  dbDictType;
 
-// internal.lua should be in the CWD (or in server.alc.Basedir)
-#define LUA_INTERNAL_FILE "internal.lua"
+// internal.lua should be in the ./core (or in server.alc.Basedir/core)
+#define LUA_INTERNAL_FILE "./core/internal.lua"
 
 // RDB Load Table & Index Highwaters
 uint32  Tbl_HW = 0; list   *DropT = NULL; dict   *TblD;
@@ -219,7 +219,7 @@ static void initServer_Extra() {
 
 void DXDB_initServer() { //printf("DXDB_initServer\n");
     bzero(&server.alc, sizeof(alchemy_server_extensions_t));
-    server.alc.Basedir            = zstrdup("./extra/"); //Alchemy's DEFAULT dir
+    server.alc.Basedir            = zstrdup("./");
     server.alc.WebServerMode      = -1;
     server.alc.RestAPIMode        = -1;
     server.alc.RestClient         = createClient(-1);
@@ -297,7 +297,9 @@ void DXDB_main() { //NOTE: must come after rdbLoad()
 }
 
 void DXDB_emptyDb() { //printf("DXDB_emptyDb\n");
-    for (int k = 0; k < Num_tbls; k++) emptyTable(k); /* deletes indices also */
+    for (int k = 0; k < Num_tbls; k++) {
+        emptyTable(server.alc.CurrClient, k);// deletes indices also
+    }
     init_DXDB_PersistentStorageItems(INIT_MAX_NUM_TABLES, INIT_MAX_NUM_INDICES);
 }
 
@@ -694,7 +696,9 @@ int DXDB_rewriteAppendOnlyFile(FILE *fp) {
 }
 
 void DXDB_flushdbCommand() {
-    for (int tmatch = 0; tmatch < Num_tbls; tmatch++) emptyTable(tmatch);
+    for (int tmatch = 0; tmatch < Num_tbls; tmatch++) {
+        emptyTable(server.alc.CurrClient, tmatch);
+    }
     Num_tbls = Num_indx = 0;
 }
 

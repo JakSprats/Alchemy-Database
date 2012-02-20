@@ -399,10 +399,6 @@ activerehashing yes
 ############################## ALCHEMY_DATABASE ###############################
 
 
-# the file internal.lua is part of the server's core
-# basedir must be set so this file can be loaded on startup
-basedir ./extra/
-
 # outputmode determines how the line protocol looks on replies
 # the default value is "normal" and will return comma delimited rows
 # the value "pure_redis" will return columns delimited as redis items

@@ -40,10 +40,10 @@ void iAddUniq(bt *ibtr, uchar pktyp, aobj *apk, aobj *acol); // OBYI uses also
 sds  getMCIlist(list *clist, int tmatch);        //NOTE: Used in DESC command
 bool addC2MCI  (cli *c, icol_t ic, list *clist); //NOTE: Used in rdbLoad()
 
-int  newIndex(cli    *c,     sds    iname, int  tmatch,  icol_t ic,
-              list   *clist, uchar  cnstr, bool virt,    bool   lru,
-              luat_t *luat,  icol_t obc,   bool prtl,    bool   lfu,
-              uchar   dtype, sds    fname, sds  initfunc);
+int  newIndex(cli    *c,     sds    iname, int  tmatch,    icol_t ic,
+              list   *clist, uchar  cnstr, bool virt,      bool   lru,
+              luat_t *luat,  icol_t obc,   bool prtl,      bool   lfu,
+              uchar   dtype, sds    fname, sds  iconstrct, sds idestrct);
 void createIndex(cli *c);
 
 long buildIndex (cli *c, bt *btr, int imatch, long limit);
@@ -60,7 +60,7 @@ bool upIndex    (cli *c, bt *btr, aobj *aopk,  aobj *ocol,
 bool updateIndex(cli *c, bt *btr, aobj *aopk,  void *orow,
                                   aobj *anpk,  void *nrow,  int imatch);
 
-void emptyIndex(int inum);
+void emptyIndex(cli *c, int inum);
 void dropIndex (cli *c);
 
 // LUA_INDEX_CALLBACKS

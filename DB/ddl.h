@@ -42,6 +42,6 @@ void alterCommand    (redisClient *c);
 void initTable(r_tbl_t *rt);
 
 void addColumn(int tmatch, char *cname, int ctype);
-ulong emptyTable(int tmatch);
+ulong emptyTable(cli *c, int tmatch);
 
 #endif /*__A_DDL__H */ 

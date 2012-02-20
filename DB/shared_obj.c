@@ -384,7 +384,7 @@ void DXDB_createSharedObjects() {
         "-ERR CONFIGURATION: HTTP must be turned on, use [webserver_mode, rest_api_mode]\r\n"));
 
     shared.create_findex         = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: CREATE INDEX indexname ON tablename (functionname()) TYPE initfunc\r\n"));
+        "-ERR SYNTAX: CREATE INDEX indexname ON tablename (functionname()) TYPE constructor [destructor]\r\n"));
     shared.luafuncindex_rpt      = createObject(REDIS_STRING,sdsnew(
-        "-ERR: CREATE INDEX indexname ON tablename (functionname()) TYPE initfunc - TABLE already has this functionname indexed\r\n"));
+        "-ERR: CREATE INDEX indexname ON tablename (functionname()) TYPE constructor [destructor] - TABLE already has this functionname indexed\r\n"));
 }

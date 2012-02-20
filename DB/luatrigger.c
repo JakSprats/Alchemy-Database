@@ -143,7 +143,7 @@ void luaTAdd(cli *c, sds trname, sds tname, sds acmd, sds dcmd) {
     }
     DECLARE_ICOL(ic, -1)
     newIndex(c, trname, tmatch, ic, NULL, 0, 0, 0, luat, ic,
-             0, 0, 0, NULL, NULL); //Cant fail
+             0, 0, 0, NULL, NULL, NULL); //Cant fail
     addReply(c, shared.ok);
     return;
 
@@ -177,7 +177,7 @@ void dropLuaTrigger(cli *c) {
     int imatch = match_index_name(iname);
     if (imatch == -1)        { addReply(c, shared.nullbulk);        return; }
     if (!Index[imatch].luat) { addReply(c, shared.drop_luatrigger); return; }
-    emptyIndex(imatch);
+    emptyIndex(c, imatch);
     addReply(c, shared.cone);
 }
 

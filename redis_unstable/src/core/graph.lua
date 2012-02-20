@@ -23,7 +23,7 @@ function registerFunc(array, name, func)
   array[array.__delim .. '.' .. name] = func;
 end
 
-dofile './extra/graph_custom.lua';
+dofile './core/graph_custom.lua';
 
 -- CONSTANTS CONSTANTS CONSTANTS CONSTANTS CONSTANTS CONSTANTS CONSTANTS
 Direction           = {}; -- RELATIONSHIP Directions
@@ -610,7 +610,7 @@ local function deleteIndexUserHasVisitedCity(iname, snode, rtype, tnode)
      alchemyDeleteIndexByName(iname, snode.__pk, tnode.__pk);
   end
 end
-function initUserGraphHooks(tname, iname)
+function constructUserGraphHooks(tname, iname)
   print ('initGraphHooks: tname: ' .. tname .. ' iname: ' .. iname);
   table.insert(hooks_addNodeRelationShip, 
                {func  = addIndexUserHasVisitedCity;
@@ -618,4 +618,17 @@ function initUserGraphHooks(tname, iname)
   table.insert(hooks_deleteNodeRelationShip,
                {func  = deleteIndexUserHasVisitedCity;
                 iname = iname;});
+end
+function destructUserGraphHooks(tname, iname)
+  print ('destructGraphHooks: tname: ' .. tname .. ' iname: ' .. iname);
+  for k, hook in pairs(hooks_addNodeRelationShip) do
+    if (hook.iname == iname) then
+      hooks_addNodeRelationShip[k] = nil; break;
+    end
+  end
+  for k, hook in pairs(hooks_deleteNodeRelationShip) do
+    if (hook.iname == iname) then
+      hooks_deleteNodeRelationShip[k] = nil; break;
+    end
+  end
 end

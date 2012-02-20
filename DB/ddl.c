@@ -173,7 +173,7 @@ static void newTable(cli *c, list *ctypes, list *cnames, int ccount, sds tname){
     sds  iname   = P_SDS_EMT "%s_%s_%s", rt->name, pkname, INDEX_DELIM); //D073
     DECLARE_ICOL(pkic, 0) DECLARE_ICOL(ic, -1)
     newIndex(c, iname, tmatch, pkic, NULL, 0, 1, 0, NULL, ic, 0, 0, 0,
-             NULL, NULL);
+             NULL, NULL, NULL);
     sdsfree(iname);                                      /* DESTROYED 073 */
 }
 
@@ -221,14 +221,14 @@ void createCommand(redisClient *c) { //printf("createCommand\n");
 }
 
 /* DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP */
-unsigned long emptyTable(int tmatch) { //printf("emptyTable: %d\n", tmatch);
+unsigned long emptyTable(cli *c, int tmatch) {
     r_tbl_t *rt      = &Tbl[tmatch];
     if (!rt->name) return 0;                 /* already deleted */
     dictDelete(TblD, rt->name); sdsfree(rt->name);
     MATCH_INDICES(tmatch)
     ulong    deleted = 0;
     if (matches) {                          /* delete indices first */
-        for (int i = 0; i < matches; i++) { emptyIndex(inds[i]); deleted++;
+        for (int i = 0; i < matches; i++) { emptyIndex(c, inds[i]); deleted++;
     }}
     for (int j = 0; j < rt->col_count; j++) sdsfree(rt->col[j].name);//DESTD 082
     free(rt->col);                                                   //FREED 081
@@ -245,7 +245,7 @@ unsigned long emptyTable(int tmatch) { //printf("emptyTable: %d\n", tmatch);
 }
 static void dropTable(redisClient *c) {
     TABLE_CHECK_OR_REPLY(c->argv[2]->ptr,)
-    unsigned long deleted = emptyTable(tmatch);
+    unsigned long deleted = emptyTable(c, tmatch);
     addReplyLongLong(c, deleted);
     server.dirty++;
 } 

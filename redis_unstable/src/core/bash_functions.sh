@@ -3355,7 +3355,7 @@ function graphdb_fof_cities_test() {
 
   $CLI DROP   TABLE users >/dev/null;
   $CLI CREATE TABLE users "(pk INT, hometown INT, lo LUAOBJ)";
-  $CLI CREATE INDEX lf_gf ON users "(relindx())" LONG initUserGraphHooks
+  $CLI CREATE INDEX lf_gf ON users "(relindx())" LONG constructUserGraphHooks destructUserGraphHooks
 
   $CLI INSERT INTO users VALUES "(1, 10, {})";
   $CLI SELECT "createNamedNode('users', lo, pk, 'A')" FROM users WHERE pk=1
