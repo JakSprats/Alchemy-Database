@@ -3164,9 +3164,9 @@ function pop_lua_sql_integration() {
   $CLI DROP   TABLE lo >/dev/null
   $CLI CREATE TABLE lo "(pk INT, fk LONG, lo LUAOBJ)";
   $CLI CREATE INDEX i_lo_dn ON lo "(lo.age)" LONG;
-  $CLI INSERT INTO lo VALUES "(1, 111, '{name = \'RUSS\', age=35}')";
-  $CLI INSERT INTO lo VALUES "(2, 222, '{name = \'JIM\', age=55}')";
-  $CLI INSERT INTO lo VALUES "(3, 333, '{name = \'Jane\', age=22}')"
+  $CLI INSERT INTO lo VALUES "(1, 111, {'name':'RUSS', 'age':35})";
+  $CLI INSERT INTO lo VALUES "(2, 222, {'name':'JIM',  'age':55})";
+  $CLI INSERT INTO lo VALUES "(3, 333, {'name':'Jane', 'age':22})"
 }
 function test_lua_sql_integration() {
   pop_lua_sql_integration
@@ -3202,9 +3202,6 @@ function test_lua_sql_integration() {
   $CLI SELECT \* FROM lo WHERE "pk BETWEEN 2 AND 2 ORDER BY variable_return_num_coroutine(pk)"
   echo FAIL 1
   $CLI SELECT \* FROM lo WHERE "pk BETWEEN 2 AND 3 ORDER BY variable_return_num_coroutine(pk)"
-
-  $CLI INSERT INTO lo VALUES "(11, 111111, 'coroutine.create(foo)')"
-  $CLI INSERT INTO lo VALUES "(12, 121212, '{x=4;y=coroutine.create(foo);}')"
   $CLI DUMP lo
 }
 
@@ -3212,8 +3209,8 @@ function populate_dot_notation_index() {
   $CLI DROP   TABLE doc >/dev/null;
   $CLI CREATE TABLE doc "(pk INT, fk LONG, lo LUAOBJ)";
   $CLI CREATE INDEX i_doc_dn ON doc "(lo.age)" LONG;
-  $CLI INSERT INTO doc VALUES "(1, 111, {name = 'RUSS', age=35, group=2})";
-  $CLI INSERT INTO doc VALUES "(2, 111, {name = 'JANE', age=25, group=2})";
+  $CLI INSERT INTO doc VALUES "(1, 111, {'name':'RUSS', 'age':35, 'group':2})";
+  $CLI INSERT INTO doc VALUES "(2, 111, {'name':'JANE', 'age':25, 'group':2})";
 }
 function test_dot_notation_index() { 
   populate_dot_notation_index
@@ -3228,7 +3225,7 @@ function test_dot_notation_index() {
   echo "1 row (lo.age) [20-30]"
   $CLI SELECT \* FROM doc WHERE "lo.age BETWEEN 20 AND 30"
 
-  $CLI INSERT INTO doc VALUES "(3, 111, {name = 'KEN', age=45, group=3})";
+  $CLI INSERT INTO doc VALUES "(3, 111, {'name':'KEN', 'age':45, 'group':3})";
   echo "1 row (lo.age) [20-30]"
   $CLI SELECT \* FROM doc WHERE "lo.age BETWEEN 20 AND 30"
   echo "2 rows (lo.age) [30-50]"
@@ -3267,34 +3264,33 @@ function test_dot_notation_index() {
   $CLI CREATE INDEX i_doc_mci ON doc "(lo.group,lo.age)" LONG
   echo "1 row [group=2,age=35] MCI"
   $CLI SELECT \* FROM doc WHERE "lo.group = 2 AND lo.age = 35"
-  $CLI INSERT INTO doc VALUES "(4, 111, {name = 'KATE', age=25, group=2})";
+  $CLI INSERT INTO doc VALUES "(4, 111, {'name':'KATE', 'age':25, 'group':2})";
   echo "2 rows [group=2,age=25] MCI"
   $CLI SELECT \* FROM doc WHERE "lo.group = 2 AND lo.age = 25"
-
 }
 
 function populate_join_dot_notation_index() {
   $CLI DROP   TABLE j_doc >/dev/null;
   $CLI CREATE TABLE j_doc "(pk INT, fk LONG, lo LUAOBJ)";
   $CLI CREATE INDEX i_j_doc_dn ON j_doc "(lo.age)" LONG;
-  $CLI INSERT INTO j_doc VALUES "(1, 111, '{name = \'RUSS\', age=35, group=2}')";
+  $CLI INSERT INTO j_doc VALUES "(1, 111, {'name':'RUSS','age':35,'group':2})";
 }
 
 function wiki_lua_tests() {
   $CLI DROP TABLE users >/dev/null
   $CLI CREATE TABLE users "(userid INT, zipcode INT, info LUAOBJ)"
-  $CLI INSERT INTO users "(userid, zipcode, info)" VALUES "(1,44555,{fname='BILL',lname='DOE',age=32,groupid=999,height=70,weight=180})"
-  $CLI INSERT INTO users "(userid, zipcode, info)" VALUES "(2,44555,{fname='Jane',lname='Smith',age=22,groupid=888,coupon='XYZ123'})"
+  $CLI INSERT INTO users "(userid, zipcode, info)" VALUES "(1,44555,{'fname':'BILL','lname':'DOE','age':32,'groupid':999,'height':70,'weight':180})"
+  $CLI INSERT INTO users "(userid, zipcode, info)" VALUES "(2,44555,{'fname':'Jane','lname':'Smith','age':22,'groupid':888,'coupon':'XYZ123'})"
   $CLI CREATE INDEX i_users_i_a ON users "(info.age)" LONG
   $CLI CREATE INDEX i_users_i_g ON users "(info.groupid)" LONG
   echo "1 row [age=32]"
-  $CLI SELECT info.name FROM users WHERE "info.age = 32"
+  $CLI SELECT info.fname FROM users WHERE "info.age = 32"
   echo "1 row [groupid=888]"
-  $CLI SELECT info.name FROM users WHERE "info.groupid = 888"
+  $CLI SELECT info.fname FROM users WHERE "info.groupid = 888"
   $CLI CONFIG ADD LUA "function has_coupon(info, code) if (info.coupon ~= nil and info.coupon == code) then return 1; else return 0; end; end"
   $CLI CREATE INDEX i_u_zip ON users "(zipcode)"
   echo "1 row [has_coupon]"
-  $CLI SELECT info.name FROM users WHERE "zipcode = 44555 AND has_coupon(info, 'XYZ123')"
+  $CLI SELECT info.fname FROM users WHERE "zipcode = 44555 AND has_coupon(info, 'XYZ123')"
   $CLI CONFIG ADD LUA "function format_name(t) return string.sub(t.fname, 1, 1) .. '. ' .. t.lname; end"
   echo "1 row FORMAT_NAME() [has_coupon]"
   $CLI SELECT "format_name(info)" FROM users WHERE "zipcode = 44555 AND has_coupon(info, 'XYZ123')"
@@ -3302,7 +3298,7 @@ function wiki_lua_tests() {
   #TODO UPDATE lua functionality
   #$CLI UPDATE users SET "info.coupon = generate_coupon()" WHERE "userid = 1"
   $CLI CONFIG ADD LUA "weight_gain_per_year={}; weight_gain_per_year[20]=1; weight_gain_per_year[25]=2; weight_gain_per_year[30]=3; weight_gain_per_year[35]=4; weight_gain_per_year[40]=5; weight_gain_per_year[45]=5; weight_gain_per_year[50]=4; weight_gain_per_year[55]=3; weight_gain_per_year[60]=2;"
-  $CLI CONFIG ADD LUA "function update_weight(info) for k, v in pairs(weight_gain_per_year) do if (k > info.age) then info.weight = info.weight + v; return true; end; end; return false; end"
+  $CLI CONFIG ADD LUA "function update_weight(info) if (info.weight == nil) then return false; end for k, v in pairs(weight_gain_per_year) do if (k > info.age) then info.weight = info.weight + v; return true; end; end; end"
   echo "UPDATE as SELECT"
   $CLI SELECT "update_weight(info)" FROM users WHERE "userid = 1"
   echo "2 rows - with ORDERBY func"
@@ -3329,11 +3325,11 @@ function populate_graph_db() {
   $CLI DROP   TABLE graphdb >/dev/null;
   $CLI CREATE TABLE graphdb "(pk INT, fk LONG, lo LUAOBJ)";
 
-  $CLI INSERT INTO graphdb VALUES "(1, 50, {data='supported';})";
+  $CLI INSERT INTO graphdb VALUES "(1, 50, {'data':'supported'})";
   $CLI SELECT "createNamedNode('graphdb', lo, pk, 'KEN')" FROM graphdb WHERE pk=1
-  $CLI INSERT INTO graphdb VALUES "(2, 50, {data='supported';})";
+  $CLI INSERT INTO graphdb VALUES "(2, 50, {'data':'supported'})";
   $CLI SELECT "createNamedNode('graphdb', lo, pk, 'JACK')" FROM graphdb WHERE pk=2
-  $CLI INSERT INTO graphdb VALUES "(3, 49, {data='supported';})";
+  $CLI INSERT INTO graphdb VALUES "(3, 49, {'data':'supported'})";
   $CLI SELECT "createNamedNode('graphdb', lo, pk, 'JILL')" FROM graphdb WHERE pk=3
   $CLI LUA addNodeRelationShipByPK "graphdb" 1 "KNOWS" "graphdb" 2
   $CLI LUA addNodeRelationShipByPK "graphdb" 3 "KNOWS" "graphdb" 2
@@ -3371,7 +3367,6 @@ function graphdb_fof_cities_test() {
   $CLI SELECT "createNamedNode('users', lo, pk, 'F')" FROM users WHERE pk=6
   $CLI INSERT INTO users VALUES "(7, 30, {})";
   $CLI SELECT "createNamedNode('users', lo, pk, 'G')" FROM users WHERE pk=7
-
 
   $CLI LUA addNodeRelationShipByPK 'users' 1 "KNOWS" 'users' 2
   $CLI LUA addNodeRelationShipByPK 'users' 2 "KNOWS" 'users' 4

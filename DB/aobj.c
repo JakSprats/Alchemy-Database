@@ -80,7 +80,9 @@ void initAobjFloat(aobj *a, float f) {
 void initAobjBool(aobj *a, bool b) {
     initAobj(a); a->b = b; a->type = a->enc = COL_TYPE_BOOL;;     a->empty = 0;
 }
-void initAobjDetermineType(aobj *a, char *s, int len, bool fs) {  a->empty = 0;
+//TODO - deprecate initAobjDetermineType() it is terrible
+static void initAobjDetermineType(aobj *a, char *s, int len, bool fs) {
+                                                                  a->empty = 0;
     if        (is_int(s)) {
         a->type = a->enc = COL_TYPE_LONG;
         if (fs) {a->len = len; a->s = s; }
@@ -263,12 +265,14 @@ sds createSDSFromAobj(aobj *a) {
         return sdsnewlen(a->s, a->len);
     } else {
         char buf[64];
-        if      (C_IS_F(a->type))   snprintf   (buf, 64, FLOAT_FMT, a->f);
-        else if (C_IS_L(a->type))   snprintf   (buf, 64, "%lu",     a->l);
-        else if (C_IS_I(a->type))   snprintf   (buf, 64, "%u",      a->i);     
-        else if (C_IS_P(a->type))   snprintf   (buf, 64, "%u",      a->i);     
-        else if (C_IS_X(a->type)) { SPRINTF_128(buf, 64,            a->x); }
-        else                        assert(!"createSDSFromAobj ERROR");
+          if      (C_IS_F(a->type))   snprintf   (buf, 64, FLOAT_FMT, a->f);
+          else if (C_IS_L(a->type))   snprintf   (buf, 64, "%lu",     a->l);
+          else if (C_IS_I(a->type))   snprintf   (buf, 64, "%u",      a->i);
+          else if (C_IS_P(a->type))   snprintf   (buf, 64, "%u",      a->i);
+          else if (C_IS_X(a->type)) { SPRINTF_128(buf, 64,            a->x); }
+          else if (C_IS_B(a->type)) {
+              snprintf(buf, 64, "%s", a->b ? "true" : "false");
+        } else                        assert(!"createSDSFromAobj ERROR");
         return sdsnewlen(buf, strlen(buf));
     }
 }

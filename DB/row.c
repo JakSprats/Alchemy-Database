@@ -118,7 +118,8 @@ static bool evalLuaExpr(cli  *c,    int cmatch, uc_t *uc, aobj *apk,
 
 // PROTOTYPES: LUA_SELECT_FUNCS
 static void initLOFromCM(aobj *a, aobj *apk, icol_t ic, int tmatch, bool fs);
-static void initAobjFromLuaString(lua_State *lua, aobj *a, bool fs);
+static void initAobjFromLuaString(lua_State *lua, aobj *a);
+static void initAobjFromLuaResponse(aobj *a, icol_t *ic, int tmatch, bool fs);
 
 /* CREATE_ROW CREATE_ROW CREATE_ROW CREATE_ROW CREATE_ROW CREATE_ROW */
 typedef struct create_row_ctrl {
@@ -566,7 +567,7 @@ static aobj getRC_OBT(bt *btr, void *orow, int cmatch, aobj *apk, bool fs) {
 static aobj getRC_LFunc(bt   *btr, uchar  *orow, int tmatch, aobj *apk,
                         bool  fs,  lfca_t *lfca) {
     aobj a; initAobj(&a); lue_t *le = lfca->l[lfca->curr]; lfca->curr++;
-    lua_getglobal(server.lua, "DataDumperWrapper");
+    lua_getglobal(server.lua, "DumpFunctionForOutput");
     lua_getglobal(server.lua, le->fname);
     printf("lua select function: fname: %s ncols: %d\n", le->fname, le->ncols);
     for (int i = 0; i < le->ncols; i++) {
@@ -579,9 +580,8 @@ static aobj getRC_LFunc(bt   *btr, uchar  *orow, int tmatch, aobj *apk,
              "-ERR: Error running SELECT FUNCTION (%s): %s CARD: %ld\r\n",
                le->fname, lua_tostring(server.lua, -1), server.alc.CurrCard));
         lua_pop(server.lua, 1);
-    } else { // DataDumperWrapper returns only strings
-        initAobjFromLuaString(server.lua, &a, fs);
-        lua_pop(server.lua, 1);
+    } else {
+        initAobjFromLuaResponse(&a, NULL, tmatch, fs);
     }
     return a;
 }
@@ -764,35 +764,53 @@ static void initFloatAobjFromVal(aobj *a, float f, bool fs, int cmatch) {
     else         { a->f = f; a->enc = COL_TYPE_FLOAT; }
 }
 
-//TODO this is inefficient for [INT,FLOAT,BOOL]
-//       ... need slimmer API w/ DataDumper
-static void initAobjFromLuaString(lua_State *lua, aobj *a, bool fs) {
+static void initAobjFromLuaString(lua_State *lua, aobj *a) {
     a->empty = 0;
-    int        len  = lua_strlen(lua, -1);
-    char      *varr = malloc(len + 1);
-    memcpy(varr, (char*)lua_tostring(lua, -1), len); varr[len] = '\0';
-printf("initAobjDetermineType: len: %d vvar: %s\n", len, varr);
-    initAobjDetermineType(a, varr, len, fs);
+    int        len = lua_strlen(lua, -1);
+    char      *x   = malloc(len + 1); // FREED in aobjDestroy()
+    memcpy(x, (char*)lua_tostring(lua, -1), len); x[len] = '\0';
+    initAobjString(a, x, len);
 }
 
 char *UnprintableLuaObject = "ERR: UNPRINTABLE_LUA_OBJECT";
 int   lenUnplo             = 27;
 
-static void initAobjFromLuaNumber(lua_State *lua, aobj *a,      bool   stkd,
-                                  bool       fs,  int   tmatch, icol_t ic) {
-    int   i = stkd ? 1 : -1;                                      a->empty = 0;
-    ulong l = (ulong)lua_tonumber(lua, i); initAobjLong(a, l);
+static void initAobjFromLuaNumber(lua_State *lua, aobj *a,
+                                  bool       fs,  int   tmatch, icol_t *ic) {
+    ulong l = (ulong)lua_tonumber(lua, -1); initAobjLong(a, l);
     if (fs) {
         sds s = createSDSFromAobj(a);
         initAobjFromStr(a, s, sdslen(s), COL_TYPE_STRING); sdsfree(s);
     }
     int dtype  = COL_TYPE_LONG;
-    int imatch = find_index(tmatch, ic);
-    if (imatch != -1) { //TODO support U128
-        dtype = Index[imatch].dtype; if C_IS_I(dtype) a->i = a->l;
+    if (ic) { // we can determine type[INT|LONG] from Index[].dtype
+        int imatch = find_index(tmatch, *ic);
+        if (imatch != -1) { //TODO support U128
+            dtype = Index[imatch].dtype; if C_IS_I(dtype) a->i = a->l;
+        }
     }
     a->type = a->enc = dtype;
     printf("initAobjFromLuaNumber: a: "); dumpAobj(printf, a);
+}
+static void initAobjFromLuaResponse(aobj *a, icol_t *ic, int tmatch, bool fs) {
+    int t = lua_type(server.lua, -1);
+    if        (t == LUA_TSTRING) {
+        initAobjFromLuaString(server.lua, a);
+    } else if (t == LUA_TNUMBER) {
+        initAobjFromLuaNumber(server.lua, a, fs, tmatch, ic);
+    } else if (t == LUA_TBOOLEAN) {
+       initAobjBool(a, lua_toboolean(server.lua, -1));
+       bool b = a->b;
+       if (fs) {
+           sds s = createSDSFromAobj(a);
+           initAobjFromStr(a, s, sdslen(s), COL_TYPE_STRING); sdsfree(s);
+       }
+       a->type = a->enc = COL_TYPE_BOOL; // for LuaFunctionUPDATES as SELECT
+       a->b    = b;
+    } else {
+        initAobjString(a, UnprintableLuaObject, lenUnplo);
+    }
+    lua_pop(server.lua, 1);
 }
 static void initLOFromCM(aobj *a, aobj *apk, icol_t ic, int tmatch, bool fs) {
     pushLuaVar(tmatch, ic, apk);
@@ -800,31 +818,19 @@ static void initLOFromCM(aobj *a, aobj *apk, icol_t ic, int tmatch, bool fs) {
     printf("initLOFromCM: t: %d apk: ", t); dumpAobj(printf, apk);
     if (t == LUA_TNIL) {
         initAobjString(a, "nil", 3);
-    } else if (t == LUA_TTABLE || t == LUA_TBOOLEAN) {
+    } else if (t == LUA_TTABLE) {
         r_tbl_t *rt   = &Tbl[tmatch];
         lua_pop(server.lua, 1);
-        lua_getglobal(server.lua, "DataDumperLuaObj");
+        lua_getglobal (server.lua, "DumpLuaObjForOutput");
         lua_pushstring(server.lua, rt->name);
         lua_pushstring(server.lua, rt->col[ic.cmatch].name);
         pushAobjLua(apk, apk->type);
         int ret = DXDB_lua_pcall(server.lua, 3, 1, 0);
-        if (ret) {
-            initAobjString(a, UnprintableLuaObject, lenUnplo);
-        } else { // DataDumper only returns STRINGs
-            initAobjFromLuaString(server.lua, a, fs);
-        }
-        lua_pop(server.lua, 1);
-    } else {
-        if        (t == LUA_TSTRING) {
-            initAobjFromLuaString(server.lua, a, fs);
-        } else if (t == LUA_TNUMBER) {
-            initAobjFromLuaNumber(server.lua, a, 1, fs, tmatch, ic);
-        } else {
-            initAobjString(a, UnprintableLuaObject, lenUnplo);
-        }
-        lua_pop(server.lua, 1);
-    }
+        if (ret) initAobjString(a, UnprintableLuaObject, lenUnplo);
+        else     initAobjFromLuaResponse(a, &ic, tmatch, fs);
+    } else initAobjFromLuaResponse(a, &ic, tmatch, fs);
 }
+
 static aobj colFromUU(ulong key, bool fs, int cmatch) {
     int cval = (int)((long)key % UINT_MAX);
     aobj a; initIntAobjFromVal(&a, cval, fs, cmatch); return a;
@@ -959,7 +965,7 @@ static robj *orow_normal(bt     *btr, void *rrow, int qcols,
         outs[i].type    = acol.type;
         if C_IS_E(acol.type) { faili = i;               goto orown_err; }
         if C_IS_B(acol.type) { if (acol.b) bool_ok = 1; continue; }
-//NOTE: return STRING,BOOL,STRING,BOOL,STRING and this will SEGV
+//NOTE: return [STRING,BOOL,STRING,BOOL,STRING] -> SEGV
         allbools        = 0;
         totlen         += acol.len;
         if (C_IS_S(outs[i].type) && outs[i].len) totlen += 2;/* 2 \'s per col */

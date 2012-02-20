@@ -262,6 +262,7 @@ char *get_next_insert_value_token(char *tkn) {
         else if (*tkn == '(' ) tkn = str_next_unescaped_chr(tkn, tkn, ')');
         else if (*tkn == '{' ) tkn = str_next_unescaped_chr(tkn, tkn, '}');
         else if (*tkn == ',' ) return tkn;
+        if (!tkn) return NULL;
         tkn++;
     }
     return NULL;

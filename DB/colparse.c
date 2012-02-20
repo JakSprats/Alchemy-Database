@@ -687,9 +687,9 @@ static bool isLuaFunc(char *expr, sds *fname, sds *argt) {
     return 0;
 }
 static bool luaFuncDefined(sds fname) {
-    CLEAR_LUA_STACK lua_getglobal(server.lua, fname);
-    int t = lua_type(server.lua, 1); CLEAR_LUA_STACK
-    //printf("luaFuncDefined: fname: %s t: %d\n", fname, t);
+    lua_getglobal(server.lua, fname);
+    int t = lua_type(server.lua, -1); lua_pop(server.lua, 1);
+    printf("luaFuncDefined: fname: %s t: %d\n", fname, t);
     return (t == LUA_TFUNCTION);
 }
 static bool checkExprIsFunc(char *expr, lue_t *le, int tmatch) {

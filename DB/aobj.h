@@ -43,9 +43,8 @@ void initAobjFloat   (aobj *a, float f);
 void initAobjU128    (aobj *a, uint128 x);
 void initAobjBool    (aobj *a, bool b);
 
-void initAobjDetermineType(aobj *a, char *s, int len, bool fs);
-void initAobjFromStr      (aobj *a, char *s, int len, uchar ctype);
-void initAobjFromLong     (aobj *a, ulong l,          uchar ctype);
+void initAobjFromStr (aobj *a, char *s, int len, uchar ctype);
+void initAobjFromLong(aobj *a, ulong l,          uchar ctype);
 
 void releaseAobj(void *a);
 void destroyAobj(void *a);

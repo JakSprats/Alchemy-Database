@@ -281,6 +281,7 @@ static void sendLuaFuncReply(cli *c, sds file) {
     }
     for (int i = 1; i < argc; i++) decrRefCount(rargv[i]);
     zfree(rargv);
+    CLEAR_LUA_STACK
 }
 static bool sendRestAPIReply(cli *c, sds file) { //printf("sendRestAPIReply\n");
     int argc; bool ret = 0;
@@ -536,21 +537,10 @@ bool luafunc_call(redisClient *c, int argc, robj **argv) {
         lua_newtable(server.lua); lua_setglobal(server.lua, "COOKIE");
     }
 
-    // Set hook to stop script execution if it takes too long
-    // NOTE: hooks degrade performance
-    if (server.lua_time_limit > 0) {
-        lua_sethook(server.lua, luaMaskCountHook, LUA_MASKCOUNT, 100000);
-        server.lua_time_start = ustime() / 1000;
-    } else {
-        lua_sethook(server.lua,luaMaskCountHook, 0, 0);
-    }
-
     /* Select the right DB in the context of the Lua client */
-    selectDb(server.lua_client, c->db->id);
     c->InternalRequest = 1;
     int ret = DXDB_lua_pcall(server.lua, (argc - 2), 1, 0);
     c->InternalRequest = 0;
-    selectDb(c, server.lua_client->db->id); /* set DB ID from Lua client */
     if (ret) {
         sds err = sdscatprintf(sdsempty(), "Error running script (%s): %s\n",
                                            fname, lua_tostring(server.lua, -1));
@@ -561,5 +551,5 @@ bool luafunc_call(redisClient *c, int argc, robj **argv) {
             addReplyErrorFormat(c, "%s", err);
         }
     }
-    CLEAR_LUA_STACK return ret ? 1 : 0;
+    return ret ? 1 : 0;
 }

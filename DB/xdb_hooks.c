@@ -744,6 +744,7 @@ void DXDB_setClientSA(redisClient *c) { c->sa = AcceptedClientSA; }
 void luafuncCommand(redisClient *c) { //printf("luafuncCommand\n");
     if (luafunc_call(c, c->argc, c->argv)) return;
     luaReplyToRedisReply(c, server.lua);
+    CLEAR_LUA_STACK
 }
 
 // PURGE PURGE PURGE PURGE PURGE PURGE PURGE PURGE PURGE PURGE PURGE PURGE

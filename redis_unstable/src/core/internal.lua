@@ -3,13 +3,14 @@
 -- this file is loaded when the server starts and 
 -- the server relies on these functions
 --
-package.path = package.path .. ";./core/?.lua"
+package.path = package.path .. ";./core/?.lua;./core/luaforge_json/trunk/json/?.lua"
 
 require "pluto"
+Json = require("json")
 
 dofile './core/dumper.lua';
 
--- DOT_NOTATION_INDEX DOT_NOTATION_INDEX DOT_NOTATION_INDEX DOT_NOTATION_INDEX
+-- KEYWORDS(reserved DataStructureNames) KEYWORDS(reserved DataStructureNames)
 local ReadOnlyKeywords = {node = true;}
 function checkReadOnlyKeywords(k)
   if (ReadOnlyKeywords[k]) then
@@ -17,16 +18,7 @@ function checkReadOnlyKeywords(k)
   end
 end
 
-function setIndex(tbl, col, el, pk, val)
-  return alchemySetIndex(tbl, col, el, pk, val);
-end
-function updateIndex(tbl, col, el, pk, old, new)
-  return alchemyUpdateIndex(tbl, col, el, pk, old, new);
-end
-function deleteIndex(tbl, col, el, pk, old)
-  return alchemyDeleteIndex(tbl, col, el, pk, old);
-end
-
+-- DOT_NOTATION_INDEX DOT_NOTATION_INDEX DOT_NOTATION_INDEX DOT_NOTATION_INDEX
 STBL = {}; IEL = {};
 
 function ASQL_setter(rname, k, v)
@@ -36,11 +28,11 @@ function ASQL_setter(rname, k, v)
   local ok = true;
   if (IEL[tbl][col][k] ~= nil) then
     if     (STBL[tbl][col][pk][k] == nil) then
-      ok = setIndex   (tbl, col, k, pk, v);
+      ok = alchemySetIndex   (tbl, col, k, pk, v);
     elseif (v == nil)          then
-      ok = deleteIndex(tbl, col, k, pk, STBL[tbl][col][pk][k]);
+      ok = alchemyDeleteIndex(tbl, col, k, pk, STBL[tbl][col][pk][k]);
     else 
-      ok = updateIndex(tbl, col, k, pk, STBL[tbl][col][pk][k], v);
+      ok = alchemyUpdateIndex(tbl, col, k, pk, STBL[tbl][col][pk][k], v);
     end
   end
   if (ok) then rawset(STBL[tbl][col][pk], k, v); end
@@ -78,8 +70,7 @@ end
 function luaobj_assign(asql, tbl, col, pk, luae) -- create Lua Object Row
   --print('LUA: luaobj_assign: STBL: '); dump(STBL);
   _G[asql][tbl][col][pk] = {};
-  local cmd = 'EVALED = ' ..  luae .. ';'; assert(loadstring(cmd))()
-  STBL[tbl][col][pk] = EVALED;
+  STBL[tbl][col][pk] = Json.decode(luae);
   _G[asql][tbl][col][pk]._tbl = tbl;
   _G[asql][tbl][col][pk]._col = col;
   _G[asql][tbl][col][pk]._pk  = pk;
@@ -92,9 +83,16 @@ function delete_luaobj(asql, tbl, col, pk)
   _G[asql][tbl][col][pk] = nil; STBL[tbl][col][pk] = nil;
 end
 
-function DataDumperLuaObj(tbl, col, pk)
-  print ('DataDumperLuaObj: tbl: ' .. tbl .. ' col: ' .. col .. ' pk: ' .. pk);
-  return DataDumper(STBL[tbl][col][pk]);
+-- LUAOBJ_TO_OUTPUT LUAOBJ_TO_OUTPUT LUAOBJ_TO_OUTPUT LUAOBJ_TO_OUTPUT
+function DumpLuaObjForOutput(tbl, col, pk)
+  print ('DumpLuaObjForOutput: tbl: ' .. tbl .. ' col: ' .. col .. ' pk: ' .. pk);
+  return Json.encode(STBL[tbl][col][pk]);
+end
+function DumpFunctionForOutput(func, ...)
+  local res = func(...);
+  if (type(res) == "boolean" or type(res) == "number" or
+      type(res) == "string")  then return res; end
+  return Json.encode(res);
 end
 
 -- CREATE_TABLE_AS CREATE_TABLE_AS CREATE_TABLE_AS CREATE_TABLE_AS
