@@ -185,7 +185,7 @@ int   btIndDelete(bt *ibtr, aobj *ikey);
 int   btIndNull  (bt *ibtr, aobj *ikey);
 
 bool  btIndNodeAdd    (cli *c, bt *nbtr, aobj *apk, aobj *ocol);
-void *btIndNodeFind   (        bt *nbtr, aobj *apk);
+bool  btIndNodeExist  (        bt *nbtr, aobj *apk);
 int   btIndNodeDelete (        bt *nbtr, aobj *apk, aobj *ocol);
 void  btIndNodeDeleteD(        bt *nbtr, aobj *apk, aobj *ocol);
 int   btIndNodeEvict  (        bt *nbtr, aobj *apk, aobj *ocol);

@@ -313,7 +313,7 @@ int   btIndNull  (bt *ibtr, aobj *ikey) {        abt_replace(ibtr, ikey, NULL);
     printf("btIndNodeEvict: nkeys: %d apk: %p: ",                         \
             nbtr->numkeys, (void *)apk); dumpAobj(printf, apk);
 
-void *btIndNodeFind(bt *nbtr, aobj *apk) { return abt_find(nbtr, apk); }
+bool  btIndNodeExist(bt *nbtr, aobj *apk) { return abt_exist(nbtr, apk); }
 bool  btIndNodeAdd (cli *c, bt *nbtr, aobj *apk, aobj *ocol) { DEBUG_INODE_ADD
     if (ocol) {
         if (abt_find(nbtr, ocol)) {

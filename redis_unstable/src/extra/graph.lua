@@ -2,10 +2,28 @@ local math  = math
 local Queue = require "Queue"
 local Heap  = require "Heap"
 
+
 --TODO Vset && PKset are redundant ... PK is a better idea {all INTs}
 --NOTE: Vset[] used by shortestpath()
 local Vset  = {}; -- table(unique-list) of nodes    -> {key=node}
 local PKset = {}; -- table(unique-list) of LuaObj's -> {key=pk}
+
+-- MAP_API_CONSTANTS_TO_FUNCTIONS MAP_API_CONSTANTS_TO_FUNCTIONS
+ReplyFuncs                   = { __delim = 'REPLY';             }
+RelationshipCostFuncs        = { __delim = 'RELATIONSHIP_COST'; }
+NodeDeltaFuncs               = { __delim = 'NODE_DELTA';        }
+EdgeEvalFuncs                = { __delim = 'EDGE_EVAL';         }
+ExpanderFuncs                = { __delim = 'EXPANDER';          }
+AllRelationshipExpanderFuncs = { __delim = 'ALL_RELATIONSHIP_EXPANDER'; }
+
+function registerFunc(array, name, func)
+  if (array == nil) then error("registerFunc() array does not exist");    end
+  if (name  == nil) then error("registerFunc() arg: 'name' is required"); end
+  if (func  == nil) then error("registerFunc() arg: 'func' is required"); end
+  array[array.__delim .. '.' .. name] = func;
+end
+
+dofile './extra/graph_custom.lua';
 
 -- CONSTANTS CONSTANTS CONSTANTS CONSTANTS CONSTANTS CONSTANTS CONSTANTS
 Direction           = {}; -- RELATIONSHIP Directions
@@ -51,19 +69,21 @@ function createNamedNode(tname, lo, pk, name)
   end
   readOnlyLock_OFF();
   lo.node = createEmptyReadOnlyTable();
-  lo.node.__tname = tname;
-  lo.node.__pk    = pk;
-  lo.node.__name  = name;
+  lo.node.__tname  = tname;
+  lo.node.__pk     = pk;
+  lo.node.__name   = name;
   readOnlyLock_ON();
-  Vset[lo.node] = true;
-  PKset[pk]     = lo.node;
+  Vset[lo.node]    = true;
+  if (PKset[tname] == nil) then PKset[tname] = {}; end
+  PKset[tname][pk] = lo.node;
+print('PKSet: tname: ' .. tname .. ' pk: ' .. pk);
   return "CREATED NODE";
 end
 
 function deleteNode(lo)
   if     (lo      == nil) then error("deleteNode(x) - x does not exist");
   elseif (lo.node == nil) then error("deleteNode - Node does not exists"); end
-  PKset[lo.node.__pk] = nil;
+  PKset[lo.node.__tname][lo.node.__pk] = nil;
   readOnlyLock_OFF(); lo.node = nil; readOnlyLock_ON();
   Vset[lo.node]       = nil;
 end
@@ -115,6 +135,9 @@ local function createRelationship(snode, rtype, sd, tnode)
   snode.r[rtype][sd][tnode.__pk].target = tnode;
 end
 
+local hooks_addNodeRelationShip    = {};
+local hooks_deleteNodeRelationShip = {};
+
 function addNodeRelationShip(snode, rtype, tnode)
   validateNodesInRel(snode, rtype, tnode)
   local sd, td = 2, 1;
@@ -122,6 +145,11 @@ function addNodeRelationShip(snode, rtype, tnode)
   createRelationship(snode, rtype, sd, tnode);
   createRelationship(tnode, rtype, td, snode)
   readOnlyLock_ON();
+  if (hooks_addNodeRelationShip ~= nil) then
+    for k, v in pairs(hooks_addNodeRelationShip) do
+      v.func(v.iname, snode, rtype, tnode);
+    end
+  end
   return "ADDED RELATIONSHIP";
 end
 
@@ -155,6 +183,11 @@ function deleteNodeRelationShip(snode, rtype, tnode)
   snode.r[rtype][sd][tnode.__pk] = nil; reduceRel(snode, rtype, sd);
   tnode.r[rtype][td][snode.__pk] = nil; reduceRel(tnode, rtype, td);
   readOnlyLock_ON();
+  if (hooks_deleteNodeRelationShip ~= nil) then
+    for k, v in pairs(hooks_deleteNodeRelationShip) do
+      v.func(v.iname, snode, rtype, tnode);
+    end
+  end
   return "DELETED RELATIONSHIP";
 end
 
@@ -173,16 +206,20 @@ end
 function expanderOutgoing(x, rtype, relation)
   return (relation[Direction.OUTGOING] ~= nil), Direction.OUTGOING;
 end
+registerFunc(ExpanderFuncs, 'OUTGOING', expanderOutgoing);
 function expanderIncoming(x, rtype, relation)
   return (relation[Direction.INCOMING] ~= nil), Direction.INCOMING;
 end
+registerFunc(ExpanderFuncs, 'INCOMING', expanderIncoming);
 function expanderBoth(x, rtype, relation)
   return ((relation[Direction.INCOMING] ~= nil) or
           (relation[Direction.OUTGOING] ~= nil)), Direction.BOTH;
 end
+registerFunc(ExpanderFuncs, 'BOTH', expanderBoth);
 local function defaultExpanderFunc(x, rtype, relation)
   return expanderOutgoing(x, rtype, relation);
 end
+registerFunc(ExpanderFuncs, 'DEFAULT', defaultExpanderFunc);
 
 local function validateRelEvalFunc(doit, dir)
   assert(doit ~= nil           and dir ~= nil and
@@ -197,8 +234,8 @@ local function getSingleNBhoodRel(t, x, rtype, relation, dir, nopts)
       local pval = nopts.rel_cost_func(trgt);
       table.insert(t, pval, 
                    {node = trgt.target; rtype = rtype; relation = relation;});
-    elseif (nopts.node_diff_func ~= nil) then 
-      local pval = nopts.node_diff_func(x.w.node, trgt.target);
+    elseif (nopts.node_delta_func ~= nil) then 
+      local pval = nopts.node_delta_func(x.w.node, trgt.target);
       table.insert(t, pval,
                    {node = trgt.target; rtype = rtype; relation = relation;});
     else
@@ -336,18 +373,6 @@ local function validateEvaled(eed)
   return cont, inc, prun;
 end
 
--- REPLY_FUNC REPLY_FUNC REPLY_FUNC REPLY_FUNC REPLY_FUNC REPLY_FUNC
-local ReplyFuncs = {};
-function rf_nodename     (x) return x.w.node.__name;                      end
-function rf_path         (x) return getPath(x);                           end
-function rf_node_and_path(x) return {node = x.w.node, path = getPath(x)}; end
-function rf_nodename_and_path(x)
-  return {x.w.node.__name, getPath(x)};
-end
-ReplyFuncs['NODENAME']          = rf_nodename;
-ReplyFuncs['PATH']              = rf_path;
-ReplyFuncs['NODENAME_AND_PATH'] = rf_nodename_and_path;
-
 -- BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS
 function traverse_bfs(v, reply_func, options)
   assert(Vset[v]    ~= nil, "node not in graph");
@@ -441,9 +466,9 @@ function shortestpath(snode, tnode, so_options)
   local min   = math.huge;
   local paths = {};
   local dist  = {};
-  local nopts = {expander_func  = defaultExpanderFunc;
-                 rel_cost_func  = so_options.relationship_cost_func;
-                 node_diff_func = so_options.node_diff_func};
+  local nopts = {expander_func   = defaultExpanderFunc;
+                 rel_cost_func   = so_options.rel_cost_func;
+                 node_delta_func = so_options.node_delta_func};
   local H     = Heap.new(get_val_func) -- keep unmarked vertices ordered by dist
   for u in vertices() do dist[u] = math.huge end
   dist[snode] = 0;
@@ -472,6 +497,8 @@ function shortestpath(snode, tnode, so_options)
   return {cost = dist[tnode]; path=getPath(paths[tnode])};
 end
 
+-- CUSTOM_FUNCS
+
 -- DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
 function debugPrintNameFromRel(v, rtype, direction)
   local nopts = {};
@@ -499,29 +526,96 @@ function dump_node_and_path(z)
   end
 end
 
-
--- BY_PK BY_PK BY_PK BY_PK BY_PK BY_PK BY_PK BY_PK BY_PK BY_PK BY_PK
-function getNodeByPK(pk)
-  print ('getNodeByPK: pk: ' .. pk);
-  return PKset[pk];
+-- SQL_API SQL_API SQL_API SQL_API SQL_API SQL_API SQL_API SQL_API
+local function getNodeByPK(tname, pk)
+  print ('getNodeByPK: tname: ' .. tname .. ' pk: ' .. pk);
+  return PKset[tname][pk];
 end
-function addNodeRelationShipByPK(spk, rtype, tpk)
-  print ('addNodeRelationShipByPK: spk: ' .. spk);
-  return addNodeRelationShip(PKset[spk], rtype, PKset[tpk]);
+function addNodeRelationShipByPK(stbl, spk, rtype, ttbl, tpk)
+  return addNodeRelationShip(getNodeByPK(stbl, spk), rtype,
+                             getNodeByPK(ttbl, tpk));
 end
-function traverseBfsByPK(pk, reply_fname, args)
+function deleteNodeRelationShipByPK(stbl, spk, rtype, ttbl, tpk)
+  return deleteNodeRelationShip(getNodeByPK(stbl, spk), rtype,
+                                getNodeByPK(ttbl, tpk));
+end
+function traverseByPK(trav_type, tname, pk, reply_fname, ...)
+  local tfunc;
+  if     (trav_type == 'BFS') then tfunc = traverse_bfs;
+  elseif (trav_type == 'DFS') then tfunc = traverse_dfs;
+  else                         error("traversal_type:[BFS,DFS]"); end
+  if (tname == nil) then error("arg: 'tname' is required"); end
   local reply_func = ReplyFuncs[reply_fname];
   if (reply_func == nil) then
     error("reply_fname: [NODENAME, PATH, NODENAME_AND_PATH]");
   end
   local options = {};
-  if (args == 'EXPAND_BOTH') then
-    options.expander_func = expanderBoth;
+  for i,v in ipairs(arg) do
+    if (string.sub(v, 1, 9) == "EXPANDER.") then
+      options.expander_func = ExpanderFuncs[v];
+      if (options.expander_func == nil) then
+          error("EXPANDER.* function not found");
+      end
+    elseif (string.sub(v, 1, 18) == "RELATIONSHIP_COST.") then
+      options.rel_cost_func = RelationshipCostFuncs[v];
+      if (options.rel_cost_func == nil) then
+          error("RELATIONSHIP_COST.* function not found");
+      end
+    elseif (string.sub(v, 1, 26) == "ALL_RELATIONSHIP_EXPANDER.") then
+      options.all_rel_expander_func = AllRelationshipExpanderFuncs[v];
+      if (options.all_rel_expander_func == nil) then
+          error("ALL_RELATIONSHIP_EXPANDER.* function not found");
+      end
+    elseif (string.sub(v, 1, 11) == "NODE_DELTA.") then
+      options.node_delta_func = NodeDeltaFuncs[v];
+      if (options.node_delta_func == nil) then
+          error("NODE_DELTA.* function not found");
+      end
+    elseif (string.sub(v, 1, 10) == "EDGE_EVAL.") then
+      options.edge_eval_func = EdgeEvalFuncs[v];
+      if (options.edge_eval_func == nil) then
+          error("EDGE_EVAL.* function not found");
+      end
+    elseif (string.sub(v, 1, 11) == "UNIQUENESS.") then
+      if     (string.sub(v, 12) == "NODE_GLOBAL") then
+        options.uniqueness = Uniqueness.NODE_GLOBAL;
+      elseif (string.sub(v, 12) == "NONE") then
+        options.uniqueness = Uniqueness.NONE;
+      elseif (string.sub(v, 12) == "PATH_GLOBAL") then
+        options.uniqueness = Uniqueness.PATH_GLOBAL;
+      else
+        error("UNIQUENESS.* setting unknown");
+      end
+    elseif (string.sub(v, 1, 10) == "MIN_DEPTH.") then
+      options.min_depth = tonumber(string.sub(v, 11));
+    elseif (string.sub(v, 1, 10) == "MAX_DEPTH.") then
+      options.max_depth = tonumber(string.sub(v, 11));
+    end
   end
-  return traverse_bfs(getNodeByPK(pk), reply_func, options)
---[[ local z = traverse_bfs(getNodeByPK(pk), reply_func, options) dump(z); return z; --]]
+  return tfunc(getNodeByPK(tname, pk), reply_func, options)
 end
 
-function initGraphHooks(tname, iname)
+-- USER_CITIES USER_CITIES USER_CITIES USER_CITIES USER_CITIES USER_CITIES
+local function isUserHasVisitedCity(snode, rtype, tnode)
+  return (snode.__tname == 'users' and rtype == 'HAS_VISITED' and
+          tnode.__tname == 'cities');
+end
+local function addIndexUserHasVisitedCity(iname, snode, rtype, tnode)
+  if (isUserHasVisitedCity(snode, rtype, tnode)) then
+     alchemySetIndexByName(iname, snode.__pk, tnode.__pk);
+  end
+end
+local function deleteIndexUserHasVisitedCity(iname, snode, rtype, tnode)
+  if (isUserHasVisitedCity(snode, rtype, tnode)) then
+     alchemyDeleteIndexByName(iname, snode.__pk, tnode.__pk);
+  end
+end
+function initUserGraphHooks(tname, iname)
   print ('initGraphHooks: tname: ' .. tname .. ' iname: ' .. iname);
+  table.insert(hooks_addNodeRelationShip, 
+               {func  = addIndexUserHasVisitedCity;
+                iname = iname;});
+  table.insert(hooks_deleteNodeRelationShip,
+               {func  = deleteIndexUserHasVisitedCity;
+                iname = iname;});
 end

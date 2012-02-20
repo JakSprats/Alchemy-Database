@@ -65,9 +65,6 @@ function initial_test()
   for k,v in pairs(x) do print("\tPATH: " .. v); end
 end
 
-local function getWeightProp(n)
-  if (n['weight'] ~= nil) then return n['weight']; else return math.huge; end
-end
 function best_path_test()
   V = {};
   local tbl = 'cities';
@@ -123,12 +120,13 @@ function best_path_test()
   addPropertyToRelationship(V.loM.node, 'PATH', V.loB.node, 'weight', 5);
 
   local t = shortestpath(V.loA.node, V.loB.node,
-                         {relationship_cost_func = getWeightProp;});
+                         {rel_cost_func = getWeightProp;});
   print('WEIGHT: shortestpath[A->B]: cost: ' .. t.cost ..  ' path: ' .. t.path);
 end
 
 function unique_none_test()
   V = {};
+  local tbl = 'people';
   V.loX = {}; createNamedNode(tbl, V.loX, 11, 'X');
   V.loY = {}; createNamedNode(tbl, V.loY, 12, 'Y');
   V.loZ = {}; createNamedNode(tbl, V.loZ, 14, 'Z');
@@ -146,6 +144,7 @@ end
 
 function unique_path_test()
   V = {};
+  local tbl = 'people';
   V.loU = {}; createNamedNode(tbl, V.loU,  8, 'U');
   V.loV = {}; createNamedNode(tbl, V.loV,  9, 'V');
   V.loW = {}; createNamedNode(tbl, V.loW, 10, 'W');
@@ -177,12 +176,6 @@ function unique_path_test()
 end
 
 -- GEOPATH GEOPATH GEOPATH GEOPATH GEOPATH GEOPATH GEOPATH GEOPATH GEOPATH
-function getGeoDist(a, b)
-  if (a == nil or a.x == nil or a.y == nil) then return math.huge; end
-  if (b == nil or b.x == nil or b.y == nil) then return math.huge; end
-  local dx = a.x - b.x; local dy = a.y - b.y;
-  return math.sqrt((dx * dx) + (dy * dy));
-end
 function best_geopath_test()
   V = {};
   local tbl = 'geospots';
@@ -220,63 +213,12 @@ function best_geopath_test()
   addNodeRelationShip(V.loH.node, 'PATH', V.loB.node);
 
   local t = shortestpath(V.loA.node, V.loB.node,
-                        {node_diff_func = getGeoDist;});
+                        {node_delta_func = getGeoDist;});
   print('DISTANCE: shortestpath[A->B]: cost: ' .. t.cost ..
                                      ' path: ' .. t.path);
 end
 
 -- FOF FOF FOF FOF FOF FOF FOF FOF FOF FOF FOF FOF FOF FOF FOF FOF FOF
--- EDGE_EVAL (used in ALL FOF tests)
-local function fof_edge_eval(x)
-  if     (x.depth <  4) then return Evaluation.EXCLUDE_AND_CONTINUE;
-  elseif (x.depth == 4) then return Evaluation.INCLUDE_AND_CONTINUE;
-  else                       return Evaluation.INCLUDE_AND_PRUNE; end
-end
-
--- EXPANDER
-local function fof_expander(x, rtype, relation)
-  local ok;
-  if     (x.depth < 3) then
-    ok = ((rtype == 'KNOWS')      and (relation[Direction.OUTGOING] ~= nil));
-  else
-    ok = false;
-    if ((rtype == 'VIEWED_PIC') and (relation[Direction.OUTGOING] ~= nil)) then
-      local pk;
-      for k, v in pairs(relation[Direction.OUTGOING]) do pk = k; end
-      if (pk == StartPK) then ok = true; end
-    end
-  end
-  return ok, Direction.OUTGOING;
-end
-
--- EXPANDER
--- Examines ALL relationships a NODE has and returns relations to be expanded
-local function fof_all_rel_expander(x, relations)
-  local knows_out  = {};
-  local viewed_out = {};
-  local do_us      = {};
-  for rtype, relation in pairs(relations) do
-    if (relation[Direction.OUTGOING] ~= nil) then
-      if (rtype == 'KNOWS')      then
-          if (viewed_out[x.w.node.__pk] ~= nil) then
-            table.insert(do_us,
-                         {rtype = 'VIEWED_PIC';
-                          relation = viewed_out[x.w.node.__pk]});
-          else
-            table.insert(knows_out, x.w.node.__pk, relation);
-          end
-      end
-      if (rtype == 'VIEWED_PIC') then
-          if (knows_out[x.w.node.__pk] ~= nil) then
-            table.insert(do_us, {rtype = rtype; relation = relation}); -- HIT
-          else
-            table.insert(viewed_out, x.w.node.__pk, relation);
-          end
-      end
-    end
-  end
-  return do_us;
-end
 function fof_complicated_test()
   V = {};
   local tbl = 'friends';
@@ -327,6 +269,7 @@ end
 -- BOTH_DIRECTIONS BOTH_DIRECTIONS BOTH_DIRECTIONS BOTH_DIRECTIONS
 function both_direction_test()
   V = {};
+  local tbl = 'people';
   V.loA = {}; createNamedNode(tbl, V.loA, 110, 'A');
   V.loB = {}; createNamedNode(tbl, V.loB, 120, 'B');
   V.loC = {}; createNamedNode(tbl, V.loC, 130, 'C');
@@ -339,6 +282,7 @@ function both_direction_test()
   dump_node_and_path(z);
 end
 
+-- RUNNER RUNNER RUNNER RUNNER RUNNER RUNNER RUNNER RUNNER RUNNER
 function run_tests()
   initial_test();
   best_path_test();

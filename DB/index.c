@@ -922,6 +922,21 @@ void dropIndex(redisClient *c) {
   printf("ocol: "); dumpAobj(printf, &ocol); \
   printf("ncol: "); dumpAobj(printf, &ncol);
 
+static bool validatePKandOldVal(lua_State *lua, bt *ibtr,
+                                aobj *apk, aobj *ocol) {
+    bt   *nbtr = btIndFind(ibtr, ocol);
+    if (!nbtr) {
+        CLEAR_LUA_STACK
+        luaPushError(lua, "alchemyDeleteIndexByName() - OVAL does not exist");
+        return 1;
+    }
+    if (!btIndNodeExist(nbtr, apk)) {
+        CLEAR_LUA_STACK
+        luaPushError(lua, "alchemyDeleteIndexByName() - PK does not exist");
+        return 1;
+    }
+    return 0;
+}
 //TODO tname, cname, ename can be local variables
 static void getTblColElmntFromLua(lua_State *lua, int stack_size,
                                   sds *tname,  sds    *cname, sds *ename,
@@ -983,6 +998,7 @@ int luaAlchemyUpdateIndex(lua_State *lua) {
     //DEBUG_LUA_UPDATE_INDEX
     sdsfree(tname); sdsfree(cname); sdsfree(ename);
     bt    *ibtr  = getIBtr(imatch);
+    if (validatePKandOldVal(lua, ibtr, &apk, &ocol)) return 1;
     bool   ret   = upIndex(server.alc.CurrClient, ibtr, &apk, &ocol, &apk,
                            &ncol, pktyp,
                            NULL, NULL, imatch);
@@ -1005,8 +1021,8 @@ int luaAlchemyDeleteIndex(lua_State *lua) { //printf("luaAlchemyDeleteIndex\n");
     aobj apk;  initAobjFromLua(&apk,  pktyp); CLEAR_LUA_STACK
     sdsfree(tname); sdsfree(cname); sdsfree(ename);
     bt    *ibtr  = getIBtr(imatch);
+    if (validatePKandOldVal(lua, ibtr, &apk, &ocol)) return 1;
     bool   gost  = 0;
-    //TODO check that this apk exists -> otherwise SEGV
     iRem(ibtr, &ocol, &apk, NULL, imatch, gost);
     lua_pushboolean(lua, (int)1); return 1;
 }
@@ -1046,7 +1062,7 @@ int luaAlchemySetIndexByName(lua_State *lua) {
                         NULL, imatch);
     lua_pushboolean(lua, ret); return 1;
 }
-int luaAlchemyUpdateIndexByName(lua_State *lua) { //TODO
+int luaAlchemyUpdateIndexByName(lua_State *lua) {
     int  ssize = 4;
     int  argc  = lua_gettop(lua);
     if (argc != ssize) {
@@ -1072,12 +1088,13 @@ int luaAlchemyUpdateIndexByName(lua_State *lua) { //TODO
     aobj ncol; initAobjFromLong(&ncol, nval, ctype);
     aobj apk;  initAobjFromLong(&apk,  pk,   pktyp);
     bt    *ibtr  = getIBtr(imatch);
+    if (validatePKandOldVal(lua, ibtr, &apk, &ocol)) return 1;
     bool   ret   = upIndex(server.alc.CurrClient, ibtr, &apk, &ocol, &apk,
                            &ncol, pktyp,
                            NULL, NULL, imatch);
     lua_pushboolean(lua, ret); return 1;
 }
-int luaAlchemyDeleteIndexByName(lua_State *lua) { //TODO
+int luaAlchemyDeleteIndexByName(lua_State *lua) {
     int  ssize = 3;
     int  argc  = lua_gettop(lua);
     if (argc != ssize) {
@@ -1101,8 +1118,8 @@ int luaAlchemyDeleteIndexByName(lua_State *lua) { //TODO
     aobj ocol; initAobjFromLong(&ocol, oval, ctype);
     aobj apk;  initAobjFromLong(&apk,  pk,   pktyp);
     bt    *ibtr  = getIBtr(imatch);
+    if (validatePKandOldVal(lua, ibtr, &apk, &ocol)) return 1;
     bool   gost  = 0;
-    //TODO check that this apk exists -> otherwise SEGV
     iRem(ibtr, &ocol, &apk, NULL, imatch, gost);
     lua_pushboolean(lua, (int)1); return 1;
 }

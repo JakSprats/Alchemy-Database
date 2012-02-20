@@ -3328,7 +3328,6 @@ function rest_api_first_test() {
 function populate_graph_db() { 
   $CLI DROP   TABLE graphdb >/dev/null;
   $CLI CREATE TABLE graphdb "(pk INT, fk LONG, lo LUAOBJ)";
-  $CLI CREATE INDEX lf_graphdb ON graphdb "(relindx())" LONG initGraphHooks
 
   $CLI INSERT INTO graphdb VALUES "(1, 50, {data='supported';})";
   $CLI SELECT "createNamedNode('graphdb', lo, pk, 'KEN')" FROM graphdb WHERE pk=1
@@ -3336,21 +3335,90 @@ function populate_graph_db() {
   $CLI SELECT "createNamedNode('graphdb', lo, pk, 'JACK')" FROM graphdb WHERE pk=2
   $CLI INSERT INTO graphdb VALUES "(3, 49, {data='supported';})";
   $CLI SELECT "createNamedNode('graphdb', lo, pk, 'JILL')" FROM graphdb WHERE pk=3
-  $CLI LUA addNodeRelationShipByPK 1 "'KNOWS'" 2
-  $CLI LUA addNodeRelationShipByPK 3 "'KNOWS'" 2
+  $CLI LUA addNodeRelationShipByPK "graphdb" 1 "KNOWS" "graphdb" 2
+  $CLI LUA addNodeRelationShipByPK "graphdb" 3 "KNOWS" "graphdb" 2
 
-  $CLI LUA traverseBfsByPK 1 NODENAME_AND_PATH EXPAND_BOTH
-  $CLI SELECT "traverseBfsByPK(pk, 'NODENAME_AND_PATH', 'EXPAND_BOTH')" FROM graphdb WHERE pk BETWEEN 1 AND 3
+  $CLI LUA traverseByPK BFS "graphdb" 1 "REPLY.NODENAME_AND_PATH" \
+                                          "EXPANDER.BOTH"
+  $CLI SELECT "traverseByPK('BFS', 'graphdb', pk, 'REPLY.NODENAME_AND_PATH', 'EXPANDER.BOTH')" FROM graphdb WHERE pk BETWEEN 1 AND 3
+}
 
-  $CLI LUA alchemySetIndexByName lf_graphdb 1 999
-  $CLI LUA alchemySetIndexByName lf_graphdb 2 999
-  $CLI LUA alchemySetIndexByName lf_graphdb 3 999
-  $CLI LUA alchemyUpdateIndexByName lf_graphdb 3 999 888
-  $CLI LUA alchemyDeleteIndexByName lf_graphdb 2 999
+function graphdb_fof_cities_test() {
+  $CLI DROP   TABLE cities >/dev/null
+  $CLI CREATE TABLE cities "(pk INT, lo LUAOBJ, name TEXT)"
+  $CLI INSERT INTO cities VALUES "(10, {}, 'Washington D.C.')";
+  $CLI SELECT "createNamedNode('cities', lo, pk, 'DC')" FROM cities WHERE pk=10
+  $CLI INSERT INTO cities VALUES "(20, {}, 'New York City')";
+  $CLI SELECT "createNamedNode('cities', lo, pk, 'NYC')" FROM cities WHERE pk=20
+  $CLI INSERT INTO cities VALUES "(30, {}, 'San Francisco')";
+  $CLI SELECT "createNamedNode('cities', lo, pk, 'SF')" FROM cities WHERE pk=30
 
-  echo 999
-  $CLI SELECT "lo.node.__name" FROM graphdb WHERE "relindx() = 999"
-  echo 888
-  $CLI SELECT "lo.node.__name" FROM graphdb WHERE "relindx() = 888"
+  $CLI DROP   TABLE users >/dev/null;
+  $CLI CREATE TABLE users "(pk INT, hometown INT, lo LUAOBJ)";
+  $CLI CREATE INDEX lf_gf ON users "(relindx())" LONG initUserGraphHooks
 
+  $CLI INSERT INTO users VALUES "(1, 10, {})";
+  $CLI SELECT "createNamedNode('users', lo, pk, 'A')" FROM users WHERE pk=1
+  $CLI INSERT INTO users VALUES "(2, 10, {})";
+  $CLI SELECT "createNamedNode('users', lo, pk, 'B')" FROM users WHERE pk=2
+  $CLI INSERT INTO users VALUES "(3, 20, {})";
+  $CLI SELECT "createNamedNode('users', lo, pk, 'C')" FROM users WHERE pk=3
+  $CLI INSERT INTO users VALUES "(4, 20, {})";
+  $CLI SELECT "createNamedNode('users', lo, pk, 'D')" FROM users WHERE pk=4
+  $CLI INSERT INTO users VALUES "(5, 30, {})";
+  $CLI SELECT "createNamedNode('users', lo, pk, 'E')" FROM users WHERE pk=5
+  $CLI INSERT INTO users VALUES "(6, 30, {})";
+  $CLI SELECT "createNamedNode('users', lo, pk, 'F')" FROM users WHERE pk=6
+  $CLI INSERT INTO users VALUES "(7, 30, {})";
+  $CLI SELECT "createNamedNode('users', lo, pk, 'G')" FROM users WHERE pk=7
+
+
+  $CLI LUA addNodeRelationShipByPK 'users' 1 "KNOWS" 'users' 2
+  $CLI LUA addNodeRelationShipByPK 'users' 2 "KNOWS" 'users' 4
+  $CLI LUA addNodeRelationShipByPK 'users' 4 "KNOWS" 'users' 7
+  $CLI LUA addNodeRelationShipByPK 'users' 1 "KNOWS" 'users' 3
+  $CLI LUA addNodeRelationShipByPK 'users' 3 "KNOWS" 'users' 5
+  $CLI LUA addNodeRelationShipByPK 'users' 3 "KNOWS" 'users' 6
+
+  $CLI LUA addNodeRelationShipByPK 'users' 1 "VIEWED_PIC" 'users' 2
+  $CLI LUA addNodeRelationShipByPK 'users' 2 "VIEWED_PIC" 'users' 4
+  $CLI LUA addNodeRelationShipByPK 'users' 4 "VIEWED_PIC" 'users' 1
+
+  $CLI LUA addNodeRelationShipByPK 'users' 6 "VIEWED_PIC" 'users' 1
+  $CLI LUA addNodeRelationShipByPK 'users' 5 "VIEWED_PIC" 'users' 7
+
+  echo 'BFS: FOF who have seen my picture'
+  $CLI LUA traverseByPK BFS "users" 1 "REPLY.NODENAME_AND_PATH" "EXPANDER.FOF" "UNIQUENESS.PATH_GLOBAL" "EDGE_EVAL.FOF"
+
+  echo 'BFS: FriendsANDPictureSeen-OfFriends  who have seen my picture'
+  $CLI LUA traverseByPK BFS "users" 1 "REPLY.NODENAME_AND_PATH" "ALL_RELATIONSHIP_EXPANDER.FOF" "UNIQUENESS.PATH_GLOBAL" "EDGE_EVAL.FOF"
+
+  echo 'DFS: FOF who have seen my picture'
+  $CLI LUA traverseByPK DFS "users" 1 "REPLY.NODENAME_AND_PATH" "EXPANDER.FOF" "UNIQUENESS.PATH_GLOBAL" "EDGE_EVAL.FOF"
+
+  # WASHINGTON
+  $CLI LUA addNodeRelationShipByPK 'users' 1 "HAS_VISITED" 'cities' 10
+  $CLI LUA addNodeRelationShipByPK 'users' 4 "HAS_VISITED" 'cities' 10
+  $CLI LUA addNodeRelationShipByPK 'users' 7 "HAS_VISITED" 'cities' 10
+
+  # NYC
+  $CLI LUA addNodeRelationShipByPK 'users' 1 "HAS_VISITED" 'cities' 20
+  $CLI LUA addNodeRelationShipByPK 'users' 2 "HAS_VISITED" 'cities' 20
+  $CLI LUA addNodeRelationShipByPK 'users' 3 "HAS_VISITED" 'cities' 20
+  $CLI LUA addNodeRelationShipByPK 'users' 4 "HAS_VISITED" 'cities' 20
+  $CLI LUA addNodeRelationShipByPK 'users' 5 "HAS_VISITED" 'cities' 20
+
+  # SAN FRAN
+  $CLI LUA addNodeRelationShipByPK 'users' 1 "HAS_VISITED" 'cities' 30
+  $CLI LUA addNodeRelationShipByPK 'users' 2 "HAS_VISITED" 'cities' 30
+  $CLI LUA addNodeRelationShipByPK 'users' 4 "HAS_VISITED" 'cities' 30
+
+  echo SELECT "lo.node.__name" FROM users WHERE "relindx() = 10"
+  $CLI SELECT "lo.node.__name" FROM users WHERE "relindx() = 10"
+  
+  echo LUA deleteNodeRelationShipByPK 'users' 7 "HAS_VISITED" 'cities' 10
+  $CLI LUA deleteNodeRelationShipByPK 'users' 7 "HAS_VISITED" 'cities' 10
+
+  echo SELECT "lo.node.__name" FROM users WHERE "relindx() = 10"
+  $CLI SELECT "lo.node.__name" FROM users WHERE "relindx() = 10"
 }
