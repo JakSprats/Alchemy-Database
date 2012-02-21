@@ -80,3 +80,21 @@ function fof_all_rel_expander(x, relations)
 end
 registerFunc(AllRelationshipExpanderFuncs, 'FOF', fof_all_rel_expander);
 
+-- SELECT_FUNCTION
+function get_fof(lo)
+  local snode = lo.node;
+  if (snode.r == nil) then return nil; end
+  local fof = {};
+  for rtype, relation in pairs(snode.r) do
+    if (rtype == 'KNOWS') then
+      local pkt = relation[Direction.OUTGOING];
+      if (pkt ~= nil) then
+        for pk, trgt in pairs(pkt) do
+          local tnode = trgt.target;
+          table.insert(fof, tnode.__name);
+        end
+      end
+    end
+  end
+  return fof;
+end

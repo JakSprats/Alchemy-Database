@@ -3416,4 +3416,7 @@ function graphdb_fof_cities_test() {
 
   echo SELECT "lo.node.__name" FROM users WHERE "relindx() = 10"
   $CLI SELECT "lo.node.__name" FROM users WHERE "relindx() = 10"
+
+  echo SELECT "hometown, get_fof(lo)" FROM users WHERE "relindx() = 30"
+  $CLI SELECT "hometown, get_fof(lo)" FROM users WHERE "relindx() = 30"
 }

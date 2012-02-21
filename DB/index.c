@@ -537,7 +537,7 @@ static bool createLuaElementIndex(cli *c, int tmatch, icol_t ic, int imatch) {
         lua_pushstring(server.lua, ri->icol.lo[i]); argc++;
     }
     if (DXDB_lua_pcall(server.lua, argc, 0, 0)) { ret = 0;
-        ADD_REPLY_FAILED_LUA_STRING_CMD("indexLORfield")
+        ADD_REPLY_FAILED_LUA_STRING_CMD("createIndLuaEl")
     }
     CLEAR_LUA_STACK return ret;
 }

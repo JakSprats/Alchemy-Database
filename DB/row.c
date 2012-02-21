@@ -1035,11 +1035,10 @@ bool addReplyRow(cli   *c,    robj *r,    int    tmatch, aobj *apk,
 void deleteLuaObj(int tmatch, int cmatch, aobj *apk) {
     r_tbl_t *rt = &Tbl[tmatch];                             DEBUG_DELETE_LUAOBJ
     CLEAR_LUA_STACK lua_getfield(server.lua, LUA_GLOBALSINDEX, "delete_luaobj");
-    lua_pushstring(server.lua, LUA_OBJ_TABLE);
     lua_pushstring(server.lua, rt->name);
     lua_pushstring(server.lua, rt->col[cmatch].name);
     pushAobjLua(apk, apk->type);
-    DXDB_lua_pcall(server.lua, 4, 0, 0); CLEAR_LUA_STACK
+    DXDB_lua_pcall(server.lua, 3, 0, 0); CLEAR_LUA_STACK
 }
 int deleteRow(int tmatch, aobj *apk, int matches, int inds[]) {
 printf("\n\nSTART: deleteRow: key: "); dumpAobj(printf, apk);

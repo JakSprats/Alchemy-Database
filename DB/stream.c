@@ -261,7 +261,7 @@ int cr8Xcol(uint128 x, uint128 *col) { *col = x; return 16; }
 
 void pushLuaVar(int tmatch, icol_t ic, aobj *apk) {
     r_tbl_t *rt  = &Tbl[tmatch];                             DEBUG_PUSH_LUA_VAR
-    lua_getglobal (server.lua, LUA_OBJ_SHADOW_TABLE);
+    lua_getglobal (server.lua, LUA_OBJ_SHADOW_TABLE); // use STBL[] directly
     lua_pushstring(server.lua, rt->name);
     lua_gettable  (server.lua, -2); lua_remove(server.lua, -2);
     lua_pushstring(server.lua, rt->col[ic.cmatch].name);
@@ -283,12 +283,11 @@ bool writeLuaObjCol(cli *c,    aobj   *apk, int tmatch, int cmatch,
     sds      luac = sdsnewlen(val, vlen);                    DEBUG_WRITE_LUAOBJ
     CLEAR_LUA_STACK
     lua_getfield  (server.lua, LUA_GLOBALSINDEX, "luaobj_assign");
-    lua_pushstring(server.lua, LUA_OBJ_TABLE);
     lua_pushstring(server.lua, rt->name);
     lua_pushstring(server.lua, rt->col[cmatch].name);
     pushAobjLua(apk, apk->type);
     lua_pushstring(server.lua, luac);
-    int ret = DXDB_lua_pcall(server.lua, 5, 0, 0);
+    int ret = DXDB_lua_pcall(server.lua, 4, 0, 0);
     if (ret) {
         ADD_REPLY_FAILED_LUA_STRING_CMD("luaobj_assign")
     }
