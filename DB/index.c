@@ -541,15 +541,14 @@ static bool createLuaElementIndex(cli *c, int tmatch, icol_t ic, int imatch) {
     }
     CLEAR_LUA_STACK return ret;
 }
-static bool runLuaFunctionIndexFunc(cli *c, sds iconstrct, sds tname,
-                                        sds  iname) {
+bool runLuaFunctionIndexFunc(cli *c, sds iconstrct, sds tname, sds  iname) {
     bool ret = 1;
     CLEAR_LUA_STACK
     lua_getfield   (server.lua, LUA_GLOBALSINDEX, iconstrct);
     lua_pushlstring(server.lua, tname, sdslen(tname));
     lua_pushlstring(server.lua, iname, sdslen(iname));
     if (DXDB_lua_pcall(server.lua, 2, 0, 0)) { ret = 0;
-        ADD_REPLY_FAILED_LUA_STRING_CMD(iconstrct);
+        if (c) { ADD_REPLY_FAILED_LUA_STRING_CMD(iconstrct); }
     }
     CLEAR_LUA_STACK return ret;
 }
@@ -572,8 +571,9 @@ int newIndex(cli    *c,     sds    iname, int  tmatch,    icol_t ic,
     ri->tmatch  = tmatch; ri->icol  = ic;    ri->clist = clist;
     ri->virt    = virt;   ri->cnstr = cnstr; ri->lru   = lru;
     ri->obc     = obc;    ri->lfu   = lfu;
-    if (fname)    ri->fname    = sdsdup(fname);          // FREE 162
-    if (idestrct) ri->idestrct = sdsdup(idestrct);       // FREE 166
+    if (fname)     ri->fname     = sdsdup(fname);          // FREE 162
+    if (iconstrct) ri->iconstrct = sdsdup(iconstrct);      // FREE 167
+    if (idestrct)  ri->idestrct  = sdsdup(idestrct);       // FREE 166
     ri->luat    = luat  ? 1     :  0;
     ri->done    = prtl  ? 0     :  1; 
     ri->dtype   = dtype ? dtype : rt->col[ic.cmatch].type;
@@ -875,7 +875,8 @@ void emptyIndex(cli *c, int imatch) {
         runLuaFunctionIndexFunc(c, ri->idestrct, rt->name, ri->name);
         sdsfree(ri->idestrct);                           // FREED 166
     }
-    if (ri->fname) sdsfree(ri->fname);                   // FREED 162
+    if (ri->fname)     sdsfree(ri->fname);               // FREED 162
+    if (ri->iconstrct) sdsfree(ri->iconstrct);           // FREED 167
     dictDelete(IndD, ri->name); sdsfree(ri->name);       /* DESTROYED 055 */
     if (ri->icol.cmatch != -1) {
         rt->col[ri->icol.cmatch].imatch = -1;

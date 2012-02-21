@@ -40,6 +40,7 @@ void iAddUniq(bt *ibtr, uchar pktyp, aobj *apk, aobj *acol); // OBYI uses also
 sds  getMCIlist(list *clist, int tmatch);        //NOTE: Used in DESC command
 bool addC2MCI  (cli *c, icol_t ic, list *clist); //NOTE: Used in rdbLoad()
 
+bool runLuaFunctionIndexFunc(cli *c, sds iconstrct, sds tname, sds  iname);
 int  newIndex(cli    *c,     sds    iname, int  tmatch,    icol_t ic,
               list   *clist, uchar  cnstr, bool virt,      bool   lru,
               luat_t *luat,  icol_t obc,   bool prtl,      bool   lfu,

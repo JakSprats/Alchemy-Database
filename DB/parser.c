@@ -29,7 +29,6 @@ ALL RIGHTS RESERVED
 #include <strings.h>
 #include <unistd.h>
 #include <ctype.h>
-char *strcasestr(const char *haystack, const char *needle); /*compiler warning*/
 
 #include "redis.h"
 #include "zmalloc.h"
@@ -55,6 +54,21 @@ inline char *_strnchr(char *s, int c, int len) {
 }
 
 // HELPERS HELPERS HELPERS HELPERS HELPERS HELPERS HELPERS HELPERS HELPERS
+char *DXDB_strcasestr(char *haystack, char *needle) {
+    char *p, *startn = 0, *np = 0;
+    for (p = haystack; *p; p++) {
+        if (np) {
+            if (toupper(*p) == toupper(*np)) {
+                if (!*++np) return startn;
+            } else np = 0;
+        } else if (toupper(*p) == toupper(*needle)) {
+            np = needle + 1;
+            startn = p;
+        }
+    }
+    return 0;
+}
+
 robj *_createStringObject(char *s) {
     return createStringObject(s, strlen(s));
 }
@@ -139,7 +153,7 @@ char *extract_string_col(char *start, int *len) { //NOTE: used in pRangeReply()
 char *strcasestr_blockchar(char *haystack, char *needle, char blockchar) {
     char *bstart       = haystack;
     while (1) {
-        char *found    = strcasestr(bstart, needle);
+        char *found    = DXDB_strcasestr(bstart, needle);
         if (!found)         return NULL;
         while (1) {
             bstart     = str_next_unescaped_chr(bstart, bstart, blockchar);

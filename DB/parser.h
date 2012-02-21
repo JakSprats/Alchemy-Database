@@ -31,6 +31,7 @@ ALL RIGHTS RESERVED
 #include "common.h"
 
 // HELPERS
+char *DXDB_strcasestr(char *haystack, char *needle);
 robj  *_createStringObject(char *s);
 robj  *cloneRobj(robj *r);
 void   destroyCloneRobj(robj *r);

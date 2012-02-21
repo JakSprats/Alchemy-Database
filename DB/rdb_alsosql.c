@@ -150,7 +150,7 @@ static int rdbSaveAllRows(FILE *fp, bt *btr, bt_n *x) {
   printf("SaveIndex: imatch: %d\n", imatch);
 
 static int rdbSaveIcol(FILE *fp, icol_t *ic) {
-    if (rdbSaveLen(fp, ic->cmatch) == -1)          return -1;
+    if (rdbSaveLen(fp, (ic->cmatch + 1)) == -1)    return -1; //INCR
     if (rdbSaveLen(fp, ic->nlo)    == -1)          return -1;
     if (ic->nlo) {
         for (uint32 j = 0; j < ic->nlo; j++) {
@@ -212,6 +212,21 @@ int rdbSaveBT(FILE *fp, bt *btr) { //printf("rdbSaveBT\n");
         // NOTE: obc: -1 not handled well, so incr on SAVE, decr on LOAD
         if (rdbSaveLen(fp, (ri->obc.cmatch + 1)) == -1)         return -1;//INCR
         if (rdbSaveLen(fp, ri->dtype) == -1)                    return -1;
+        if (rdbSaveLen(fp, ri->fname ? 1 : 0) == -1)            return -1;
+        if (ri->fname) {
+            robj *r = createStringObject(ri->fname, sdslen(ri->fname));
+            if (rdbSaveStringObject(fp, r) == -1)               return -1;
+            decrRefCount(r);
+            r       = createStringObject(ri->iconstrct, sdslen(ri->iconstrct));
+            if (rdbSaveStringObject(fp, r) == -1)               return -1;
+            decrRefCount(r);
+        }
+        if (rdbSaveLen(fp, ri->idestrct ? 1 : 0) == -1)         return -1;
+        if (ri->idestrct) {
+            robj *r = createStringObject(ri->idestrct, sdslen(ri->idestrct));
+            if (rdbSaveStringObject(fp, r) == -1)               return -1;
+            decrRefCount(r);
+        }
         if (fwrite(&(btr->s.ktype),    1, 1, fp) == 0)          return -1;
     }
     return 0;
@@ -257,7 +272,7 @@ static int rdbLoadRow(FILE *fp, bt *btr, int tmatch) {
 static bool rdbLoadIcol(FILE *fp, icol_t *ic, r_tbl_t *rt) {
     robj *r; uint32 u;
     if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)     return 0;
-    ic->cmatch = (int)u;
+    ic->cmatch = (int)(u - 1); // DECR
     if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)     return 0;
     ic->nlo    = u;
     if (ic->nlo) {
@@ -268,7 +283,7 @@ static bool rdbLoadIcol(FILE *fp, icol_t *ic, r_tbl_t *rt) {
             decrRefCount(r);
         }
     }
-    rt->col[ic->cmatch].indxd  = 1; /* used in updateRow OVRWR */
+    if (ic->cmatch != -1) rt->col[ic->cmatch].indxd  = 1;//for updateRow OVRWR
     return 1;
 }
 //TODO refactor into newTable() & newIndex() calls
@@ -332,7 +347,7 @@ bool rdbLoadBT(FILE *fp) { //printf("rdbLoadBT\n");
         rt->col[0].imatch = imatch;
         if (!rt->ilist) rt->ilist  = listCreate();       // DEST 088
         listAddNodeTail(rt->ilist, VOIDINT imatch);
-        {
+        if (ri->icol.cmatch != -1) {
             ci_t *ci = dictFetchValue(rt->cdict, rt->col[ri->icol.cmatch].name);
             if (!ci->ilist) ci->ilist = listCreate();        // FREE 148
             listAddNodeTail(ci->ilist, VOIDINT imatch);
@@ -342,7 +357,6 @@ bool rdbLoadBT(FILE *fp) { //printf("rdbLoadBT\n");
         ASSERT_OK(dictAdd(IndD, sdsdup(ri->name), VOIDINT(imatch + 1)));
         if (Num_indx < (imatch + 1)) Num_indx = imatch + 1;
     } else {                        /* INDEX */
-//TODO rdbSave/Load LuaFunction Indexes
         int imatch  = tmatch; //DEBUG_LOAD_INDEX_BT
         r_ind_t *ri = &Index[imatch]; bzero(ri, sizeof(r_ind_t));
         robj *r;
@@ -391,11 +405,33 @@ bool rdbLoadBT(FILE *fp) { //printf("rdbLoadBT\n");
         ri->obc.cmatch = ((int)u) - 1; //DECR
         if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)         return 0;
         ri->dtype   = u;
+        if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)         return 0;
+        if (u) { //read in ri->fname
+            robj *r;
+            if (!(r = rdbLoadStringObject(fp)))                     return 0;
+            ri->fname = sdsdup(r->ptr);
+            decrRefCount(r);
+            if (!rt->fdict) rt->fdict = dictCreate(&sdsDictType, NULL);
+            int fimatch = INTVOID dictFetchValue(rt->fdict, ri->fname);
+            if (fimatch)                                           return 0;
+            ASSERT_OK(dictAdd(rt->fdict, sdsdup(ri->fname),
+                              VOIDINT(imatch + 1)));
+            if (!(r = rdbLoadStringObject(fp)))                     return 0;
+            ri->iconstrct = sdsdup(r->ptr);
+            decrRefCount(r);
+        }
+        if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)         return 0;
+        if (u) { //read in ri->idestrct
+            robj *r;
+            if (!(r = rdbLoadStringObject(fp)))                     return 0;
+            ri->idestrct = sdsdup(r->ptr);
+            decrRefCount(r);
+        }
         ri->done       =  1; ri->ofst = -1;
-        rt->col[ri->icol.cmatch].imatch = imatch;
+        if (ri->icol.cmatch != -1) rt->col[ri->icol.cmatch].imatch = imatch;
         if (!rt->ilist) rt->ilist  = listCreate();       // DEST 088
         listAddNodeTail(rt->ilist, VOIDINT imatch);
-        {
+        if (ri->icol.cmatch != -1) {
             ci_t *ci = dictFetchValue(rt->cdict, rt->col[ri->icol.cmatch].name);
             if (!ci->ilist) ci->ilist = listCreate();        // FREE 148
             listAddNodeTail(ci->ilist, VOIDINT imatch);
@@ -407,6 +443,9 @@ bool rdbLoadBT(FILE *fp) { //printf("rdbLoadBT\n");
                   UNIQ(ri->cnstr) ? createU_S_IBT(ktype,     imatch, pktyp) :
                                     createIndexBT(ktype,     imatch);
         ASSERT_OK(dictAdd(IndD, sdsdup(ri->name), VOIDINT(imatch + 1)));
+        if (ri->iconstrct &&
+            !runLuaFunctionIndexFunc(NULL, ri->iconstrct, rt->name,
+                                     ri->name))                     return 0;
         if (Num_indx < (imatch + 1)) Num_indx = imatch + 1;
     }
     return 1;

@@ -29,7 +29,6 @@ ALL RIGHTS RESERVED
 #include <arpa/inet.h>
 #include <assert.h>
 #include <strings.h>
-char *strcasestr(const char *haystack, const char *needle); /*compiler warning*/
 
 #include "xdb_hooks.h"
 
@@ -222,7 +221,7 @@ static void sendStaticFileReply(cli *c) {
         while((ln = listNext(li))) { // check for "deflate"
             two_sds *ss = ln->value;
             if (!strncasecmp(ss->a, "Accept-Encoding", 15)) {
-                if (strcasestr(ss->b, "deflate")) { dfl = 1; break; }
+                if (DXDB_strcasestr(ss->b, "deflate")) { dfl = 1; break; }
             }
         } listReleaseIterator(li);
         if (dfl) {

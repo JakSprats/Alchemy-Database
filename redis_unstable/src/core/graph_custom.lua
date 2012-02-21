@@ -27,7 +27,6 @@ registerFunc(NodeDeltaFuncs, 'GEO', getGeoDist);
 
 -- FOF_EDGE_EVAL (used in ALL FOF tests)
 function fof_edge_eval(x)
-print('fof_edge_eval: depth: ' .. x.depth);
   if     (x.depth <  4) then return Evaluation.EXCLUDE_AND_CONTINUE;
   elseif (x.depth == 4) then return Evaluation.INCLUDE_AND_CONTINUE;
   else                       return Evaluation.INCLUDE_AND_PRUNE; end

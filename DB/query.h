@@ -84,27 +84,28 @@ typedef struct r_tbl { // 131 bytes -> 136B
 //TODO bool's can all be in a bitmap
 //TODO MM: r_ind's elements [clist,ofst] are optional -> bitmap+malloc(elements)
 //TODO: luat should be type: "luat *"
-typedef struct r_ind { // 84 bytes -> 88B
-    bt     *btr;      /* Btree of index                                     */
-    sds     name;     /* Name of index                                      */
-    int     tmatch;   /* table index is ON                                  */
-    icol_t  icol;     /* single column OR 1st MCI column                    */
-    list   *clist;    /* MultipleColumnIndex(mci) list                      */
-    int     nclist;   /* MCI: num columns                                   */
-    icol_t *bclist;   /* MCI: array representation (for speed)              */
-    bool    virt;     /* virtual                      - i.e. on primary key */
-    uchar   cnstr;    /* CONSTRAINTS: [UNIQUE,,,]                           */
-    bool    lru;      /* LRUINDEX                                           */
-    bool    luat;     /* LUATRIGGER - call lua function per CRUD            */
-    icol_t  obc;      /* ORDER BY col                                       */
-    bool    done;     /* CREATE INDEX OFFSET -> not done until finished     */
-    long    ofst;     /* CREATE INDEX OFFSET partial indexes current offset */
-    bool    lfu;      /* LFUINDEX                                           */
-    bool    iposon;   /* Index Position On (i.e. SELECT "index.pos()"       */
-    uint32  cipos;    /* Current Index position, when iposon                */
-    uchar   dtype;    /* DotNotation Index Type (e.g. luaobj.x.y.z -> INT)  */
-    sds     fname;    /* LuaFunctionIndex: functionname                     */
-    sds     idestrct; /* LuaFunctionIndex: destructor                       */
+typedef struct r_ind { // 92 bytes -> 100B
+    bt     *btr;       /* Btree of index                                     */
+    sds     name;      /* Name of index                                      */
+    int     tmatch;    /* table index is ON                                  */
+    icol_t  icol;      /* single column OR 1st MCI column                    */
+    list   *clist;     /* MultipleColumnIndex(mci) list                      */
+    int     nclist;    /* MCI: num columns                                   */
+    icol_t *bclist;    /* MCI: array representation (for speed)              */
+    bool    virt;      /* virtual                      - i.e. on primary key */
+    uchar   cnstr;     /* CONSTRAINTS: [UNIQUE,,,]                           */
+    bool    lru;       /* LRUINDEX                                           */
+    bool    luat;      /* LUATRIGGER - call lua function per CRUD            */
+    icol_t  obc;       /* ORDER BY col                                       */
+    bool    done;      /* CREATE INDEX OFFSET -> not done until finished     */
+    long    ofst;      /* CREATE INDEX OFFSET partial indexes current offset */
+    bool    lfu;       /* LFUINDEX                                           */
+    bool    iposon;    /* Index Position On (i.e. SELECT "index.pos()"       */
+    uint32  cipos;     /* Current Index position, when iposon                */
+    uchar   dtype;     /* DotNotation Index Type (e.g. luaobj.x.y.z -> INT)  */
+    sds     fname;     /* LuaFunctionIndex: functionname                     */
+    sds     iconstrct; /* LuaFunctionIndex: constructor                      */
+    sds     idestrct;  /* LuaFunctionIndex: destructor                       */
 } r_ind_t;
 
 typedef struct update_expression {

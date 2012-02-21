@@ -32,6 +32,8 @@ ALL RIGHTS RESERVED
 
 struct aobj;
 
+void SetConfig(char *file);
+
 typedef struct embedded_response_t {
     int           retcode; /* REDIS_OK, REDIS_ERR */
     int           ncols;   /* SELECTed column named count */

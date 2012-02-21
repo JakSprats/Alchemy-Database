@@ -28,7 +28,6 @@ ALL RIGHTS RESERVED
 #include <strings.h>
 #include <unistd.h>
 #include <ctype.h>
-char *strcasestr(const char *haystack, const char *needle); /*compiler warning*/
 
 #include "sds.h"
 #include "zmalloc.h"

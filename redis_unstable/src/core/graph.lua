@@ -2,7 +2,6 @@ local math  = math
 local Queue = require "Queue"
 local Heap  = require "Heap"
 
-
 --TODO Vset && PKset are redundant ... PK is a better idea {all INTs}
 --NOTE: Vset[] used by shortestpath()
 local Vset  = {}; -- table(unique-list) of nodes    -> {key=node}
@@ -595,6 +594,26 @@ function traverseByPK(trav_type, tname, pk, reply_fname, ...)
   return tfunc(getNodeByPK(tname, pk), reply_func, options)
 end
 
+-- LUA_FUNCTION_INDEX  LUA_FUNCTION_INDEX  LUA_FUNCTION_INDEX 
+local IndexInited = {};
+local function buildIndex(add_index_func, iname)
+  print('buildIndex');
+  for snode in vertices() do
+print('snode.__pk: ' .. snode.__pk);
+    if (snode.r ~= nil) then
+      for rtype, relation in pairs(snode.r) do
+        local pkt = relation[Direction.OUTGOING];
+        if (pkt ~= nil) then
+          for pk, trgt in pairs(pkt) do
+            local tnode = trgt.target;
+            add_index_func(iname, snode, rtype, tnode);
+          end
+        end
+      end
+    end
+  end
+end
+
 -- USER_CITIES USER_CITIES USER_CITIES USER_CITIES USER_CITIES USER_CITIES
 local function isUserHasVisitedCity(snode, rtype, tnode)
   return (snode.__tname == 'users' and rtype == 'HAS_VISITED' and
@@ -611,7 +630,12 @@ local function deleteIndexUserHasVisitedCity(iname, snode, rtype, tnode)
   end
 end
 function constructUserGraphHooks(tname, iname)
-  print ('initGraphHooks: tname: ' .. tname .. ' iname: ' .. iname);
+  print ('constructUserGraphHooks: tname: ' .. tname .. ' iname: ' .. iname);
+  if (not IndexInited[iname]) then
+    print ('NEED TO BUILD INDEX');
+    buildIndex(addIndexUserHasVisitedCity, iname);
+  end
+  IndexInited[iname] = true;
   table.insert(hooks_addNodeRelationShip, 
                {func  = addIndexUserHasVisitedCity;
                 iname = iname;});
@@ -620,6 +644,7 @@ function constructUserGraphHooks(tname, iname)
                 iname = iname;});
 end
 function destructUserGraphHooks(tname, iname)
+  IndexInited[iname] = false;
   print ('destructGraphHooks: tname: ' .. tname .. ' iname: ' .. iname);
   for k, hook in pairs(hooks_addNodeRelationShip) do
     if (hook.iname == iname) then
