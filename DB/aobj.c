@@ -97,12 +97,12 @@ static void initAobjDetermineType(aobj *a, char *s, int len, bool fs) {
         a->b = 0; a->type = a->enc = COL_TYPE_BOOL;
     } else {
         a->len = len; a->s = s; a->type = a->enc = COL_TYPE_LUAO;
-    } printf("initAobjDetermineType: a: "); dumpAobj(printf, a); 
+    } //printf("initAobjDetermineType: a: "); dumpAobj(printf, a); 
 } 
 //NOTE: does not throw errors
 void initAobjFromStr(aobj *a, char *s, int len, uchar ctype) {
     initAobj(a);                                                  a->empty = 0;
-printf("initAobjFromStr: ctype: %d\n", ctype);
+    //printf("initAobjFromStr: ctype: %d\n", ctype);
     if         C_IS_S(ctype) {
         a->enc    = a->type   = COL_TYPE_STRING;
         a->freeme = 1;
@@ -409,10 +409,10 @@ void pushAobjLua(aobj *a, uchar ctype) { //NOTE: C_IS_X() disallowed
 void initAobjFromLua(aobj *a, uchar ctype) { initAobj(a);
     assert(!C_IS_X(ctype) && !C_IS_O(ctype));
     int t = lua_type(server.lua, -1);
-    if (t == LUA_TSTRING) { size_t len; printf("initAobjFromLua STRING\n");
+    if (t == LUA_TSTRING) { size_t len; //printf("initAobjFromLua STRING\n");
         char *s = (char *)lua_tolstring(server.lua, -1, &len);
         initAobjFromStr(a, s, len, ctype);
-    } else if (t == LUA_TNUMBER) {     printf("initAobjFromLua NUMBER\n");
+    } else if (t == LUA_TNUMBER) {     //printf("initAobjFromLua NUMBER\n");
         lolo l = lua_tonumber(server.lua, -1);
         if      C_IS_B(ctype) initAobjBool (a, (bool)l);
         else if C_IS_I(ctype) initAobjInt  (a, l);

@@ -610,7 +610,7 @@ static lue_t *cloneLUE(lue_t *le) {
 }
 
 bool parseCommaListToAobjs(char *tkn, int tmatch, list *as) {
-printf("parseCommaListToAobjs: tkn: %s\n", tkn);
+    //printf("parseCommaListToAobjs: tkn: %s\n", tkn);
     while (1) {
         int   len; SKIP_SPACES(tkn)
         char *nextc = get_next_nonparaned_comma(tkn);
@@ -644,11 +644,11 @@ printf("parseCommaListToAobjs: tkn: %s\n", tkn);
             sdsfree(num);                                // FREED 132
         }
         if (!a) return 0;
-printf("parseCommaListToAobjs: a: "); dumpAobj(printf, a);
+        //printf("parseCommaListToAobjs: a: "); dumpAobj(printf, a);
         listAddNodeTail(as, a);
         if (!nextc) break;
         tkn = nextc + 1;
-printf("parseCommaListToAobjs: nextc: %p tkn: %p\n", nextc, tkn);
+        //printf("parseCommaListToAobjs: nextc: %p tkn: %p\n", nextc, tkn);
     }
     return 1;
 }

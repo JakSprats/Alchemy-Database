@@ -1,18 +1,23 @@
 
+-- LEGACY CODE WRAPPER
+function noColumnInternalCreateNamedNode(tbl, lo, pk, name)
+  return internalCreateNamedNode(tbl, 'column', pk, lo, name);
+end
+
 -- INITIAL INITIAL INITIAL INITIAL INITIAL INITIAL INITIAL INITIAL INITIAL
 function initial_test()
   V = {};
   local tbl = 'users';
-  V.lo1 = {}; createNamedNode(tbl, V.lo1, 11, 'Joe1');
-  V.lo2 = {}; createNamedNode(tbl, V.lo2, 22, 'Bill2');
-  V.lo3 = {}; createNamedNode(tbl, V.lo3, 33, 'Jane3');
-  V.lo4 = {}; createNamedNode(tbl, V.lo4, 44, 'Ken4');
-  V.lo5 = {}; createNamedNode(tbl, V.lo5, 55, 'Kate5');
-  V.lo6 = {}; createNamedNode(tbl, V.lo6, 65, 'Mack6');
-  V.lo7 = {}; createNamedNode(tbl, V.lo7, 77, 'Lyle7');
-  V.lo8 = {}; createNamedNode(tbl, V.lo8, 88, 'Bud8');
-  V.lo9 = {}; createNamedNode(tbl, V.lo9, 99, 'Rick9');
-  V.loa = {}; createNamedNode(tbl, V.loa, 12, 'Lori9');
+  V.lo1 = {}; noColumnInternalCreateNamedNode(tbl, V.lo1, 11, 'Joe1');
+  V.lo2 = {}; noColumnInternalCreateNamedNode(tbl, V.lo2, 22, 'Bill2');
+  V.lo3 = {}; noColumnInternalCreateNamedNode(tbl, V.lo3, 33, 'Jane3');
+  V.lo4 = {}; noColumnInternalCreateNamedNode(tbl, V.lo4, 44, 'Ken4');
+  V.lo5 = {}; noColumnInternalCreateNamedNode(tbl, V.lo5, 55, 'Kate5');
+  V.lo6 = {}; noColumnInternalCreateNamedNode(tbl, V.lo6, 65, 'Mack6');
+  V.lo7 = {}; noColumnInternalCreateNamedNode(tbl, V.lo7, 77, 'Lyle7');
+  V.lo8 = {}; noColumnInternalCreateNamedNode(tbl, V.lo8, 88, 'Bud8');
+  V.lo9 = {}; noColumnInternalCreateNamedNode(tbl, V.lo9, 99, 'Rick9');
+  V.loa = {}; noColumnInternalCreateNamedNode(tbl, V.loa, 12, 'Lori9');
   addNodeRelationShip(V.lo1.node, 'LIKES', V.lo2.node);
   addNodeRelationShip(V.lo2.node, 'KNOWS', V.lo1.node);
   addNodeRelationShip(V.lo2.node, 'KNOWS', V.lo3.node);
@@ -68,18 +73,18 @@ end
 function best_path_test()
   V = {};
   local tbl = 'cities';
-  V.loA = {}; createNamedNode(tbl, V.loA, 11, 'A');
-  V.loB = {}; createNamedNode(tbl, V.loB, 12, 'B');
-  V.loC = {}; createNamedNode(tbl, V.loC, 14, 'C');
-  V.loD = {}; createNamedNode(tbl, V.loD, 15, 'D');
-  V.loE = {}; createNamedNode(tbl, V.loE, 16, 'E');
-  V.loF = {}; createNamedNode(tbl, V.loF, 17, 'F');
-  V.loG = {}; createNamedNode(tbl, V.loG, 18, 'G');
-  V.loI = {}; createNamedNode(tbl, V.loI, 19, 'I');
-  V.loJ = {}; createNamedNode(tbl, V.loJ, 20, 'J');
-  V.loK = {}; createNamedNode(tbl, V.loK, 21, 'K');
-  V.loL = {}; createNamedNode(tbl, V.loL, 22, 'L');
-  V.loM = {}; createNamedNode(tbl, V.loM, 23, 'M');
+  V.loA = {}; noColumnInternalCreateNamedNode(tbl, V.loA, 11, 'A');
+  V.loB = {}; noColumnInternalCreateNamedNode(tbl, V.loB, 12, 'B');
+  V.loC = {}; noColumnInternalCreateNamedNode(tbl, V.loC, 14, 'C');
+  V.loD = {}; noColumnInternalCreateNamedNode(tbl, V.loD, 15, 'D');
+  V.loE = {}; noColumnInternalCreateNamedNode(tbl, V.loE, 16, 'E');
+  V.loF = {}; noColumnInternalCreateNamedNode(tbl, V.loF, 17, 'F');
+  V.loG = {}; noColumnInternalCreateNamedNode(tbl, V.loG, 18, 'G');
+  V.loI = {}; noColumnInternalCreateNamedNode(tbl, V.loI, 19, 'I');
+  V.loJ = {}; noColumnInternalCreateNamedNode(tbl, V.loJ, 20, 'J');
+  V.loK = {}; noColumnInternalCreateNamedNode(tbl, V.loK, 21, 'K');
+  V.loL = {}; noColumnInternalCreateNamedNode(tbl, V.loL, 22, 'L');
+  V.loM = {}; noColumnInternalCreateNamedNode(tbl, V.loM, 23, 'M');
 
   addNodeRelationShip(V.loA.node, 'PATH', V.loB.node);             -- cost: 100
   addPropertyToRelationship(V.loA.node, 'PATH', V.loB.node, 'weight', 100);
@@ -127,9 +132,9 @@ end
 function unique_none_test()
   V = {};
   local tbl = 'people';
-  V.loX = {}; createNamedNode(tbl, V.loX, 11, 'X');
-  V.loY = {}; createNamedNode(tbl, V.loY, 12, 'Y');
-  V.loZ = {}; createNamedNode(tbl, V.loZ, 14, 'Z');
+  V.loX = {}; noColumnInternalCreateNamedNode(tbl, V.loX, 11, 'X');
+  V.loY = {}; noColumnInternalCreateNamedNode(tbl, V.loY, 12, 'Y');
+  V.loZ = {}; noColumnInternalCreateNamedNode(tbl, V.loZ, 14, 'Z');
   addNodeRelationShip(V.loX.node, 'KNOWS', V.loY.node);
   addNodeRelationShip(V.loY.node, 'KNOWS', V.loZ.node);
   addNodeRelationShip(V.loZ.node, 'KNOWS', V.loX.node);
@@ -145,12 +150,12 @@ end
 function unique_path_test()
   V = {};
   local tbl = 'people';
-  V.loU = {}; createNamedNode(tbl, V.loU,  8, 'U');
-  V.loV = {}; createNamedNode(tbl, V.loV,  9, 'V');
-  V.loW = {}; createNamedNode(tbl, V.loW, 10, 'W');
-  V.loX = {}; createNamedNode(tbl, V.loX, 11, 'X');
-  V.loY = {}; createNamedNode(tbl, V.loY, 12, 'Y');
-  V.loZ = {}; createNamedNode(tbl, V.loZ, 14, 'Z');
+  V.loU = {}; noColumnInternalCreateNamedNode(tbl, V.loU,  8, 'U');
+  V.loV = {}; noColumnInternalCreateNamedNode(tbl, V.loV,  9, 'V');
+  V.loW = {}; noColumnInternalCreateNamedNode(tbl, V.loW, 10, 'W');
+  V.loX = {}; noColumnInternalCreateNamedNode(tbl, V.loX, 11, 'X');
+  V.loY = {}; noColumnInternalCreateNamedNode(tbl, V.loY, 12, 'Y');
+  V.loZ = {}; noColumnInternalCreateNamedNode(tbl, V.loZ, 14, 'Z');
   addNodeRelationShip(V.loX.node, 'KNOWS',   V.loY.node);
   addNodeRelationShip(V.loY.node, 'LIKES',   V.loZ.node);
   addNodeRelationShip(V.loZ.node, 'KNOWS',   V.loX.node);
@@ -179,21 +184,21 @@ end
 function best_geopath_test()
   V = {};
   local tbl = 'geospots';
-  V.loA = {}; createNamedNode(tbl, V.loA, 110, 'A');
+  V.loA = {}; noColumnInternalCreateNamedNode(tbl, V.loA, 110, 'A');
   addNodeProperty(V.loA.node, 'x',   0); addNodeProperty(V.loA.node, 'y', 0);
-  V.loB = {}; createNamedNode(tbl, V.loB, 120, 'B');
+  V.loB = {}; noColumnInternalCreateNamedNode(tbl, V.loB, 120, 'B');
   addNodeProperty(V.loB.node, 'x', 100); addNodeProperty(V.loB.node, 'y', 100);
-  V.loC = {}; createNamedNode(tbl, V.loC, 130, 'C');
+  V.loC = {}; noColumnInternalCreateNamedNode(tbl, V.loC, 130, 'C');
   addNodeProperty(V.loC.node, 'x',   0); addNodeProperty(V.loC.node, 'y', 100);
-  V.loD = {}; createNamedNode(tbl, V.loD, 140, 'D');
+  V.loD = {}; noColumnInternalCreateNamedNode(tbl, V.loD, 140, 'D');
   addNodeProperty(V.loD.node, 'x', 100); addNodeProperty(V.loD.node, 'y',   0);
-  V.loE = {}; createNamedNode(tbl, V.loE, 150, 'E');
+  V.loE = {}; noColumnInternalCreateNamedNode(tbl, V.loE, 150, 'E');
   addNodeProperty(V.loE.node, 'x',  75); addNodeProperty(V.loE.node, 'y',  25);
-  V.loF = {}; createNamedNode(tbl, V.loF, 160, 'F');
+  V.loF = {}; noColumnInternalCreateNamedNode(tbl, V.loF, 160, 'F');
   addNodeProperty(V.loF.node, 'x',  25); addNodeProperty(V.loF.node, 'y',  75);
-  V.loG = {}; createNamedNode(tbl, V.loG, 170, 'G');
+  V.loG = {}; noColumnInternalCreateNamedNode(tbl, V.loG, 170, 'G');
   addNodeProperty(V.loG.node, 'x',  25); addNodeProperty(V.loG.node, 'y',  25);
-  V.loH = {}; createNamedNode(tbl, V.loH, 180, 'H');
+  V.loH = {}; noColumnInternalCreateNamedNode(tbl, V.loH, 180, 'H');
   addNodeProperty(V.loH.node, 'x',  75); addNodeProperty(V.loH.node, 'y',  75);
 
   addNodeRelationShip(V.loA.node, 'PATH', V.loC.node); -- A->C->B
@@ -222,13 +227,13 @@ end
 function fof_complicated_test()
   V = {};
   local tbl = 'friends';
-  V.loA = {}; createNamedNode(tbl, V.loA, 110, 'A');
-  V.loB = {}; createNamedNode(tbl, V.loB, 120, 'B');
-  V.loC = {}; createNamedNode(tbl, V.loC, 130, 'C');
-  V.loD = {}; createNamedNode(tbl, V.loD, 140, 'D');
-  V.loE = {}; createNamedNode(tbl, V.loE, 150, 'E');
-  V.loF = {}; createNamedNode(tbl, V.loF, 160, 'F');
-  V.loG = {}; createNamedNode(tbl, V.loG, 170, 'G');
+  V.loA = {}; noColumnInternalCreateNamedNode(tbl, V.loA, 110, 'A');
+  V.loB = {}; noColumnInternalCreateNamedNode(tbl, V.loB, 120, 'B');
+  V.loC = {}; noColumnInternalCreateNamedNode(tbl, V.loC, 130, 'C');
+  V.loD = {}; noColumnInternalCreateNamedNode(tbl, V.loD, 140, 'D');
+  V.loE = {}; noColumnInternalCreateNamedNode(tbl, V.loE, 150, 'E');
+  V.loF = {}; noColumnInternalCreateNamedNode(tbl, V.loF, 160, 'F');
+  V.loG = {}; noColumnInternalCreateNamedNode(tbl, V.loG, 170, 'G');
   addNodeRelationShip(V.loA.node, 'KNOWS', V.loB.node);
   addNodeRelationShip(V.loB.node, 'KNOWS', V.loD.node);
   addNodeRelationShip(V.loD.node, 'KNOWS', V.loG.node);
@@ -270,9 +275,9 @@ end
 function both_direction_test()
   V = {};
   local tbl = 'people';
-  V.loA = {}; createNamedNode(tbl, V.loA, 110, 'A');
-  V.loB = {}; createNamedNode(tbl, V.loB, 120, 'B');
-  V.loC = {}; createNamedNode(tbl, V.loC, 130, 'C');
+  V.loA = {}; noColumnInternalCreateNamedNode(tbl, V.loA, 110, 'A');
+  V.loB = {}; noColumnInternalCreateNamedNode(tbl, V.loB, 120, 'B');
+  V.loC = {}; noColumnInternalCreateNamedNode(tbl, V.loC, 130, 'C');
   addNodeRelationShip(V.loA.node, 'KNOWS', V.loB.node);
   addNodeRelationShip(V.loC.node, 'KNOWS', V.loB.node);
 

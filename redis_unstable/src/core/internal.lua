@@ -10,6 +10,16 @@ require "pluto"
 dofile  "./core/dumper.lua";
 Json = require("json") -- Alchemy's IO is done via JSON (must be global)
 
+-- HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER
+function open_or_error(file)
+  infile, err = io.open(file, "rb")
+  if (infile == nil) then error("While opening: " .. (err or "no error")) end
+  buf, err = infile:read("*a")
+  if (buf == nil) then error("While reading: " .. (err or "no error")) end
+  infile:close()
+  return buf
+end
+
 -- KEYWORDS(reserved DataStructureNames) KEYWORDS(reserved DataStructureNames)
 local ReadOnlyKeywords = {node = true;}
 function checkReadOnlyKeywords(k)
@@ -19,8 +29,8 @@ function checkReadOnlyKeywords(k)
 end
 
 -- DOT_NOTATION_INDEX DOT_NOTATION_INDEX DOT_NOTATION_INDEX DOT_NOTATION_INDEX
-local LOTBL = "ASQL";
-STBL = {}; IEL = {};
+local LOTBL = "ASQL"; local IEL = {};
+STBL = {}; -- global for optimised lookups
 
 function ASQL_setter(rname, k, v)
   checkReadOnlyKeywords(k)
@@ -53,7 +63,7 @@ end
 -- LUAOBJ_ASSIGNMENT LUAOBJ_ASSIGNMENT LUAOBJ_ASSIGNMENT LUAOBJ_ASSIGNMENT
 -- NOTE: fromrdb means a fully nested STBL[] was already created
 function create_nested_table(tbl, col, fromrdb)
-  --print ('LUA: create_nested_table: tbl: ' .. tbl .. ' col: ' .. col);
+  --print('LUA: create_nested_table: tbl: ' .. tbl .. ' col: ' .. col);
   if (_G[LOTBL]           == nil) then _G[LOTBL]           = {}; end
   if (_G[LOTBL][tbl]      == nil) then _G[LOTBL][tbl]      = {}; 
     if (not fromrdb) then STBL[tbl]      = {}; IEL[tbl]      = {}; end
@@ -64,6 +74,7 @@ function create_nested_table(tbl, col, fromrdb)
 end
 
 local function createASQLforSTBL(tbl, col, pk)
+  --print('createASQLforSTBL: tbl: '.. tbl .. ' col: ' .. col .. ' pk: ' .. pk);
   _G[LOTBL][tbl][col][pk] = {};
   _G[LOTBL][tbl][col][pk]._tbl = tbl;
   _G[LOTBL][tbl][col][pk]._col = col;
@@ -73,8 +84,7 @@ local function createASQLforSTBL(tbl, col, pk)
 end
 function luaobj_assign(tbl, col, pk, luae) -- create Lua Object Row
   --print ('luaobj_assign: tbl: ' .. tbl .. ' col: ' .. col .. ' pk: ' .. pk);
-  createASQLforSTBL(tbl, col, pk);
-  STBL[tbl][col][pk] = Json.decode(luae);
+  STBL[tbl][col][pk] = Json.decode(luae); createASQLforSTBL(tbl, col, pk);
 end
 function delete_luaobj(tbl, col, pk)
   _G[LOTBL][tbl][col][pk] = nil; STBL[tbl][col][pk] = nil;
@@ -93,17 +103,12 @@ function DumpFunctionForOutput(func, ...)
 end
 
 -- LUAOBJ_PERSISTENCE LUAOBJ_PERSISTENCE LUAOBJ_PERSISTENCE
-local function open_or_error(file)
-  infile, err = io.open(file, "rb")
-  if (infile == nil) then error("While opening: " .. (err or "no error")) end
-  buf, err = infile:read("*a")
-  if (buf == nil) then error("While reading: " .. (err or "no error")) end
-  infile:close()
-  return buf
-end
-
+hooks_saveLuaUniverse = {}; hooks_loadLuaUniverse = {};
 local STBL_dump_file = "STBL.lua.rdb" local IEL_dump_file = "IEL.lua.rdb"
 function save_lua_universe()
+  if (hooks_saveLuaUniverse ~= nil) then
+    for k, v in pairs(hooks_saveLuaUniverse) do v.func(); end
+  end
   local ptable = { 1234 };
   local perms  = { [coroutine.yield] = 1, [ptable] = 2 };
   local buf    = pluto.persist(perms, STBL);
@@ -112,7 +117,7 @@ function save_lua_universe()
   ofile        = io.open(IEL_dump_file,  "wb"); ofile:write(buf); ofile:close();
 end
 
-function get_lua_universe()
+function load_lua_universe()
   local ptable = { 1234 };
   local perms  = { [coroutine.yield] = 1, [ptable] = 2 };
   local buf    = open_or_error(STBL_dump_file);
@@ -122,11 +127,14 @@ function get_lua_universe()
   _G[LOTBL]    = {};
   for tbl, colt in pairs(STBL) do -- Create ASQL[] from STBL[] values
     for col, pkt in pairs(colt) do
-      create_nested_table(LOTBL, tbl, col, 1)
+      create_nested_table(tbl, col, 1)
       for pk, n in pairs(pkt) do
-        createASQLforSTBL(LOTBL, tbl, col, pk);
+        createASQLforSTBL(tbl, col, pk);
       end
     end
+  end
+  if (hooks_loadLuaUniverse ~= nil) then
+    for k, v in pairs(hooks_loadLuaUniverse) do v.func(); end
   end
 end
 

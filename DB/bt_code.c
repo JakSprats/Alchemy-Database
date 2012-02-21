@@ -113,7 +113,7 @@ static uint32 get_dssize(bt *btr, char dirty) {
     assert(dirty > 0);
     uint32 drsize = (dirty == 3) ? sizeof(uint32)   :
                     (dirty == 2) ? sizeof(ushort16) : sizeof(uchar); // 1 
-    DEBUG_GETDSSIZE
+    //DEBUG_GETDSSIZE
     return (btr->t * 2) * drsize;
 }
 static void alloc_ds(bt *btr, bt_n *x, size_t size, char dirty) {
@@ -123,14 +123,14 @@ static void alloc_ds(bt *btr, bt_n *x, size_t size, char dirty) {
     size_t   dssize = get_dssize(btr, dirty);
     void    *ds     = malloc(dssize); bzero(ds, dssize); // FREEME 108
     bt_increment_used_memory(btr, dssize);
-    *dsp            = ds;                                        DEBUG_ALLOC_DS
+    *dsp            = ds;                                      //DEBUG_ALLOC_DS
 }
 void incr_ds(bt *btr, bt_n *x) {//USE: when a DR is too big for its DS (incr_ds)
     assert(x->dirty > 0);
     GET_BTN_SIZE(x->leaf)
     void   *ods    = GET_DS(x, nsize);
     uint32  osize  = get_dssize(btr, x->dirty);
-    uint32  num    = (x->leaf ? (btr->t * 2) : btr->t);       DEBUG_RESIZE_DS_1
+    uint32  num    = (x->leaf ? (btr->t * 2) : btr->t);     //DEBUG_RESIZE_DS_1
     alloc_ds(btr, x, nsize, x->dirty + 1);
     void   *nds    = GET_DS(x, nsize);
     if        (x->dirty == 1) {
@@ -319,7 +319,7 @@ bt_n *addDStoBTN(bt *btr, bt_n *x, bt_n *p, int pi, char dirty) {
     y->dirty = dirty; btr->dirty = 1;
     if (x == btr->root) btr->root         = y;
     else                NODES(btr, p)[pi] = y; // update parent NODE bookkeeping
-    bt_free_btreenode(btr, x);                              DEBUG_ADD_DS_TO_BTN
+    bt_free_btreenode(btr, x);                            //DEBUG_ADD_DS_TO_BTN
     return y;
 }
 uint32 getDR(bt *btr, bt_n *x, int i) {
@@ -379,7 +379,7 @@ static bt_n *overwriteDR(bt *btr, bt_n *x, int i, uint32 dr, bt_n *p, int pi) {
 // DEL_CASE_DR DEL_CASE_DR DEL_CASE_DR DEL_CASE_DR DEL_CASE_DR DEL_CASE_DR
 static bt_n *incrPrevDR(bt   *btr, bt_n *x,  int   i, uint32 dr,
                         bt_n *p,   int   pi, list *plist) {
-    if (!dr)   return x;                                     DEBUG_INCR_PREV_DR
+    if (!dr)   return x;                                   //DEBUG_INCR_PREV_DR
     if (i > 0) return incrDR(btr, x, i - 1, dr, p,  pi); // prev sibling
     else   {
         //TODO findminnode() is too inefficient -> needs to be a part of btr
@@ -402,15 +402,15 @@ static bt_n *incrPrevDR(bt   *btr, bt_n *x,  int   i, uint32 dr,
     }
 }
 static tbg_t get_prev_child_recurse(bt *btr, bt_n *x, int i) {
-    bt_n *xp = NODES(btr, x)[i];                            DEBUG_GET_C_REC_1
+    bt_n *xp = NODES(btr, x)[i];                          //DEBUG_GET_C_REC_1
     if (!xp->leaf) return get_prev_child_recurse(btr, xp, xp->n);
     tbg_t tbg;
     tbg.p.x = x;  tbg.p.i = i;
-    tbg.c.x = xp; tbg.c.i = xp->n - 1;                      DEBUG_GET_C_REC_2
+    tbg.c.x = xp; tbg.c.i = xp->n - 1;                    //DEBUG_GET_C_REC_2
     return tbg;
 }
-static bt_n *incrCase2B(bt *btr, bt_n *x, int i, int dr) {    DEBUG_INCR_CASE2B
-    tbg_t  tbg = get_prev_child_recurse(btr, x, i);         DEBUG_INCR_PREV
+static bt_n *incrCase2B(bt *btr, bt_n *x, int i, int dr) {  //DEBUG_INCR_CASE2B
+    tbg_t  tbg = get_prev_child_recurse(btr, x, i);       //DEBUG_INCR_PREV
     bt_n  *nc  = incrDR(btr, tbg.c.x, tbg.c.i, dr, tbg.p.x, tbg.p.i);
     incr_scion(nc, dr);
     return x; // x not modified (only tbg.c.x)
@@ -427,7 +427,7 @@ static void setBTKeyRaw(bt *btr, bt_n *x, int i, void *src) { //PRIVATE
 static bt_n *setBTKey(bt *btr,  bt_n *dx, int di,  bt_n *sx, int si,
                       bool drt, bt_n *pd, int pdi, bt_n *ps, int psi) {
     if (drt) {
-        uint32 dr = getDR      (btr, sx, si);               DEBUG_SET_BTKEY
+        uint32 dr = getDR      (btr, sx, si);             //DEBUG_SET_BTKEY
         dx        = overwriteDR(btr, dx, di, dr, pd, pdi);
         sx        = zeroDR     (btr, sx, si,     ps, psi);
     } else sx = zeroDR         (btr, sx, si,     ps, psi);
@@ -445,12 +445,12 @@ static void mvXKeys(bt *btr, bt_n   **dx, int di,
     while (i != end) { // DS remove destDR from dx @i, add srcDR to sx @i
         int    sii = si + i; int dii = di + i;
         uint32 drs = getDR(btr, *sx, sii), drd = getDR(btr, *dx, dii);
-        if (drs) {                                      DEBUG_MV_X_KEYS_1
+        if (drs) {                                    //DEBUG_MV_X_KEYS_1
             *dx = setDR (btr, *dx, dii, drs, pd, pdi);
             if (x2x && *dx != *sx) *sx = *dx;
             *sx = zeroDR(btr, *sx, sii,      ps, psi);
             if (x2x && *dx != *sx) *dx = *sx;
-        } else if (drd) {                               DEBUG_MV_X_KEYS_2
+        } else if (drd) {                             //DEBUG_MV_X_KEYS_2
             *dx = zeroDR(btr, *dx, dii, pd, pdi);
             if (x2x && *dx != *sx) *sx = *dx;
         }
@@ -469,7 +469,7 @@ static inline void mvXNodes(bt *btr, bt_n *x, int xofst,
 
 //NOTE: trimBTN*() do not ever dirty btn's -- TODO they could UN-dirty
 static bt_n *trimBTN(bt *btr, bt_n *x, bool drt, bt_n *p, int pi) {
-    DEBUG_TRIM_BTN
+  //DEBUG_TRIM_BTN
     if (drt) x = zeroDR(btr, x, x->n, p, pi);
     x->n--; return x;
 }
@@ -600,7 +600,7 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
         }
         if      (s == DK_2A) i = x->n - 1; // max node/leaf
         else if (s == DK_2B) i = -1;       // min node/leaf
-    } else i = findkindex(btr, x, k, &r, NULL);                DEBUG_DEL_POST_S
+    } else i = findkindex(btr, x, k, &r, NULL);              //DEBUG_DEL_POST_S
 
     if (!drt) decr_scion(x, 1); // scion reduced by 1 every DELETE
 
@@ -608,7 +608,7 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
      * If the key k is in node x and x is a leaf, delete the key k from x. */
     if (x->leaf) {
         bool rgst = 0;
-        if (s == DK_2B) i++;                                   DEBUG_DEL_CASE_1
+        if (s == DK_2B) i++;                                 //DEBUG_DEL_CASE_1
         kp        = KEYS (btr, x, i);
         int  dr   = getDR(btr, x, i);
         CREATE_RETURN_DELETED_KEY(btr, kp, dr)
@@ -631,7 +631,7 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
         return dwd;
     }
 
-    if (r == 0) { /* (r==0) means key found, but in node */   DEBUG_DEL_CASE_2
+    if (r == 0) { /* (r==0) means key found, but in node */ //DEBUG_DEL_CASE_2
         kp = KEYS(btr, x, i);
         if (!drt) { // ON DELETE
             int dr = getDR(btr, x, i);
@@ -643,7 +643,7 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
         }
         /* Case 2:
          * if the key k is in the node x, and x is an internal node */
-        if ((yn = NODES(btr, x)[i]->n) >= btr->t) {           DEBUG_DEL_CASE_2a
+        if ((yn = NODES(btr, x)[i]->n) >= btr->t) {         //DEBUG_DEL_CASE_2a
             /* Case 2a:
              * if the node y that precedes k in node x has at least t keys,
              * then find the previous sequential key (kp) of k.
@@ -652,14 +652,14 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
             ADD_BP(plist, x, i)
             printf("CASE2A recurse: key: "); printKey(btr, x, i);
             dwd_t dwd  = deletekey(btr, xp, NULL, DK_2A, drt, x, i, plist);
-            DEBUG_SET_BTKEY_2A
+            //DEBUG_SET_BTKEY_2A
             if (drt) x = incrDR(btr, x, i, ++dwd.dr, p, pi);
             else     x = setDR (btr, x, i, dwd.dr,   p, pi);
             setBTKeyRaw(btr, x, i, dwd.k);
             dwd.k      = kp; // swap back in KPs original value
             return dwd;
         }
-        if ((zn = NODES(btr, x)[i + 1]->n) >= btr->t) {       DEBUG_DEL_CASE_2b
+        if ((zn = NODES(btr, x)[i + 1]->n) >= btr->t) {     //DEBUG_DEL_CASE_2b
             /* Case 2b:
              * if the node z that follows k in node x has at * least t keys,
              * then find the next sequential key (kp) of k. Recursively delete
@@ -668,7 +668,7 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
             ADD_BP(plist, x, i + 1)
             printf("CASE2B recurse: key: "); printKey(btr, x, i);
             dwd_t dwd  = deletekey(btr, xp, NULL, DK_2B, drt, x, i + 1, plist);
-            DEBUG_SET_BTKEY_2B
+            //DEBUG_SET_BTKEY_2B
             if (drt) { // prev key inherits DR+1
                 x      = incrCase2B (btr, x, i, (getDR(btr, x, i) + 1));
             } 
@@ -677,7 +677,7 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
             dwd.k      = kp; // swap back in KPs original value
             return dwd;
         }
-        if (yn == btr->t - 1 && zn == btr->t - 1) {           DEBUG_DEL_CASE_2c
+        if (yn == btr->t - 1 && zn == btr->t - 1) {         //DEBUG_DEL_CASE_2c
             /* Case 2c:
              * if both y and z have only t - 1 keys, merge k
              * then all of z into y, so that x loses both k and
@@ -686,7 +686,7 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
             y = NODES(btr, x)[i];
             z = NODES(btr, x)[i + 1];
             dwd_t dwd; dwd.k = k; dwd.dr = getDR(btr, x, i);
-            incr_scion(y, 1 + dwd.dr);                       DEBUG_SET_BTKEY_2C
+            incr_scion(y, 1 + dwd.dr);                     //DEBUG_SET_BTKEY_2C
             y = setDR  (btr, y, y->n, dwd.dr, x, i);
             setBTKeyRaw(btr, y, y->n, dwd.k); y->n++;
             incr_scion(y, get_scion_range(btr, z, 0, z->n));
@@ -720,7 +720,7 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
            & moving the appropriate node from the sibling(y) into xp. */
         if (i > 0 && (y = NODES(btr, x)[i - 1])->n >= btr->t) {
             printf("CASE3A1 key: "); printKey(btr, x, i);
-            /* left sibling has t keys */                    DEBUG_DEL_CASE_3a1
+            /* left sibling has t keys */                  //DEBUG_DEL_CASE_3a1
             mvXKeys(btr, &xp, 1, &xp, 0, xp->n, ks, x, i, x, i);
             if (!xp->leaf) mvXNodes(btr, xp, 1, xp, 0, (xp->n + 1));
             incr_scion(xp, 1 + getDR(btr, x, i - 1));
@@ -735,7 +735,7 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
             y  = trimBTN(btr, y, drt, x, i - 1);
         } else if (i < x->n && (y = NODES(btr, x)[i + 1])->n >= btr->t) {
             printf("CASE3A2 key: "); printKey(btr, x, i);
-            /* right sibling has t keys */                   DEBUG_DEL_CASE_3a2
+            /* right sibling has t keys */                 //DEBUG_DEL_CASE_3a2
             incr_scion(xp, 1 + getDR(btr, x, i));
             xp = setBTKey(btr, xp, xp->n++, x, i, drt, x, i, p, pi);
             decr_scion(y, 1 + getDR(btr, y, 0));
@@ -755,7 +755,7 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
            new merged node to become the median key for that node.  */
         else if (i > 0 && (y = NODES(btr, x)[i - 1])->n == btr->t - 1) {
             printf("CASE3B1 key: "); printKey(btr, x, i);
-            /* merge i with left sibling */                  DEBUG_DEL_CASE_3b1
+            /* merge i with left sibling */                //DEBUG_DEL_CASE_3b1
             incr_scion(y, 1 + getDR(btr, x, i - 1));
             y = setBTKey(btr, y, y->n++, x, i - 1, drt, x, i - 1, p, pi);
             incr_scion(y, get_scion_range(btr, xp, 0, xp->n));
@@ -772,7 +772,7 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
             xp = y; i--; // i-- for parent-arg in recursion (below)
         } else if (i < x->n && (y = NODES(btr, x)[i + 1])->n == btr->t - 1) {
             printf("CASE3B2 key: "); printKey(btr, x, i);
-            /* merge i with right sibling */                 DEBUG_DEL_CASE_3b2
+            /* merge i with right sibling */               //DEBUG_DEL_CASE_3b2
             incr_scion(xp, 1 + getDR(btr, x, i));
             xp = setBTKey(btr, xp, xp->n++, x, i, drt, x, i, p, pi);
             incr_scion(xp, get_scion_range(btr, y, 0, y->n));
@@ -788,7 +788,7 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
             bt_free_btreenode(btr, y);
         }
     } //printf("RECURSE CASE 3\n");
-    ADD_BP(plist, x, i)                                   DEBUG_DEL_POST_CASE_3
+    ADD_BP(plist, x, i)                                 //DEBUG_DEL_POST_CASE_3
     dwd_t dwd = deletekey(btr, xp, k, s, drt, x, i, plist);
     // CASE2A/B pull keys up from depths, scion must be decremented
     if (s != DK_NONE) {
@@ -800,7 +800,7 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
 
 static dwd_t remove_key(bt *btr, bt_data_t k, bool drt) {
     dwd_t dwde; bzero(&dwde, sizeof(dwd_t)); if (!btr->root) return dwde;
-    case_2c_ptr = NULL;                                         DEBUG_DEL_START
+    case_2c_ptr = NULL;                                       //DEBUG_DEL_START
     bt_n  *p    = btr->root; int pi = 0;
     list  *plist; // NOTE: plist stores ancestor line during recursive delete
     if (drt) {
@@ -835,7 +835,7 @@ static inline bool key_covers_miss(bt *btr, bt_n *x, int i, aobj *akey) {
     if (mkey && dr) {
         ulong qkey = C_IS_I(btr->s.ktype) ? akey->i : akey->l;
         ulong span = mkey + dr;
-        DEBUG_CURRKEY_MISS
+        //DEBUG_CURRKEY_MISS
         if (qkey >= mkey && qkey <= span) return 1;
     }
     return 0;

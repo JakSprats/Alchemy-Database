@@ -43,23 +43,20 @@ Evaluation.EXCLUDE_AND_PRUNE    = 4;
 
 -- READ_ONLY_TABLES READ_ONLY_TABLES READ_ONLY_TABLES READ_ONLY_TABLES
 local ReadOnlyLock = true;
-local function readOnlyLock_ON()  ReadOnlyLock = true;  end
-local function readOnlyLock_OFF() ReadOnlyLock = false; end
+function readOnlyLock_ON()  ReadOnlyLock = true;  end
+function readOnlyLock_OFF() ReadOnlyLock = false; end
 local function readOnlySetter(rname, k, v)
   if (ReadOnlyLock) then error("ERROR: trying to set a ReadOnly table");
   else                   rawset(rname, k, v);                            end
 end
 local function createEmptyReadOnlyTable(t)
-  t = {};
-  setmetatable(t, {__newindex = readOnlySetter});
-  return t;
+  t = {}; setmetatable(t, {__newindex = readOnlySetter}); return t;
 end
 
 -- NODES NODES NODES NODES NODES NODES NODES NODES NODES NODES NODES NODES
-function createNamedNode(tname, lo, pk, name)
-  if     (lo      == nil) then
-    error("createNamedNode(x) - x does not exist");
-  elseif (lo.node ~= nil) then
+--TODO make local
+function internalCreateNamedNode(tname, cname, pk, lo, name)
+  if     (lo.node ~= nil) then
     error("createNamedNode - Node already exists");
   elseif (pk      == nil) then
     error("createNamedNode(x, pk) - pk not defined");
@@ -68,15 +65,25 @@ function createNamedNode(tname, lo, pk, name)
   end
   readOnlyLock_OFF();
   lo.node = createEmptyReadOnlyTable();
-  lo.node.__tname  = tname;
-  lo.node.__pk     = pk;
-  lo.node.__name   = name;
+  lo.node.__tname  = tname; lo.node.__cname = cname;
+  lo.node.__pk     = pk;    lo.node.__name  = name;
   readOnlyLock_ON();
   Vset[lo.node]    = true;
   if (PKset[tname] == nil) then PKset[tname] = {}; end
   PKset[tname][pk] = lo.node;
-print('PKSet: tname: ' .. tname .. ' pk: ' .. pk);
   return "CREATED NODE";
+end
+function createNamedNode(tname, cname, pk, name)
+  if     (cname == nil) then
+    error("createNamedNode(tname, cname) - cname does not exist");
+  else
+    if (STBL[tname] == nil or STBL[tname][cname] == nil or
+        STBL[tname][cname][pk] == nil) then
+      error("createNamedNode(tname, cname, pk) - ROW does not exist");
+    end
+  end
+  local lo = STBL[tname][cname][pk];
+  return internalCreateNamedNode(tname, cname, pk, lo, name);
 end
 
 function deleteNode(lo)
@@ -107,17 +114,11 @@ end
 
 -- RELATIONSHIPS RELATIONSHIPS RELATIONSHIPS RELATIONSHIPS RELATIONSHIPS
 local function validateNodesInRel(snode, rtype, tnode)
-  if     (snode      == nil)                                  then
-    error("addNodeRelationShip(snode, ...) - snode does not exist");
-  elseif (snode.__pk == nil)                                  then
-    error("addNodeRelationShip(snode, ..., snode) - snode is not a NODE");
-  elseif (tnode      == nil)                                  then
-    error("addNodeRelationShip(snode, ..., tnode) - tnode does not exist");
-  elseif (tnode.__pk == nil)                                  then
-    error("addNodeRelationShip(snode, ..., tnode) - tnode is not a NODE");
-  elseif (rtype      == nil)                                  then
-    error("addNodeRelationShip(snode, rtype, ...) - rtype must be defined");
-  end
+  assert(snode,      "func(snode, ...) - snode does not exist");
+  assert(snode.__pk, "func(snode, ..., snode) - snode is not a NODE");
+  assert(tnode,      "func(snode, ..., tnode) - tnode does not exist");
+  assert(tnode.__pk, "func(snode, ..., tnode) - tnode is not a NODE");
+  assert(rtype,      "funct(snode, rtype, ...) - rtype must be defined");
 end
 
 local function createRelationship(snode, rtype, sd, tnode)
@@ -134,12 +135,12 @@ local function createRelationship(snode, rtype, sd, tnode)
   snode.r[rtype][sd][tnode.__pk].target = tnode;
 end
 
-local hooks_addNodeRelationShip    = {};
-local hooks_deleteNodeRelationShip = {};
+hooks_addNodeRelationShip    = {};
+hooks_deleteNodeRelationShip = {};
 
 function addNodeRelationShip(snode, rtype, tnode)
   validateNodesInRel(snode, rtype, tnode)
-  local sd, td = 2, 1;
+  local sd, td = Direction.OUTGOING, Direction.INCOMING;
   readOnlyLock_OFF();
   createRelationship(snode, rtype, sd, tnode);
   createRelationship(tnode, rtype, td, snode)
@@ -175,8 +176,8 @@ local function existsRel(snode, rtype, tnode, sd)
   end
 end
 function deleteNodeRelationShip(snode, rtype, tnode)
-  validateNodesInRel(snode, rtype, tnode)
-  local sd, td = 2, 1;
+  validateNodesInRel(snode, rtype, tnode);
+  local sd, td = Direction.OUTGOING, Direction.INCOMING;
   existsRel(snode, rtype, tnode, sd);
   readOnlyLock_OFF();
   snode.r[rtype][sd][tnode.__pk] = nil; reduceRel(snode, rtype, sd);
@@ -192,12 +193,21 @@ end
 
 -- NOTE: example-usage: add weight to a relationship
 function addPropertyToRelationship(snode, rtype, tnode, prop, value)
-  validateNodesInRel(snode, rtype, tnode)
-  local sd, td = 2, 1;
+  validateNodesInRel(snode, rtype, tnode);
+  local sd, td = Direction.OUTGOING, Direction.INCOMING;
   existsRel(snode, rtype, tnode, sd);
   readOnlyLock_OFF();
   snode.r[rtype][sd][tnode.__pk][prop] = value;
   tnode.r[rtype][td][snode.__pk][prop] = value;
+  readOnlyLock_ON();
+end
+function deletePropertyToRelationship(snode, rtype, tnode, prop) --TODO: TEST
+  validateNodesInRel(snode, rtype, tnode);
+  local sd, td = Direction.OUTGOING, Direction.INCOMING;
+  existsRel(snode, rtype, tnode, sd);
+  readOnlyLock_OFF();
+  snode.r[rtype][sd][tnode.__pk][prop] = nil;
+  tnode.r[rtype][td][snode.__pk][prop] = nil;
   readOnlyLock_ON();
 end
 
@@ -527,7 +537,7 @@ end
 
 -- SQL_API SQL_API SQL_API SQL_API SQL_API SQL_API SQL_API SQL_API
 local function getNodeByPK(tname, pk)
-  print ('getNodeByPK: tname: ' .. tname .. ' pk: ' .. pk);
+  --print ('getNodeByPK: tname: ' .. tname .. ' pk: ' .. pk);
   return PKset[tname][pk];
 end
 function addNodeRelationShipByPK(stbl, spk, rtype, ttbl, tpk)
@@ -538,6 +548,21 @@ function deleteNodeRelationShipByPK(stbl, spk, rtype, ttbl, tpk)
   return deleteNodeRelationShip(getNodeByPK(stbl, spk), rtype,
                                 getNodeByPK(ttbl, tpk));
 end
+function addNodePropertyByPK(tname, pk, key, value)
+  return addNodeProperty(getNodeByPK(tname, pk), key, value);
+end
+function deleteNodePropertyByPK(tname, pk, key)
+  return deleteNodeProperty(getNodeByPK(tname, pk), key);
+end
+function addPropertyToRelationshipByPK(stbl, spk, rtype, ttbl, tpk, prop, value)
+  return addPropertyToRelationship(getNodeByPK(stbl, spk), rtype,
+                                   getNodeByPK(ttbl, tpk), prop,  value);
+end
+function deletePropertyToRelationshipByPK(stbl, spk, rtype, ttbl, tpk, prop)
+  return deletePropertyToRelationship(getNodeByPK(stbl, spk), rtype,
+                                      getNodeByPK(ttbl, tpk), prop);
+end
+
 function traverseByPK(trav_type, tname, pk, reply_fname, ...)
   local tfunc;
   if     (trav_type == 'BFS') then tfunc = traverse_bfs;
@@ -595,11 +620,9 @@ function traverseByPK(trav_type, tname, pk, reply_fname, ...)
 end
 
 -- LUA_FUNCTION_INDEX  LUA_FUNCTION_INDEX  LUA_FUNCTION_INDEX 
-local IndexInited = {};
-local function buildIndex(add_index_func, iname)
-  print('buildIndex');
+IndexInited = {};
+function buildIndex(add_index_func, iname) --print('buildIndex');
   for snode in vertices() do
-print('snode.__pk: ' .. snode.__pk);
     if (snode.r ~= nil) then
       for rtype, relation in pairs(snode.r) do
         local pkt = relation[Direction.OUTGOING];
@@ -610,50 +633,6 @@ print('snode.__pk: ' .. snode.__pk);
           end
         end
       end
-    end
-  end
-end
-
--- USER_CITIES USER_CITIES USER_CITIES USER_CITIES USER_CITIES USER_CITIES
-local function isUserHasVisitedCity(snode, rtype, tnode)
-  return (snode.__tname == 'users' and rtype == 'HAS_VISITED' and
-          tnode.__tname == 'cities');
-end
-local function addIndexUserHasVisitedCity(iname, snode, rtype, tnode)
-  if (isUserHasVisitedCity(snode, rtype, tnode)) then
-     alchemySetIndexByName(iname, snode.__pk, tnode.__pk);
-  end
-end
-local function deleteIndexUserHasVisitedCity(iname, snode, rtype, tnode)
-  if (isUserHasVisitedCity(snode, rtype, tnode)) then
-     alchemyDeleteIndexByName(iname, snode.__pk, tnode.__pk);
-  end
-end
-function constructUserGraphHooks(tname, iname)
-  print ('constructUserGraphHooks: tname: ' .. tname .. ' iname: ' .. iname);
-  if (not IndexInited[iname]) then
-    print ('NEED TO BUILD INDEX');
-    buildIndex(addIndexUserHasVisitedCity, iname);
-  end
-  IndexInited[iname] = true;
-  table.insert(hooks_addNodeRelationShip, 
-               {func  = addIndexUserHasVisitedCity;
-                iname = iname;});
-  table.insert(hooks_deleteNodeRelationShip,
-               {func  = deleteIndexUserHasVisitedCity;
-                iname = iname;});
-end
-function destructUserGraphHooks(tname, iname)
-  IndexInited[iname] = false;
-  print ('destructGraphHooks: tname: ' .. tname .. ' iname: ' .. iname);
-  for k, hook in pairs(hooks_addNodeRelationShip) do
-    if (hook.iname == iname) then
-      hooks_addNodeRelationShip[k] = nil; break;
-    end
-  end
-  for k, hook in pairs(hooks_deleteNodeRelationShip) do
-    if (hook.iname == iname) then
-      hooks_deleteNodeRelationShip[k] = nil; break;
     end
   end
 end

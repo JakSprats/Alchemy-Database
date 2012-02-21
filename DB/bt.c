@@ -314,7 +314,7 @@ int   btIndNull  (bt *ibtr, aobj *ikey) {        abt_replace(ibtr, ikey, NULL);
             nbtr->numkeys, (void *)apk); dumpAobj(printf, apk);
 
 bool  btIndNodeExist(bt *nbtr, aobj *apk) { return abt_exist(nbtr, apk); }
-bool  btIndNodeAdd (cli *c, bt *nbtr, aobj *apk, aobj *ocol) { DEBUG_INODE_ADD
+bool  btIndNodeAdd (cli *c, bt *nbtr, aobj *apk, aobj *ocol) { //DEBUG_INODE_ADD
     if (ocol) {
         if (abt_find(nbtr, ocol)) {
             if (c) addReply(c, shared.obindexviol); return 0;
@@ -326,7 +326,7 @@ bool  btIndNodeAdd (cli *c, bt *nbtr, aobj *apk, aobj *ocol) { DEBUG_INODE_ADD
 int  btIndNodeDelete(bt *nbtr, aobj *apk, aobj *ocol) {
     abt_del  (nbtr, ocol ? ocol : apk); return nbtr->numkeys;
 }
-int  btIndNodeEvict(bt *nbtr, aobj *apk, aobj *ocol) {       DEBUG_INODE_EVICT
+int  btIndNodeEvict(bt *nbtr, aobj *apk, aobj *ocol) {       //DEBUG_INODE_EVICT
     abt_evict(nbtr, ocol ? ocol : apk); return nbtr->numkeys;
 }
 

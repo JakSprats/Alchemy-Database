@@ -3326,11 +3326,11 @@ function populate_graph_db() {
   $CLI CREATE TABLE graphdb "(pk INT, fk LONG, lo LUAOBJ)";
 
   $CLI INSERT INTO graphdb VALUES "(1, 50, {'data':'supported'})";
-  $CLI SELECT "createNamedNode('graphdb', lo, pk, 'KEN')" FROM graphdb WHERE pk=1
+  $CLI SELECT "createNamedNode('graphdb', 'lo', pk, 'KEN')" FROM graphdb WHERE pk=1
   $CLI INSERT INTO graphdb VALUES "(2, 50, {'data':'supported'})";
-  $CLI SELECT "createNamedNode('graphdb', lo, pk, 'JACK')" FROM graphdb WHERE pk=2
+  $CLI SELECT "createNamedNode('graphdb', 'lo', pk, 'JACK')" FROM graphdb WHERE pk=2
   $CLI INSERT INTO graphdb VALUES "(3, 49, {'data':'supported'})";
-  $CLI SELECT "createNamedNode('graphdb', lo, pk, 'JILL')" FROM graphdb WHERE pk=3
+  $CLI SELECT "createNamedNode('graphdb', 'lo', pk, 'JILL')" FROM graphdb WHERE pk=3
   $CLI LUA addNodeRelationShipByPK "graphdb" 1 "KNOWS" "graphdb" 2
   $CLI LUA addNodeRelationShipByPK "graphdb" 3 "KNOWS" "graphdb" 2
 
@@ -3343,30 +3343,30 @@ function graphdb_fof_cities_test() {
   $CLI DROP   TABLE cities >/dev/null
   $CLI CREATE TABLE cities "(pk INT, lo LUAOBJ, name TEXT)"
   $CLI INSERT INTO cities VALUES "(10, {}, 'Washington D.C.')";
-  $CLI SELECT "createNamedNode('cities', lo, pk, 'DC')" FROM cities WHERE pk=10
+  $CLI SELECT "createNamedNode('cities', 'lo', pk, 'DC')" FROM cities WHERE pk=10
   $CLI INSERT INTO cities VALUES "(20, {}, 'New York City')";
-  $CLI SELECT "createNamedNode('cities', lo, pk, 'NYC')" FROM cities WHERE pk=20
+  $CLI SELECT "createNamedNode('cities', 'lo', pk, 'NYC')" FROM cities WHERE pk=20
   $CLI INSERT INTO cities VALUES "(30, {}, 'San Francisco')";
-  $CLI SELECT "createNamedNode('cities', lo, pk, 'SF')" FROM cities WHERE pk=30
+  $CLI SELECT "createNamedNode('cities', 'lo', pk, 'SF')" FROM cities WHERE pk=30
 
   $CLI DROP   TABLE users >/dev/null;
   $CLI CREATE TABLE users "(pk INT, hometown INT, lo LUAOBJ)";
   $CLI CREATE INDEX lf_gf ON users "(relindx())" LONG constructUserGraphHooks destructUserGraphHooks
 
   $CLI INSERT INTO users VALUES "(1, 10, {})";
-  $CLI SELECT "createNamedNode('users', lo, pk, 'A')" FROM users WHERE pk=1
+  $CLI SELECT "createNamedNode('users', 'lo', pk, 'A')" FROM users WHERE pk=1
   $CLI INSERT INTO users VALUES "(2, 10, {})";
-  $CLI SELECT "createNamedNode('users', lo, pk, 'B')" FROM users WHERE pk=2
+  $CLI SELECT "createNamedNode('users', 'lo', pk, 'B')" FROM users WHERE pk=2
   $CLI INSERT INTO users VALUES "(3, 20, {})";
-  $CLI SELECT "createNamedNode('users', lo, pk, 'C')" FROM users WHERE pk=3
+  $CLI SELECT "createNamedNode('users', 'lo', pk, 'C')" FROM users WHERE pk=3
   $CLI INSERT INTO users VALUES "(4, 20, {})";
-  $CLI SELECT "createNamedNode('users', lo, pk, 'D')" FROM users WHERE pk=4
+  $CLI SELECT "createNamedNode('users', 'lo', pk, 'D')" FROM users WHERE pk=4
   $CLI INSERT INTO users VALUES "(5, 30, {})";
-  $CLI SELECT "createNamedNode('users', lo, pk, 'E')" FROM users WHERE pk=5
+  $CLI SELECT "createNamedNode('users', 'lo', pk, 'E')" FROM users WHERE pk=5
   $CLI INSERT INTO users VALUES "(6, 30, {})";
-  $CLI SELECT "createNamedNode('users', lo, pk, 'F')" FROM users WHERE pk=6
+  $CLI SELECT "createNamedNode('users', 'lo', pk, 'F')" FROM users WHERE pk=6
   $CLI INSERT INTO users VALUES "(7, 30, {})";
-  $CLI SELECT "createNamedNode('users', lo, pk, 'G')" FROM users WHERE pk=7
+  $CLI SELECT "createNamedNode('users', 'lo', pk, 'G')" FROM users WHERE pk=7
 
   $CLI LUA addNodeRelationShipByPK 'users' 1 "KNOWS" 'users' 2
   $CLI LUA addNodeRelationShipByPK 'users' 2 "KNOWS" 'users' 4
@@ -3417,6 +3417,6 @@ function graphdb_fof_cities_test() {
   echo SELECT "lo.node.__name" FROM users WHERE "relindx() = 10"
   $CLI SELECT "lo.node.__name" FROM users WHERE "relindx() = 10"
 
-  echo SELECT "hometown, get_fof(lo)" FROM users WHERE "relindx() = 30"
+  $CLI SELECT "hometown, get_fof(lo)" FROM users WHERE "relindx() = 30"
   $CLI SELECT "hometown, get_fof(lo)" FROM users WHERE "relindx() = 30"
 }

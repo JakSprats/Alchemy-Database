@@ -669,7 +669,7 @@ int DXDB_rdbLoad(FILE *fp) { //printf("DXDB_rdbLoad\n");
             if (!rdbLoadLuaTrigger(fp))                    return -1;
         }
     }
-    CLEAR_LUA_STACK lua_getglobal(server.lua, "get_lua_universe");
+    CLEAR_LUA_STACK lua_getglobal(server.lua, "load_lua_universe");
     int r = DXDB_lua_pcall(server.lua, 0, 0, 0);
     if (r) {
         redisLog(REDIS_WARNING, "ERROR GETTING LUA UNIVERSE: %s",

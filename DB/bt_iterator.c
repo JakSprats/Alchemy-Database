@@ -114,7 +114,7 @@ static void iter_node(btIterator *iter) { //DEBUG_ITER_NODE
 }
 
 static void *btNext(btSIter *siter, bt_n **rx, int *ri, bool asc) {
-    btIterator *iter = &(siter->x);                             DEBUG_BT_NEXT_1
+    btIterator *iter = &(siter->x);                           //DEBUG_BT_NEXT_1
     if (iter->finished) {
         if (siter->scan) siter->missed = siter->nim; return NULL;
     }
@@ -122,7 +122,7 @@ static void *btNext(btSIter *siter, bt_n **rx, int *ri, bool asc) {
     bt_n       *x    = iter->bln->self; if (rx) *rx = x;
     int         i    = iter->bln->ik;   if (ri) *ri = i;
     void       *curr = KEYS(iter->btr, x, i);
-    siter->nim       = getDR(iter->btr, x, i) ? 1 : 0;         DEBUG_BT_NEXT_2
+    siter->nim       = getDR(iter->btr, x, i) ? 1 : 0;       //DEBUG_BT_NEXT_2
     if (iter->bln->self->leaf) (*iter->iLeaf)(iter);
     else                       (*iter->iNode)(iter);
     return curr;
@@ -180,7 +180,7 @@ static void *setIter(bt    *btr, bt_data_t  bkey, btSIter *siter, aobj *alow,
                      bt_n **rx,  int       *ri,   bool     asc){
     btIterator *iter = &(siter->x);
     int         ret  = bt_init_iterator(btr, bkey, iter, alow);
-    printf("setIter: ret: %d\n", ret);
+    //printf("setIter: ret: %d\n", ret);
     if (ret == II_FAIL) return NULL;
     siter->empty = 0;
     if      (ret == II_L_MISS) { siter->nim = siter->missed = 1; return NULL; }
@@ -191,7 +191,7 @@ static void *setIter(bt    *btr, bt_data_t  bkey, btSIter *siter, aobj *alow,
             if (ret == II_ONLY_RIGHT) { // off end of B-tree
                 siter->empty = 1; return NULL;
             } else { // II_LEAF_EXIT
-                printf("setIter: [II_LEAF_EXIT\n"); //TODO needed?
+                //printf("setIter: [II_LEAF_EXIT\n"); //TODO needed?
                 return btNext(siter, rx, ri, asc); // find next
             }
         }
@@ -245,6 +245,9 @@ static void setHigh(btSIter *siter, aobj *high, uchar ktype) {
 }
 
 // COMMON_ASC_DESC_ITERATOR COMMON_ASC_DESC_ITERATOR COMMON_ASC_DESC_ITERATOR
+#define DUMP_STREAM_TO_BT_ENTRY \
+  btIterator *iter = &siter->x; printf("streamToBTEntry: x: %p stream: %p missed: %d gost: %d dr: %u key: ", (void *)x, stream, siter->missed, gost, siter->be.dr); DUMP_CURR_KEY
+
 static bool streamToBTEntry(uchar *stream, btSIter *siter, bt_n *x, int i) {
     if (!stream) return 0; if (i < 0) i = 0;
     convertStream2Key(stream, siter->be.key, siter->x.btr);
@@ -254,7 +257,7 @@ static bool streamToBTEntry(uchar *stream, btSIter *siter, bt_n *x, int i) {
     siter->be.dr = x ? getDR(siter->x.btr, x, i) : 0;
     siter->be.stream = stream;
     siter->be.x      = x; siter->be.i = i; //NOTE: used by bt_validate_dirty
-btIterator *iter = &siter->x; printf("streamToBTEntry: x: %p stream: %p missed: %d gost: %d dr: %u key: ", (void *)x, stream, siter->missed, gost, siter->be.dr); DUMP_CURR_KEY
+    //DUMP_STREAM_TO_BT_ENTRY
     return 1;
 }
 btSIter *btGetRangeIter(bt *btr, aobj *alow, aobj *ahigh, bool asc) {
@@ -271,8 +274,8 @@ btSIter *btGetRangeIter(bt *btr, aobj *alow, aobj *ahigh, bool asc) {
     return siter;
 }
 btEntry *btRangeNext(btSIter *siter, bool asc) { //printf("btRangeNext\n");
-printf("btRangeNext: siter: %p\n", (void *)siter);
-if (siter) printf("btRangeNext: empty: %d\n", siter->empty);
+    //printf("btRangeNext: siter: %p\n", (void *)siter);
+    //if (siter) printf("btRangeNext: empty: %d\n", siter->empty);
     if (!siter || siter->empty) return NULL;
     bt_n *x  = NULL; int i = -1;
     uchar *stream = btNext(siter, &x, &i, asc);
@@ -281,12 +284,14 @@ if (siter) printf("btRangeNext: empty: %d\n", siter->empty);
         ulong l = C_IS_I(siter->ktype) ? (ulong)(siter->key.i) : siter->key.l;
         if (l == siter->x.high)  siter->x.finished = 1;       /* exact match */
         if (!asc) {
-printf("btRangeNext: DESC: l: %lu dr: %u\n", l, getDR(siter->x.btr, x, i));
+            //printf("btRangeNext: DESC: l: %lu dr: %u\n", 
+            //       l, getDR(siter->x.btr, x, i));
             l += getDR(siter->x.btr, x, i);
         }
         bool over = asc ? (l > siter->x.high) : (l < siter->x.high);
-        if (over && siter->nim) { printf("OVER AND NIM\n"); siter->missed = 1; }
-printf("btRangeNext: over: %d l: %lu high: %lu\n", over, l, siter->x.high);
+        if (over && siter->nim) { siter->missed = 1; }
+        //printf("btRangeNext: over: %d l: %lu high: %lu\n", 
+        //       over, l, siter->x.high);
         return over ? NULL : &(siter->be);
     } else if (C_IS_X(siter->ktype)) {
         uint128 xx = siter->key.x;
@@ -391,16 +396,19 @@ static void iter_node_scion(btIterator *iter) {
     }
 }
 
+#define DEBUG_ITER_LEAF_DIRTY_SCION \
+printf("ik: %d fl->cnt: %ld cnt: %ld dr: %d ofst: %ld - (fcnt): %ld\n", iter->bln->ik, fl->cnt, cnt, getDR(btr, iter->bln->self, iter->bln->ik), fl->ofst, fcnt);
+
 static void iter_leaf_dirty_scion(btIterator *iter) {
-printf("iter_leaf_dirty_scion: ik: %d n: %d\n", iter->bln->ik, iter->bln->self->n);
+   //printf("iter_leaf_dirty_scion: ik: %d n: %d\n", 
+   //       iter->bln->ik, iter->bln->self->n);
     bt    *btr     = iter->btr;
     fol_t *fl      = (fol_t *)iter->data;
     long   cnt     = 0;
     while (iter->bln->ik < iter->bln->self->n) { // DRs added individually
         cnt += (isGhostRow(btr, iter->bln->self, iter->bln->ik) ? 0 : 1) +
                 getDR     (btr, iter->bln->self, iter->bln->ik);// 1forRow + DR
-        long fcnt = fl->cnt + cnt;
-printf("ik: %d fl->cnt: %ld cnt: %ld dr: %d ofst: %ld - (fcnt): %ld\n", iter->bln->ik, fl->cnt, cnt, getDR(btr, iter->bln->self, iter->bln->ik), fl->ofst, fcnt);
+        long fcnt = fl->cnt + cnt; //DEBUG_ITER_LEAF_DIRTY_SCION
         if (fcnt == fl->ofst) { fl->over = 0; iter->bln->ik++; return; }
         if (fcnt >  fl->ofst) { fl->over = fcnt - fl->ofst;    return; }
         iter->bln->ik++;
@@ -457,15 +465,18 @@ static void iter_node_scion_rev(btIterator *iter) {
         if (!fl->diff)    { fl->over = 0; return; }
     } //printf("END iter_node_scion_rev: key: "); DUMP_CURR_KEY
 }
+#define DEBUG_ITER_LEAF_DIRTY_SCION_REV \
+printf("ik: %d fl->cnt: %ld cnt: %ld dr: %d ofst: %ld - (fcnt): %ld\n", iter->bln->ik, fl->cnt, cnt, getDR(btr, iter->bln->self, iter->bln->ik), fl->ofst, fcnt);
+
 static void iter_leaf_dirty_scion_rev(btIterator *iter) {
-printf("iter_leaf_dirty_scion_rev: ik: %d n: %d\n", iter->bln->ik, iter->bln->self->n);
+    //printf("iter_leaf_dirty_scion_rev: ik: %d n: %d\n", 
+    //       iter->bln->ik, iter->bln->self->n);
     bt    *btr     = iter->btr;
     fol_t *fl      = (fol_t *)iter->data;
     long   cnt     = 0;
     while (iter->bln->ik >= 0) { // DRs must be added individually
         cnt += getDR(btr, iter->bln->self, iter->bln->ik);
-        long fcnt = fl->cnt + cnt;
-printf("ik: %d fl->cnt: %ld cnt: %ld dr: %d ofst: %ld - (fcnt): %ld\n", iter->bln->ik, fl->cnt, cnt, getDR(btr, iter->bln->self, iter->bln->ik), fl->ofst, fcnt);
+        long fcnt = fl->cnt + cnt; //DEBUG_ITER_LEAF_DIRTY_SCION_REV
         if (fcnt >= fl->ofst) { fl->over = fcnt - fl->ofst; return; }
         if (!isGhostRow(btr, iter->bln->self, iter->bln->ik)) cnt++; // KEY also
         iter->bln->ik--;
@@ -518,10 +529,10 @@ static bool XthIterFind(btSIter *siter, aobj *alow, aobj *ahigh,
             } break; }
     }
     INIT_ITER_BEENTRY(siter, btr, siter->x.bln->self, siter->x.bln->ik)
-    siter->nim = siter->missed = 0;               DEBUG_XTH_ITER_FIND_POST_LOOP
+    siter->nim = siter->missed = 0;             //DEBUG_XTH_ITER_FIND_POST_LOOP
     if (d && fl.over > 0 && getDR(btr, siter->x.bln->self, siter->x.bln->ik)) {
         siter->missed = 1;
-    }                                                   DEBUG_XTH_ITER_FIND_END
+    }                                                 //DEBUG_XTH_ITER_FIND_END
     iter->iLeaf = asc ? iter_leaf : iter_leaf_rev; // Back to NORMAL ITERATORS
     iter->iNode = asc ? iter_node : iter_node_rev;
     return 1;
@@ -531,7 +542,7 @@ static bool XthIterFind(btSIter *siter, aobj *alow, aobj *ahigh,
   printf("btGetXthIter: ahigh: "); dumpAobj(printf, ahigh); \
   printf("btGetXthIter: ofst: %ld asc: %d\n", ofst, asc);
 btSIter *btGetXthIter(bt *btr, aobj *alow, aobj *ahigh, long oofst, bool asc) {
-    ulong ofst = (ulong)oofst;                               DEBUG_GET_XTH_ITER
+    ulong ofst = (ulong)oofst;                             //DEBUG_GET_XTH_ITER
     if (!btr->root || !btr->numkeys) return NULL;
     CR8ITER8R(btr, asc, iter_leaf, iter_leaf_rev, iter_node, iter_node_rev);
     setHigh(siter, asc ? ahigh : alow, btr->s.ktype);
@@ -568,22 +579,22 @@ btSIter *btGetXthIter(bt *btr, aobj *alow, aobj *ahigh, long oofst, bool asc) {
 
 static bool btScionFind(btSIter *siter, bt_n *x, ulong ofst, bt *btr, bool asc,
                         cswc_t  *w,     long  lim) {
-    int    i   = asc ? 0        : x->n;                   DEBUG_SCION_PRE_LOOP1
+    int    i   = asc ? 0        : x->n;                 //DEBUG_SCION_PRE_LOOP1
     int    fin = asc ? x->n + 1 : -1;//LOOPS:(i=0,i<=x->n,i++)&(i=x->n,i>=0,i--)
     while (i != fin) {
         if (x->leaf) break;
-        uint32_t scion = NODES(btr, x)[i]->scion;             DEBUG_SCION_LOOP_1
+        uint32_t scion = NODES(btr, x)[i]->scion;           //DEBUG_SCION_LOOP_1
         if (scion >= ofst) {
             bool i_end_n     = (i == siter->x.bln->self->n);
             siter->x.bln->in = i;
-            siter->x.bln->ik = (i_end_n) ? i - 1 : i;    DEBUG_SCION_LOOP_1_KID
+            siter->x.bln->ik = (i_end_n) ? i - 1 : i;  //DEBUG_SCION_LOOP_1_KID
             if (scion == ofst) {
                 if (!asc) { siter->x.bln->in = siter->x.bln->ik = i - 1; }
                 return 1;
             }
             siter->x.bln->child = get_new_iter_child(&siter->x);
             to_child(&siter->x, NODES(btr, x)[i]);
-            bt_n *kid = NODES(btr, x)[i];            DEBUG_SCION_LOOP_1_GOT_KID
+            bt_n *kid = NODES(btr, x)[i];          //DEBUG_SCION_LOOP_1_GOT_KID
             if (!kid->leaf) {
                 btScionFind(siter, kid, ofst, btr, asc, w, lim); return 1;
             } else x = kid;
@@ -600,15 +611,15 @@ static bool btScionFind(btSIter *siter, bt_n *x, ulong ofst, bt *btr, bool asc,
     //TODO findminnode() is too inefficient -> needs to be a part of btr
     bt_n   *minx = findminnode(btr, btr->root);
     int     btdl = btr->dirty_left;
-    int     dr   = 0;                                     DEBUG_SCION_PRE_LOOP2
+    int     dr   = 0;                                   //DEBUG_SCION_PRE_LOOP2
     while (i != fin) {
         dr   = getDR(btr, x, i);
         cnt += dr;
-        if (!i && x == minx) cnt += btdl;                     DEBUG_SCION_LOOP2
+        if (!i && x == minx) cnt += btdl;                   //DEBUG_SCION_LOOP2
         if (cnt >= ofst) break;
         cnt++;
         i = asc ? i + 1 : i - 1; // loop increment
-    }                                                DEBUG_SCION_OFFSET_TOO_BIG
+    }                                              //DEBUG_SCION_OFFSET_TOO_BIG
     if      (i == fin && i == last) { if (cnt >= x->scion) return 0; }
     else if (cnt < ofst)                                   return 0; //OFST 2big
     siter->x.bln->ik = i;
@@ -617,7 +628,7 @@ static bool btScionFind(btSIter *siter, bt_n *x, ulong ofst, bt *btr, bool asc,
     else      { 
         if (!i && x == minx) { if (ofst != (cnt - btdl)) siter->missed = 1; }
         else                 { if (ofst != cnt)          siter->missed = 1; } 
-    }                                                    DEBUG_SCION_POST_LOOP2
+    }                                                  //DEBUG_SCION_POST_LOOP2
     return 1;
 }
 btSIter *btGetFullXthIter(bt *btr, long oofst, bool asc, cswc_t *w, long lim) {
