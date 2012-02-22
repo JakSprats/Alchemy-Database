@@ -47,3 +47,10 @@ end
 function hiya() print ('hiya'); end
 
 function fib(n) return n<2 and n or fib(n-1)+fib(n-2) end
+
+function lcap_add(tname, fk1, pk)
+  print('lcap_add: tname: ' .. tname .. ' fk1: ' .. fk1 .. ' pk: ' .. pk);
+end
+function lcap_del(tname, fk1, pk)
+  print('lcap_del: tname: ' .. tname .. ' fk1: ' .. fk1 .. ' pk: ' .. pk);
+end

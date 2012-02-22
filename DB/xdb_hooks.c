@@ -119,6 +119,8 @@ void dirtyCommand    (redisClient *c);
 
 void evictCommand    (redisClient *c);
 
+void interpretCommand(redisClient *c);
+
 #ifdef REDIS3
   #define CMD_END       NULL,1,1,1,0,0
   #define GLOB_FUNC_END NULL,0,0,0,0,0
@@ -144,8 +146,10 @@ struct redisCommand DXDBCommandTable[] = {
     {"dump",       sqlDumpCommand,    -2, 0,                 GLOB_FUNC_END},
     // MODIFICATION RDBMS
     {"alter",      alterCommand,      -5, 0,                 GLOB_FUNC_END},
-    // NOSQL(advanced)
+    // LUA
     {"lua",        luafuncCommand,    -2, 0,                 GLOB_FUNC_END},
+    {"interpret",  interpretCommand,  -3, 0,                 GLOB_FUNC_END},
+    // ADVANCED (messaging)
     {"message",    messageCommand,    -2, 0,                 GLOB_FUNC_END},
     // FAILOVER
     {"purge",      purgeCommand,       1, 0,                 GLOB_FUNC_END},
@@ -230,7 +234,7 @@ void DXDB_initServer() { //printf("DXDB_initServer\n");
     initServer_Extra();
 }
 
-static bool loadLuaHelperFile(cli *c, char *fname) {
+bool loadLuaHelperFile(cli *c, char *fname) {
     sds  fwpath = sdscatprintf(sdsempty(), "%s%s", server.alc.Basedir, fname);
     bool ret    = 1;
     if (luaL_loadfile(server.lua, fwpath) || 
@@ -515,7 +519,7 @@ void  DXDB_processInputBuffer_ZeroArgs(redisClient *c) {//HTTP Request End-Delim
 //     webserver_whitelist_address, webserver_whitelist_netmask,
 //     sqlslaveof
 int DXDB_configSetCommand(cli *c, robj *o) {
-    if (!strcasecmp(c->argv[2]->ptr,"luacronfunc")) {
+    if        (!strcasecmp(c->argv[2]->ptr,"luacronfunc")) {
         if (server.alc.LuaCronFunc) zfree(server.alc.LuaCronFunc);
         server.alc.LuaCronFunc = zstrdup(o->ptr); return 0;
     } else if (!strcasecmp(c->argv[2]->ptr, "lua_output_start")) {
@@ -571,39 +575,10 @@ badfmt: /* Bad format errors */
 
 }
 
-static void configAddCommand(redisClient *c) {
-    robj *o = getDecodedObject(c->argv[3]);
-    if (!strcasecmp(c->argv[2]->ptr, "luafile")) {
-        CLEAR_LUA_STACK
-        if (!loadLuaHelperFile(c, o->ptr)) {
-            addReplySds(c,sdscatprintf(sdsempty(),
-               "-ERR problem adding LuaFile: (%s) msg: (%s)\r\n",
-               (char *)o->ptr, lua_tostring(server.lua, -1)));
-            CLEAR_LUA_STACK
-            decrRefCount(o); return;
-        }
-        CLEAR_LUA_STACK
-    } else if (!strcasecmp(c->argv[2]->ptr, "lua")) {
-        CLEAR_LUA_STACK
-        if (luaL_dostring(server.lua, o->ptr)) {
-            addReplySds(c,sdscatprintf(sdsempty(),
-               "-ERR problem adding lua: (%s) msg: (%s)\r\n",
-               (char *)o->ptr, lua_tostring(server.lua, -1)));
-            CLEAR_LUA_STACK
-            decrRefCount(o); return;
-        }
-        CLEAR_LUA_STACK
-    }
-    decrRefCount(o);
-    addReply(c,shared.ok);
-}
-unsigned char DXDB_configCommand(redisClient *c) {
-    if (!strcasecmp(c->argv[1]->ptr, "ADD")) {
-        if (c->argc != 4) return -1;
-        configAddCommand(c); return 0;
-    }
-    return 1;
-}
+//TODO webserver_mode,              webserver_index_function,
+//     webserver_whitelist_address, webserver_whitelist_netmask,
+//     sqlslaveof
+//     lua_output_start lua_output_cnames lua_output_row rest_api_mode
 void DXDB_configGetCommand(redisClient *c, char *pattern, int *matches) {
     if (stringmatch(pattern, "luacronfunc", 0)) {
         addReplyBulkCString(c, "luafronfunc");
@@ -745,6 +720,11 @@ void luafuncCommand(redisClient *c) { //printf("luafuncCommand\n");
     if (luafunc_call(c, c->argc, c->argv)) return;
     luaReplyToRedisReply(c, server.lua);
     CLEAR_LUA_STACK
+}
+void interpretCommand(redisClient *c) { //printf("interpretCommand\n");
+    if      (!strcasecmp(c->argv[1]->ptr, "LUA"))     interpretLua(c);
+    else if (!strcasecmp(c->argv[1]->ptr, "LUAFILE")) interpretLuaFile(c);
+    else                                   addReply(c, shared.interpret_syntax);
 }
 
 // PURGE PURGE PURGE PURGE PURGE PURGE PURGE PURGE PURGE PURGE PURGE PURGE

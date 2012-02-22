@@ -387,4 +387,7 @@ void DXDB_createSharedObjects() {
         "-ERR SYNTAX: CREATE INDEX indexname ON tablename (functionname()) TYPE constructor [destructor]\r\n"));
     shared.luafuncindex_rpt      = createObject(REDIS_STRING,sdsnew(
         "-ERR: CREATE INDEX indexname ON tablename (functionname()) TYPE constructor [destructor] - TABLE already has this functionname indexed\r\n"));
+
+    shared.interpret_syntax      = createObject(REDIS_STRING,sdsnew(
+        "-ERR: INTERPRET [LUA|LUAFILE]\r\n"));
 }

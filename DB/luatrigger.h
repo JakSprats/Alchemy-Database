@@ -39,7 +39,7 @@ ALL RIGHTS RESERVED
 /* this calls lua routines every second from a server cron -> an event */
 int luaCronTimeProc(struct aeEventLoop *eventLoop, lolo id, void *clientData);
 
-/* LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER */
+// LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER
 luat_t *init_lua_trigger();
 sds     getLUATlist(ltc_t *ltc, int tmatch);
 void createLuaTrigger(cli *c);
@@ -47,5 +47,9 @@ void dropLuaTrigger  (cli *c);
 
 void luatAdd(bt *btr, luat_t *luat, aobj *apk, int imatch, void *rrow);
 void luatDel(bt *btr, luat_t *luat, aobj *apk, int imatch, void *rrow);
+
+// INTERPRET_LUA INTERPRET_LUA INTERPRET_LUA INTERPRET_LUA INTERPRET_LUA
+void interpretLua    (redisClient *c);
+void interpretLuaFile(redisClient *c);
 
 #endif /* __LUA_INTEGRATION__H */ 

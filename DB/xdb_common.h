@@ -214,7 +214,7 @@ typedef struct alchemy_server_extensions_t {
     *order_by_luaobj,        *buildindexdirty,             \
     *cr8tablesyntax,         *joindotnotation,             \
     *http_not_on,            *create_findex,               \
-    *luafuncindex_rpt;
+    *luafuncindex_rpt,       *interpret_syntax;
 
 #define DEBUG_C_ARGV(c) \
   for (int i = 0; i < c->argc; i++) \

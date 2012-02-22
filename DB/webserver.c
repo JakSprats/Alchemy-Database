@@ -505,7 +505,7 @@ bool luafunc_call(redisClient *c, int argc, robj **argv) {
                 if (!strcasecmp(ss->a, "cookie")) hascook = 1;
                 lua_pushstring(server.lua, ss->a);
                 lua_pushstring(server.lua, ss->b);
-                lua_settable(server.lua, top);
+                lua_settable  (server.lua, top);
             }
         } listReleaseIterator(li);
         lua_setglobal(server.lua, "HTTP_HEADER");

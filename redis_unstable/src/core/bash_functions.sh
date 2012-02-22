@@ -939,8 +939,6 @@ alias FREE_LINUX_BUFFS="sudo sync && echo 3 | sudo tee /proc/sys/vm/drop_caches"
 alias ALL_TESTS_LOOP="while true; do all_tests; done > /dev/null"
 alias BAD_TESTS_LOOP="while true; do all_tests; done > /dev/null"
 
-alias RECONF="$CLI CONFIG ADD LUA test/alchemy.lua"
-
 # STRING_PK STRING_PK STRING_PK STRING_PK STRING_PK STRING_PK STRING_PK
 function init_string_pk_one() {
   $CLI DROP TABLE s_one > /dev/null
@@ -2390,8 +2388,10 @@ function cap_test() {
 
 function first_ltrigger_test() {
   init_UU
-  echo CREATE LUATRIGGER lt_UU ON UU "lcap_add(fk1, pk)" "lcap_del(fk1, pk)"
-  $CLI CREATE LUATRIGGER lt_UU ON UU "lcap_add(fk1, pk)" "lcap_del(fk1, pk)"
+  $CLI INTERPRET LUA "function lcap_add(tname, fk1, pk) print('lcap_add: tname: ' .. tname .. ' fk1: ' .. fk1 .. ' pk: ' .. pk); end"
+  $CLI INTERPRET LUA "function lcap_del(tname, fk1, pk) print('lcap_del: tname: ' .. tname .. ' fk1: ' .. fk1 .. ' pk: ' .. pk); end"
+  echo CREATE LUATRIGGER lt_UU ON UU "lcap_add(table, fk1, pk)" "lcap_del(table, fk1, pk)"
+  $CLI CREATE LUATRIGGER lt_UU ON UU "lcap_add(table, fk1, pk)" "lcap_del(table, fk1, pk)"
   echo 2 X INSERT INTO UU VALUES "(,7)"
   $CLI INSERT INTO UU VALUES "(,7)"
   $CLI INSERT INTO UU VALUES "(,7)"
@@ -2400,11 +2400,11 @@ function first_ltrigger_test() {
 }
 
 function lcap_test() {
-  $CLI CONFIG ADD LUA cap.lua
+  $CLI INTERPRET LUAFILE "extra/example.lua"
   $CLI DROP   TABLE lcap
   $CLI CREATE TABLE lcap "(pk INT, fk1 INT, fk2 INT)"
   $CLI CREATE INDEX      i_lcap   ON lcap "(fk1)"
-  $CLI CREATE LUATRIGGER dlt_lcap ON lcap "add_lcap(fk1)" "del_lcap(fk1, fk2)"
+  $CLI CREATE LUATRIGGER dlt_lcap ON lcap "lcap_add(table, fk1, pk)" "lcap_del(table, fk1, pk)"
   $CLI CREATE LRUINDEX ON lcap
   $CLI INSERT INTO lcap VALUES "(1,1,1)"
   $CLI INSERT INTO lcap VALUES "(2,2,2)"
@@ -2590,7 +2590,7 @@ function create_1000_columns() {
 
 function test_fully_loaded_table() {
   $CLI DROP TABLE fullload > /dev/null
-  $CLI CONFIG ADD LUA example.lua # defines LUA hiya() & ltrig_cnt()
+  $CLI INTERPRET LUA "./extra/example.lua" # defines LUA hiya() & ltrig_cnt()
   $CLI CREATE TABLE fullload "(pk LONG, fk1 INT, fk2 INT, fk3 LONG, fkt TEXT, val TEXT)"
   $CLI CREATE UNIQUE INDEX i_flu ON fullload "(fk1,fk2)"
   $CLI CREATE INDEX i_flt ON fullload "(fkt)"
@@ -3163,45 +3163,33 @@ function test_dirty_scion_iterators() {
 function pop_lua_sql_integration() {
   $CLI DROP   TABLE lo >/dev/null
   $CLI CREATE TABLE lo "(pk INT, fk LONG, lo LUAOBJ)";
-  $CLI CREATE INDEX i_lo_dn ON lo "(lo.age)" LONG;
+  $CLI CREATE INDEX i_lo_dn ON lo "(lo.age)" LONG
   $CLI INSERT INTO lo VALUES "(1, 111, {'name':'RUSS', 'age':35})";
   $CLI INSERT INTO lo VALUES "(2, 222, {'name':'JIM',  'age':55})";
   $CLI INSERT INTO lo VALUES "(3, 333, {'name':'Jane', 'age':22})"
 }
 function test_lua_sql_integration() {
   pop_lua_sql_integration
-  $CLI CONFIG ADD LUA "function foo() print ('foo'); end"
-  $CLI CONFIG ADD LUA "function giveage(lo) return lo.age; end"
-  $CLI SELECT "giveage(lo)" FROM lo WHERE "pk BETWEEN 1 AND 3"
-  $CLI CONFIG ADD LUA "function incr_age(lo) lo.age = lo.age + 1; return true; end"
+  $CLI INTERPRET LUA "function foo() print ('foo'); end"
+  $CLI INTERPRET LUA "function giveage(lo) return lo.age; end"
+  $CLI SELECT "giveage(lo)" FROM lo WHERE "lo.age BETWEEN 22 AND 55"
+  $CLI INTERPRET LUA "function incr_age(lo) lo.age = lo.age + 1; return true; end"
   echo 3
   $CLI SELECT "incr_age(lo)" FROM lo WHERE "pk BETWEEN 1 AND 3"
   echo 1
   $CLI SELECT "incr_age(lo)" FROM lo WHERE "pk =2"
   $CLI SELECT "giveage(lo)" FROM lo WHERE "pk BETWEEN 1 AND 3"
 
-  $CLI CONFIG ADD LUA "function update_fail(pk) return false; end"
+  $CLI INTERPRET LUA "function update_fail(pk) return false; end"
   echo "ZERO UPDATES"
   $CLI SELECT "update_fail(pk)" FROM lo WHERE "pk BETWEEN 1 AND 3 "
   echo "ZERO UPDATES"
   $CLI SELECT "update_fail(pk)" FROM lo WHERE "pk = 1"
 
-  $CLI CONFIG ADD LUA "function variable_fail(pk) if ((pk%2) == 0) then return true; else return false; end; end"
+  $CLI INTERPRET LUA "function variable_fail(pk) if ((pk%2) == 0) then return true; else return false; end; end"
   echo "UPDATES ONLY 1"
   $CLI SELECT "variable_fail(pk)" FROM lo WHERE "pk BETWEEN 1 AND 3"
 
-  $CLI CONFIG ADD LUA "function variable_return_num_coroutine(pk) if ((pk%2) == 0) then return pk; else return coroutine.create(foo) end; end"
-  echo "FAIL ON 0"
-  $CLI SELECT "variable_return_num_coroutine(pk)" FROM lo WHERE "pk BETWEEN 1 AND 3"
-  echo "FAIL ON 1"
-  $CLI SELECT "variable_return_num_coroutine(pk)" FROM lo WHERE "pk BETWEEN 2 AND 3"
-
-  echo FAIL 0
-  $CLI SELECT \* FROM lo WHERE "pk BETWEEN 1 AND 2 ORDER BY variable_return_num_coroutine(pk)"
-  echo 1 ROW
-  $CLI SELECT \* FROM lo WHERE "pk BETWEEN 2 AND 2 ORDER BY variable_return_num_coroutine(pk)"
-  echo FAIL 1
-  $CLI SELECT \* FROM lo WHERE "pk BETWEEN 2 AND 3 ORDER BY variable_return_num_coroutine(pk)"
   $CLI DUMP lo
 }
 
@@ -3237,7 +3225,7 @@ function test_dot_notation_index() {
   $CLI SELECT \* FROM doc WHERE "lo.group = 3"
 
   echo "SET [pk=3].age to 55"
-  $CLI CONFIG ADD LUA "ASQL.doc.lo[3].age=55" 
+  $CLI INTERPRET LUA "ASQL.doc.lo[3].age=55" 
 
   echo "1 row (lo.age) [30-50]"
   $CLI SELECT \* FROM doc WHERE "lo.age BETWEEN 30 AND 50"
@@ -3245,11 +3233,11 @@ function test_dot_notation_index() {
   $CLI SELECT \* FROM doc WHERE "lo.age BETWEEN 50 AND 60"
 
   echo "SET [pk=3].age to NIL"
-  $CLI CONFIG ADD LUA "ASQL.doc.lo[3].age=nil;"
+  $CLI INTERPRET LUA "ASQL.doc.lo[3].age=nil;"
   echo "0 rows (lo.age) [50-60]"
   $CLI SELECT \* FROM doc WHERE "lo.age BETWEEN 50 AND 60"
   echo "SET [pk=3].age to 52"
-  $CLI CONFIG ADD LUA "ASQL.doc.lo[3].age=52;"
+  $CLI INTERPRET LUA "ASQL.doc.lo[3].age=52;"
   echo "1 row (lo.age) [50-60]"
   $CLI SELECT \* FROM doc WHERE "lo.age BETWEEN 50 AND 60"
 
@@ -3287,18 +3275,18 @@ function wiki_lua_tests() {
   $CLI SELECT info.fname FROM users WHERE "info.age = 32"
   echo "1 row [groupid=888]"
   $CLI SELECT info.fname FROM users WHERE "info.groupid = 888"
-  $CLI CONFIG ADD LUA "function has_coupon(info, code) if (info.coupon ~= nil and info.coupon == code) then return 1; else return 0; end; end"
+  $CLI INTERPRET LUA "function has_coupon(info, code) if (info.coupon ~= nil and info.coupon == code) then return 1; else return 0; end; end"
   $CLI CREATE INDEX i_u_zip ON users "(zipcode)"
   echo "1 row [has_coupon]"
   $CLI SELECT info.fname FROM users WHERE "zipcode = 44555 AND has_coupon(info, 'XYZ123')"
-  $CLI CONFIG ADD LUA "function format_name(t) return string.sub(t.fname, 1, 1) .. '. ' .. t.lname; end"
+  $CLI INTERPRET LUA "function format_name(t) return string.sub(t.fname, 1, 1) .. '. ' .. t.lname; end"
   echo "1 row FORMAT_NAME() [has_coupon]"
   $CLI SELECT "format_name(info)" FROM users WHERE "zipcode = 44555 AND has_coupon(info, 'XYZ123')"
-  $CLI CONFIG ADD LUA "function generate_coupon() return 'XYZ' .. math.random(1,999); end"
+  $CLI INTERPRET LUA "function generate_coupon() return 'XYZ' .. math.random(1,999); end"
   #TODO UPDATE lua functionality
   #$CLI UPDATE users SET "info.coupon = generate_coupon()" WHERE "userid = 1"
-  $CLI CONFIG ADD LUA "weight_gain_per_year={}; weight_gain_per_year[20]=1; weight_gain_per_year[25]=2; weight_gain_per_year[30]=3; weight_gain_per_year[35]=4; weight_gain_per_year[40]=5; weight_gain_per_year[45]=5; weight_gain_per_year[50]=4; weight_gain_per_year[55]=3; weight_gain_per_year[60]=2;"
-  $CLI CONFIG ADD LUA "function update_weight(info) if (info.weight == nil) then return false; end for k, v in pairs(weight_gain_per_year) do if (k > info.age) then info.weight = info.weight + v; return true; end; end; end"
+  $CLI INTERPRET LUA "weight_gain_per_year={}; weight_gain_per_year[20]=1; weight_gain_per_year[25]=2; weight_gain_per_year[30]=3; weight_gain_per_year[35]=4; weight_gain_per_year[40]=5; weight_gain_per_year[45]=5; weight_gain_per_year[50]=4; weight_gain_per_year[55]=3; weight_gain_per_year[60]=2;"
+  $CLI INTERPRET LUA "function update_weight(info) if (info.weight == nil) then return false; end for k, v in pairs(weight_gain_per_year) do if (k > info.age) then info.weight = info.weight + v; return true; end; end; end"
   echo "UPDATE as SELECT"
   $CLI SELECT "update_weight(info)" FROM users WHERE "userid = 1"
   echo "2 rows - with ORDERBY func"

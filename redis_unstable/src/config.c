@@ -689,11 +689,6 @@ void configCommand(redisClient *c) {
         resetCommandTableStats();
         addReply(c,shared.ok);
     } else {
-#ifdef ALCHEMY_DATABASE
-        int ret = DXDB_configCommand(c);
-        if (ret == -1) goto badarity;
-        if (ret)
-#endif
         addReplyError(c,
             "CONFIG subcommand must be one of GET, SET, RESETSTAT");
     }

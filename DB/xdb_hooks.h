@@ -53,7 +53,6 @@ void          DXDB_processInputBuffer_ZeroArgs(redisClient *c);
 
 int           DXDB_loadServerConfig(int argc, sds *argv);
 int           DXDB_configSetCommand(redisClient *c, robj *o);
-unsigned char DXDB_configCommand(redisClient *c);
 void          DXDB_configGetCommand(redisClient *c, char *pattern, int *matchs);
 
 int   DXDB_rdbSave(FILE *fp);
@@ -76,6 +75,9 @@ void DXDB_syncCommand(redisClient *c);
 unsigned char isWhiteListedIp(redisClient *c); //TODO move to another file?
 
 sds DXDB_SQL_feedAppendOnlyFile(rcommand *cmd, robj **argv, int argc);
+
+// HELPERS HELPERS HELPERS HELPERS HELPERS HELPERS HELPERS HELPERS HELPERS
+bool loadLuaHelperFile(cli *c, char *fname);
 
 int DXDB_lua_pcall(lua_State *L, int nargs, int nresults, int errfunc);
 

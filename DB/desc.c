@@ -290,7 +290,7 @@ static sds getLOIlist(int imatch) {
         if (i) s = sdscatlen(s, ".", 1);
         s = sdscatlen(s, ri->icol.lo[i], sdslen(ri->icol.lo[i]));
     }
-    sdscatlen(s, ")", 1);
+    s = sdscatprintf(s, ") type: %s", Col_type_defs[ri->dtype]);
     return s;
 }
 void descCommand(redisClient *c) {

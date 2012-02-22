@@ -574,10 +574,10 @@ int newIndex(cli    *c,     sds    iname, int  tmatch,    icol_t ic,
     if (fname)     ri->fname     = sdsdup(fname);          // FREE 162
     if (iconstrct) ri->iconstrct = sdsdup(iconstrct);      // FREE 167
     if (idestrct)  ri->idestrct  = sdsdup(idestrct);       // FREE 166
-    ri->luat    = luat  ? 1     :  0;
-    ri->done    = prtl  ? 0     :  1; 
-    ri->dtype   = dtype ? dtype : rt->col[ic.cmatch].type;
-    ri->ofst    = prtl  ? 1     : -1; // NOTE: PKs start at 1 (not 0)
+    ri->luat    = luat ? 1 :  0;
+    ri->done    = prtl ? 0 :  1; 
+    ri->dtype   = (ic.cmatch == -1 || dtype) ? dtype : rt->col[ic.cmatch].type;
+    ri->ofst    = prtl ? 1 : -1;// NOTE: PKs start at 1 (not 0)
     if (!rt->ilist) rt->ilist  = listCreate();           // DESTROY 088
     listAddNodeTail(rt->ilist, VOIDINT imatch);
     if (ri->icol.cmatch != -1) {
@@ -890,7 +890,7 @@ void emptyIndex(cli *c, int imatch) {
         free(ri->bclist);                                /* FREED 053 */
     }
     //NOTE:  ri->lru & ri->lfu can NOT be dropped, so no need to change rt
-    if (ri->icol.cmatch != -1 && ri->btr) {
+    if (ri->icol.cmatch != -1 && ri->btr && !ri->luat) {
         destroy_index(ri->btr, ri->btr->root, imatch);
     }
     if (ri->icol.nlo) {

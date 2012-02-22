@@ -55,6 +55,7 @@ extern r_ind_t *Index;
 
 #define SLOW_LUA_TRIGGER //TODO TEST VALUE - slow things down
 
+// LUA_CRON LUA_CRON LUA_CRON LUA_CRON LUA_CRON LUA_CRON LUA_CRON LUA_CRON
 /* NOTE: this calls lua routines every second from a server cron -> an event */
 /*  luacronfunc(Operations) -> use Operations to estimate current load */
 int luaCronTimeProc(struct aeEventLoop *eventLoop, lolo id, void *clientData) {
@@ -79,7 +80,7 @@ int luaCronTimeProc(struct aeEventLoop *eventLoop, lolo id, void *clientData) {
 #endif
 }
 
-/* LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER */
+// LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER
 luat_t *init_lua_trigger() {
     luat_t * luat = malloc(sizeof(luat_t)); bzero(luat, sizeof(luat_t));
     return luat;
@@ -104,7 +105,8 @@ static bool parseLuatCmd(cli *c, sds cmd, ltc_t *ltc, int tmatch) {
     if (strlen(tkn) >= 5 && !strncmp(tkn, "table", 5)) {// case: 1st arg "table"
         tkn += 5;
         if (!*tkn || ISBLANK(*tkn) || *tkn == ',') {
-            if (*tkn) tkn++; SKIP_SPACES(tkn); ltc->tblarg = 1;
+            if (*tkn == ',') tkn++;
+            SKIP_SPACES(tkn); ltc->tblarg = 1;
         }
     }
     if (!strlen(tkn)) return 1; // zero args is ok
@@ -159,14 +161,18 @@ void createLuaTrigger(cli *c) {
     char *dcmd   = (c->argc > 6) ? c->argv[6]->ptr : NULL;
     luaTAdd(c, trname, c->argv[4]->ptr, c->argv[5]->ptr, dcmd);
 }
-sds getLUATlist(ltc_t *ltc, int tmatch) { // Used in DESC & AOF
+sds getLUATlist(ltc_t *ltc, int tmatch) { //NOTE: Used in DESC & AOF
     sds cmd = sdsdup(ltc->fname);
     cmd     = sdscatlen(cmd, "(", 1);
     for (int j = 0; j < ltc->ncols; j++) {
         if (j) cmd = sdscatlen(cmd, ",", 1);
-        sds cname  = Tbl[tmatch].col[ltc->ics[j].cmatch].name;
-        //TODO FIXME print "lo"
-        cmd        = sdscatprintf(cmd, "%s", cname);
+        int cmatch = ltc->ics[j].cmatch;
+        if (cmatch == -1) { //TODO support
+            cmd = sdscatprintf(cmd, "DOT-NOTATION-INDEX not yet supported");
+        } else {
+            sds cname  = Tbl[tmatch].col[cmatch].name;
+            cmd        = sdscatprintf(cmd, "%s", cname);
+        }
     }
     cmd     = sdscatlen(cmd, ")", 1);
     return cmd;
@@ -193,25 +199,10 @@ static void luatDo(bt  *btr,    luat_t *luat, aobj *apk,
     if (ltc->tblarg) {
         lua_pushlstring(server.lua, rt->name, sdslen(rt->name));
     }
-
-    //TODO refactor w/ pushLuaVar()
     for (int i = 0; i < ltc->ncols; i++) {
         aobj acol = getCol(btr, rrow, ltc->ics[i], apk, ri->tmatch, NULL);
         int ctype = rt->col[ltc->ics[i].cmatch].type;
-        //NOTE: C_IS_X is prohibited (need lua 128 bit num lib)
-        if        C_IS_I(ctype) {
-            if (acol.empty) lua_pushnil    (server.lua);
-            else            lua_pushinteger(server.lua, acol.i);
-        } else if C_IS_L(ctype) {
-            if (acol.empty) lua_pushnil    (server.lua);
-            else            lua_pushinteger(server.lua, acol.l);
-        } else if C_IS_F(ctype) {
-            if (acol.empty) lua_pushnil   (server.lua);
-            else            lua_pushnumber(server.lua, acol.f);
-        } else {/* COL_TYPE_STRING */
-            if (acol.empty) lua_pushnil   (server.lua);
-            else            lua_pushlstring(server.lua, acol.s, acol.len);
-        }
+        pushAobjLua(&acol, ctype);
         releaseAobj(&acol);
     }
     int ret = DXDB_lua_pcall(server.lua, tcols, 0, 0);
@@ -223,4 +214,32 @@ void luatAdd(bt *btr, luat_t *luat, aobj *apk, int imatch, void *rrow) {
 }
 void luatDel(bt *btr, luat_t *luat, aobj *apk, int imatch, void *rrow) {
     luatDo(btr, luat, apk, imatch, rrow, 0);
+}
+
+// INTERPRET_LUA INTERPRET_LUA INTERPRET_LUA INTERPRET_LUA INTERPRET_LUA
+void interpretLua(redisClient *c) { //printf("interpretCommandLua\n");
+    for (int i = 2; i < c->argc; i++) {
+        CLEAR_LUA_STACK
+        if (luaL_dostring(server.lua, c->argv[i]->ptr)) {
+            addReplySds(c,sdscatprintf(sdsempty(),
+               "-ERR problem adding lua: (%s) msg: (%s)\r\n",
+               (char *)c->argv[i]->ptr, lua_tostring(server.lua, -1)));
+            CLEAR_LUA_STACK return;
+        }
+    }
+    CLEAR_LUA_STACK
+    addReply(c,shared.ok);
+}
+void interpretLuaFile(redisClient *c) { //printf("interpretCommandLuaFile\n");
+    for (int i = 2; i < c->argc; i++) {
+        CLEAR_LUA_STACK
+        if (!loadLuaHelperFile(c, c->argv[i]->ptr)) {
+            addReplySds(c,sdscatprintf(sdsempty(),
+               "-ERR problem adding LuaFile: (%s) msg: (%s)\r\n",
+               (char *)c->argv[i]->ptr, lua_tostring(server.lua, -1)));
+            CLEAR_LUA_STACK return;
+        }
+    }
+    CLEAR_LUA_STACK
+    addReply(c,shared.ok);
 }
