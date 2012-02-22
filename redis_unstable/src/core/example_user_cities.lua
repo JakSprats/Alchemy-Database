@@ -1,4 +1,5 @@
 
+-- INDEXING INDEXING INDEXING INDEXING INDEXING INDEXING INDEXING INDEXING
 local function isUserHasVisitedCity(snode, rtype, tnode)
   return (snode.__tname == 'users' and rtype == 'HAS_VISITED' and
           tnode.__tname == 'cities');
@@ -14,52 +15,7 @@ function deleteIndexUserHasVisitedCity(iname, snode, rtype, tnode)
   end
 end
 
-function CNN(tname, cname, pk, name) -- shorter function name for DUMP
-  return createNamedNode(tname, cname, pk, name);
-end
-function ANRBPK(stbl, spk, rtype, ttbl, tpk) -- shorter func name for DUMP
-  return addNodeRelationShipByPK(stbl, spk, rtype, ttbl, tpk);
-end
-local function addNodeToSTBL(dumpt, n)
-  table.insert(dumpt, 'CNN("' ..  n.__tname .. '","' .. n.__cname .. '",' ..
-                                  n.__pk    .. ',"'  .. n.__name  .. '");\n');
-end
-local function addRelToNode(dumpt, sn, rtype, tn)
-  table.insert(dumpt, 'ANRBPK("' ..  sn.__tname .. '",' .. sn.__pk .. ',"' ..
-                                     rtype .. '","' ..
-                                     tn.__tname .. '",' .. tn.__pk .. ');\n');
-end
-local GRAPH_dump_file = "GRAPH.lua.rdb";
-function saveGraphNodes() print ('saveGraphNodes');
-  local dumpt = {};
-  for n in vertices() do
-    --TODO dump node properties
-    addNodeToSTBL(dumpt, n);
-    if (n.r ~= nil) then
-      for rtype, relation in pairs(n.r) do
-        local pkt = relation[Direction.OUTGOING];
-        if (pkt ~= nil) then
-          for pk, trgt in pairs(pkt) do
-            --TODO dump relationship properties
-            local tn = trgt.target;
-            addRelToNode(dumpt, n, rtype, tn);
-          end
-        end
-      end
-    end
-    readOnlyLock_OFF();
-    STBL[n.__tname][n.__cname][n.__pk].node = nil; -- NOT dumped by PLUTO
-    readOnlyLock_ON();
-  end
-  local ds    = table.concat(dumpt);
-  local ofile = io.open(GRAPH_dump_file, "wb"); ofile:write(ds); ofile:close();
-end
-function loadGraphNodes() print ('loadGraphNodes');
-  hooks_saveLuaUniverse = {}; hooks_loadLuaUniverse = {};
-  local buf = open_or_error(GRAPH_dump_file);
-  assert(loadstring(buf))()
-end
-
+-- CONSTRUCT/DESTRUCT CONSTRUCT/DESTRUCT CONSTRUCT/DESTRUCT CONSTRUCT/DESTRUCT
 function constructUserGraphHooks(tname, iname)
   print ('constructUserGraphHooks: tname: ' .. tname .. ' iname: ' .. iname);
   if (not IndexInited[iname]) then
@@ -67,11 +23,9 @@ function constructUserGraphHooks(tname, iname)
   end
   IndexInited[iname] = true;
   table.insert(hooks_addNodeRelationShip, 
-               {func  = addIndexUserHasVisitedCity;
-                iname = iname;});
+               {func  = addIndexUserHasVisitedCity;    iname = iname;});
   table.insert(hooks_deleteNodeRelationShip,
-               {func  = deleteIndexUserHasVisitedCity;
-                iname = iname;});
+               {func  = deleteIndexUserHasVisitedCity; iname = iname;});
   table.insert(hooks_saveLuaUniverse, {func  = saveGraphNodes;});
   table.insert(hooks_loadLuaUniverse, {func  = loadGraphNodes;});
 end

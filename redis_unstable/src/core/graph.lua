@@ -43,8 +43,8 @@ Evaluation.EXCLUDE_AND_PRUNE    = 4;
 
 -- READ_ONLY_TABLES READ_ONLY_TABLES READ_ONLY_TABLES READ_ONLY_TABLES
 local ReadOnlyLock = true;
-function readOnlyLock_ON()  ReadOnlyLock = true;  end
-function readOnlyLock_OFF() ReadOnlyLock = false; end
+local function readOnlyLock_ON()  ReadOnlyLock = true;  end
+local function readOnlyLock_OFF() ReadOnlyLock = false; end
 local function readOnlySetter(rname, k, v)
   if (ReadOnlyLock) then error("ERROR: trying to set a ReadOnly table");
   else                   rawset(rname, k, v);                            end
@@ -54,7 +54,14 @@ local function createEmptyReadOnlyTable(t)
 end
 
 -- NODES NODES NODES NODES NODES NODES NODES NODES NODES NODES NODES NODES
---TODO make local
+NodeKeywords = {};
+NodeKeywords['__tname'] = true;
+NodeKeywords['__cname'] = true;
+NodeKeywords['__pk']    = true;
+NodeKeywords['__name']  = true;
+NodeKeywords['r']       = true;
+
+--TODO MAKE_LOCAL
 function internalCreateNamedNode(tname, cname, pk, lo, name)
   if     (lo.node ~= nil) then
     error("createNamedNode - Node already exists");
@@ -85,8 +92,7 @@ function createNamedNode(tname, cname, pk, name)
   local lo = STBL[tname][cname][pk];
   return internalCreateNamedNode(tname, cname, pk, lo, name);
 end
-
-function deleteNode(lo)
+local function deleteNode(lo)
   if     (lo      == nil) then error("deleteNode(x) - x does not exist");
   elseif (lo.node == nil) then error("deleteNode - Node does not exists"); end
   PKset[lo.node.__tname][lo.node.__pk] = nil;
@@ -95,14 +101,19 @@ function deleteNode(lo)
 end
 
 -- PROPERTIES PROPERTIES PROPERTIES PROPERTIES PROPERTIES PROPERTIES
+-- TODO MAKE_LOCAL
 function addNodeProperty(node, key, value)
   if     (node      == nil) then
     error("addNodePropery(x) - x does not exist");
   elseif (node[key] ~= nil) then
     error("addNodePropery(x, key) - key already exists");
+  elseif (NodeKeywords[key]) then
+    error("Keyword violation: '" .. key .."' is reserved"); 
   end
   readOnlyLock_OFF(); node[key] = value; readOnlyLock_ON();
+  return "PROPERTY ADDED";
 end
+-- TODO MAKE_LOCAL
 function deleteNodeProperty(node, key)
   if     (node      == nil) then
     error("deleteNodePropery(x) - x does not exist");
@@ -110,6 +121,7 @@ function deleteNodeProperty(node, key)
     error("deleteNodePropery(x, key) - key does not exists");
   end
   readOnlyLock_OFF(); node[key] = nil; readOnlyLock_ON();
+  return "PROPERTY DELETED";
 end
 
 -- RELATIONSHIPS RELATIONSHIPS RELATIONSHIPS RELATIONSHIPS RELATIONSHIPS
@@ -135,9 +147,10 @@ local function createRelationship(snode, rtype, sd, tnode)
   snode.r[rtype][sd][tnode.__pk].target = tnode;
 end
 
-hooks_addNodeRelationShip    = {};
-hooks_deleteNodeRelationShip = {};
+hooks_addNodeRelationShip    = {}; -- NOTE: user_cities uses to Index Relations
+hooks_deleteNodeRelationShip = {}; -- NOTE: user_cities uses to Index Relations
 
+--TODO MAKE_LOCAL
 function addNodeRelationShip(snode, rtype, tnode)
   validateNodesInRel(snode, rtype, tnode)
   local sd, td = Direction.OUTGOING, Direction.INCOMING;
@@ -175,6 +188,7 @@ local function existsRel(snode, rtype, tnode, sd)
     error("snode does not have this relationship in this direction for tnode");
   end
 end
+--TODO MAKE_LOCAL
 function deleteNodeRelationShip(snode, rtype, tnode)
   validateNodesInRel(snode, rtype, tnode);
   local sd, td = Direction.OUTGOING, Direction.INCOMING;
@@ -192,6 +206,7 @@ function deleteNodeRelationShip(snode, rtype, tnode)
 end
 
 -- NOTE: example-usage: add weight to a relationship
+--TODO MAKE_LOCAL
 function addPropertyToRelationship(snode, rtype, tnode, prop, value)
   validateNodesInRel(snode, rtype, tnode);
   local sd, td = Direction.OUTGOING, Direction.INCOMING;
@@ -200,8 +215,10 @@ function addPropertyToRelationship(snode, rtype, tnode, prop, value)
   snode.r[rtype][sd][tnode.__pk][prop] = value;
   tnode.r[rtype][td][snode.__pk][prop] = value;
   readOnlyLock_ON();
+  return "PROPERTY ADDED TO RELATION"
 end
-function deletePropertyToRelationship(snode, rtype, tnode, prop) --TODO: TEST
+--TODO MAKE_LOCAL
+function deletePropertyToRelationship(snode, rtype, tnode, prop)
   validateNodesInRel(snode, rtype, tnode);
   local sd, td = Direction.OUTGOING, Direction.INCOMING;
   existsRel(snode, rtype, tnode, sd);
@@ -209,6 +226,7 @@ function deletePropertyToRelationship(snode, rtype, tnode, prop) --TODO: TEST
   snode.r[rtype][sd][tnode.__pk][prop] = nil;
   tnode.r[rtype][td][snode.__pk][prop] = nil;
   readOnlyLock_ON();
+  return "PROPERTY DELETED TO RELATION"
 end
 
 -- NEIGHBORHOOD NEIGHBORHOOD NEIGHBORHOOD NEIGHBORHOOD NEIGHBORHOOD
@@ -225,7 +243,7 @@ function expanderBoth(x, rtype, relation)
           (relation[Direction.OUTGOING] ~= nil)), Direction.BOTH;
 end
 registerFunc(ExpanderFuncs, 'BOTH', expanderBoth);
-local function defaultExpanderFunc(x, rtype, relation)
+function defaultExpanderFunc(x, rtype, relation)
   return expanderOutgoing(x, rtype, relation);
 end
 registerFunc(ExpanderFuncs, 'DEFAULT', defaultExpanderFunc);
@@ -324,7 +342,7 @@ end
 -- TRAVERSERS TRAVERSERS TRAVERSERS TRAVERSERS TRAVERSERS TRAVERSERS TRAVERSERS
 StartPK = 0; -- Used to Include/Exclude start-node
 
-function getRelationText(w)
+local function getRelationText(w)
   if (w.relation[Direction.OUTGOING] ~= nil) then
     return '-['  .. w.rtype .. ']->';
   else -- Direction.INCOMING
@@ -383,6 +401,7 @@ local function validateEvaled(eed)
 end
 
 -- BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS BFS
+--TODO MAKE_LOCAL
 function traverse_bfs(v, reply_func, options)
   assert(Vset[v]    ~= nil, "node not in graph");
   assert(reply_func ~= nil, "arg: reply_func not defined");
@@ -444,6 +463,7 @@ local function dfs_search(vizd, t, x, reply_func, d, u, nopts, evalf)
     end
   end
 end
+--TODO MAKE_LOCAL
 function traverse_dfs(v, reply_func, options)
   assert(Vset[v]    ~= nil, "node not in graph");
   assert(reply_func ~= nil, "arg: reply_func not defined");
@@ -461,10 +481,11 @@ function traverse_dfs(v, reply_func, options)
 end
 
 -- SHORTEST_PATH SHORTEST_PATH SHORTEST_PATH SHORTEST_PATH SHORTEST_PATH
-function vertices() return next, Vset, nil end
+local function vertices() return next, Vset, nil end
 
-function get_val_func(v) return v.cost; end
+local function get_val_func(v) return v.cost; end
 
+--TODO MAKE_LOCAL
 --TODO ProofOfConceptCode: this was a global shortestpath - for ALL nodes
 --     then I quickly hacked on it, to make it for [FromStartNode->ToEndNode]
 --     but it might be terribly INEFFICIENT on big-graphs
@@ -506,39 +527,13 @@ function shortestpath(snode, tnode, so_options)
   return {cost = dist[tnode]; path=getPath(paths[tnode])};
 end
 
--- CUSTOM_FUNCS
-
--- DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
-function debugPrintNameFromRel(v, rtype, direction)
-  local nopts = {};
-  if     (direction == Direction.INCOMING) then 
-    nopts.expander_func = expanderIncoming;
-  elseif (direction == Direction.OUTGOING) then
-    nopts.expander_func = expanderOutgoing;
-  elseif (direction == Direction.BOTH)     then
-    nopts.expander_func = expanderBoth;
-  else 
-    error("Direction must be [Direction.INCOMING|OUTGOING|BOTH]");
-  end
-  local x = {w = {node = v;}; parent = nil; depth = 1;};
-  for k, w in pairs(getNeighborhood(x, nopts)) do
-    print ("\tPK: " .. k .. ' NAME: ' .. w.node.__name);
-    if (w.weight) then print("\t\tWEIGHT: " .. w.weight); end
-  end
-end
-
-function dump_node_and_path(z)
-  local i = 1;
-  for k,v in pairs(z) do
-    print("\t" .. i .. ': NAME: ' .. v.node.__name .. "\tPATH: " .. v.path);
-    i = i + 1;
-  end
-end
-
 -- SQL_API SQL_API SQL_API SQL_API SQL_API SQL_API SQL_API SQL_API
 local function getNodeByPK(tname, pk)
   --print ('getNodeByPK: tname: ' .. tname .. ' pk: ' .. pk);
   return PKset[tname][pk];
+end
+function deleteNodeByPk(tname, pk)
+  return deleteNode(getNodeByPK(tname, pk));
 end
 function addNodeRelationShipByPK(stbl, spk, rtype, ttbl, tpk)
   return addNodeRelationShip(getNodeByPK(stbl, spk), rtype,
@@ -636,3 +631,113 @@ function buildIndex(add_index_func, iname) --print('buildIndex');
     end
   end
 end
+
+-- PERSISTENCE PERSISTENCE PERSISTENCE PERSISTENCE PERSISTENCE PERSISTENCE
+-- TODO save/load shoud be binary (smaller and avoides eval())
+function CNN(tname, cname, pk, name) -- shorter function name for DUMP
+  return createNamedNode(tname, cname, pk, name);
+end
+function ANR(stbl, spk, rtype, ttbl, tpk) -- shorter func name for DUMP
+  return addNodeRelationShipByPK(stbl, spk, rtype, ttbl, tpk);
+end
+function ANP(tname, pk, key, value)
+  return addNodePropertyByPK(tname, pk, key, value);
+end
+function APR(stbl, spk, rtype, ttbl, tpk, prop, value)
+  return addPropertyToRelationshipByPK(stbl, spk, rtype, ttbl, tpk,
+                                       prop, value);
+end
+local function addNodeToSTBL(dumpt, n)
+  table.insert(dumpt, 'CNN("' ..  n.__tname .. '","' .. n.__cname .. '",' ..
+                                  n.__pk    .. ',"'  .. n.__name  .. '");\n');
+end
+local function addPropToNode(dumpt, n, prop, value)
+  local dumpval;
+  if (type(value) == "string") then dumpval = "'" .. value .. "'";
+  else                              dumpval =        value;        end
+  table.insert(dumpt, 'ANP("' ..  n.__tname .. '",' .. n.__pk .. ',"' ..
+                                  prop      .. '",' .. dumpval  .. ');\n'); 
+end
+local function addRelToNode(dumpt, sn, rtype, tn)
+  table.insert(dumpt, 'ANR("' ..  sn.__tname .. '",' .. sn.__pk .. ',"' ..
+                                  rtype      .. '","' ..
+                                  tn.__tname .. '",' .. tn.__pk .. ');\n');
+end
+local function addPropToRel(dumpt, sn, rtype, tn, prop, value)
+  local dumpval;
+  if (type(value) == "string") then dumpval = "'" .. value .. "'";
+  else                              dumpval =        value;        end
+  table.insert(dumpt, 'APR("' ..  sn.__tname .. '",' .. sn.__pk .. ',"' ..
+                                  rtype      .. '","' ..
+                                  tn.__tname .. '",' .. tn.__pk .. ',"' ..
+                                  prop       .. '",' .. dumpval .. ');\n');
+end
+
+local GRAPH_dump_file = "GRAPH.lua.rdb";
+function saveGraphNodes() --print ('saveGraphNodes');
+  local dumpt = {};
+  for n in vertices() do
+    addNodeToSTBL(dumpt, n);
+    for prop, value in pairs(n) do
+      if (not NodeKeywords[prop]) then
+        addPropToNode(dumpt, n, prop, value);
+      end
+    end
+    if (n.r ~= nil) then
+      for rtype, relation in pairs(n.r) do
+        local pkt = relation[Direction.OUTGOING];
+        if (pkt ~= nil) then
+          for pk, trgt in pairs(pkt) do
+            --TODO dump relationship properties
+            local tn = trgt.target;
+            addRelToNode(dumpt, n, rtype, tn);
+            for prop, value in pairs(trgt) do
+              if (prop ~= 'target') then
+                addPropToRel(dumpt, n, rtype, tn, prop, value);
+              end
+            end
+          end
+        end
+      end
+    end
+    readOnlyLock_OFF();
+    STBL[n.__tname][n.__cname][n.__pk].node = nil; -- NOT dumped by PLUTO
+    readOnlyLock_ON();
+  end
+  local ds    = table.concat(dumpt);
+  local ofile = io.open(GRAPH_dump_file, "wb"); ofile:write(ds); ofile:close();
+end
+function loadGraphNodes() --print ('loadGraphNodes');
+  hooks_saveLuaUniverse = {}; hooks_loadLuaUniverse = {};
+  local buf = open_or_error(GRAPH_dump_file);
+  assert(loadstring(buf))()
+end
+
+
+-- DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
+function debugPrintNameFromRel(v, rtype, direction)
+  local nopts = {};
+  if     (direction == Direction.INCOMING) then 
+    nopts.expander_func = expanderIncoming;
+  elseif (direction == Direction.OUTGOING) then
+    nopts.expander_func = expanderOutgoing;
+  elseif (direction == Direction.BOTH)     then
+    nopts.expander_func = expanderBoth;
+  else 
+    error("Direction must be [Direction.INCOMING|OUTGOING|BOTH]");
+  end
+  local x = {w = {node = v;}; parent = nil; depth = 1;};
+  for k, w in pairs(getNeighborhood(x, nopts)) do
+    print ("\tPK: " .. k .. ' NAME: ' .. w.node.__name);
+    if (w.weight) then print("\t\tWEIGHT: " .. w.weight); end
+  end
+end
+
+function dump_node_and_path(z)
+  local i = 1;
+  for k,v in pairs(z) do
+    print("\t" .. i .. ': NAME: ' .. v.node.__name .. "\tPATH: " .. v.path);
+    i = i + 1;
+  end
+end
+

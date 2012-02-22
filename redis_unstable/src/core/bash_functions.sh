@@ -3419,4 +3419,15 @@ function graphdb_fof_cities_test() {
 
   $CLI SELECT "hometown, get_fof(lo)" FROM users WHERE "relindx() = 30"
   $CLI SELECT "hometown, get_fof(lo)" FROM users WHERE "relindx() = 30"
+
+  $CLI LUA addNodePropertyByPK 'cities' 10 'population'  5000000
+  $CLI LUA addNodePropertyByPK 'cities' 20 'population' 20000000
+  $CLI LUA addNodePropertyByPK 'cities' 30 'population'  2000000
+
+  $CLI LUA addNodeRelationShipByPK       'cities' 10 "PATH" 'cities' 20
+  $CLI LUA addPropertyToRelationshipByPK 'cities' 10 "PATH" 'cities' 20 \
+                                         'distance' 250
+  $CLI LUA addNodeRelationShipByPK       'cities' 10 "PATH" 'cities' 30
+  $CLI LUA addPropertyToRelationshipByPK 'cities' 10 "PATH" 'cities' 30 \
+                                         'distance' 2900
 }
