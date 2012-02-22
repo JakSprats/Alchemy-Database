@@ -481,6 +481,7 @@ void DXDB_createClient(int fd, redisClient *c) {//printf("DXDB_createClient\n");
 
 int DXDB_processCommand(redisClient *c) { //printf("DXDB_processCommand\n");
     if (c->http.mode == HTTP_MODE_ON) return continue_http_session(c);
+    CLEAR_LUA_STACK
     server.alc.Operations++;
     server.alc.CurrClient  = c;
     server.alc.CurrCard    = 0;

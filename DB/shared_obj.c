@@ -390,4 +390,7 @@ void DXDB_createSharedObjects() {
 
     shared.interpret_syntax      = createObject(REDIS_STRING,sdsnew(
         "-ERR: INTERPRET [LUA|LUAFILE]\r\n"));
+
+    shared.nested_dni            = createObject(REDIS_STRING,sdsnew(
+        "-ERR: NESTED Dot-Notation-Indexes not YET supported\r\n"));
 }

@@ -556,6 +556,9 @@ int newIndex(cli    *c,     sds    iname, int  tmatch,    icol_t ic,
              list   *clist, uchar  cnstr, bool virt,      bool   lru,
              luat_t *luat,  icol_t obc,   bool prtl,      bool   lfu,
              uchar   dtype, sds    fname, sds  iconstrct, sds idestrct) {
+    if (ic.nlo > 1) {
+        addReply(c, shared.nested_dni); return -1;
+    }
     int imatch;
     if (!DropI && Num_indx >= (int)Ind_HW) addIndex();
     if (DropI) {

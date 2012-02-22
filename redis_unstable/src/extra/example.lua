@@ -54,3 +54,7 @@ end
 function lcap_del(tname, fk1, pk)
   print('lcap_del: tname: ' .. tname .. ' fk1: ' .. fk1 .. ' pk: ' .. pk);
 end
+
+function print_column(val)
+  print('column: ' .. val);
+end

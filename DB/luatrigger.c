@@ -31,6 +31,7 @@ ALL RIGHTS RESERVED
 #include <unistd.h>
 #include <sys/time.h>
 #include <ctype.h>
+#include <assert.h>
 
 #include "xdb_hooks.h"
 
@@ -38,6 +39,7 @@ ALL RIGHTS RESERVED
 #include "redis.h"
 
 #include "index.h"
+#include "stream.h"
 #include "colparse.h"
 #include "rpipe.h"
 #include "parser.h"
@@ -53,7 +55,7 @@ ALL RIGHTS RESERVED
 extern r_tbl_t *Tbl;
 extern r_ind_t *Index;
 
-#define SLOW_LUA_TRIGGER //TODO TEST VALUE - slow things down
+//#define SLOW_LUA_TRIGGER //TODO TEST VALUE - slow things down
 
 // LUA_CRON LUA_CRON LUA_CRON LUA_CRON LUA_CRON LUA_CRON LUA_CRON LUA_CRON
 /* NOTE: this calls lua routines every second from a server cron -> an event */
@@ -110,9 +112,9 @@ static bool parseLuatCmd(cli *c, sds cmd, ltc_t *ltc, int tmatch) {
         }
     }
     if (!strlen(tkn)) return 1; // zero args is ok
-    list *cmatchl = listCreate();
+    CREATE_CS_LS_LIST(1)
     bool  ok      = parseCSLSelect(c, tkn, 1, 0, tmatch, cmatchl,
-                                   NULL, &ltc->ncols, NULL);
+                                   ls, &ltc->ncols, NULL);
     if (ok) {
         r_tbl_t  *rt = &Tbl[tmatch];
         ltc->ics     = malloc(sizeof(icol_t) * ltc->ncols); // FREE ME 083
@@ -123,10 +125,10 @@ static bool parseLuatCmd(cli *c, sds cmd, ltc_t *ltc, int tmatch) {
             int cm          = ic->cmatch;
             //NOTE: no support for U128 or index.pos()
             if (C_IS_X(rt->col[cm].type) || cm < 0) { ok = 0; break; }
-            ltc->ics[i].cmatch = cm; i++;
+            cloneIC(&ltc->ics[i], ic); i++;
         } listReleaseIterator(li);
     }
-    listRelease(cmatchl);
+    RELEASE_CS_LS_LIST
     return ok;
 }
 void luaTAdd(cli *c, sds trname, sds tname, sds acmd, sds dcmd) {
@@ -155,9 +157,12 @@ luatadd_err:
 void createLuaTrigger(cli *c) {
     if (c->argc < 6) { addReply(c, shared.luatrigger_wrong_nargs); return; }
     if (strcasecmp(c->argv[3]->ptr, "ON")) { 
-        addReply(c, shared.createsyntax); return;
+        addReply(c, shared.createsyntax);                          return;
     }
     sds   trname = c->argv[2]->ptr;
+    if (match_index_name(trname) != -1) {
+        addReply(c, shared.nonuniqueindexnames);                   return;
+    }
     char *dcmd   = (c->argc > 6) ? c->argv[6]->ptr : NULL;
     luaTAdd(c, trname, c->argv[4]->ptr, c->argv[5]->ptr, dcmd);
 }
@@ -166,12 +171,13 @@ sds getLUATlist(ltc_t *ltc, int tmatch) { //NOTE: Used in DESC & AOF
     cmd     = sdscatlen(cmd, "(", 1);
     for (int j = 0; j < ltc->ncols; j++) {
         if (j) cmd = sdscatlen(cmd, ",", 1);
-        int cmatch = ltc->ics[j].cmatch;
-        if (cmatch == -1) { //TODO support
-            cmd = sdscatprintf(cmd, "DOT-NOTATION-INDEX not yet supported");
-        } else {
-            sds cname  = Tbl[tmatch].col[cmatch].name;
-            cmd        = sdscatprintf(cmd, "%s", cname);
+        int cmatch = ltc->ics[j].cmatch; assert(cmatch > 0);
+        sds cname  = Tbl[tmatch].col[cmatch].name;
+        cmd        = sdscatprintf(cmd, "%s", cname);
+        if (ltc->ics[j].nlo) {
+            for (uint32 k = 0; k < ltc->ics[j].nlo; k++) {
+                cmd = sdscatprintf(cmd, ".%s", ltc->ics[j].lo[k]);
+            }
         }
     }
     cmd     = sdscatlen(cmd, ")", 1);
@@ -201,8 +207,11 @@ static void luatDo(bt  *btr,    luat_t *luat, aobj *apk,
     }
     for (int i = 0; i < ltc->ncols; i++) {
         aobj acol = getCol(btr, rrow, ltc->ics[i], apk, ri->tmatch, NULL);
-        int ctype = rt->col[ltc->ics[i].cmatch].type;
-        pushAobjLua(&acol, ctype);
+        if (ltc->ics[i].nlo) { printf("luatDo: pushLuaVar\n");
+            pushLuaVar(ri->tmatch, ltc->ics[i], apk);
+        } else { printf("luatDo: pushAobjLua\n");
+            pushAobjLua(&acol, rt->col[ltc->ics[i].cmatch].type);
+        }
         releaseAobj(&acol);
     }
     int ret = DXDB_lua_pcall(server.lua, tcols, 0, 0);

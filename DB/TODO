@@ -1,8 +1,6 @@
 
 GRAND_PLAN:
   1.) Luaobj                    -> 2 days
-  2.) LuaFuncIndex              -> 2 days
-  3.) GraphDB (rev1)            -> 3 days
   3.) Luvit w/ EmbeddedAlchemy  -> 2 weeks
   4.) EvictedRowSQL_Slave       -> 3 weeks
 IMPROVEMENTS:
@@ -11,15 +9,12 @@ IMPROVEMENTS:
 
 LUAOBJ:
   8.) UPDATE dot-notation directly (UPDATE tbl SET doc.age = 45)
-      a.) UPDATE SET lo.x = 20               -> Simple Update
-      b.) UPDATE SET lo.x = lo.x + 20        -> Simple Expression
-      c.) UPDATE SET lo.x = func(fk, lo.y)   -> CompiledLuaFunction
-      d.) UPDATE SET lo.x = sqrt(lo.x) * 44  -> DynamicLuaFunction
-      e.) UPDATE SET lo   = { lua-obj-decl } -> Set to Table
-  H.) prohibit Indexing nested luaobjs (e.g. lo.x.y.z)
-      |-> FOR NOW (implement when needed)
-  Q.) test optimal lookup of nested luaobj (e.g. SELECT lo.x.y.z)
-  I.) LuaTriggers, calling (lo.x.y.z) - ???
+      a.) UPDATE SET lo.x.y = 20               -> Simple Update
+      b.) UPDATE SET lo.x.y = lo.x + 20        -> Simple Expression
+      c.) UPDATE SET lo.x.y = func(fk, lo.y)   -> CompiledLuaFunction
+      d.) UPDATE SET lo.x.y = sqrt(lo.x) * 44  -> DynamicLuaFunction
+      e.) UPDATE SET lo   = { json }           -> Set LuaObj to Table
+      e.) UPDATE SET lo   = luafunc(a,b,c)     -> Set LuaObj to Function
   K.) Test STRING DNI
   O.) in checkOrCr8LFunc, joins have precedence over nested luaobjs
         in '.' delimited parsing
@@ -27,8 +22,18 @@ LUAOBJ:
   R.) test "SELECT ... IN (luafunc(lo))"
   S.) Lua U128 bindings
 
-LUATRIGGER
-  1.) Syntax: CREATE LUATRIGGER trigname ON tbl PRE/POST insfunc(a,b,c) delfunc(a,b,c) upfunc(a,b,c)
+LUATRIGGER:
+  0.) MAKE POST row write (they cant fail)
+  1.) Syntax:
+      CREATE LUATRIGGER trigname ON tbl insfunc(a,b,c) \
+                                        delfunc(a,b,c) upfunc(a,b,c)
+      |-> upfunc will parse (a,b,c) and
+                       pass (a{old = oval; new = nval},
+                             b{old = oval; new = nval},
+                             c{old = oval; new = nval})
+  2.) add in ability to pass lfunc(col1, 'indexname', 45) -> strings & nums
+      |-> dont use parseCSLSelect() which can create DynLuaFuncs
+  3.) LuaTriggers, calling (lo.x.y.z) - code is there, but requires POST calling
 
 REST_API:
   1.) push EREDIS down into responsefunctions (better code modularity)

@@ -91,6 +91,9 @@ function delete_luaobj(tbl, col, pk)
 end
 
 -- LUAOBJ_TO_OUTPUT LUAOBJ_TO_OUTPUT LUAOBJ_TO_OUTPUT LUAOBJ_TO_OUTPUT
+function DumpObjForOutput(obj)
+  return Json.encode(obj);
+end
 function DumpLuaObjForOutput(tbl, col, pk)
   return Json.encode(STBL[tbl][col][pk]);
 end
@@ -105,6 +108,7 @@ end
 -- LUAOBJ_PERSISTENCE LUAOBJ_PERSISTENCE LUAOBJ_PERSISTENCE
 hooks_saveLuaUniverse = {}; hooks_loadLuaUniverse = {};
 local STBL_dump_file = "STBL.lua.rdb" local IEL_dump_file = "IEL.lua.rdb"
+
 function save_lua_universe()
   if (hooks_saveLuaUniverse ~= nil) then
     for k, v in pairs(hooks_saveLuaUniverse) do v.func(); end

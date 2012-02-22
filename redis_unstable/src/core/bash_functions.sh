@@ -3408,6 +3408,7 @@ function graphdb_fof_cities_test() {
   $CLI SELECT "hometown, get_fof(lo)" FROM users WHERE "relindx() = 30"
   $CLI SELECT "hometown, get_fof(lo)" FROM users WHERE "relindx() = 30"
 
+  #NOTE: the rest is not yet used, just testing persistence functions
   $CLI LUA addNodePropertyByPK 'cities' 10 'population'  5000000
   $CLI LUA addNodePropertyByPK 'cities' 20 'population' 20000000
   $CLI LUA addNodePropertyByPK 'cities' 30 'population'  2000000

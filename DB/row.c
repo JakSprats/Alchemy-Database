@@ -117,7 +117,8 @@ static bool evalLuaExpr(cli  *c,    int cmatch, uc_t *uc, aobj *apk,
                         void *orow, aobj *aval);
 
 // PROTOTYPES: LUA_SELECT_FUNCS
-static void initLOFromCM(aobj *a, aobj *apk, icol_t ic, int tmatch, bool fs);
+static void initLuaobjFromCmatch(aobj *a,      aobj *apk, icol_t ic,
+                                 int   tmatch, bool  fs);
 static void initAobjFromLuaString(lua_State *lua, aobj *a);
 static void initAobjFromLuaResponse(aobj *a, icol_t *ic, int tmatch, bool fs);
 
@@ -707,7 +708,7 @@ aobj getRawCol(bt  *btr,    uchar *orow, icol_t  ic,  aobj *apk,
             float   f  = streamFloatToFloat(data, &clen);
             initFloatAobjFromVal(&a, f,   fs, cmatch);
         } else if C_IS_O(ctype) {
-            initLOFromCM(&a, apk, ic, tmatch, fs);
+            initLuaobjFromCmatch(&a, apk, ic, tmatch, fs);
         } else if C_IS_S(ctype) {
             a.type     = a.enc = COL_TYPE_STRING; a.empty = 0;
             if        (rflag & RFLAG_6BIT_ZIP) {
@@ -812,23 +813,23 @@ static void initAobjFromLuaResponse(aobj *a, icol_t *ic, int tmatch, bool fs) {
     }
     lua_pop(server.lua, 1);
 }
-static void initLOFromCM(aobj *a, aobj *apk, icol_t ic, int tmatch, bool fs) {
+static void initLuaobjFromCmatch(aobj *a,      aobj *apk, icol_t ic,
+                                 int   tmatch, bool  fs) {
+    lua_getglobal(server.lua, "DumpObjForOutput");
     pushLuaVar(tmatch, ic, apk);
     int t     = lua_type(server.lua, -1);
-    printf("initLOFromCM: t: %d apk: ", t); dumpAobj(printf, apk);
+    printf("initLuaobjFromCmatch: t: %d apk: ", t); dumpAobj(printf, apk);
     if (t == LUA_TNIL) {
         initAobjString(a, "nil", 3);
+        lua_pop(server.lua, -1); // pop off func: DumpObjForOutput()
     } else if (t == LUA_TTABLE) {
-        r_tbl_t *rt   = &Tbl[tmatch];
-        lua_pop(server.lua, 1);
-        lua_getglobal (server.lua, "DumpLuaObjForOutput");
-        lua_pushstring(server.lua, rt->name);
-        lua_pushstring(server.lua, rt->col[ic.cmatch].name);
-        pushAobjLua(apk, apk->type);
-        int ret = DXDB_lua_pcall(server.lua, 3, 1, 0);
+        int ret = DXDB_lua_pcall(server.lua, 1, 1, 0);
         if (ret) initAobjString(a, UnprintableLuaObject, lenUnplo);
         else     initAobjFromLuaResponse(a, &ic, tmatch, fs);
-    } else initAobjFromLuaResponse(a, &ic, tmatch, fs);
+    } else {
+        initAobjFromLuaResponse(a, &ic, tmatch, fs);
+        lua_pop(server.lua, -1); // pop off func: DumpObjForOutput()
+    }
 }
 
 static aobj colFromUU(ulong key, bool fs, int cmatch) {
