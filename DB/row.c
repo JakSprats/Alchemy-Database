@@ -61,7 +61,6 @@ ALL RIGHTS RESERVED
     1.) pass only "aobj *" not aobj (which is now a big struct)
     2.) RawCols[] is not worth the complexity, use malloc()
     3.) in updateRow() all NUM()s are already error checked in getExprType()
-    4.) evalExpr() OVERFLOW and UNDERFLOW CHECKING
     5.) break up into [write_row.c, get_row.c, output_row.c, update_row.c]
 */
 
@@ -112,7 +111,7 @@ static aobj colFromUL(ulong   key, bool fs, int cmatch);
 static aobj colFromLU(ulong   key, bool fs, int cmatch);
 static aobj colFromLL(ulong   key, bool fs, int cmatch);
 static aobj colFromXX(uint128 key, bool fs, int cmatch);
-static bool evalExpr   (cli *c, ue_t  *ue, aobj *aval, uchar ctype);
+static bool evalExpr   (cli  *c,    ue_t  *ue, aobj *aval, uchar ctype);
 static bool evalLuaExpr(cli  *c,    int cmatch, uc_t *uc, aobj *apk,
                         void *orow, aobj *aval);
 
@@ -1062,6 +1061,7 @@ void deleteLuaObj(int tmatch, int cmatch, aobj *apk) {
     pushAobjLua(apk, apk->type);
     DXDB_lua_pcall(server.lua, 3, 0, 0); CLEAR_LUA_STACK
 }
+//NOTE deleteRow() can NOT fail due to CONSTRAINT VIOLATIONS
 int deleteRow(int tmatch, aobj *apk, int matches, int inds[]) {
     //printf("\n\nSTART: deleteRow: key: "); dumpAobj(printf, apk);
     bt    *btr  = getBtr(tmatch);
@@ -1167,11 +1167,98 @@ static bool aobj_sflag(aobj *a, uchar *sflag) {
 #define OVRWR(i, ovrwr, ctype) /*NOTE: !indexed -> upIndex uses orow & nrow */ \
   (i && ovrwr && C_IS_NUM(ctype) && !rt->col[i].indxd)
 
-//TODO UP_ERR means a ROLLBACK is needed on RANGE UPDATES ... CAN NOT HAPPEN
 #define UP_ERR goto up_end;
 
-//TODO do an initial pass to determine OVWR (avoids per-col getCol() call)
-int updateRow(cli *c, uc_t *uc, aobj *opk, void *orow) { //printf("upd8Row\n");
+/*TODO 
+  UPDATE IMPROVEMENTS:
+    1.) do an initial pass to determine OVWR (avoids per-col getCol() call)
+        |-> OVWR detection      -> push into parsing
+    2.) ERR: SET UINT to >4GB   -> push into parsing
+    3.) ERR: Unparseable U128   -> push into parsing
+
+  UPDATE_FAILURES: (problem for RANGE-UPDATEs -> would need ROLLBACKs)
+    -> SOLUTION Q nrows in memory, apply when ALL have passed.
+*/
+
+
+static int runUpdate(cli *c,    uc_t *uc,   aobj *opk,   void *orow,
+                     aobj *npk, void *nrow, bool  lodlt) {
+    r_tbl_t *rt  = &Tbl[uc->tmatch];
+    int      ret = -1;
+    if (!uc->cmiss[0]) { // PK update runFailableInsertIndexes() can NOT FAIL
+        runFailableInsertIndexes(c, uc->btr, npk, nrow, uc->matches, uc->inds);
+        runDeleteIndexes(uc->btr, opk, orow, uc->matches, uc->inds, 0);
+        btDelete(uc->btr, opk);    // DELETE row w/ OLD PK
+        ret = btAdd(uc->btr, npk, nrow); // ADD row w/ NEW PK
+        UPDATE_AUTO_INC(rt->col[0].type, npk)
+    } else { // upEffectedFailableIndexes() CAN NOT FAIL
+        upEffectedFailableIndexes(c, uc->btr, opk, orow, npk, nrow,
+                                  uc->matches, uc->inds, uc->cmiss);
+        ret = btReplace(uc->btr, opk, nrow); // OVERWRITE w/ new row 
+    }
+    if (lodlt) {
+        CLEAR_LUA_STACK
+        lua_getfield(server.lua, LUA_GLOBALSINDEX, "runQueueLuaobjAssign");
+        DXDB_lua_pcall(server.lua, 0, 0, 0); CLEAR_LUA_STACK
+    }
+    if (rt->nltrgr) { // LUATRIGGERS come at the end (CANT FAIL)
+        runVoidInsertIndexes(c, uc->btr, npk, nrow, uc->matches, uc->inds);
+    }
+    server.dirty++;
+    return ret;
+}
+
+// UPDATE_QUEUE UPDATE_QUEUE UPDATE_QUEUE UPDATE_QUEUE UPDATE_QUEUE UPDATE_QUEUE
+typedef struct ur_t {
+    aobj *opk; void *orow; aobj *npk; void *nrow;
+} ur_t;
+static ur_t *newUpdateRow(aobj *opk, void *orow, aobj *npk, void *nrow) {
+  ur_t *ur = (ur_t *)malloc(sizeof(ur_t));
+  ur->opk = opk; ur->orow = orow; ur->npk = npk; ur->nrow = nrow;
+  return ur;
+}
+void vFreeUpdateRow(void *v) { if (v) free(v); }
+
+static int queueUpdate(cli *c,    uc_t *uc,   aobj *opk,   void *orow,
+                       aobj *npk, void *nrow, bool  lodlt) {
+    if (!c->UpdateQueue.inited) { //printf("UpdateQueue.inited\n");
+        c->UpdateQueue.inited          = 1;
+        c->UpdateQueue.l               = listCreate();
+        c->UpdateQueue.l->free         = vFreeUpdateRow;
+        c->UpdateQueue.constants.uc    = uc;
+        c->UpdateQueue.constants.lodlt = lodlt;
+    }
+    listAddNodeTail(c->UpdateQueue.l, newUpdateRow(opk, orow, npk, nrow));
+    return 1; //TODO: return should be stream-size
+}
+void runUpdateQueue(cli *c) { //printf("runUpdateQueue\n");
+    if (!c->UpdateQueue.inited) return; //FAILED before it started
+    listNode  *ln; uqc_t *uqc = &c->UpdateQueue.constants;
+    listIter  *li = listGetIterator(c->UpdateQueue.l, AL_START_HEAD);
+    while((ln = listNext(li))) {
+        ur_t *ur = ln->value;
+        runUpdate(c, uqc->uc, ur->opk, ur->orow, ur->npk, ur->nrow, uqc->lodlt);
+    } listReleaseIterator(li);
+    abandonUpdateQueue(c);
+}
+void abandonUpdateQueue(cli *c) {
+    if (!c->UpdateQueue.inited) return; //FAILED before it started
+    listNode  *ln; uqc_t *uqc = &c->UpdateQueue.constants;
+    listIter  *li = listGetIterator(c->UpdateQueue.l, AL_START_HEAD);
+    while((ln = listNext(li))) {
+        ur_t *ur = ln->value;
+        if (NORM_BT(uqc->uc->btr)) free(ur->nrow);       // FREED 023
+        destroyAobj(ur->npk);                            // FREED 168
+    } listReleaseIterator(li);
+    listRelease(c->UpdateQueue.l); c->UpdateQueue.l = NULL;
+    c->UpdateQueue.inited = 0;
+}
+
+//NOTE updateRow() can NOT fail due to CONSTRAINT VIOLATIONS
+//     therefore NON-OVERWRITE updates are Qed & Replayed when ALL pass
+//     & OVERWRITE updates do NOT FAIL
+int updateRow(cli *c, uc_t *uc, aobj *opk, void *orow, bool isr) {
+    //printf("START: updateRow\n");
     r_tbl_t *rt     = &Tbl[uc->tmatch];
     INIT_CR(uc->tmatch, uc->ncols) /* holds values written to new ROW */
     INIT_COL_AVALS      /* merges values in update_string and vals from ROW */
@@ -1180,11 +1267,12 @@ int updateRow(cli *c, uc_t *uc, aobj *opk, void *orow) { //printf("upd8Row\n");
     uchar   *nrow   = NULL; /* B4 GOTO */
     //TODO LUATRIGGER tables can do OVWR w/ split up add/delIndexes
     bool     ovrwr  = NORM_BT(uc->btr) && !rt->nltrgr;
-    bool     lodelt = 0;
+    bool     lodlt = 0;
     int      ret    = -1;    /* presume failure */
     for (int i = 0; i < cr.ncols; i++) { /* 1st loop UPDATE columns -> cr */
         uchar ctype = rt->col[i].type;
         DECLARE_ICOL(ic, i)
+//TODO put from UPDATE_VALUE_LIST (the else-block) at top of this if-stmt
         if        (rt->lrud && rt->lruc == i) {
             avs[i] = getCol(uc->btr, orow, ic, opk, uc->tmatch, NULL);
             if (avs[i].empty) ovrwr      = 0; // makes updateLRU not recurse
@@ -1210,7 +1298,6 @@ int updateRow(cli *c, uc_t *uc, aobj *opk, void *orow) { //printf("upd8Row\n");
             if (!OVRWR(i, ovrwr, ctype) ||
                 !aobj_sflag(&avs[i], &osflags[i])) ovrwr = 0;
             if (!evalLuaExpr(c, i, uc, opk, orow, &avs[i]))             UP_ERR
-//TODO put from UPDATE_VALUE_LIST at top of this if-stmt
         } else { /* from UPDATE_VALUE_LIST (no expression) */
             //printf("%d: NORMAL\n", i);
             if OVRWR(i, ovrwr, ctype) {
@@ -1238,7 +1325,7 @@ int updateRow(cli *c, uc_t *uc, aobj *opk, void *orow) { //printf("upd8Row\n");
                 initAobjFloat(&avs[i], f);
             } else if C_IS_S(ctype) { // ignore \' delims
                 initAobjString(&avs[i], uc->vals[i] + 1, uc->vlens[i] - 2);
-            } else if C_IS_O(ctype) { lodelt = 1;
+            } else if C_IS_O(ctype) { lodlt = 1;
                 initAobjString(&avs[i], uc->vals[i],     uc->vlens[i]);
             } else assert(!"updateRow parse ERROR");
             sdsfree(tkn); tkn = NULL;                    // FREED 137
@@ -1279,7 +1366,7 @@ int updateRow(cli *c, uc_t *uc, aobj *opk, void *orow) { //printf("upd8Row\n");
         for (int i = 1; i < cr.ncols; i++) {
             if (osflags[i] && osflags[i] != crd[i].iflags) { ovrwr = 0; break; }
     }}
-    if (ovrwr) { /* just OVERWRITE INTS & LONGS */         //printf("OVRWR\n");
+    if (ovrwr) { /* just OVERWRITE INTS & LONGS -> CAN NOT FAIL */
         for (int i = 1; i < cr.ncols; i++) {
             if (osflags[i]) {
                 uint32 clen; uchar rflag;
@@ -1311,38 +1398,19 @@ int updateRow(cli *c, uc_t *uc, aobj *opk, void *orow) { //printf("upd8Row\n");
             nrow = UKEY(uc->btr) ? VOIDINT  avs[1].i :
                    LKEY(uc->btr) ? (uchar *)avs[1].l : 
                    writeRow(c, opk, uc->tmatch, &cr, crd, 1);
+            if (!nrow)                                                   UP_ERR
         }
-        aobj *npk = &avs[0];
-        if (!uc->cmiss[0]) { /* PK update */
-            if (!runFailableInsertIndexes(c, uc->btr, npk, nrow,
-                                          uc->matches, uc->inds))       UP_ERR
-            runDeleteIndexes(uc->btr, opk, orow, uc->matches, uc->inds, 0);
-            btDelete(uc->btr, opk);              // DELETE row w/ OLD PK
-            ret = btAdd(uc->btr, npk, nrow); // ADD row w/ NEW PK
-            UPDATE_AUTO_INC(rt->col[0].type, avs[0])
-        } else {
-            if (!upEffectedFailableIndexes(c, uc->btr, opk, orow, npk, nrow,
-                                           uc->matches, uc->inds, uc->cmiss))
-                                                                        UP_ERR
-            ret = btReplace(uc->btr, opk, nrow); /* overwrite w/ new row */
-        }
-        if (lodelt) { //NOTE: everything is ok, write LUAOBJ changes to Lua
-            CLEAR_LUA_STACK
-            lua_getfield(server.lua, LUA_GLOBALSINDEX, "runQueueLuaobjAssign");
-            DXDB_lua_pcall(server.lua, 0, 0, 0); CLEAR_LUA_STACK
-        }
-        if (rt->nltrgr) { // LUATRIGGERS come at the end (CANT FAIL)
-            runVoidInsertIndexes(c, uc->btr, npk, nrow, uc->matches, uc->inds);
-        }
+        aobj *npk = cloneAobj(&avs[0]);                  // FREE 168
+        ret       = isr ? queueUpdate(c, uc, opk, orow, npk, nrow, lodlt) :
+                          runUpdate  (c, uc, opk, orow, npk, nrow, lodlt);
     }
-    server.dirty++;
 
 up_end:
     if (tkn) sdsfree(tkn);                               // FREED 137
-    if (nrow && NORM_BT(uc->btr)) free(nrow);            /* FREED 023 */
     DESTROY_COL_AVALS
     return ret;
 }
+
 
 /* UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR */
 void pushColumnLua(bt *btr, uchar *orow, int tmatch, aobj *a, aobj *apk) {
@@ -1411,45 +1479,51 @@ static bool evalExpr(cli *c, ue_t *ue, aobj *aval, uchar ctype) {
         else      l  = strtoul(ue->pred, NULL, 10); /* OK: DELIM: [\ ,\,,\0] */
         if ((ue->op == DIVIDE || ue->op == MODULO)) {
             if (is_f ? (f == 0.0) : (l == 0)) {
-                addReply(c, shared.update_expr_div_0); return 0;
+                addReply(c, shared.update_expr_div_0);          return 0;
             }
         }
         if (is_f && f < 0.0) { addReply(c, shared.neg_on_uint); return 0; }
-        ulong m = C_IS_I(ctype) ? aval->i : aval->l;
-        //TODO OVERFLOW and UNDERFLOW CHECKING
-        if      (ue->op == PLUS)        m += (is_f ? (ulong)f : l);
-        else if (ue->op == MINUS)       m -= (is_f ? (ulong)f : l);
-        else if (ue->op == MODULO)      m %= (is_f ? (ulong)f : l);
-        else if (ue->op == DIVIDE) {
+        ulong m   = C_IS_I(ctype) ? aval->i : aval->l;
+        ulong dlt = (is_f ? (ulong)f : l);
+        if        (ue->op == PLUS)   {
+            if ((C_IS_L(ctype) && (ULONG_MAX - dlt) < m) ||
+                (C_IS_I(ctype) && (UINT_MAX  - dlt) < m)) {
+                    addReply(c, shared.overflow);               return 0;
+            }
+            m += dlt;
+        } else if (ue->op == MINUS)  {
+            if (dlt > m) { addReply(c, shared.overflow);        return 0; }
+            m -= dlt;
+        } else if (ue->op == MODULO) {  m %= dlt;
+        } else if (ue->op == DIVIDE) {
             if (ue->type == UETYPE_FLT) m = (ulong)((double)m / f);
             else                        m = m / l;
         } else if (ue->op == MULT) {
             if (ue->type == UETYPE_FLT) m = (ulong)((double)m * f);
             else {
-                if (C_IS_L(ctype) && l > 0 && m > (ulong)TWO_POW_64 / l) {
-                    addReply(c, shared.u2big); return 0;
+                if (C_IS_L(ctype) && l > 0 && m > UINT_MAX / l) {
+                    addReply(c, shared.u2big);                  return 0;
                 }
-                                        m = m * l;
+                m = m * l;
             }
         } else {          /* POWER */
             if (ue->type == UETYPE_INT) f = (float)l;
             errno    = 0;
             double d = powf((float)m, f);
-            if (errno != 0) { addReply(c, shared.u2big); return 0; }
-            if (C_IS_L(ctype) && d > (double)TWO_POW_64) {
-                addReply(c, shared.u2big); return 0;
+            if ((errno != 0) || (C_IS_L(ctype) && d > (double)ULONG_MAX)) {
+                addReply(c, shared.u2big);                      return 0;
             }
-                                        m = (ulong)d;
+            m = (ulong)d;
         }
         if (C_IS_I(ctype)) {
-            if (m >= TWO_POW_32) { addReply(c, shared.u2big); return 0; }
-                            aval->i = m;
-        } else { /* LONG */ aval->l = m; }
+            if (m >= UINT_MAX) { addReply(c, shared.u2big);     return 0; }
+            aval->i = m;
+        } else aval->l = m; // LONG
     } else if (C_IS_F(ctype)) {
         double m;
         float  f = atof(ue->pred);                  /* OK: DELIM: [\ ,\,,\0] */
         if (ue->op == DIVIDE && f == (float)0.0) {
-            addReply(c, shared.update_expr_div_0); return 0;
+            addReply(c, shared.update_expr_div_0);              return 0;
         }
         errno = 0; /* overflow detection initialisation */
         if      (ue->op == PLUS)    m = aval->f + f;
@@ -1458,12 +1532,12 @@ static bool evalExpr(cli *c, ue_t *ue, aobj *aval, uchar ctype) {
         else if (ue->op == DIVIDE)  m = aval->f / f;
         else            /* POWER */ m = powf(aval->f, f);
         if (errno != 0) {
-            addReply(c, shared.update_expr_float_overflow); return 0;
+            addReply(c, shared.update_expr_float_overflow);     return 0;
         }
         double d = m;
         if (d < 0.0) d *= -1;
         if (d < FLT_MIN || d > FLT_MAX) {
-            addReply(c, shared.update_expr_float_overflow); return 0;
+            addReply(c, shared.update_expr_float_overflow);     return 0;
         }
         aval->f = (float)m;
     }

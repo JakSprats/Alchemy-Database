@@ -3421,6 +3421,7 @@ function graphdb_fof_cities_test() {
                                          'distance' 250
   $CLI LUA addNodeRelationShipByPK       'cities' 10 "PATH" 'cities' 30
   $CLI LUA addPropertyToRelationshipByPK 'cities' 10 "PATH" 'cities' 30 \
+                                         'distance' 2900
 }
 
 function advanced_tests() {

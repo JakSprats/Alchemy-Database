@@ -143,10 +143,10 @@ typedef struct twoint {
 
 #define P_SDS_EMT sdscatprintf(sdsempty(),
 
-#define UPDATE_AUTO_INC(pktyp, apk)                             \
-  if      (C_IS_I(pktyp) && apk.i > rt->ainc) rt->ainc = apk.i; \
-  else if (C_IS_L(pktyp) && apk.l > rt->ainc) rt->ainc = apk.l; \
-  else if (C_IS_X(pktyp) && apk.x > rt->ainc) rt->ainc = apk.x;
+#define UPDATE_AUTO_INC(pktyp, apk)                                   \
+  if      (C_IS_I(pktyp) && (apk)->i > rt->ainc) rt->ainc = (apk)->i; \
+  else if (C_IS_L(pktyp) && (apk)->l > rt->ainc) rt->ainc = (apk)->l; \
+  else if (C_IS_X(pktyp) && (apk)->x > rt->ainc) rt->ainc = (apk)->x;
 
 #define DEL_NODE_ON_EMPTY_RELEASE_LIST(l, ln) \
     listDelNode(l, ln);                       \

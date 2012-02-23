@@ -447,7 +447,7 @@ bool parseCSLJoinColumns(cli  *c,     char  *tkn,  bool  exact,
 bool parseCSLSelect(cli  *c,         char  *tkn,
                     bool  exact,     bool   isi,
                     int   tmatch,    list  *cs,        list   *ls,
-                    int  *qcols,     bool  *cstar) { printf("parseCSLSelect\n");
+                    int  *qcols,     bool  *cstar) {//printf("parseCSLSelct\n");
     while (1) {
         int len; SKIP_SPACES(tkn) char *nextc = get_next_nonparaned_comma(tkn);
         if (nextc) {

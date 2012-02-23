@@ -68,7 +68,7 @@ void  deleteLuaObj(int tmatch, int cmatch, aobj *apk);
 int   deleteRow   (int tmatch, aobj *apk, int matches, int inds[]);
 
 // UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE
-typedef struct update_ctl {
+typedef struct uc_t {
     bt      *btr;
     aobj    *apk;
     void    *orow;
@@ -89,7 +89,9 @@ void init_uc(uc_t  *uc,     bt     *btr,
              lue_t *le);
 void release_uc(uc_t *uc);
 
-int updateRow(cli *c, uc_t *uc, aobj *apk, void *orow);
+int updateRow(cli *c, uc_t *uc, aobj *apk, void *orow, bool isr);
+void runUpdateQueue(cli *c);     //NOTE: RangeQueries after ALL Updates are OK
+void abandonUpdateQueue(cli *c); //NOTE: on RangeQuery failure
 
 // DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
 void dumpRow(printer *prn, bt *btr, void *rrow, aobj *apk, int tmatch);

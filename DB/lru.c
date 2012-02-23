@@ -146,7 +146,7 @@ void updateLru(cli *c, int tmatch, aobj *apk, uchar *lruc, bool lrud) {
         uc_t uc;
         init_uc(&uc, btr, tmatch, ncols, matches, inds, vals, vlens, cmiss,
                 ue,  le);
-        updateRow(c, &uc, apk, rrow); /* NOTE: ALWAYS succeeds */
+        updateRow(c, &uc, apk, rrow, 0); /* NOTE: ALWAYS succeeds */
         //NOTE: rrow is no longer valid, updateRow() can change it
         release_uc(&uc);
     }

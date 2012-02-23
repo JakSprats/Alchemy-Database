@@ -84,6 +84,17 @@ typedef struct icol_t {
     int cmatch; int fimatch; uint32 nlo; sds *lo;
 } icol_t;
 
+struct uc_t;
+typedef struct uqc_t { 
+    struct uc_t *uc;
+    bool         lodlt;
+} uqc_t;
+typedef struct uq_t {
+    uqc_t  constants;
+    bool   inited;
+    list  *l;
+} uq_t;
+
 //TODO move this into a single struct, that can be bzero'ed
 #define ALCHEMY_CLIENT_EXTENSIONS           \
     struct sockaddr_in  sa;                 \
@@ -97,7 +108,8 @@ typedef struct icol_t {
     int                 NumJTAlias;         \
     sds                 bindaddr;           \
     int                 bindport;           \
-    select_callback    *scb;
+    select_callback    *scb;                \
+    uq_t                UpdateQueue;
 
 struct redisClient;
 typedef struct alchemy_server_extensions_t {
@@ -215,7 +227,7 @@ typedef struct alchemy_server_extensions_t {
     *cr8tablesyntax,         *joindotnotation,             \
     *http_not_on,            *create_findex,               \
     *luafuncindex_rpt,       *interpret_syntax,            \
-    *nested_dni;
+    *nested_dni,             *overflow;
 
 #define DEBUG_C_ARGV(c) \
   for (int i = 0; i < c->argc; i++) \

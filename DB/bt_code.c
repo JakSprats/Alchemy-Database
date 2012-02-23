@@ -551,7 +551,7 @@ void bt_insert(bt *btr, bt_data_t k, uint32 dr) {
 // DELETE DELETE DELETE DELETE DELETE DELETE DELETE DELETE DELETE DELETE
 static bt_n *replaceKeyWithGhost(bt *btr, bt_n *x, int i, bt_data_t k,
                                  uint32 dr, bt_n *p,   int   pi) {
-    printf("replaceKeyWithGhost\n");
+    //printf("replaceKeyWithGhost\n");
     aobj akey; convertStream2Key(k, &akey, btr);
     uint32 ssize; DECLARE_BT_KEY(&akey, x)
     char *stream = createStream(btr, NULL, btkey, ksize, &ssize); // DEST 027
@@ -650,7 +650,7 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
              * Recursively delete kp, and replace k with kp in x. */
             xp         = NODES(btr, x)[i];
             ADD_BP(plist, x, i)
-            printf("CASE2A recurse: key: "); printKey(btr, x, i);
+            //printf("CASE2A recurse: key: "); printKey(btr, x, i);
             dwd_t dwd  = deletekey(btr, xp, NULL, DK_2A, drt, x, i, plist);
             //DEBUG_SET_BTKEY_2A
             if (drt) x = incrDR(btr, x, i, ++dwd.dr, p, pi);
@@ -666,7 +666,7 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
              * kp, and replace k with kp in x. */
             xp         = NODES(btr, x)[i + 1];
             ADD_BP(plist, x, i + 1)
-            printf("CASE2B recurse: key: "); printKey(btr, x, i);
+            //printf("CASE2B recurse: key: "); printKey(btr, x, i);
             dwd_t dwd  = deletekey(btr, xp, NULL, DK_2B, drt, x, i + 1, plist);
             //DEBUG_SET_BTKEY_2B
             if (drt) { // prev key inherits DR+1
@@ -701,7 +701,7 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
             x = trimBTN(btr, x, drt, p, pi);
             bt_free_btreenode(btr, z);
             ADD_BP(plist, x, i)
-            printf("CASE2C key: "); printKey(btr, x, i);
+            //printf("CASE2C key: "); printKey(btr, x, i);
             return deletekey(btr, y, k, s, drt, x, i, plist);
         } assert(!"deletekey CASE2 ERROR");
     }
@@ -719,7 +719,7 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
            moving a key from xp's immediate left or right sibling(y) up into x,
            & moving the appropriate node from the sibling(y) into xp. */
         if (i > 0 && (y = NODES(btr, x)[i - 1])->n >= btr->t) {
-            printf("CASE3A1 key: "); printKey(btr, x, i);
+            //printf("CASE3A1 key: "); printKey(btr, x, i);
             /* left sibling has t keys */                  //DEBUG_DEL_CASE_3a1
             mvXKeys(btr, &xp, 1, &xp, 0, xp->n, ks, x, i, x, i);
             if (!xp->leaf) mvXNodes(btr, xp, 1, xp, 0, (xp->n + 1));
@@ -734,7 +734,7 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
             }
             y  = trimBTN(btr, y, drt, x, i - 1);
         } else if (i < x->n && (y = NODES(btr, x)[i + 1])->n >= btr->t) {
-            printf("CASE3A2 key: "); printKey(btr, x, i);
+            //printf("CASE3A2 key: "); printKey(btr, x, i);
             /* right sibling has t keys */                 //DEBUG_DEL_CASE_3a2
             incr_scion(xp, 1 + getDR(btr, x, i));
             xp = setBTKey(btr, xp, xp->n++, x, i, drt, x, i, p, pi);
@@ -754,7 +754,7 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
            one sibling, which involves moving a key from x down into the
            new merged node to become the median key for that node.  */
         else if (i > 0 && (y = NODES(btr, x)[i - 1])->n == btr->t - 1) {
-            printf("CASE3B1 key: "); printKey(btr, x, i);
+            //printf("CASE3B1 key: "); printKey(btr, x, i);
             /* merge i with left sibling */                //DEBUG_DEL_CASE_3b1
             incr_scion(y, 1 + getDR(btr, x, i - 1));
             y = setBTKey(btr, y, y->n++, x, i - 1, drt, x, i - 1, p, pi);
@@ -771,7 +771,7 @@ static dwd_t deletekey(bt   *btr, bt_n *x,  bt_data_t k,     int    s, bool drt,
             bt_free_btreenode(btr, xp);
             xp = y; i--; // i-- for parent-arg in recursion (below)
         } else if (i < x->n && (y = NODES(btr, x)[i + 1])->n == btr->t - 1) {
-            printf("CASE3B2 key: "); printKey(btr, x, i);
+            //printf("CASE3B2 key: "); printKey(btr, x, i);
             /* merge i with right sibling */               //DEBUG_DEL_CASE_3b2
             incr_scion(xp, 1 + getDR(btr, x, i));
             xp = setBTKey(btr, xp, xp->n++, x, i, drt, x, i, p, pi);

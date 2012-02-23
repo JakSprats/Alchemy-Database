@@ -724,13 +724,12 @@ isele:
 
 typedef list *list_adder(list *list, void *value);
 static bool dellist_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
-printf("START: dellist_op: asc: %d\n", g->asc);
     OP_FILTER_CHECK
     if (q) {
         if (!addRow2OBList(g->co.ll, g->co.wb, g->co.btr, apk, g->co.ofree,
                             rrow,     apk)) return 0;
     } else {
-printf("dellist_op: adding: key: "); dumpAobj(printf, apk);
+        //printf("dellist_op: adding: key: "); dumpAobj(printf, apk);
         aobj *cln  = cloneAobj(apk); //NOTE: next line builds BACKWARDS list
         list_adder *la = g->asc ? listAddNodeHead : listAddNodeTail;
         (*la)(g->co.ll, cln); /* UGLY: build list of PKs to delete */
@@ -768,7 +767,7 @@ void ideleteAction(redisClient *c, cswc_t *w, wob_t *wb) {
         listIter  *li = listGetIterator(ll, AL_START_HEAD);
         while((ln = listNext(li))) {
             aobj *apk = ln->value;
-printf("ideleteAction: key: "); dumpAobj(printf, apk);
+            //printf("ideleteAction: key: "); dumpAobj(printf, apk);
             if (deleteRow(w->wf.tmatch, apk, matches, inds) == 1) sent++;
         } listReleaseIterator(li);
     }
@@ -786,7 +785,7 @@ static bool update_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
         if (!addRow2OBList(g->co.ll, g->co.wb, g->co.btr, apk, g->co.ofree,
                            rrow, apk)) return 0;
     } else {
-printf("update_op: adding: key: "); dumpAobj(printf, apk);
+        //printf("update_op: adding: key: "); dumpAobj(printf, apk);
         //TODO non-FK/PK updates can be done HERE inline (w/o Qing in the ll)
         aobj *cln  = cloneAobj(apk);
         listAddNodeTail(g->co.ll, cln); /* UGLY: build list of PKs to update */
@@ -795,12 +794,11 @@ printf("update_op: adding: key: "); dumpAobj(printf, apk);
 }
 static bool opUpdateSort(cli   *c,   list *ll,    cswc_t  *w,
                          wob_t *wb,  bool  ofree, long    *sent,
-                         bt    *btr, int   ncols, range_t *g) {
-    uc_t     uc;
+                         bt    *btr, int   ncols, range_t *g, uc_t *uc) {
     bool     ret  = 1; /* presume success */
     obsl_t **v    = sortOB2Vector(ll);
     long     ofst = wb->ofst;
-    init_uc(&uc, btr, w->wf.tmatch, ncols, g->up.matches, g->up.indices,
+    init_uc(uc, btr, w->wf.tmatch, ncols, g->up.matches, g->up.indices,
             g->up.vals, g->up.vlens, g->up.cmiss, g->up.ue, g->up.le);
     for (int i = 0; i < (int)listLength(ll); i++) {
         if (wb->lim != -1 && *sent == wb->lim) break;
@@ -810,12 +808,12 @@ static bool opUpdateSort(cli   *c,   list *ll,    cswc_t  *w,
             obsl_t *ob   = v[i];
             aobj   *apk  = ob->row;
             void   *rrow = btFind(btr, apk); // pk comes from LL
-            if (updateRow(c, &uc, apk, rrow) == -1) {
+            if (updateRow(c, uc, apk, rrow, 1) == -1) {
                 ret = 0; break; /* negate presumed success */
             } //NOTE: rrow is no longer valid, updateRow() can change it
         }
     }
-    release_uc(&uc); sortOBCleanup(v, listLength(ll), ofree); free(v);//FREED004
+    sortOBCleanup(v, listLength(ll), ofree); free(v);//FREED004
     return ret;
 }
 void iupdateAction(cli  *c,      cswc_t *w,       wob_t *wb,
@@ -831,31 +829,35 @@ void iupdateAction(cli  *c,      cswc_t *w,       wob_t *wb,
     g.up.vals    = vals;    g.up.vlens   = vlens; g.up.cmiss = cmiss;
     g.up.ue      = ue;      g.up.le      = le;    
     g.up.upx     = !upi && (wb->lim == -1) && !w->flist;
-    printf("\n\niupdateAction: upx: %d upi: %d lim:% ld flist: %p\n", g.up.upx, upi, wb->lim, (void *)w->flist);
+    //printf("\n\niupdateAction: upx: %d upi: %d lim:% ld flist: %p\n",
+    //       g.up.upx, upi, wb->lim, (void *)w->flist);
     long card    = Op(&g, update_op);
     if (card == -1) goto iup_end; // MCI UNIQ Violation || DirtyMiss */
     long sent    = 0;
     bool err     = 0;
     if (card) {
+        uc_t  uc;
         if (q.qed) {
-            if (!opUpdateSort(c, ll, w, wb, g.co.ofree,
-                              &sent, btr, ncols, &g))  goto iup_end; // MCI VIOL
+            if (!opUpdateSort(c, ll, w, wb, g.co.ofree, &sent,
+                              btr, ncols, &g, &uc))            goto iup_end;
         } else {
             listNode  *ln;
-            uc_t  uc;
             init_uc(&uc, g.up.btr,   g.co.w->wf.tmatch,
                          g.up.ncols, g.up.matches, g.up.indices, g.up.vals,
                          g.up.vlens, g.up.cmiss,   g.up.ue,      g.up.le);
             listIter  *li = listGetIterator(ll, AL_START_HEAD);
             while((ln = listNext(li))) {
                 aobj *apk  = ln->value;
-                void *rrow = btFind(g.up.btr, apk); // pk comes from LL
-                if (updateRow(g.co.c, &uc, apk, rrow) == -1) { err = 1; break; }
-                //NOTE: rrow is no longer valid, updateRow() can change it
+                void *rrow = btFind(g.up.btr, apk);
+                if (updateRow(g.co.c, &uc, apk, rrow, 1) == -1) {
+                    err = 1; break;
+                } //NOTE: rrow is no longer valid, updateRow() can change it
                 sent++;
             } listReleaseIterator(li);
-            release_uc(&uc);
         }
+        if (!err) runUpdateQueue    (c);
+        else      abandonUpdateQueue(c);
+        release_uc(&uc);
     }
     if (!err) {
         if (wb->lim != -1 && sent < card) card = sent;

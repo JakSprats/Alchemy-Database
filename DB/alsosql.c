@@ -173,7 +173,7 @@ uchar insertCommit(cli  *c,      sds     uset,   sds     vals,
         //printf("repl: %d orow: %p upd: %d miss: %d exists: %d key: ",
         //     repl, orow, upd, dwm.miss, exists); dumpAobj(printf, &apk);
         len = repl ? btReplace(btr, &apk, nrow) : btAdd(btr, &apk, nrow);
-        UPDATE_AUTO_INC(pktyp, apk)
+        UPDATE_AUTO_INC(pktyp, &apk)
         ret = INS_INS;            /* negate presumed failure */
     }
     if (tsize) *tsize = *tsize + len;
@@ -663,7 +663,7 @@ int updateInnards(cli *c,      int   tmatch, sds vallist, sds wclause,
         uc_t uc;
         init_uc(&uc, btr, w.wf.tmatch, ncols, matches, inds, vals, vlens,
                 cmiss, ue, le);
-        nsize        = updateRow(c, &uc, apk, rrow); release_uc(&uc);
+        nsize        = updateRow(c, &uc, apk, rrow, 0); release_uc(&uc);
         //NOTE: rrow is no longer valid, updateRow() can change it
         if (nsize == -1)                                         goto upc_end;
         if (!fromup) addReply(c, shared.cone);

@@ -391,4 +391,6 @@ void DXDB_createSharedObjects() {
 
     shared.nested_dni            = createObject(REDIS_STRING,sdsnew(
         "-ERR: NESTED Dot-Notation-Indexes not YET supported\r\n"));
+    shared.overflow              = createObject(REDIS_STRING,sdsnew(
+        "-ERR: MATH: INTEGER OVERFLOW\r\n"));
 }

@@ -259,7 +259,7 @@ static int rdbLoadRow(FILE *fp, bt *btr, int tmatch) {
     else if XX(btr) bt_insert(btr, &XX_RDBPointer, dr);
     else            bt_insert(btr, stream,         dr); // ROW
     aobj apk;                   convertStream2Key(stream, &apk, btr);
-    r_tbl_t *rt = &Tbl[tmatch]; UPDATE_AUTO_INC(rt->col[0].type, apk);
+    r_tbl_t *rt = &Tbl[tmatch]; UPDATE_AUTO_INC(rt->col[0].type, &apk);
     releaseAobj(&apk);
     return 0;
 }

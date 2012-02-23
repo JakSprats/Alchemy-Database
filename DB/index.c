@@ -838,17 +838,17 @@ static bool __runInsertIndexes(cli  *c,      bt   *btr,
 }
 bool runInsertIndexes(cli  *c,       bt  *btr, aobj *npk, void *nrow,
                       int   matches, int  inds[]) {
-    printf("runInsertIndexes\n");
+    //printf("runInsertIndexes\n");
     return __runInsertIndexes(c, btr, npk, nrow, matches, inds, 0);
 }
 bool runFailableInsertIndexes(cli *c,       bt  *btr,  aobj *npk, void *nrow,
                               int  matches, int  inds[]) {
-    printf("runFailableInsertIndexes\n");
+    //printf("runFailableInsertIndexes\n");
     return __runInsertIndexes(c, btr, npk, nrow, matches, inds, 1);
 }
 void runVoidInsertIndexes(cli *c,       bt  *btr,   aobj *npk, void *nrow,
                           int  matches, int  inds[]) {
-    printf("runVoidInsertIndexes\n");
+    //printf("runVoidInsertIndexes\n");
     if (!matches) return;
     for (int i = 0; i < matches; i++) {
         if(!Index[inds[i]].luat) continue; // ONLY LUATRIGGERS

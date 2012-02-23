@@ -461,17 +461,19 @@ int DXDB_loadServerConfig(int argc, sds *argv) {
 }
 
 void initClient(redisClient *c) {       //printf("initClient\n");
-    c->Explain         =  0;
-    c->Prepare         =  NULL;
-    c->LruColInSelect  =  0;
-    c->LfuColInSelect  =  0;
-    c->InternalRequest =  0;
+    c->Explain            =  0;
+    c->Prepare            =  NULL;
+    c->LruColInSelect     =  0;
+    c->LfuColInSelect     =  0;
+    c->InternalRequest    =  0;
     bzero(&c->http, sizeof(alchemy_http_info));
-    c->http.retcode    =  200; // DEFAULT to "HTTP 200 OK"
-    c->LastJTAmatch    = -1;
-    c->NumJTAlias      =  0;
-    c->bindaddr        =  NULL;
-    c->bindport        =  0;
+    c->http.retcode       =  200; // DEFAULT to "HTTP 200 OK"
+    c->LastJTAmatch       = -1;
+    c->NumJTAlias         =  0;
+    c->bindaddr           =  NULL;
+    c->bindport           =  0;
+    c->UpdateQueue.inited = 0;
+    c->UpdateQueue.l      = NULL;
 }
 void DXDB_createClient(int fd, redisClient *c) {//printf("DXDB_createClient\n");
     initClient(c);
