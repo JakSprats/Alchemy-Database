@@ -101,9 +101,12 @@ int _match_index(int tmatch, list *indl, bool prtl) {
     while((ln = listNext(li))) {
         int      imatch = (int)(long)ln->value;
         r_ind_t *ri     = &Index[imatch];
-        if (!prtl && !ri->done) continue; // \/ UNIQ can fail, must be 1st
-        if (UNIQ(ri->cnstr) && !prtl) listAddNodeHead(indl, VOIDINT imatch);
-        else                          listAddNodeTail(indl, VOIDINT imatch);
+        if (!prtl && !ri->done) continue;
+        if (prtl) listAddNodeTail(indl, VOIDINT imatch);
+        else { // \/ UNIQ can fail, must be 1st
+            if (UNIQ(ri->cnstr)) listAddNodeHead(indl, VOIDINT imatch);
+            else                 listAddNodeTail(indl, VOIDINT imatch);
+        }
         matches++;
     } listReleaseIterator(li);
     return matches;

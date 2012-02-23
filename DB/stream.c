@@ -252,9 +252,6 @@ uint128 streamToU128(uchar *data, uint32 *clen) {
 int cr8Xcol(uint128 x, uint128 *col) { *col = x; return 16; }
 
 // LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ
-#define DEBUG_WRITE_LUAOBJ                                              \
-  printf("writeLuaObjCol: tname: %s cname: %s Lua: (%s) apk: ",         \
-          rt->name, rt->col[cmatch].name, luac); dumpAobj(printf, apk);
 #define DEBUG_PUSH_LUA_VAR                                              \
   printf("pushLuaVar: tname: %s cname: %s pk: ",                        \
          rt->name, rt->col[ic.cmatch].name); dumpAobj(printf, apk);
@@ -279,23 +276,6 @@ void pushLuaVar(int tmatch, icol_t ic, aobj *apk) {
             }
         }
     }
-}
-bool writeLuaObjCol(cli *c,    aobj   *apk, int tmatch, int cmatch,
-                    char *val, uint32  vlen) {
-    r_tbl_t *rt   = &Tbl[tmatch];
-    sds      luac = sdsnewlen(val, vlen);                    DEBUG_WRITE_LUAOBJ
-    CLEAR_LUA_STACK
-    lua_getfield  (server.lua, LUA_GLOBALSINDEX, "luaobj_assign");
-    lua_pushstring(server.lua, rt->name);
-    lua_pushstring(server.lua, rt->col[cmatch].name);
-    pushAobjLua(apk, apk->type);
-    lua_pushstring(server.lua, luac);
-    int ret = DXDB_lua_pcall(server.lua, 4, 0, 0);
-    if (ret) {
-        ADD_REPLY_FAILED_LUA_STRING_CMD("luaobj_assign")
-    }
-    CLEAR_LUA_STACK
-    return ret ? 0 : 1;
 }
 
 /* COMPARE COMPARE COMPARE COMPARE COMPARE COMPARE COMPARE COMPARE */

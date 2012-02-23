@@ -82,9 +82,29 @@ local function createASQLforSTBL(tbl, col, pk)
   setmetatable(_G[LOTBL][tbl][col][pk],
                {__index=STBL[tbl][col][pk], __newindex=ASQL_setter});
 end
-function luaobj_assign(tbl, col, pk, luae) -- create Lua Object Row
-  --print ('luaobj_assign: tbl: ' .. tbl .. ' col: ' .. col .. ' pk: ' .. pk);
-  STBL[tbl][col][pk] = Json.decode(luae); createASQLforSTBL(tbl, col, pk);
+
+-- LUAOBJ_ASSIGN LUAOBJ_ASSIGN LUAOBJ_ASSIGN LUAOBJ_ASSIGN LUAOBJ_ASSIGN
+function __luaobjAssign(tbl, col, pk, luae)
+  --print ('__luaobjAssign: tbl: ' .. tbl .. ' col: ' .. col .. ' pk: ' .. pk);
+  STBL[tbl][col][pk] = luae; createASQLforSTBL(tbl, col, pk);
+end
+function luaobjAssign(tbl, col, pk, json) -- create Lua Object Row
+  __luaobjAssign(tbl, col, pk, Json.decode(json));
+end
+
+local AssignQueue = {};
+local SlotAQ      = 1;
+function queueLuaobjAssign(tbl, col, pk, json) -- create Lua Object Row
+  --print('QLO: tbl: ' .. tbl .. ' col: ' .. col .. ' pk: ' .. pk);
+  table.insert(AssignQueue, SlotAQ, 
+               {tbl = tbl; col = col; pk = pk; luae = Json.decode(json); });
+  SlotAQ = SlotAQ + 1;
+end
+function runQueueLuaobjAssign()
+  for k, v in pairs(AssignQueue) do
+    __luaobjAssign(v.tbl, v.col, v.pk, v.luae);
+  end
+  AssignQueue = {}; SlotAQ = 1;
 end
 function delete_luaobj(tbl, col, pk)
   _G[LOTBL][tbl][col][pk] = nil; STBL[tbl][col][pk] = nil;

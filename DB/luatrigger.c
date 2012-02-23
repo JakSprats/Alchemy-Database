@@ -103,6 +103,7 @@ static bool parseLuatCmd(cli *c, sds cmd, ltc_t *ltc, int tmatch) {
     uint32 len = sdslen(cmd) - 2 - sdslen(ltc->fname); /* minus "fname()" */
     STACK_STRDUP(clist, (end + 1), len)
     char *tkn = clist;
+//TODO FIRST arg must be "isupdate"
     SKIP_SPACES(tkn)
     if (strlen(tkn) >= 5 && !strncmp(tkn, "table", 5)) {// case: 1st arg "table"
         tkn += 5;
@@ -201,20 +202,22 @@ static void luatDo(bt  *btr,    luat_t *luat, aobj *apk,
     int      tcols = ltc->ncols + ltc->tblarg;
     if (!ltc->fname) return; /* e.g. no luatDel */
 
+    //printf("luatDo: fname: %s tcols: %d\n", ltc->fname, tcols);
     lua_getfield(server.lua, LUA_GLOBALSINDEX, ltc->fname); // function to call
     if (ltc->tblarg) {
         lua_pushlstring(server.lua, rt->name, sdslen(rt->name));
     }
     for (int i = 0; i < ltc->ncols; i++) {
-        aobj acol = getCol(btr, rrow, ltc->ics[i], apk, ri->tmatch, NULL);
         if (ltc->ics[i].nlo) { printf("luatDo: pushLuaVar\n");
             pushLuaVar(ri->tmatch, ltc->ics[i], apk);
         } else { printf("luatDo: pushAobjLua\n");
+            aobj acol = getCol(btr, rrow, ltc->ics[i], apk, ri->tmatch, NULL);
             pushAobjLua(&acol, rt->col[ltc->ics[i].cmatch].type);
+            releaseAobj(&acol);
         }
-        releaseAobj(&acol);
     }
     int ret = DXDB_lua_pcall(server.lua, tcols, 0, 0);
+    //NOTE: LUATRIGGERS can not fail TRANSACTIONS, failures are simply LOGGED
     if (ret) redisLog(REDIS_WARNING, "Error running LUATRIGGER: %s ERROR: %s",
                                       ltc->fname, lua_tostring(server.lua, -1));
 }

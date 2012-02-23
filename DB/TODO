@@ -13,8 +13,7 @@ LUAOBJ:
       b.) UPDATE SET lo.x.y = lo.x + 20        -> Simple Expression
       c.) UPDATE SET lo.x.y = func(fk, lo.y)   -> CompiledLuaFunction
       d.) UPDATE SET lo.x.y = sqrt(lo.x) * 44  -> DynamicLuaFunction
-      e.) UPDATE SET lo   = { json }           -> Set LuaObj to Table
-      e.) UPDATE SET lo   = luafunc(a,b,c)     -> Set LuaObj to Function
+      f.) UPDATE SET lo     = luafunc(a,b,c)   -> Set LuaObj to Function
   K.) Test STRING DNI
   O.) in checkOrCr8LFunc, joins have precedence over nested luaobjs
         in '.' delimited parsing
@@ -23,17 +22,11 @@ LUAOBJ:
   S.) Lua U128 bindings
 
 LUATRIGGER:
-  0.) MAKE POST row write (they cant fail)
-  1.) Syntax:
-      CREATE LUATRIGGER trigname ON tbl insfunc(a,b,c) \
-                                        delfunc(a,b,c) upfunc(a,b,c)
-      |-> upfunc will parse (a,b,c) and
-                       pass (a{old = oval; new = nval},
-                             b{old = oval; new = nval},
-                             c{old = oval; new = nval})
-  2.) add in ability to pass lfunc(col1, 'indexname', 45) -> strings & nums
+  3.) LUATRIGGER addfunc(isupdate,,,,) delfunc(isupdate,,,,)
+      |-> "isupdate" mandatory first argument
+  4.) add in ability to pass lfunc(col1, 'indexname', 45) -> strings & nums
       |-> dont use parseCSLSelect() which can create DynLuaFuncs
-  3.) LuaTriggers, calling (lo.x.y.z) - code is there, but requires POST calling
+  5.) UPDATE OVWR can work w/ LUATRIGGERs
 
 REST_API:
   1.) push EREDIS down into responsefunctions (better code modularity)

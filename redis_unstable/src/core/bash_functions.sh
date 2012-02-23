@@ -3310,6 +3310,7 @@ function rest_api_first_test() {
 }
 
 function populate_graph_db() { 
+  $CLI INTERPRET LUAFILE "core/graph.lua";
   $CLI DROP   TABLE graphdb >/dev/null;
   $CLI CREATE TABLE graphdb "(pk INT, fk LONG, lo LUAOBJ)";
 
@@ -3328,6 +3329,8 @@ function populate_graph_db() {
 }
 
 function graphdb_fof_cities_test() {
+  $CLI INTERPRET LUAFILE "core/graph.lua";
+  $CLI INTERPRET LUAFILE "core/example_user_cities.lua";
   $CLI DROP   TABLE cities >/dev/null
   $CLI CREATE TABLE cities "(pk INT, lo LUAOBJ, name TEXT)"
   $CLI INSERT INTO cities VALUES "(10, {}, 'Washington D.C.')";
@@ -3418,5 +3421,12 @@ function graphdb_fof_cities_test() {
                                          'distance' 250
   $CLI LUA addNodeRelationShipByPK       'cities' 10 "PATH" 'cities' 30
   $CLI LUA addPropertyToRelationshipByPK 'cities' 10 "PATH" 'cities' 30 \
-                                         'distance' 2900
+}
+
+function advanced_tests() {
+  test_dot_notation_index
+  test_lua_sql_integration
+  wiki_lua_tests
+  populate_graph_db
+  graphdb_fof_cities_test
 }

@@ -367,8 +367,6 @@ void DXDB_createSharedObjects() {
     shared.dirtypk                = createObject(REDIS_STRING,sdsnew(
         "-ERR: PROHIBITED: ONLY tables w/ [INT|LONG|U128] PKs can be set to DIRTY\r\n"));
 
-    shared.update_luaobj_complex = createObject(REDIS_STRING,sdsnew(
-        "-ERR PARSE: UPDATING LUAOBJ columns MUST be done via pre defined boolean functions (e.g. SET bool_update_func(luaobjcol),,,\r\n"));
     shared.unsupported_pk        = createObject(REDIS_STRING,sdsnew(
         "-ERR PROHIBITED: Invalid Primary Key Type. Supported Types: [INT,LONG,U128,FLOAT,TEXT]\r\n"));
     shared.order_by_luaobj       = createObject(REDIS_STRING,sdsnew(

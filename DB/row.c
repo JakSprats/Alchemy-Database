@@ -377,7 +377,29 @@ static uchar *createHashRow(cr_t *cr, crd_t *crd, uchar *rflag, uint32 *mlen) {
     return use16 ? createHash16Row(cr, crd, rflag, mlen, msize) :
                    createHash32Row(cr, crd, rflag, mlen, msize);
 }
-static uchar *writeRow(cli *c, aobj *apk, int tmatch, cr_t *cr, crd_t *crd) {
+#define DEBUG_WRITE_LUAOBJ                                              \
+  printf("writeLuaObjCol: tname: %s cname: %s Lua: (%s) apk: ",         \
+          rt->name, rt->col[cmatch].name, luac); dumpAobj(printf, apk);
+
+static bool writeLuaObjCol(cli *c,    aobj   *apk,  int  tmatch, int cmatch,
+                           char *val, uint32  vlen, bool fromu) {
+    r_tbl_t *rt   = &Tbl[tmatch];
+    sds      luac = sdsnewlen(val, vlen);                    DEBUG_WRITE_LUAOBJ
+    CLEAR_LUA_STACK
+    char *func = fromu ? "queueLuaobjAssign" : "luaobjAssign";
+    lua_getfield  (server.lua, LUA_GLOBALSINDEX, func);
+    lua_pushstring(server.lua, rt->name);
+    lua_pushstring(server.lua, rt->col[cmatch].name);
+    pushAobjLua(apk, apk->type);
+    lua_pushstring(server.lua, luac);
+    int ret = DXDB_lua_pcall(server.lua, 4, 0, 0);
+    if (ret) { ADD_REPLY_FAILED_LUA_STRING_CMD(func) }
+    CLEAR_LUA_STACK
+    return ret ? 0 : 1;
+}
+
+static uchar *writeRow(cli *c, aobj *apk, int tmatch, cr_t *cr, crd_t *crd,
+                       bool fromu) {
     cz_t cz; czd_t czd[cr->ncols]; init_cz(&cz, cr);
     uchar *row; uint32 mlen = 0; // compiler warning
     if (!GlobalZipSwitch) cz.zip = 0;
@@ -405,9 +427,8 @@ static uchar *writeRow(cli *c, aobj *apk, int tmatch, cr_t *cr, crd_t *crd) {
             writeFloatCol(&row, crd[i].fflags, crd[i].fcols);
         } else if C_IS_O(ctype) {
             DECLARE_ICOL(ic, i)
-            if (!writeLuaObjCol(c, apk, tmatch, i, crd[i].strs, crd[i].slens)) {
-                return NULL;
-            }
+            if (!writeLuaObjCol(c, apk, tmatch, i, crd[i].strs, 
+                                crd[i].slens, fromu))           return NULL;
         } else if C_IS_S(ctype) {
             if        (cz.type == CZIP_SIX) {
                 memcpy(row, czd[k].sixs, czd[k].sixl); row += czd[k].sixl; k++;
@@ -527,7 +548,7 @@ void *createRow(cli *c,     aobj *apk,  bt     *btr,      int tmatch,
             crd[i].mcofsts  = (int)cr.rlen;                 //DEBUG_CREATE_ROW
         }
     }
-    return writeRow(c, apk, tmatch, &cr, crd);
+    return writeRow(c, apk, tmatch, &cr, crd, 0);
 }
 
 // mv to get_row.c
@@ -1042,7 +1063,7 @@ void deleteLuaObj(int tmatch, int cmatch, aobj *apk) {
     DXDB_lua_pcall(server.lua, 3, 0, 0); CLEAR_LUA_STACK
 }
 int deleteRow(int tmatch, aobj *apk, int matches, int inds[]) {
-printf("\n\nSTART: deleteRow: key: "); dumpAobj(printf, apk);
+    //printf("\n\nSTART: deleteRow: key: "); dumpAobj(printf, apk);
     bt    *btr  = getBtr(tmatch);
     dwm_t  dwm  = btFindD(btr, apk);
     if (dwm.miss) return -1;
@@ -1051,17 +1072,16 @@ printf("\n\nSTART: deleteRow: key: "); dumpAobj(printf, apk);
     bool   wgost = btGetDR(btr, apk); // Indexes need to know WillGhost
     bool   gost  = IS_GHOST(btr, rrow) && wgost; DEBUG_DELETE_ROW
     if (gost)     return 0; // GHOST -> ECASE:6
-    if (matches && !dwm.miss) { // delete indexes
-        for (int i = 0; i < matches; i++) {
-            delFromIndex(btr, apk, rrow, inds[i], wgost);
-        }}
-    if (Tbl[tmatch].haslo) {
-        r_tbl_t *rt = &Tbl[tmatch];
-        for (int i = 0; i < rt->col_count; i++) {
-            if C_IS_O(rt->col[i].type) deleteLuaObj(tmatch, i, apk);
-        }}
+    if (!dwm.miss) {
+        runDeleteIndexes(btr, apk, rrow, matches, inds, wgost);
+        if (Tbl[tmatch].haslo) {
+            r_tbl_t *rt = &Tbl[tmatch];
+            for (int i = 0; i < rt->col_count; i++) {
+                if C_IS_O(rt->col[i].type) deleteLuaObj(tmatch, i, apk);
+            }}
+    }
     btDelete(btr, apk); server.dirty++; 
-printf("END: deleteRow\n\n\n"); fflush(NULL);
+    //printf("END: deleteRow\n\n\n"); fflush(NULL);
     return dwm.miss ? -1 : 1;
 }
 
@@ -1091,24 +1111,40 @@ void release_uc(uc_t *uc) {
 #define DESTROY_COL_AVALS                                   \
   for (int i = 0; i < uc->ncols; i++) releaseAobj(&avs[i]);
 
-static bool upEffctdInds(cli  *c,     bt   *btr,  aobj *apk,     void *orow,
-                         aobj  avs[], void *nrow, int   matches, int   inds[],
-                         uchar cmiss[]) {
+static bool upEffectedFailableIndexes(cli  *c,   bt   *btr,
+                                      aobj *opk, void *orow,
+                                      aobj *npk, void *nrow,
+                                      int   matches, int inds[], uchar cmiss[]){
+    bool hasup = 0;
     for (int i = 0; i < matches; i++) { /* Redo ALL EFFECTED indexes */
+        if (inds[i] == -1) continue;
         bool up = 0;
         r_ind_t *ri = &Index[inds[i]];
-        if      (ri->lru) up = 1; /* ALWAYS update LRU Index */
-        else if (ri->lfu) up = 1; /* ALWAYS update LFU Index */
+        if      (ri->virt || ri->luat) continue; // LUATRIGGERS done later
+        else if (ri->lru || ri->lfu) up = 1;     // ALWAYS updated
+        //TODO OBI must update on OBY_Column also
         else if (ri->clist) {
             for (int i = 0; i < ri->nclist; i++) {
                 if (!cmiss[ri->bclist[i].cmatch]) { up = 1; break; }
             }
-        } else { up = ri->luat ? 1 : !cmiss[ri->icol.cmatch]; }
-        if (up) {
-            if (!updateIndex(c, btr, apk, orow, &avs[0], nrow, inds[i])) {
-                return 0;
+        } else { up = !cmiss[ri->icol.cmatch]; }
+        if (!up) inds[i] = -1;
+        else     hasup   =  1;
+    }
+    if (!hasup) return 1;
+    for (int i = 0; i < matches; i++) {
+        if (inds[i] == -1) continue;
+        if (!addToIndex(c, btr, npk, nrow, inds[i])) {
+            for (int j = 0; j < i; j++) { // ROLLBACK previous ADD-INDEXes
+                if (inds[j] == -1) continue;
+                delFromIndex(btr, npk, nrow, inds[j], 0);
             }
+            return 0;
         }
+    }
+    for (int i = 0; i < matches; i++) {
+        if (inds[i] == -1) continue;
+        delFromIndex(btr, opk, orow, inds[i], 0);
     }
     return 1;
 }
@@ -1131,51 +1167,54 @@ static bool aobj_sflag(aobj *a, uchar *sflag) {
 #define OVRWR(i, ovrwr, ctype) /*NOTE: !indexed -> upIndex uses orow & nrow */ \
   (i && ovrwr && C_IS_NUM(ctype) && !rt->col[i].indxd)
 
+//TODO UP_ERR means a ROLLBACK is needed on RANGE UPDATES ... CAN NOT HAPPEN
 #define UP_ERR goto up_end;
 
 //TODO do an initial pass to determine OVWR (avoids per-col getCol() call)
-int updateRow(cli *c, uc_t *uc, aobj *apk, void *orow) { //printf("upd8Row\n");
+int updateRow(cli *c, uc_t *uc, aobj *opk, void *orow) { //printf("upd8Row\n");
     r_tbl_t *rt     = &Tbl[uc->tmatch];
     INIT_CR(uc->tmatch, uc->ncols) /* holds values written to new ROW */
     INIT_COL_AVALS      /* merges values in update_string and vals from ROW */
     uchar osflags[uc->ncols]; bzero(osflags, uc->ncols);
     sds      tkn    = NULL;
     uchar   *nrow   = NULL; /* B4 GOTO */
-    bool     ovrwr  = NORM_BT(uc->btr);
+    //TODO LUATRIGGER tables can do OVWR w/ split up add/delIndexes
+    bool     ovrwr  = NORM_BT(uc->btr) && !rt->nltrgr;
+    bool     lodelt = 0;
     int      ret    = -1;    /* presume failure */
     for (int i = 0; i < cr.ncols; i++) { /* 1st loop UPDATE columns -> cr */
         uchar ctype = rt->col[i].type;
         DECLARE_ICOL(ic, i)
         if        (rt->lrud && rt->lruc == i) {
-            avs[i] = getCol(uc->btr, orow, ic, apk, uc->tmatch, NULL);
+            avs[i] = getCol(uc->btr, orow, ic, opk, uc->tmatch, NULL);
             if (avs[i].empty) ovrwr      = 0; // makes updateLRU not recurse
             else              osflags[i] = getLruSflag();/* Overwrite LRU */
         } else if (rt->lfu  && rt->lfuc == i) {
-            avs[i] = getCol(uc->btr, orow, ic, apk, uc->tmatch, NULL);
+            avs[i] = getCol(uc->btr, orow, ic, opk, uc->tmatch, NULL);
             if (avs[i].empty) ovrwr      = 0; // makes updateLFU not recurse
             else              osflags[i] = getLfuSflag();/* Overwrite LFU */
         } else if (uc->cmiss[i]) {/* NotIn UPDATE_SET_LIST */
             //printf("%d: MISS\n", i);
-            avs[i] = getCol(uc->btr, orow, ic, apk, uc->tmatch, NULL);
+            avs[i] = getCol(uc->btr, orow, ic, opk, uc->tmatch, NULL);
         } else if (uc->ue[i].yes) { /* SIMPLE UPDATE EXPR */
             //printf("%d: UE\n", i);
-            avs[i] = getCol(uc->btr, orow, ic, apk, uc->tmatch, NULL);
+            avs[i] = getCol(uc->btr, orow, ic, opk, uc->tmatch, NULL);
             if (avs[i].empty) { addReply(c, shared.up_on_mt_col);       UP_ERR }
             if (!OVRWR(i, ovrwr, ctype) ||
                 !aobj_sflag(&avs[i], &osflags[i])) ovrwr = 0;
             if (!evalExpr(c, &uc->ue[i], &avs[i], ctype))               UP_ERR
         } else if (uc->le[i].yes) { /* LUA UPDATE EXPR */
             //printf("%d: LUE\n", i);
-            avs[i] = getCol(uc->btr, orow, ic, apk, uc->tmatch, NULL);
+            avs[i] = getCol(uc->btr, orow, ic, opk, uc->tmatch, NULL);
             if (avs[i].empty) { addReply(c, shared.up_on_mt_col);       UP_ERR }
             if (!OVRWR(i, ovrwr, ctype) ||
                 !aobj_sflag(&avs[i], &osflags[i])) ovrwr = 0;
-            if (!evalLuaExpr(c, i, uc, apk, orow, &avs[i]))             UP_ERR
+            if (!evalLuaExpr(c, i, uc, opk, orow, &avs[i]))             UP_ERR
 //TODO put from UPDATE_VALUE_LIST at top of this if-stmt
         } else { /* from UPDATE_VALUE_LIST (no expression) */
             //printf("%d: NORMAL\n", i);
             if OVRWR(i, ovrwr, ctype) {
-                aobj a = getCol(uc->btr, orow, ic, apk, uc->tmatch, NULL);
+                aobj a = getCol(uc->btr, orow, ic, opk, uc->tmatch, NULL);
                 if (!aobj_sflag(&a, &osflags[i])) ovrwr = 0;
             } else ovrwr = 0;
             char *endptr  = NULL;
@@ -1199,7 +1238,7 @@ int updateRow(cli *c, uc_t *uc, aobj *apk, void *orow) { //printf("upd8Row\n");
                 initAobjFloat(&avs[i], f);
             } else if C_IS_S(ctype) { // ignore \' delims
                 initAobjString(&avs[i], uc->vals[i] + 1, uc->vlens[i] - 2);
-            } else if C_IS_O(ctype) {
+            } else if C_IS_O(ctype) { lodelt = 1;
                 initAobjString(&avs[i], uc->vals[i],     uc->vlens[i]);
             } else assert(!"updateRow parse ERROR");
             sdsfree(tkn); tkn = NULL;                    // FREED 137
@@ -1248,10 +1287,10 @@ int updateRow(cli *c, uc_t *uc, aobj *apk, void *orow) { //printf("upd8Row\n");
                 uchar  ctype = rt->col[i].type;
                 if       (rt->lrud && rt->lruc == i) {// updateLRU (UPDATE_2)
                     // NOTE LRU is always 4 bytes, so orow will NOT change
-                    updateLru(c, uc->tmatch, apk, data, rt->lrud);
+                    updateLru(c, uc->tmatch, opk, data, rt->lrud);
                 } else if (rt->lfu && rt->lfuc == i) { // updateLFU (UPDATE_2)
                     // NOTE LFU is always 8 bytes, so orow will NOT change
-                    updateLfu(c, uc->tmatch, apk, data, rt->lfu);
+                    updateLfu(c, uc->tmatch, opk, data, rt->lfu);
                 } else if C_IS_I(ctype) {
                     writeUIntCol(&data,  crd[i].iflags, crd[i].icols);
                 } else if C_IS_L(ctype) {
@@ -1261,14 +1300,7 @@ int updateRow(cli *c, uc_t *uc, aobj *apk, void *orow) { //printf("upd8Row\n");
                 } else assert(!"updateRow OVWR ERROR");
             }
         }
-        if (rt->nltrgr) { /* OVERWRITE still needs to run LUATRIGGERs */
-            for (int i = 0; i < uc->matches; i++) {
-                if (!Index[uc->inds[i]].luat) continue;
-                if (!updateIndex(c, uc->btr, apk, orow, &avs[0],
-                                 nrow, uc->inds[i]))                    UP_ERR
-            }
-        }
-        ret = getNumKeyLen(apk) + getRowMallocSize(orow);
+        ret = getNumKeyLen(opk) + getRowMallocSize(orow);
     } else {                                      //printf("NEW ROW UPDATE\n");
         int k; for (k = cr.ncols - 1; k >= 0; k--) { if (!crd[k].empty) break; }
         cr.ncols = k + 1; // starting from the right, only write FILLED columns
@@ -1278,20 +1310,29 @@ int updateRow(cli *c, uc_t *uc, aobj *apk, void *orow) { //printf("upd8Row\n");
         else {
             nrow = UKEY(uc->btr) ? VOIDINT  avs[1].i :
                    LKEY(uc->btr) ? (uchar *)avs[1].l : 
-                   writeRow(c, apk, uc->tmatch, &cr, crd);
+                   writeRow(c, opk, uc->tmatch, &cr, crd, 1);
         }
+        aobj *npk = &avs[0];
         if (!uc->cmiss[0]) { /* PK update */
-            for (int i = 0; i < uc->matches; i++) { /* Redo ALL inds */
-                if (!updateIndex(c, uc->btr, apk, orow, &avs[0],
-                                 nrow, uc->inds[i]))                    UP_ERR
-            }
-            btDelete(uc->btr, apk);              // DELETE row w/ OLD PK
-            ret = btAdd(uc->btr, &avs[0], nrow); // ADD row w/ NEW PK
+            if (!runFailableInsertIndexes(c, uc->btr, npk, nrow,
+                                          uc->matches, uc->inds))       UP_ERR
+            runDeleteIndexes(uc->btr, opk, orow, uc->matches, uc->inds, 0);
+            btDelete(uc->btr, opk);              // DELETE row w/ OLD PK
+            ret = btAdd(uc->btr, npk, nrow); // ADD row w/ NEW PK
             UPDATE_AUTO_INC(rt->col[0].type, avs[0])
         } else {
-            if (!upEffctdInds(c, uc->btr, apk, orow, avs, nrow,
-                              uc->matches, uc->inds, uc->cmiss))        UP_ERR
-            ret = btReplace(uc->btr, apk, nrow); /* overwrite w/ new row */
+            if (!upEffectedFailableIndexes(c, uc->btr, opk, orow, npk, nrow,
+                                           uc->matches, uc->inds, uc->cmiss))
+                                                                        UP_ERR
+            ret = btReplace(uc->btr, opk, nrow); /* overwrite w/ new row */
+        }
+        if (lodelt) { //NOTE: everything is ok, write LUAOBJ changes to Lua
+            CLEAR_LUA_STACK
+            lua_getfield(server.lua, LUA_GLOBALSINDEX, "runQueueLuaobjAssign");
+            DXDB_lua_pcall(server.lua, 0, 0, 0); CLEAR_LUA_STACK
+        }
+        if (rt->nltrgr) { // LUATRIGGERS come at the end (CANT FAIL)
+            runVoidInsertIndexes(c, uc->btr, npk, nrow, uc->matches, uc->inds);
         }
     }
     server.dirty++;

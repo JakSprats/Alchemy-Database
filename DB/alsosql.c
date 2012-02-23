@@ -120,7 +120,7 @@ uchar insertCommit(cli  *c,      sds     uset,   sds     vals,
     bool     ai     = 0;    // AUTO-INCREMENT
     char    *mvals  = parseRowVals(vals, &pk, &pklen, ncols, cofsts, tmatch,
                                    pcols, ics, lncols, &ai); // ERR NOW GOTO
-    if (!mvals) { addReply(c, shared.insertcolumn);            goto insc_e; }
+    if (!mvals) { addReply(c, shared.insertcolumn);                goto insc_e;}
     if (parse) { // used in cluster-mode to get sk's value
         int skl = cofsts[rt->sk].j - cofsts[rt->sk].i;
         sds sk  = rt->sk ? sdsnewlen(mvals + cofsts[rt->sk].i, skl) : pk;
@@ -132,12 +132,12 @@ uchar insertCommit(cli  *c,      sds     uset,   sds     vals,
     apk.type        = apk.enc = pktyp; apk.empty = 0;
     if        C_IS_I(pktyp) {
         long l      = atol(pk);                            /* OK: DELIM: \0 */
-        if (l >= TWO_POW_32) { addReply(c, shared.uint_pkbig); goto insc_e; }
+        if (l >= TWO_POW_32) { addReply(c, shared.uint_pkbig);     goto insc_e;}
         apk.i       = (int)l;
     } else if C_IS_L(pktyp) apk.l = strtoul(pk, NULL, 10); /* OK: DELIM: \0 */
       else if C_IS_X(pktyp) {
           bool r = parseU128(pk, &apk.x); 
-          if (!r) { addReply(c, shared.u128_parse);            goto insc_e; }
+          if (!r) { addReply(c, shared.u128_parse);                goto insc_e;}
     } else if C_IS_F(pktyp) apk.f = atof(pk);              /* OK: DELIM: \0 */
       else if C_IS_S(pktyp) {
         apk.s       = pk; apk.len = pklen; apk.freeme = 0; /* pk freed below */
@@ -145,37 +145,33 @@ uchar insertCommit(cli  *c,      sds     uset,   sds     vals,
     int    len      = 0;
     bt    *btr      = getBtr(tmatch);
     dwm_t  dwm      = btFindD(btr, &apk);
-    void  *rrow     = dwm.k;
-    bool   gost     = IS_GHOST(btr, rrow);
-    bool   exists   = (rrow || dwm.miss) && !gost;
+    void  *orow     = dwm.k;
+    bool   gost     = IS_GHOST(btr, orow);
+    bool   exists   = (orow || dwm.miss) && !gost;
     bool   isinsert = !upd && !repl;
     if (rt->dirty) { // NOTE: DirtyTable's have prohibited actions
         if (repl) { // REPLACE & indexed-table
-            addReply(c, shared.replace_dirty);                 goto insc_e;
+            addReply(c, shared.replace_dirty);                     goto insc_e;
         }
         if (isinsert && !ai) { //INSERT on DIRTY w/ PK declation PROHIBITED
-            addReply(c, shared.insert_dirty_pkdecl);           goto insc_e;
+            addReply(c, shared.insert_dirty_pkdecl);               goto insc_e;
         }
     }
     if        (exists && isinsert) {
-         addReply(c, shared.insert_ovrwrt);                    goto insc_e;
+         addReply(c, shared.insert_ovrwrt);                        goto insc_e;
     } else if (exists && upd) {                            //DEBUG_INSERT_DEBUG
         len = updateAction(c, uset, &apk, tmatch);
-        if (len == -1)                                         goto insc_e;
+        if (len == -1)                                             goto insc_e;
         ret = INS_UP;             /* negate presumed failure */
     } else { // UPDATE on GHOST/new, REPLACE, INSERT
         nrow = createRow(c, &apk, btr, tmatch, ncols, mvals, cofsts);
-        if (!nrow) /* e.g. (UINT_COL > 4GB) error */           goto insc_e;
-        if (matches) { /* Add to Indexes */
-            for (int i = 0; i < matches; i++) { /* REQ: addIndex B4 delIndex */
-                if (!addToIndex(c, btr, &apk, nrow, inds[i]))  goto insc_e;
-            }
-            if (repl && rrow) { /* Delete repld row's Indexes - same PK */
-                for (int i = 0; i < matches; i++) {
-                    delFromIndex(btr, &apk, rrow, inds[i], 0);
-        }}}
-        //printf("repl: %d rrow: %p upd: %d miss: %d exists: %d key: ",
-        //     repl, rrow, upd, dwm.miss, exists); dumpAobj(printf, &apk);
+        if (!nrow) /* e.g. (UINT_COL > 4GB) error */               goto insc_e;
+        if (!runInsertIndexes(c, btr, &apk, nrow, matches, inds))  goto insc_e;
+        if (repl && orow) { /* Delete repld row's Indexes - same PK */
+            runDeleteIndexes(btr, &apk, orow, matches, inds, 0);
+        }
+        //printf("repl: %d orow: %p upd: %d miss: %d exists: %d key: ",
+        //     repl, orow, upd, dwm.miss, exists); dumpAobj(printf, &apk);
         len = repl ? btReplace(btr, &apk, nrow) : btAdd(btr, &apk, nrow);
         UPDATE_AUTO_INC(pktyp, apk)
         ret = INS_INS;            /* negate presumed failure */
@@ -542,24 +538,19 @@ static bool assignMisses(cli   *c,      int     tmatch,   int   ncols,
         for (int j = 0; j < qcols; j++) {
             icol_t ic = ics[j];
             if (i == ic.cmatch) {
-                bool simp = 0;
                 miss      = 0; vals[i] = mvals[j]; vlens[i] = mvlens[j];
-                if        (C_IS_I(ctype) || C_IS_L(ctype)) {
-                    if (getExprType(vals[i], vlens[i]) == UETYPE_INT)  simp = 1;
+                if        C_IS_O(ctype) { /* LO -> customer updater */ break;
+                } else if (C_IS_I(ctype) || C_IS_L(ctype)) {
+                    if (getExprType(vals[i], vlens[i]) == UETYPE_INT)  break;
                 } else if C_IS_X(ctype) {
-                    if (getExprType(vals[i], vlens[i]) == UETYPE_U128) simp = 1;
+                    if (getExprType(vals[i], vlens[i]) == UETYPE_U128) break;
                 } else if C_IS_F(ctype) {
-                    if (getExprType(vals[i], vlens[i]) == UETYPE_FLT)  simp = 1;
-                } else if (C_IS_O(ctype) && ic.nlo)        {           simp = 1;
+                    if (getExprType(vals[i], vlens[i]) == UETYPE_FLT)  break;
                 } else if (C_IS_S(ctype) || C_IS_O(ctype)) {
-                    if (is_text(vals[i], vlens[i]))                    simp = 1;
+                    if (is_text(vals[i], vlens[i]))                    break;
                 }
-                if (simp) break;
                 if C_IS_X(ctype) { // update expr's (lua 2) not allowed on U128
                     addReply(c, shared.update_u128_complex); return 0;
-                }
-                if C_IS_O(ctype) { // update expr's (lua 2) not ok LUAOBJ's
-                    addReply(c, shared.update_luaobj_complex); return 0;
                 }
                 int k = parseExpr(c, tmatch, ic.cmatch,
                                   vals[i], vlens[i], &ue[i]);
@@ -582,17 +573,19 @@ static bool ovwrPKUp(cli    *c,        int    pkupc, char *mvals[],
     if (dwm.k || dwm.miss) { addReply(c, shared.update_pk_ovrw); return 1; }
     return 0;
 }
-static bool updatingIndex(int matches, int inds[], uchar cmiss[], 
+static bool updatingIndex(int matches,  int   inds[], uchar cmiss[], 
                           bool *mci_up, bool *u_up) {
     bool ret = 0; *u_up = 0; *mci_up = 0;
     for (int i = 0; i < matches; i++) {
         r_ind_t *ri = &Index[inds[i]];
-        if (ri->clist) {
+        if        (ri->virt) { continue;
+        } else if (ri->luat) { ret = 1;
+        } else if (ri->clist) {
             for (int i = 0; i < ri->nclist; i++) {
                 if (!cmiss[ri->bclist[i].cmatch]) { ret = 1; *mci_up = 1; }
             }
         } else if (!cmiss[ri->icol.cmatch]) {
-            if (ri->btr) { ret = 1; if (SIMP_UNIQ(ri->btr)) *u_up   = 1; }
+            ret = 1; if (SIMP_UNIQ(ri->btr)) *u_up = 1;
         }
     }
     return ret;
@@ -638,7 +631,7 @@ int updateInnards(cli *c,      int   tmatch, sds vallist, sds wclause,
     } //dumpW(printf, &w); dumpWB(printf, &wb);
 
     bool  u_up, mci_up; 
-    bool  upi = updatingIndex(matches, inds, cmiss, &mci_up, &u_up);
+    bool  upi  = updatingIndex(matches, inds, cmiss, &mci_up, &u_up);
     bt   *btr  = getBtr(w.wf.tmatch);
     bool  isr  = (w.wtype != SQL_SINGLE_LKP);
     if (mci_up && isr) { addReply(c, shared.range_mciup);        goto upc_end; }
@@ -676,7 +669,6 @@ int updateInnards(cli *c,      int   tmatch, sds vallist, sds wclause,
         if (!fromup) addReply(c, shared.cone);
         if (wb.ovar) incrOffsetVar(c, &wb, 1);
     }
-fflush(NULL);
 
 upc_end:
     destroy_wob(&wb); destroy_check_sql_where_clause(&w);

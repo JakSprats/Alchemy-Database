@@ -210,7 +210,7 @@ typedef struct alchemy_server_extensions_t {
     *range_mciup,            *range_u_up,                  \
     *deletemiss,             *uviol,                       \
     *updatemiss,             *dirtypk,                     \
-    *update_luaobj_complex,  *unsupported_pk,              \
+    *unsupported_pk,                                       \
     *order_by_luaobj,        *buildindexdirty,             \
     *cr8tablesyntax,         *joindotnotation,             \
     *http_not_on,            *create_findex,               \

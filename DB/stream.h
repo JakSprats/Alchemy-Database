@@ -63,8 +63,6 @@ void    writeUIntCol (uchar **row, uchar sflag, ulong icol);
 void    writeULongCol(uchar **row, uchar sflag, ulong icol);
 void    writeU128Col (uchar **row, uint128 xcol);
 void    writeFloatCol(uchar **row, bool  fflag, float fcol);
-bool    writeLuaObjCol(cli *c,    aobj   *apk, int tmatch, int cmatch,
-                       char *val, uint32  vlen);
 uint32  streamIntToUInt   (uchar *data, uint32 *clen);
 ulong   streamLongToULong (uchar *data, uint32 *clen);
 uint128 streamToU128(uchar *data, uint32 *clen);

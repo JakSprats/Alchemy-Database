@@ -218,19 +218,19 @@ static long rangeOpPK(range_t *g, row_op *p) {                 //DEBUG_RANGE_PK
     cswc_t  *w     = g->co.w; wob_t *wb = g->co.wb; qr_t *q = g->q;
     bool     iss   = g->se.qcols ? 1 : 0;  bool isu  = g->up.ncols ? 1 : 0;
     bool     isd   = !iss && !isu;         bool upx  = g->up.upx;
-printf("rangeOpPK: iss: %d isu: %d isd: %d upx: %d\n", iss, isu, isd, upx);
+   //printf("rangeOpPK: iss: %d isu: %d isd: %d upx: %d\n", iss, isu, isd, upx);
     bt      *btr   = getBtr(w->wf.tmatch); g->co.btr = btr;
     g->asc         = !q->pk_desc;
     bool     brkr  = 0; long loops = -1; long card =  0;
     bi = (q->xth) ? 
               btGetXthIter  (btr, &w->wf.alow, &w->wf.ahigh, wb->ofst, g->asc) :
               btGetRangeIter(btr, &w->wf.alow, &w->wf.ahigh, g->asc);
-    if (!bi) return card;                                DEBUG_RANGEPK_PRE_LOOP
+    if (!bi) return card;                              //DEBUG_RANGEPK_PRE_LOOP
     if (!bi->empty) {
         if (bi->missed && !upx) {     card = -1; // iss error in iselectAction()
             if      (isd) DELETE_MISS(g->co.c);
             else if (isu) UPDATE_MISS(g->co.c);
-        } else while ((be = btRangeNext(bi, g->asc))) {      DEBUG_RANGEPK_LOOP
+        } else while ((be = btRangeNext(bi, g->asc))) {    //DEBUG_RANGEPK_LOOP
             if (bi->missed && !upx) { card = -1;
                 if (isu) UPDATE_MISS(g->co.c);
                 if (isd) DELETE_MISS(g->co.c);
@@ -242,7 +242,7 @@ printf("rangeOpPK: iss: %d isu: %d isd: %d upx: %d\n", iss, isu, isd, upx);
             if (brkr) break;
         }
         if ((card != -1) && !upx) {// FULL Iter8r, (last row dr > 0)
-            DEBUG_RANGEPK_POST_LOOP
+            //DEBUG_RANGEPK_POST_LOOP
             if (q->pk_lim) { if (wb->lim > card && bi->missed) card = -1; }
             else if                               (bi->missed) card = -1;
         }
@@ -299,7 +299,7 @@ static bool nBT_ROp(ibtd_t *d,    qr_t *q,    wob_t *wb,
     // pk comes from Index, so it has not been evicted
     void *rrow = btFind(d->g->co.btr, key); releaseAobj(&akey);
     if (!(*d->p)(d->g, key, rrow, q->qed, d->card)) { *ret = 0; return 0; }
-    DEBUG_NBT_ROP
+    //DEBUG_NBT_ROP
     if (q->fk_lim && wb->lim == *d->card) { *d->brkr = 1;       return 1; }
     return 1;
 }
@@ -323,12 +323,12 @@ static bool nBT_Op(ibtd_t *d) {                              //DEBUG_NODE_BT
     btSIter *nbi  = x ?
                      btGetFullXthIter  (d->nbtr, *d->ofst, nasc, w, wb->lim) :
                      btGetFullRangeIter(d->nbtr,           nasc, w);
-    if (!nbi) return ret;                                          DEBUG_NBT_OP
-    if (!nbi->empty){                                     DEBUG_NBT_OP_GOT_ITER
+    if (!nbi) return ret;                                        //DEBUG_NBT_OP
+    if (!nbi->empty){                                   //DEBUG_NBT_OP_GOT_ITER
         if (nbi->missed && !upx) {     ret = 0; // iss error in iselectAction()
             if      (isd) DELETE_MISS(d->g->co.c);
             else if (isu) UPDATE_MISS(d->g->co.c);
-        } else while ((nbe = btRangeNext(nbi, nasc))) {       DEBUG_NBT_OP_LOOP
+        } else while ((nbe = btRangeNext(nbi, nasc))) {     //DEBUG_NBT_OP_LOOP
             if (nbi->missed && !upx) { ret = 0;
                 if (isu) UPDATE_MISS(d->g->co.c); 
                 if (isd) DELETE_MISS(d->g->co.c);
@@ -339,7 +339,7 @@ static bool nBT_Op(ibtd_t *d) {                              //DEBUG_NODE_BT
         if (ret && !upx) {// FULL Iter8r, LIMIT not used up & (last row dr > 0)
             if (q->fk_lim) { if (wb->lim > *d->card && nbi->be.dr) ret = 0; }
             else if                                   (nbi->be.dr) ret = 0;
-        }                                                DEBUG_NBT_OP_POST_LOOP
+        }                                              //DEBUG_NBT_OP_POST_LOOP
     } btReleaseRangeIterator(nbi);
     if (q->fk_lo)                         *d->ofst = 0; /* OFFSET fulfilled */
     if (q->fk_lim && wb->lim == *d->card) *d->brkr = 1; /* ORDERBY FK LIM*/
@@ -442,7 +442,7 @@ static bool runOnNode(bt      *ibtr, uint32  still,
     return ret;
 }
 // RANGE_FK RANGE_FK RANGE_FK RANGE_FK RANGE_FK RANGE_FK RANGE_FK RANGE_FK
-static long rangeOpFK(range_t *g, row_op *p) {                 DEBUG_RANGE_FK
+static long rangeOpFK(range_t *g, row_op *p) {               //DEBUG_RANGE_FK
     ibtd_t   d; btEntry *be; btSIter *bi;
     cswc_t  *w     = g->co.w; wob_t *wb = g->co.wb; qr_t *q = g->q;
     bool     iss   = g->se.qcols ? 1 : 0;
@@ -463,7 +463,7 @@ static long rangeOpFK(range_t *g, row_op *p) {                 DEBUG_RANGE_FK
     else bi = btGetRangeIter(ibtr, &w->wf.alow, &w->wf.ahigh, g->asc);
     if (!bi) return card;
     init_ibtd(&d, p, g, q, NULL, &ofst, &card, &loops, &brkr, ri->obc);
-    while ((be = btRangeNext(bi, g->asc))) {                DEBUG_RANGE_FK_LOOP
+    while ((be = btRangeNext(bi, g->asc))) {              //DEBUG_RANGE_FK_LOOP
         if (iss && !be->val) { card = -1; break; }
         uint32  nmatch  = 0;
         d.nbtr          = singu ? ibtr : btMCIFindVal(w, be->val, &nmatch, ri);
@@ -690,7 +690,7 @@ bool opSelectSort(cli  *c,    list *ll,   wob_t *wb,
 }
 void iselectAction(cli *c,      cswc_t *w,     wob_t *wb,
                    icol_t *ics, int     qcols, bool   cstar, lfca_t *lfca) {
-    printf("\n\niselectAction: imatch: %d\n", w->wf.imatch);
+    //printf("\n\niselectAction: imatch: %d\n", w->wf.imatch);
     range_t g; qr_t q; setQueued(w, wb, &q);
     list *ll     = initOBsort(q.qed, wb, 0);
     init_range(&g, c, w, wb, &q, ll, OBY_FREE_ROBJ, NULL);
@@ -699,7 +699,7 @@ void iselectAction(cli *c,      cswc_t *w,     wob_t *wb,
     void *rlen   = (cstar || EREDIS) ? NULL : addDeferredMultiBulkLength(c);
     long  card   = Op(&g, select_op);
 
-printf("iselectAction: card: %ld CurrCard: %ld CurrUpdated: %ld\n", card, server.alc.CurrCard, server.alc.CurrUpdated);
+//printf("iselectAction: card: %ld CurrCard: %ld CurrUpdated: %ld\n", card, server.alc.CurrCard, server.alc.CurrUpdated);
 
     if (card == -1) { replaceDMB(c, rlen, server.alc.CurrError); goto isele; }
     long sent    = 0;

@@ -437,46 +437,6 @@ bool upIndex(cli *c, bt *ibtr, aobj *aopk,  aobj *ocol,
     if (!ocol->empty) iRem(ibtr, ocol, aopk, oocol, imatch, 0);
     return 1;
 }
-//TODO can this be sequential [addToIndex, delFromIndex] calls
-bool updateIndex(cli *c, bt *btr, aobj *aopk, void *orow, 
-                                  aobj *anpk, void *nrow, int imatch) {
-    r_ind_t *ri    = &Index[imatch];
-    if (ri->virt || ri->fname)                            return 1;
-    bt      *ibtr  = getIBtr(imatch);
-    if (ri->luat) {
-        luatAdd(btr, (luat_t *)ibtr, anpk, imatch, nrow); return 1;
-        luatDel(btr, (luat_t *)ibtr, aopk, imatch, orow); return 1;
-    }
-    int      pktyp = Tbl[ri->tmatch].col[0].type;
-    bool     ok    = 1;
-    if (ri->clist) {                                      /*ADD 1st can FAIL*/
-        if (ri->obc.cmatch == -1) {
-            ok = iAddMCI(c, btr, anpk, pktyp, imatch, nrow, NULL);
-            if (ok) iRemMCI(btr, aopk, imatch, orow, NULL, 0);
-        } else {
-            aobj oocol = getCol(btr, orow, ri->obc, aopk, ri->tmatch, NULL);
-            aobj nocol = getCol(btr, nrow, ri->obc, anpk, ri->tmatch, NULL);
-            ok = iAddMCI(c, btr, anpk, pktyp, imatch, nrow, &nocol);
-            if (ok) iRemMCI(btr, aopk, imatch, orow, &oocol, 0);
-            releaseAobj(&oocol); releaseAobj(&nocol);
-        }
-    } else {
-        aobj  ocol = getCol(btr, orow, ri->icol, aopk, ri->tmatch, NULL);
-        aobj  ncol = getCol(btr, nrow, ri->icol, anpk, ri->tmatch, NULL);
-        if (ri->obc.cmatch == -1) { // NORMAL
-            ok = upIndex(c, ibtr, aopk, &ocol, anpk, &ncol, pktyp,
-                         NULL, NULL, imatch);
-        } else {             // OBC
-            aobj oocol = getCol(btr, orow, ri->obc, aopk, ri->tmatch, NULL);
-            aobj nocol = getCol(btr, nrow, ri->obc, anpk, ri->tmatch, NULL);
-            ok = upIndex(c, ibtr, aopk, &ocol, anpk, &ncol, pktyp,
-                         &oocol, &nocol, imatch);
-            releaseAobj(&oocol); releaseAobj(&nocol);
-        }
-        releaseAobj(&ncol); releaseAobj(&ocol);
-    }
-    return ok;
-}
 
 /* CREATE_INDEX  CREATE_INDEX  CREATE_INDEX  CREATE_INDEX  CREATE_INDEX */
 long buildIndex(cli *c, bt *btr, int imatch, long limit) {
@@ -669,6 +629,7 @@ static bool ICommit(cli   *c,    sds iname,     sds  tname, sds   cname,
     } else if (nextc) {    /* Multiple Column Index */
         char *cn = cname;
         if UNIQ(cnstr) {
+            //TODO why cant we have 2 UNIQ MCI's on a table?
             if (rt->nmci) { addReply(c, shared.two_uniq_mci);       return 0;
             } else if (!C_IS_NUM(rt->col[0].type)) { /* INT & LONG */
                 addReply(c, shared.uniq_mci_pk_notint);             return 0;
@@ -858,6 +819,50 @@ cr8i_end:
     if (obcname)   sdsfree(obcname);                     // FREED 161
     sdsfree(cname);                                      // FREED 158
 }
+
+// RUN_INDEX RUN_INDEX RUN_INDEX RUN_INDEX RUN_INDEX RUN_INDEX RUN_INDEX
+static bool __runInsertIndexes(cli  *c,      bt   *btr,
+                               aobj *npk,    void *nrow, int matches,
+                               int   inds[], bool  flble) {
+    if (!matches) return 1;
+    for (int i = 0; i < matches; i++) {
+        if (flble && Index[inds[i]].luat) continue; // DONT DO LUATRIGGERS
+        if (!addToIndex(c, btr, npk, nrow, inds[i])) {
+            for (int j = 0; j < i; j++) { // ROLLBACK previous ADD-INDEXes
+                delFromIndex(btr, npk, nrow, inds[j], 0);
+            }
+            return 0;
+        }
+    }
+    return 1;
+}
+bool runInsertIndexes(cli  *c,       bt  *btr, aobj *npk, void *nrow,
+                      int   matches, int  inds[]) {
+    printf("runInsertIndexes\n");
+    return __runInsertIndexes(c, btr, npk, nrow, matches, inds, 0);
+}
+bool runFailableInsertIndexes(cli *c,       bt  *btr,  aobj *npk, void *nrow,
+                              int  matches, int  inds[]) {
+    printf("runFailableInsertIndexes\n");
+    return __runInsertIndexes(c, btr, npk, nrow, matches, inds, 1);
+}
+void runVoidInsertIndexes(cli *c,       bt  *btr,   aobj *npk, void *nrow,
+                          int  matches, int  inds[]) {
+    printf("runVoidInsertIndexes\n");
+    if (!matches) return;
+    for (int i = 0; i < matches; i++) {
+        if(!Index[inds[i]].luat) continue; // ONLY LUATRIGGERS
+        addToIndex(c, btr, npk, nrow, inds[i]);
+    }
+}
+void runDeleteIndexes(bt   *btr, aobj *opk, void *orow, int matches, int inds[],
+                      bool  wgost) {
+    for (int i = 0; i < matches; i++) {
+        delFromIndex(btr, opk, orow, inds[i], wgost);
+    }
+}
+
+// DESTROY_INDEX DESTROY_INDEX DESTROY_INDEX DESTROY_INDEX DESTROY_INDEX
 static void emptyLuaObjectElementIndex(int imatch) {
     r_ind_t *ri = &Index[imatch];
     r_tbl_t *rt = &Tbl  [ri->tmatch];
