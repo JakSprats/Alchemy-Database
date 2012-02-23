@@ -209,12 +209,14 @@ char *parseRowVals(sds vals,  char   **pk,       int  *pklen,
         if (!nextc) break;
         if (!cmatch) { /* parse PK */
             char *cstart = token;
+            SKIP_SPACES(cstart)
             char *cend   = nextc - 1; /* skip comma */ REV_SKIP_SPACES(cend)
             if (C_IS_S(ctype)) { // ignore leading & trailing '
                 if (*cstart != '\'') return NULL; cstart++;
                 if (*cend   != '\'') return NULL; cend--;
             }
             *pklen = (cend - cstart) + 1;
+            if (*pklen < 0) *pklen = 0;
             if (!assign_pk(tmatch, pklen, pk, cstart, ai)) return NULL;
         }
         cofsts[cmatch].i = token - mvals;
