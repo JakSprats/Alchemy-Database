@@ -277,6 +277,31 @@ void pushLuaVar(int tmatch, icol_t ic, aobj *apk) {
         }
     }
 }
+#define DEBUG_SET_LUA_VAR                                              \
+  printf("setLuaVar: tname: %s cname: %s pk: ",                        \
+         rt->name, rt->col[ic.cmatch].name); dumpAobj(printf, apk);
+void setLuaVar(int tmatch, icol_t ic, aobj *apk) {
+    r_tbl_t *rt  = &Tbl[tmatch];                             DEBUG_SET_LUA_VAR
+    lua_getglobal (server.lua, LUA_OBJ_SHADOW_TABLE);
+    lua_pushstring(server.lua, rt->name);
+    lua_gettable  (server.lua, -2); lua_remove(server.lua, -2);
+    lua_pushstring(server.lua, rt->col[ic.cmatch].name);
+    lua_gettable  (server.lua, -2); lua_remove(server.lua, -2);
+    pushAobjLua(apk, apk->type);
+    lua_gettable  (server.lua, -2); lua_remove(server.lua, -2);
+    if (ic.nlo) {
+        for (uint32 i = 0; i < ic.nlo; i++) {
+            printf("setLuaVar: pushing: ic.lo[%d]: %s\n", i, ic.lo[i]);
+            lua_pushstring(server.lua, ic.lo[i]);
+            if (i == ic.nlo - 1) break;
+            if (lua_type(server.lua, -2) == LUA_TTABLE) {
+                lua_gettable  (server.lua, -2); lua_remove(server.lua, -2);
+            } else {
+                lua_pop(server.lua, 1); lua_pushnil(server.lua); break;
+            }
+        }
+    }
+}
 
 /* COMPARE COMPARE COMPARE COMPARE COMPARE COMPARE COMPARE COMPARE */
 // INDEX_COMP INDEX_COMP INDEX_COMP INDEX_COMP INDEX_COMP INDEX_COMP INDEX_COMP

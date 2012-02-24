@@ -799,7 +799,7 @@ static bool opUpdateSort(cli   *c,   list *ll,    cswc_t  *w,
     obsl_t **v    = sortOB2Vector(ll);
     long     ofst = wb->ofst;
     init_uc(uc, btr, w->wf.tmatch, ncols, g->up.matches, g->up.indices,
-            g->up.vals, g->up.vlens, g->up.cmiss, g->up.ue, g->up.le);
+            g->up.vals, g->up.vlens, g->up.chit, g->up.ue, g->up.le);
     for (int i = 0; i < (int)listLength(ll); i++) {
         if (wb->lim != -1 && *sent == wb->lim) break;
         if (ofst > 0) ofst--;
@@ -816,17 +816,17 @@ static bool opUpdateSort(cli   *c,   list *ll,    cswc_t  *w,
     sortOBCleanup(v, listLength(ll), ofree); free(v);//FREED004
     return ret;
 }
-void iupdateAction(cli  *c,      cswc_t *w,       wob_t *wb,
-                   int   ncols,  int     matches, int    inds[],
-                   char *vals[], uint32  vlens[], uchar  cmiss[],
-                   ue_t  ue[],   lue_t  *le,      bool   upi) {
+void iupdateAction(cli  *c,      cswc_t *w,       wob_t  *wb,
+                   int   ncols,  int     matches, int     inds[],
+                   char *vals[], uint32  vlens[], icol_t  chit[],
+                   ue_t  ue[],   lue_t  *le,      bool    upi) {
     range_t g; qr_t q; setQueued(w, wb, &q);
     list *ll     = initOBsort(q.qed, wb, 1);
     init_range(&g, c, w, wb, &q, ll, OBY_FREE_AOBJ, NULL);
     bt   *btr    = getBtr(w->wf.tmatch); g.up.btr = btr;
     g.up.ncols   = ncols;
     g.up.matches = matches; g.up.indices = inds;
-    g.up.vals    = vals;    g.up.vlens   = vlens; g.up.cmiss = cmiss;
+    g.up.vals    = vals;    g.up.vlens   = vlens; g.up.chit = chit;
     g.up.ue      = ue;      g.up.le      = le;    
     g.up.upx     = !upi && (wb->lim == -1) && !w->flist;
     //printf("\n\niupdateAction: upx: %d upi: %d lim:% ld flist: %p\n",
@@ -844,7 +844,7 @@ void iupdateAction(cli  *c,      cswc_t *w,       wob_t *wb,
             listNode  *ln;
             init_uc(&uc, g.up.btr,   g.co.w->wf.tmatch,
                          g.up.ncols, g.up.matches, g.up.indices, g.up.vals,
-                         g.up.vlens, g.up.cmiss,   g.up.ue,      g.up.le);
+                         g.up.vlens, g.up.chit,    g.up.ue,      g.up.le);
             listIter  *li = listGetIterator(ll, AL_START_HEAD);
             while((ln = listNext(li))) {
                 aobj *apk  = ln->value;

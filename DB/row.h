@@ -28,6 +28,7 @@ ALL RIGHTS RESERVED
 
 #include "redis.h"
 
+#include "find.h"
 #include "btreepriv.h"
 #include "query.h"
 #include "alsosql.h"
@@ -78,14 +79,14 @@ typedef struct uc_t {
     int     *inds;
     char   **vals;
     uint32  *vlens;
-    uchar   *cmiss;
+    icol_t  *chit;
     ue_t    *ue;
     lue_t   *le;
 } uc_t;
 
 void init_uc(uc_t  *uc,     bt     *btr,
-             int    tmatch, int     ncols,   int    matches, int   inds[],
-             char  *vals[], uint32  vlens[], uchar  cmiss[], ue_t  ue[],
+             int    tmatch, int     ncols,   int    matches, int  inds[],
+             char  *vals[], uint32  vlens[], icol_t chit[],  ue_t ue[],
              lue_t *le);
 void release_uc(uc_t *uc);
 

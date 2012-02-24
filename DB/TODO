@@ -8,12 +8,6 @@ IMPROVEMENTS:
   2.) QueryOptimiser V3         -> 3 weeks
 
 LUAOBJ:
-  8.) UPDATE dot-notation directly (UPDATE tbl SET doc.age = 45)
-      a.) UPDATE SET lo.x.y = 20               -> Simple Update
-      b.) UPDATE SET lo.x.y = lo.x + 20        -> Simple Expression
-      c.) UPDATE SET lo.x.y = func(fk, lo.y)   -> CompiledLuaFunction
-      d.) UPDATE SET lo.x.y = sqrt(lo.x) * 44  -> DynamicLuaFunction
-      f.) UPDATE SET lo     = luafunc(a,b,c)   -> Set LuaObj to Function
   K.) Test STRING DNI
   O.) in checkOrCr8LFunc, joins have precedence over nested luaobjs
         in '.' delimited parsing

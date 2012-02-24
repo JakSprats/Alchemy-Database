@@ -2121,6 +2121,7 @@ function lru_populate() {
   $CLI INSERT INTO LRU VALUES "(,99,333)"
 }
 function test_lru() {
+  echo test_lru
   SLEEP_TIME=4
   lru_populate
   $CLI DESC LRU
@@ -3430,4 +3431,32 @@ function advanced_tests() {
   wiki_lua_tests
   populate_graph_db
   graphdb_fof_cities_test
+}
+
+
+function luaobj_nested_updates_test() {
+  wiki_lua_tests >/dev/null;
+  $CLI INTERPRET LUAFILE "extra/example.lua";
+  $CLI INSERT INTO users VALUES "(, 3333, {'nest':{'x':{'y':{'z':5}}}})";
+  $CLI INSERT INTO users VALUES "(, 3333, {'nest':{'x':{'y':{'z':9}}}})"
+  echo DUMP users
+  $CLI DUMP users
+  echo LU.nlo From Defined Func
+  $CLI UPDATE users SET "info.nest.x.y.z = cubed(info.nest.x.y.z)" WHERE userid BETWEEN 3 AND 4
+  $CLI SELECT \* FROM users WHERE userid BETWEEN 3 AND 4
+  $CLI UPDATE users SET "info.nest.x.y.z = cubed(info.nest.x.y.z)" WHERE userid BETWEEN 3 AND 4
+  $CLI SELECT \* FROM users WHERE userid BETWEEN 3 AND 4
+  $CLI UPDATE users SET "info.nest.x.y.z = nest_json(info.nest.x.y.z)" WHERE userid=3 
+  $CLI SELECT \* FROM users WHERE userid=3
+  echo LU.nlo From JSON
+  $CLI UPDATE users SET "info.nest.x.y = {'K':{'L':777}}" WHERE userid=4
+  $CLI SELECT \* FROM users WHERE userid=4
+  echo SIMPLE UPDATE
+  $CLI UPDATE users SET "info.nest.x.y.z = 100" WHERE userid=4
+  $CLI SELECT \* FROM users WHERE userid=4
+  echo Dynamic Lua Function UPDATE
+  $CLI UPDATE users SET "info.nest.x.y.z = info.nest.x.y.z + info.nest.x.y.z * 100" WHERE userid=4
+  $CLI SELECT \* FROM users WHERE userid=4
+  echo DUMP users
+  $CLI DUMP users
 }

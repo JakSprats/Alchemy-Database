@@ -64,4 +64,5 @@ void dumpRobj (printer *prn, robj *r, char *smsg, char *dmsg);
 void dumpFL   (printer *prn, char *prfx, char *title, list *flist);
 void dumpSL   (sl_t sl);
 
+void dumpIC   (printer *prn, icol_t *ic);
 #endif /* __ALCHEMYDB_DEBUG__H */ 

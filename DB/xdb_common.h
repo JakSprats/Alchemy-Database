@@ -53,7 +53,11 @@
       list   *resp_hdr;              \
   } alchemy_http_info;
 
-typedef struct aobj { /* SIZE: 48 BYTES */ //TODO only pass aobj * to functions
+typedef struct icol_t {
+    int cmatch; int fimatch; uint32 nlo; sds *lo;
+} icol_t;
+
+typedef struct aobj { /* SIZE: 56 BYTES */ //TODO only pass aobj * to functions
     char    *s;
     uint32   len;
     uint32   i;
@@ -62,6 +66,7 @@ typedef struct aobj { /* SIZE: 48 BYTES */ //TODO only pass aobj * to functions
     float    f;
     bool     b;
     bool     err;
+    icol_t  *ic;
     uchar    type;
     uchar    enc;
     uchar    freeme;
@@ -80,14 +85,11 @@ enum OP {NONE, EQ, NE, GT, GE, LT, LE, RQ, IN, LFUNC};
 
 #define LUA_OBJ_SHADOW_TABLE "STBL"
 
-typedef struct icol_t {
-    int cmatch; int fimatch; uint32 nlo; sds *lo;
-} icol_t;
-
 struct uc_t;
 typedef struct uqc_t { 
     struct uc_t *uc;
     bool         lodlt;
+    int          ncols;
 } uqc_t;
 typedef struct uq_t {
     uqc_t  constants;

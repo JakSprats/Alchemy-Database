@@ -111,18 +111,18 @@ static aobj colFromUL(ulong   key, bool fs, int cmatch);
 static aobj colFromLU(ulong   key, bool fs, int cmatch);
 static aobj colFromLL(ulong   key, bool fs, int cmatch);
 static aobj colFromXX(uint128 key, bool fs, int cmatch);
-static bool evalExpr   (cli  *c,    ue_t  *ue, aobj *aval, uchar ctype);
-static bool evalLuaExpr(cli  *c,    int cmatch, uc_t *uc, aobj *apk,
+static bool evalExpr   (cli  *c, ue_t  *ue, aobj *aval, uchar ctype);
+static bool evalLuaExpr(cli  *c, icol_t *ic, uc_t *uc, aobj *apk,
                         void *orow, aobj *aval);
 
 // PROTOTYPES: LUA_SELECT_FUNCS
-static void initLuaobjFromCmatch(aobj *a,      aobj *apk, icol_t ic,
-                                 int   tmatch, bool  fs);
+static void init_LO_AobjFromCmatch(aobj *a,      aobj *apk, icol_t ic,
+                                   int   tmatch, bool  fs);
 static void initAobjFromLuaString(lua_State *lua, aobj *a);
 static void initAobjFromLuaResponse(aobj *a, icol_t *ic, int tmatch, bool fs);
 
 /* CREATE_ROW CREATE_ROW CREATE_ROW CREATE_ROW CREATE_ROW CREATE_ROW */
-typedef struct create_row_ctrl {
+typedef struct cr_t {
     int     tmatch;
     int     ncols;
     uint32  rlen;
@@ -378,19 +378,19 @@ static uchar *createHashRow(cr_t *cr, crd_t *crd, uchar *rflag, uint32 *mlen) {
 }
 #define DEBUG_WRITE_LUAOBJ                                              \
   printf("writeLuaObjCol: tname: %s cname: %s Lua: (%s) apk: ",         \
-          rt->name, rt->col[cmatch].name, luac); dumpAobj(printf, apk);
+          rt->name, rt->col[cmatch].name, json); dumpAobj(printf, apk);
 
 static bool writeLuaObjCol(cli *c,    aobj   *apk,  int  tmatch, int cmatch,
                            char *val, uint32  vlen, bool fromu) {
     r_tbl_t *rt   = &Tbl[tmatch];
-    sds      luac = sdsnewlen(val, vlen);                    DEBUG_WRITE_LUAOBJ
+    sds      json = sdsnewlen(val, vlen);                    DEBUG_WRITE_LUAOBJ
     CLEAR_LUA_STACK
     char *func = fromu ? "queueLuaobjAssign" : "luaobjAssign";
     lua_getfield  (server.lua, LUA_GLOBALSINDEX, func);
     lua_pushstring(server.lua, rt->name);
     lua_pushstring(server.lua, rt->col[cmatch].name);
     pushAobjLua(apk, apk->type);
-    lua_pushstring(server.lua, luac);
+    lua_pushstring(server.lua, json);
     int ret = DXDB_lua_pcall(server.lua, 4, 0, 0);
     if (ret) { ADD_REPLY_FAILED_LUA_STRING_CMD(func) }
     CLEAR_LUA_STACK
@@ -444,7 +444,9 @@ static uchar *writeRow(cli *c, aobj *apk, int tmatch, cr_t *cr, crd_t *crd,
 #define DEBUG_CREATE_ROW                                                       \
   if (!crd[i].empty) {                                                         \
     printf("nclen: %d rlen: %d c[%d]: %d", nclen, cr.rlen, i, crd[i].mcofsts); \
-    if C_IS_NUM(ctype) printf(" iflgs: %d c: %u", crd[i].iflags, crd[i].icols);\
+    if C_IS_NUM(ctype) {                                                       \
+        printf(" iflgs: %d c: %lu", crd[i].iflags, crd[i].icols);              \
+    }                                                                          \
     printf("\n");                                                              \
   }
 
@@ -728,7 +730,7 @@ aobj getRawCol(bt  *btr,    uchar *orow, icol_t  ic,  aobj *apk,
             float   f  = streamFloatToFloat(data, &clen);
             initFloatAobjFromVal(&a, f,   fs, cmatch);
         } else if C_IS_O(ctype) {
-            initLuaobjFromCmatch(&a, apk, ic, tmatch, fs);
+            init_LO_AobjFromCmatch(&a, apk, ic, tmatch, fs);
         } else if C_IS_S(ctype) {
             a.type     = a.enc = COL_TYPE_STRING; a.empty = 0;
             if        (rflag & RFLAG_6BIT_ZIP) {
@@ -833,12 +835,12 @@ static void initAobjFromLuaResponse(aobj *a, icol_t *ic, int tmatch, bool fs) {
     }
     lua_pop(server.lua, 1);
 }
-static void initLuaobjFromCmatch(aobj *a,      aobj *apk, icol_t ic,
-                                 int   tmatch, bool  fs) {
+static void init_LO_AobjFromCmatch(aobj *a,      aobj *apk, icol_t ic,
+                                   int   tmatch, bool  fs) {
+    printf("initLO_AobjFromCmatch: t: %d apk: ", tmatch); dumpAobj(printf, apk);
     lua_getglobal(server.lua, "DumpObjForOutput");
     pushLuaVar(tmatch, ic, apk);
     int t     = lua_type(server.lua, -1);
-    printf("initLuaobjFromCmatch: t: %d apk: ", t); dumpAobj(printf, apk);
     if (t == LUA_TNIL) {
         initAobjString(a, "nil", 3);
         lua_pop(server.lua, -1); // pop off func: DumpObjForOutput()
@@ -1092,13 +1094,13 @@ static void release_lue(lue_t *le) {
     if (le->as) free(le->as); // FREED 096
 }
 void init_uc(uc_t  *uc,     bt     *btr, 
-             int    tmatch, int     ncols,   int    matches, int   inds[],
-             char  *vals[], uint32  vlens[], uchar  cmiss[], ue_t  ue[],
+             int    tmatch, int     ncols,   int    matches, int  inds[],
+             char  *vals[], uint32  vlens[], icol_t chit[],  ue_t ue[],
              lue_t *le) {
     uc->btr    =   btr;
     uc->tmatch = tmatch; uc->ncols = ncols; uc->matches = matches;
     uc->inds   = inds;   uc->vals  = vals;  uc->vlens   = vlens;
-    uc->cmiss  = cmiss;  uc->ue    = ue;    uc->le      = le;
+    uc->chit   = chit;   uc->ue    = ue;    uc->le      = le;
     init_lue(uc->le); //TODO this should be a separate call
 }
 void release_uc(uc_t *uc) {
@@ -1111,10 +1113,11 @@ void release_uc(uc_t *uc) {
 #define DESTROY_COL_AVALS                                   \
   for (int i = 0; i < uc->ncols; i++) releaseAobj(&avs[i]);
 
-static bool upEffectedFailableIndexes(cli  *c,   bt   *btr,
-                                      aobj *opk, void *orow,
-                                      aobj *npk, void *nrow,
-                                      int   matches, int inds[], uchar cmiss[]){
+static bool upEffectedFailableIndexes(cli    *c,       bt *btr,
+                                      aobj   *opk,     void *orow,
+                                      aobj   *npk,     void *nrow,
+                                      int     matches, int inds[],
+                                      icol_t  chit[])              {
     bool hasup = 0;
     for (int i = 0; i < matches; i++) { /* Redo ALL EFFECTED indexes */
         if (inds[i] == -1) continue;
@@ -1125,9 +1128,9 @@ static bool upEffectedFailableIndexes(cli  *c,   bt   *btr,
         //TODO OBI must update on OBY_Column also
         else if (ri->clist) {
             for (int i = 0; i < ri->nclist; i++) {
-                if (!cmiss[ri->bclist[i].cmatch]) { up = 1; break; }
+                if (chit[ri->bclist[i].cmatch].cmatch != -1) { up = 1; break; }
             }
-        } else { up = !cmiss[ri->icol.cmatch]; }
+        } else { up = (chit[ri->icol.cmatch].cmatch != -1); }
         if (!up) inds[i] = -1;
         else     hasup   =  1;
     }
@@ -1160,8 +1163,9 @@ static bool aobj_sflag(aobj *a, uchar *sflag) {
         cIcol(l, sflag, &col, C_IS_I(a->type)); return !a->empty;
     }
 }
-#define DEBUG_UPDATE_ROW                                                     \
-  if (i) { printf ("%d: oflag: %d cmiss: %d ", i, osflags[i], uc->cmiss[i]); \
+#define DEBUG_UPDATE_ROW                                                 \
+  if (i) { printf ("%d: oflag: %d chit.cmatch: %d chit.nlo: %d ",        \
+                    i, osflags[i], uc->chit[i].cmatch, uc->chit[i].nlo); \
     DEBUG_CREATE_ROW printf("\t\t\t\t"); dumpAobj(printf, &avs[i]); }
 
 #define OVRWR(i, ovrwr, ctype) /*NOTE: !indexed -> upIndex uses orow & nrow */ \
@@ -1180,12 +1184,12 @@ static bool aobj_sflag(aobj *a, uchar *sflag) {
     -> SOLUTION Q nrows in memory, apply when ALL have passed.
 */
 
-
 static int runUpdate(cli *c,    uc_t *uc,   aobj *opk,   void *orow,
-                     aobj *npk, void *nrow, bool  lodlt) {
-    r_tbl_t *rt  = &Tbl[uc->tmatch];
+                     aobj *npk, void *nrow, bool  lodlt, bool  cq,  int ncols) {
+    r_tbl_t *rt  = &Tbl[uc->tmatch]; //printf("runUpdate: cq: %d\n", cq);
     int      ret = -1;
-    if (!uc->cmiss[0]) { // PK update runFailableInsertIndexes() can NOT FAIL
+    if (uc->chit[0].cmatch != -1) { // PK update
+        //NOTE: (runFailableInsertIndexes() can NOT FAIL)
         runFailableInsertIndexes(c, uc->btr, npk, nrow, uc->matches, uc->inds);
         runDeleteIndexes(uc->btr, opk, orow, uc->matches, uc->inds, 0);
         btDelete(uc->btr, opk);    // DELETE row w/ OLD PK
@@ -1193,15 +1197,26 @@ static int runUpdate(cli *c,    uc_t *uc,   aobj *opk,   void *orow,
         UPDATE_AUTO_INC(rt->col[0].type, npk)
     } else { // upEffectedFailableIndexes() CAN NOT FAIL
         upEffectedFailableIndexes(c, uc->btr, opk, orow, npk, nrow,
-                                  uc->matches, uc->inds, uc->cmiss);
+                                  uc->matches, uc->inds, uc->chit);
         ret = btReplace(uc->btr, opk, nrow); // OVERWRITE w/ new row 
     }
-    if (lodlt) {
+    if (lodlt) { // only runs ONCE in a RangeUpdate
         CLEAR_LUA_STACK
         lua_getfield(server.lua, LUA_GLOBALSINDEX, "runQueueLuaobjAssign");
         DXDB_lua_pcall(server.lua, 0, 0, 0); CLEAR_LUA_STACK
     }
-    if (rt->nltrgr) { // LUATRIGGERS come at the end (CANT FAIL)
+    if (cq) {
+        for (int i = 1; i < ncols; i++) { // 3rd loop
+            uchar ctype = rt->col[i].type;
+            if (C_IS_O(ctype) && uc->chit[i].nlo) {
+                setLuaVar(uc->tmatch, uc->chit[i], opk);
+                lua_getglobal(server.lua, "pop_CQ");
+                DXDB_lua_pcall(server.lua, 0, 1, 0);
+                lua_settable(server.lua, -3);
+            }
+        }
+    }
+    if (rt->nltrgr) { // LUATRIGGERS come at the end (CANT FAIL the Xaction)
         runVoidInsertIndexes(c, uc->btr, npk, nrow, uc->matches, uc->inds);
     }
     server.dirty++;
@@ -1210,34 +1225,40 @@ static int runUpdate(cli *c,    uc_t *uc,   aobj *opk,   void *orow,
 
 // UPDATE_QUEUE UPDATE_QUEUE UPDATE_QUEUE UPDATE_QUEUE UPDATE_QUEUE UPDATE_QUEUE
 typedef struct ur_t {
-    aobj *opk; void *orow; aobj *npk; void *nrow;
+    aobj *opk; void *orow; aobj *npk; void *nrow; bool cq;
 } ur_t;
-static ur_t *newUpdateRow(aobj *opk, void *orow, aobj *npk, void *nrow) {
+static ur_t *newUpdateRow(aobj *opk, void *orow,
+                          aobj *npk, void *nrow, bool cq) {
   ur_t *ur = (ur_t *)malloc(sizeof(ur_t));
-  ur->opk = opk; ur->orow = orow; ur->npk = npk; ur->nrow = nrow;
+  ur->opk = opk; ur->orow = orow; ur->npk = npk; ur->nrow = nrow; ur->cq = cq;
   return ur;
 }
 void vFreeUpdateRow(void *v) { if (v) free(v); }
 
-static int queueUpdate(cli *c,    uc_t *uc,   aobj *opk,   void *orow,
-                       aobj *npk, void *nrow, bool  lodlt) {
+static int queueUpdate(cli *c,     uc_t *uc,   aobj *opk,   void *orow,
+                       aobj *npk,  void *nrow, bool  lodlt, bool  cq, 
+                       int   ncols)                                  { 
     if (!c->UpdateQueue.inited) { //printf("UpdateQueue.inited\n");
         c->UpdateQueue.inited          = 1;
         c->UpdateQueue.l               = listCreate();
         c->UpdateQueue.l->free         = vFreeUpdateRow;
         c->UpdateQueue.constants.uc    = uc;
         c->UpdateQueue.constants.lodlt = lodlt;
+        c->UpdateQueue.constants.ncols = ncols;
     }
-    listAddNodeTail(c->UpdateQueue.l, newUpdateRow(opk, orow, npk, nrow));
-    return 1; //TODO: return should be stream-size
+    listAddNodeTail(c->UpdateQueue.l, newUpdateRow(opk, orow, npk, nrow, cq));
+    return getNumKeyLen(npk) + getRowMallocSize(nrow); // stream size
 }
 void runUpdateQueue(cli *c) { //printf("runUpdateQueue\n");
     if (!c->UpdateQueue.inited) return; //FAILED before it started
-    listNode  *ln; uqc_t *uqc = &c->UpdateQueue.constants;
-    listIter  *li = listGetIterator(c->UpdateQueue.l, AL_START_HEAD);
+    listNode  *ln;
+    uqc_t     *uqc = &c->UpdateQueue.constants;
+    listIter  *li  = listGetIterator(c->UpdateQueue.l, AL_START_HEAD);
     while((ln = listNext(li))) {
         ur_t *ur = ln->value;
-        runUpdate(c, uqc->uc, ur->opk, ur->orow, ur->npk, ur->nrow, uqc->lodlt);
+        runUpdate(c, uqc->uc, ur->opk, ur->orow, ur->npk, ur->nrow,
+                  uqc->lodlt, ur->cq,  uqc->ncols);
+        uqc->lodlt = 0; // only run runQueueLuaobjAssign() once
     } listReleaseIterator(li);
     abandonUpdateQueue(c);
 }
@@ -1252,8 +1273,35 @@ void abandonUpdateQueue(cli *c) {
     } listReleaseIterator(li);
     listRelease(c->UpdateQueue.l); c->UpdateQueue.l = NULL;
     c->UpdateQueue.inited = 0;
+    lua_getglobal(server.lua, "reset_CQ"); DXDB_lua_pcall(server.lua, 0, 0, 0);
 }
 
+// UPDATE_OVERWRITE UPDATE_OVERWRITE UPDATE_OVERWRITE UPDATE_OVERWRITE
+static int updateOverwrite(cli   *c,         uc_t *uc,  cr_t *cr, crd_t *crd,
+                           uchar  osflags[], aobj *opk, void *orow) {
+    r_tbl_t *rt = &Tbl[uc->tmatch];
+    for (int i = 1; i < cr->ncols; i++) {
+        if (osflags[i]) {
+            uint32 clen; uchar rflag;
+            uchar *data  = getColData(orow, i, &clen, &rflag);
+            uchar  ctype = rt->col[i].type;
+            if       (rt->lrud && rt->lruc == i) {// updateLRU (UPDATE_2)
+                // NOTE LRU is always 4 bytes, so orow will NOT change
+                updateLru(c, uc->tmatch, opk, data, rt->lrud);
+            } else if (rt->lfu && rt->lfuc == i) { // updateLFU (UPDATE_2)
+                // NOTE LFU is always 8 bytes, so orow will NOT change
+                updateLfu(c, uc->tmatch, opk, data, rt->lfu);
+            } else if C_IS_I(ctype) {
+                writeUIntCol(&data,  crd[i].iflags, crd[i].icols);
+            } else if C_IS_L(ctype) {
+                writeULongCol(&data, crd[i].iflags, crd[i].icols);
+            } else if C_IS_X(ctype) {
+                writeU128Col(&data, crd[i].xcols);
+            } else assert(!"updateRow OVWR ERROR");
+        }
+    }
+    return getNumKeyLen(opk) + getRowMallocSize(orow);
+}
 //NOTE updateRow() can NOT fail due to CONSTRAINT VIOLATIONS
 //     therefore NON-OVERWRITE updates are Qed & Replayed when ALL pass
 //     & OVERWRITE updates do NOT FAIL
@@ -1267,39 +1315,23 @@ int updateRow(cli *c, uc_t *uc, aobj *opk, void *orow, bool isr) {
     uchar   *nrow   = NULL; /* B4 GOTO */
     //TODO LUATRIGGER tables can do OVWR w/ split up add/delIndexes
     bool     ovrwr  = NORM_BT(uc->btr) && !rt->nltrgr;
-    bool     lodlt = 0;
+    bool     lodlt  = 0, cq = 0;
     int      ret    = -1;    /* presume failure */
-    for (int i = 0; i < cr.ncols; i++) { /* 1st loop UPDATE columns -> cr */
+    for (int i = 0; i < cr.ncols; i++) { /* 1st LOOP Perform Ops */
         uchar ctype = rt->col[i].type;
         DECLARE_ICOL(ic, i)
-//TODO put from UPDATE_VALUE_LIST (the else-block) at top of this if-stmt
-        if        (rt->lrud && rt->lruc == i) {
+        if        (rt->lrud && rt->lruc == i) { // ALWAYS updated
             avs[i] = getCol(uc->btr, orow, ic, opk, uc->tmatch, NULL);
             if (avs[i].empty) ovrwr      = 0; // makes updateLRU not recurse
             else              osflags[i] = getLruSflag();/* Overwrite LRU */
-        } else if (rt->lfu  && rt->lfuc == i) {
+        } else if (rt->lfu  && rt->lfuc == i) { // ALWAYS updated
             avs[i] = getCol(uc->btr, orow, ic, opk, uc->tmatch, NULL);
             if (avs[i].empty) ovrwr      = 0; // makes updateLFU not recurse
             else              osflags[i] = getLfuSflag();/* Overwrite LFU */
-        } else if (uc->cmiss[i]) {/* NotIn UPDATE_SET_LIST */
-            //printf("%d: MISS\n", i);
-            avs[i] = getCol(uc->btr, orow, ic, opk, uc->tmatch, NULL);
-        } else if (uc->ue[i].yes) { /* SIMPLE UPDATE EXPR */
-            //printf("%d: UE\n", i);
-            avs[i] = getCol(uc->btr, orow, ic, opk, uc->tmatch, NULL);
-            if (avs[i].empty) { addReply(c, shared.up_on_mt_col);       UP_ERR }
-            if (!OVRWR(i, ovrwr, ctype) ||
-                !aobj_sflag(&avs[i], &osflags[i])) ovrwr = 0;
-            if (!evalExpr(c, &uc->ue[i], &avs[i], ctype))               UP_ERR
-        } else if (uc->le[i].yes) { /* LUA UPDATE EXPR */
-            //printf("%d: LUE\n", i);
-            avs[i] = getCol(uc->btr, orow, ic, opk, uc->tmatch, NULL);
-            if (avs[i].empty) { addReply(c, shared.up_on_mt_col);       UP_ERR }
-            if (!OVRWR(i, ovrwr, ctype) ||
-                !aobj_sflag(&avs[i], &osflags[i])) ovrwr = 0;
-            if (!evalLuaExpr(c, i, uc, opk, orow, &avs[i]))             UP_ERR
-        } else { /* from UPDATE_VALUE_LIST (no expression) */
+        } else if (!uc->ue[i].yes && !uc->le[i].yes &&
+                    uc->chit[i].cmatch != -1) { // from UPDATE_VALUE_LIST
             //printf("%d: NORMAL\n", i);
+            if C_IS_O(ctype) lodlt = 1;
             if OVRWR(i, ovrwr, ctype) {
                 aobj a = getCol(uc->btr, orow, ic, opk, uc->tmatch, NULL);
                 if (!aobj_sflag(&a, &osflags[i])) ovrwr = 0;
@@ -1310,7 +1342,7 @@ int updateRow(cli *c, uc_t *uc, aobj *opk, void *orow, bool isr) {
             }
             if        C_IS_I(ctype) {
                 ulong l = strtoul(tkn, &endptr, 10); // OK: DELIM:[\ ,=,\0]
-                if (l >= TWO_POW_32) { addReply(c, shared.u2big);   UP_ERR }
+                if (l >= TWO_POW_32) { addReply(c, shared.u2big);       UP_ERR }
                 initAobjInt(&avs[i], l);
             } else if C_IS_L(ctype) {
                 ulong l = strtoul(tkn, &endptr, 10); // OK: DELIM:[\ ,=,\0]
@@ -1325,12 +1357,39 @@ int updateRow(cli *c, uc_t *uc, aobj *opk, void *orow, bool isr) {
                 initAobjFloat(&avs[i], f);
             } else if C_IS_S(ctype) { // ignore \' delims
                 initAobjString(&avs[i], uc->vals[i] + 1, uc->vlens[i] - 2);
-            } else if C_IS_O(ctype) { lodlt = 1;
+            } else if C_IS_O(ctype) {
                 initAobjString(&avs[i], uc->vals[i],     uc->vlens[i]);
             } else assert(!"updateRow parse ERROR");
             sdsfree(tkn); tkn = NULL;                    // FREED 137
+        } else if (uc->ue[i].yes) { /* SIMPLE UPDATE EXPR */
+            //printf("%d: UE\n", i);
+            avs[i] = getCol(uc->btr, orow, ic, opk, uc->tmatch, NULL);
+            if (avs[i].empty) { addReply(c, shared.up_on_mt_col);       UP_ERR }
+            if (!OVRWR(i, ovrwr, ctype) ||
+                !aobj_sflag(&avs[i], &osflags[i])) ovrwr = 0;
+            if (!evalExpr(c, &uc->ue[i], &avs[i], ctype))               UP_ERR
+        } else if (uc->le[i].yes) { /* LUA UPDATE EXPR */
+            //printf("%d: LUE\n", i);
+            if (uc->chit[i].nlo) { cq = 1;
+                if (!evalLuaExpr(c, &uc->chit[i], uc, opk, orow,
+                                 &avs[i]))                              UP_ERR
+            } else { // NEXT 3 lines are ONLY to set "ovrwr"
+                if C_IS_O(ctype) lodlt = 1;
+                avs[i] = getCol(uc->btr, orow, ic, opk, uc->tmatch, NULL);
+                if (avs[i].empty) { addReply(c, shared.up_on_mt_col);   UP_ERR }
+                if (!OVRWR(i, ovrwr, ctype) ||
+                    !aobj_sflag(&avs[i], &osflags[i])) ovrwr = 0;
+                if (!evalLuaExpr(c, &uc->chit[i], uc, opk, orow,
+                                 &avs[i]))                              UP_ERR
+            }
+        } else { // Not In UPDATE_SET_LIST -> MISS
+            //printf("%d: MISS\n", i);
+            avs[i] = getCol(uc->btr, orow, ic, opk, uc->tmatch, NULL);
         }
-        int nclen = 0;
+    }
+    for (int i = 0; i < cr.ncols; i++) { /* 2nd Write Columns to Aobjs[] */
+        uchar ctype = rt->col[i].type;
+        int  nclen  = 0;
         if (i) { /* NOT PK, populate cr values (PK not stored in row)*/
             if (rt->lrud && rt->lruc == i) { // NOTE: updateLRU (UPDATE_1)
                 nclen = cLRUcol(getLru(uc->tmatch), &crd[i].iflags,
@@ -1351,9 +1410,24 @@ int updateRow(cli *c, uc_t *uc, aobj *opk, void *orow, bool isr) {
                 if (avs[i].empty) nclen = 0;
                 else              { crd[i].fcols = avs[i].f; nclen = 4; }
                 crd[i].fflags = nclen ? 1 : 0;
-            } else if (C_IS_S(ctype) || C_IS_O(ctype)) {
+            } else if (C_IS_S(ctype)) {
                 crd[i].strs  = avs[i].s; nclen = avs[i].len;
                 crd[i].slens = nclen;
+            } else if (C_IS_O(ctype)) {
+                if (uc->chit[i].nlo) {
+                    if (!avs[i].empty) { cq = 1;
+                        lua_getglobal(server.lua, "queue_CQ_Json");
+                        pushAobjLua(&avs[i], avs[i].type);
+                        int ret = DXDB_lua_pcall(server.lua, 1, 0, 0);
+                        if (ret) {
+                            ADD_REPLY_FAILED_LUA_STRING_CMD("queue_CQ_Json")
+                            UP_ERR
+                        }
+                    }
+                } else {
+                    crd[i].strs  = avs[i].s; nclen = avs[i].len;
+                    crd[i].slens = nclen;
+                } 
             } else assert(!"updateRow create-column ERROR");
         }
         crd[i].empty    = nclen ? 0 : 1;
@@ -1362,33 +1436,17 @@ int updateRow(cli *c, uc_t *uc, aobj *opk, void *orow, bool isr) {
         //printf("empty: %d mcofst: %d\n", crd[i].empty, crd[i].mcofsts);
         cr.rlen        += nclen;                             //DEBUG_UPDATE_ROW
     }
+
+    if (ovrwr) if (lodlt || cq) ovrwr = 0; //TODO fix this dependency
+
     if (ovrwr) { /* only OVERWRITE if all OLD and NEW sflags match */
         for (int i = 1; i < cr.ncols; i++) {
             if (osflags[i] && osflags[i] != crd[i].iflags) { ovrwr = 0; break; }
     }}
     if (ovrwr) { /* just OVERWRITE INTS & LONGS -> CAN NOT FAIL */
-        for (int i = 1; i < cr.ncols; i++) {
-            if (osflags[i]) {
-                uint32 clen; uchar rflag;
-                uchar *data  = getColData(orow, i, &clen, &rflag);
-                uchar  ctype = rt->col[i].type;
-                if       (rt->lrud && rt->lruc == i) {// updateLRU (UPDATE_2)
-                    // NOTE LRU is always 4 bytes, so orow will NOT change
-                    updateLru(c, uc->tmatch, opk, data, rt->lrud);
-                } else if (rt->lfu && rt->lfuc == i) { // updateLFU (UPDATE_2)
-                    // NOTE LFU is always 8 bytes, so orow will NOT change
-                    updateLfu(c, uc->tmatch, opk, data, rt->lfu);
-                } else if C_IS_I(ctype) {
-                    writeUIntCol(&data,  crd[i].iflags, crd[i].icols);
-                } else if C_IS_L(ctype) {
-                    writeULongCol(&data, crd[i].iflags, crd[i].icols);
-                } else if C_IS_X(ctype) {
-                    writeU128Col(&data, crd[i].xcols);
-                } else assert(!"updateRow OVWR ERROR");
-            }
-        }
-        ret = getNumKeyLen(opk) + getRowMallocSize(orow);
+        ret = updateOverwrite(c, uc, &cr, crd, osflags, opk, orow);
     } else {                                      //printf("NEW ROW UPDATE\n");
+        int oncols = cr.ncols;
         int k; for (k = cr.ncols - 1; k >= 0; k--) { if (!crd[k].empty) break; }
         cr.ncols = k + 1; // starting from the right, only write FILLED columns
         if (rt->lrud && rt->lruc >= cr.ncols) cr.ncols = rt->lruc + 1; // 2 LRUC
@@ -1400,9 +1458,10 @@ int updateRow(cli *c, uc_t *uc, aobj *opk, void *orow, bool isr) {
                    writeRow(c, opk, uc->tmatch, &cr, crd, 1);
             if (!nrow)                                                   UP_ERR
         }
-        aobj *npk = cloneAobj(&avs[0]);                  // FREE 168
-        ret       = isr ? queueUpdate(c, uc, opk, orow, npk, nrow, lodlt) :
-                          runUpdate  (c, uc, opk, orow, npk, nrow, lodlt);
+        aobj    *npk = cloneAobj(&avs[0]);                  // FREE 168
+        ret = isr ?
+                queueUpdate(c, uc, opk, orow, npk, nrow, lodlt, cq, oncols) :
+                runUpdate  (c, uc, opk, orow, npk, nrow, lodlt, cq, oncols);
     }
 
 up_end:
@@ -1411,66 +1470,77 @@ up_end:
     return ret;
 }
 
-
 /* UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR */
 void pushColumnLua(bt *btr, uchar *orow, int tmatch, aobj *a, aobj *apk) {
-        aobj acol; initAobj(&acol); int ctype = COL_TYPE_NONE;
-printf("pushColumnLua: type: %d a: ", a->type); dumpAobj(printf, a);
-        if        C_IS_C(a->type) {
-            DECLARE_ICOL(ic, a->i)
-            assert(tmatch != -1 && ic.cmatch != -1);
-            ctype = Tbl[tmatch].col[ic.cmatch].type;
-            if (C_IS_O(ctype)) {
-                pushLuaVar(tmatch, ic, apk); return;
+    aobj acol; initAobj(&acol); int ctype = COL_TYPE_NONE;
+    printf("pushColumnLua: type: %d a: ", a->type); dumpAobj(printf, a);
+    if        C_IS_C(a->type) {
+        int cmatch = a->ic ? a->ic->cmatch : (int)a->i;
+        assert(tmatch != -1 && cmatch != -1);
+        ctype = Tbl[tmatch].col[cmatch].type;
+        if C_IS_O(ctype) {
+            if (a->ic) pushLuaVar(tmatch, *a->ic, apk);
+            else { 
+                DECLARE_ICOL(ic, a->i); pushLuaVar(tmatch, ic, apk);
             }
-            acol  = getCol(btr, orow, ic, apk, tmatch, NULL);
-        } else if C_IS_O(a->type) {
-            sds vname = sdsnewlen(a->s, a->len);
-            printf("pushColumnLua: VARIABLE: C_IS_O: vname: %s\n", vname);
-            lua_getglobal(server.lua, vname); sdsfree(vname); return;
-        } else if C_IS_L(a->type) {
-            ctype = COL_TYPE_LONG;   initAobjLong (&acol, a->l);
-        } else if C_IS_F(a->type) {
-            ctype = COL_TYPE_FLOAT;  initAobjFloat(&acol, a->f);
-        } else if C_IS_S(a->type) {
-            ctype = COL_TYPE_STRING; initAobjFromStr(&acol, a->s, a->len,
-                                                               COL_TYPE_STRING);
-        } else assert(!"pushColumnLua UNDEFINED TYPE");
+            return;
+        }
+        DECLARE_ICOL(ic, a->i);
+        acol  = getCol(btr, orow, ic, apk, tmatch, NULL);
+    } else if C_IS_O(a->type) {
+        sds vname = sdsnewlen(a->s, a->len);
+        printf("pushColumnLua: VARIABLE: C_IS_O: vname: %s\n", vname);
+        lua_getglobal(server.lua, vname); sdsfree(vname); return;
+    } else if C_IS_L(a->type) {
+        ctype = COL_TYPE_LONG;   initAobjLong (&acol, a->l);
+    } else if C_IS_F(a->type) {
+        ctype = COL_TYPE_FLOAT;  initAobjFloat(&acol, a->f);
+    } else if C_IS_S(a->type) {
+        ctype = COL_TYPE_STRING; initAobjFromStr(&acol, a->s, a->len,
+                                                           COL_TYPE_STRING);
+    } else assert(!"pushColumnLua UNDEFINED TYPE");
 printf("pushColumnLua: acol: "); dumpAobj(printf, &acol);
-        pushAobjLua(&acol, ctype); releaseAobj(&acol);
+    pushAobjLua(&acol, ctype); releaseAobj(&acol);
 }
 
-static bool evalLuaExpr(cli *c,    int   cmatch, uc_t *uc, aobj *apk,
+static bool evalLuaExpr(cli *c,    icol_t *ic, uc_t *uc, aobj *apk,
                        void *orow, aobj *aval) {
-    r_tbl_t *rt = &Tbl[uc->tmatch];
-    lue_t   *le = &uc->le[cmatch];
-printf("evalLuaExpr: fname: %s ncols: %d\n", le->fname, le->ncols);
+    r_tbl_t *rt = &Tbl   [uc->tmatch];
+    lue_t   *le = &uc->le[ic->cmatch];
+    int ctype = rt->col[ic->cmatch].type;
     CLEAR_LUA_STACK
+    int nargs = le->ncols; int retargs = 1;
+    if C_IS_O(ctype) { // runs LuaExpr and stores it in Lua:ColumnQueue[]
+        lua_getglobal(server.lua, "queue_CQ_Function"); nargs++; retargs = 0;
+    }
     lua_getglobal(server.lua, le->fname);
     for (int i = 0; i < le->ncols; i++) {
         pushColumnLua(uc->btr, orow, uc->tmatch, le->as[i], apk);
     }
-    int ret = DXDB_lua_pcall(server.lua, le->ncols, 1, 0);
-printf("evalLuaExpr: lua_pcall: ret: %d\n", ret);
-    if (ret) {
-        ADD_REPLY_FAILED_LUA_STRING_CMD(le->fname) return 0;
+printf("evalLuaExpr: fname: %s ncols: %d ctype: %d nargs: %d retargs: %d\n", le->fname, le->ncols, ctype, nargs, retargs);
+    int ret = DXDB_lua_pcall(server.lua, nargs, retargs, 0);
+    if (ret) { ADD_REPLY_FAILED_LUA_STRING_CMD(le->fname) return 0; }
+    if (retargs) {
+        //NOTE: C_IS_X() disallowed
+        if        C_IS_I(ctype) aval->i = (uint32)lua_tointeger(server.lua, -1);
+          else if C_IS_L(ctype) aval->l = (ulong) lua_tointeger(server.lua, -1);
+          else if C_IS_F(ctype) aval->f = (float) lua_tonumber (server.lua, -1);
+          else if C_IS_S(ctype) {
+            size_t len;
+            char *s   = (char *)lua_tolstring(server.lua, -1, &len);
+            aval->len = (uint32)len; 
+            if (s) { aval->s = _strdup(s); aval->freeme = 1; }
+        } else if C_IS_O(ctype) {
+            initAobjFromLuaResponse(aval, ic, uc->tmatch, 0);
+            printf("evalLuaExpr: C_IS_0\n"); dumpAobj(printf, aval);
+        } else assert(!"evalLuaExpr ERROR 2"); //TODO LOG
     }
-    int  ctype = rt->col[cmatch].type;
-    //NOTE: C_IS_X() disallowed
-    if      (C_IS_I(ctype)) aval->i = (uint32)lua_tointeger(server.lua, -1);
-    else if (C_IS_L(ctype)) aval->l = (ulong) lua_tointeger(server.lua, -1);
-    else if (C_IS_F(ctype)) aval->f = (float) lua_tonumber (server.lua, -1);
-    else if (C_IS_S(ctype)) {
-        size_t len;
-        char *s   = (char *)lua_tolstring(server.lua, -1, &len);
-        aval->len = (uint32)len; 
-        if (s) { aval->s = _strdup(s); aval->freeme = 1; }
-    } else assert(!"evalLuaExpr ERROR 2");
-    CLEAR_LUA_STACK //printf("evlLExpr: a: "); dumpAobj(printf, aval);
+    CLEAR_LUA_STACK //printf("evalLuaExpr: a: "); dumpAobj(printf, aval);
     return 1;
 }
 
 static bool evalExpr(cli *c, ue_t *ue, aobj *aval, uchar ctype) {
+    //printf("evalExpr: aval: "); dumpAobj(printf, aval);
     //NOTE: C_IS_X() disallowed
     if (C_IS_NUM(ctype)) { /* INT & LONG */
         ulong l      = 0; double f = 0.0;

@@ -58,3 +58,11 @@ end
 function print_column(val)
   print('column: ' .. val);
 end
+
+function cubed(n)
+  return n * n * n;
+end
+function nest_json(num)
+  print ('nest_json');
+  return "{'DEEP':{'A':{'B':{'C':" .. cubed(num) .. "}}}}";
+end

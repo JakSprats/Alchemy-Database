@@ -91,7 +91,11 @@ end
 function luaobjAssign(tbl, col, pk, json) -- create Lua Object Row
   __luaobjAssign(tbl, col, pk, Json.decode(json));
 end
+function delete_luaobj(tbl, col, pk)
+  _G[LOTBL][tbl][col][pk] = nil; STBL[tbl][col][pk] = nil;
+end
 
+-- ASSIGN_QUEUE ASSIGN_QUEUE ASSIGN_QUEUE ASSIGN_QUEUE ASSIGN_QUEUE
 local AssignQueue = {};
 local SlotAQ      = 1;
 function queueLuaobjAssign(tbl, col, pk, json) -- create Lua Object Row
@@ -100,14 +104,38 @@ function queueLuaobjAssign(tbl, col, pk, json) -- create Lua Object Row
                {tbl = tbl; col = col; pk = pk; luae = Json.decode(json); });
   SlotAQ = SlotAQ + 1;
 end
-function runQueueLuaobjAssign()
+function runQueueLuaobjAssign() --print('runQueueLuaobjAssign');
   for k, v in pairs(AssignQueue) do
     __luaobjAssign(v.tbl, v.col, v.pk, v.luae);
   end
   AssignQueue = {}; SlotAQ = 1;
 end
-function delete_luaobj(tbl, col, pk)
-  _G[LOTBL][tbl][col][pk] = nil; STBL[tbl][col][pk] = nil;
+
+-- LUA_COLUMN_QUEUE LUA_COLUMN_QUEUE LUA_COLUMN_QUEUE LUA_COLUMN_QUEUE
+local ColumnQueue = {};
+local SlotCQ      = 1;
+local MinSlotCQ   = 1;
+local ResetCQ     = false;
+function reset_CQ() --print('ResetCQ');
+    ColumnQueue = {}; SlotCQ = 1; MinSlotCQ = 1; ResetCQ = false;
+end
+function queue_CQ_Function(func, ...)
+  if (ResetCQ) then reset_CQ(); end
+  table.insert(ColumnQueue, SlotCQ, func(...));
+  --print('queue_CQ_Function: adding: ' .. SlotCQ);
+  SlotCQ = SlotCQ + 1;
+end
+function queue_CQ_Json(json)
+  table.insert(ColumnQueue, SlotCQ, Json.decode(json));
+  --print('queue_CQ_json: json: ' .. json .. ' adding: ' .. SlotCQ);
+  SlotCQ = SlotCQ + 1;
+end
+function pop_CQ()
+  local ret = ColumnQueue[MinSlotCQ]; if (ret == nil) then return {}; end
+  --print('pop_CQ: returning: ' .. MinSlotCQ);
+  MinSlotCQ = MinSlotCQ + 1;
+  if (MinSlotCQ == SlotCQ) then ResetCQ = true; end
+  return ret;
 end
 
 -- LUAOBJ_TO_OUTPUT LUAOBJ_TO_OUTPUT LUAOBJ_TO_OUTPUT LUAOBJ_TO_OUTPUT

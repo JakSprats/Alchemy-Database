@@ -36,6 +36,7 @@ ALL RIGHTS RESERVED
 #include "zmalloc.h"
 
 #include "debug.h"
+#include "find.h"
 #include "prep_stmt.h"
 #include "embed.h"
 #include "lru.h"
@@ -525,21 +526,24 @@ static int getPkUpdateCol(int qcols, icol_t *ics) {
     }
     return pkupc;
 }
-static bool assignMisses(cli   *c,      int     tmatch,   int   ncols,
-                         int   qcols,   icol_t *ics,      uchar cmiss[],
-                         char *vals[],  uint32  vlens[],  ue_t  ue[],
-                         char *mvals[], uint32  mvlens[], lue_t le[]) {
+static bool assignMisses(cli   *c,      int     tmatch,   int    ncols,
+                         int   qcols,   icol_t *ics,      icol_t chit[],
+                         char *vals[],  uint32  vlens[],  ue_t   ue[],
+                         char *mvals[], uint32  mvlens[], lue_t  le[]) {
     for (int i = 0; i < ncols; i++) {
         ue[i].yes = 0; bzero(&le[i], sizeof(lue_t));
     }
     for (int i = 0; i < ncols; i++) {
-        uchar miss  = 1;
+        INIT_ICOL(chit[i], -1)
         uchar ctype = Tbl[tmatch].col[i].type;
         for (int j = 0; j < qcols; j++) {
             icol_t ic = ics[j];
             if (i == ic.cmatch) {
-                miss      = 0; vals[i] = mvals[j]; vlens[i] = mvlens[j];
-                if        C_IS_O(ctype) { /* LO -> customer updater */ break;
+                cloneIC(&chit[i], &ic);                  // FREE 170
+                vals[i] = mvals[j]; vlens[i] = mvlens[j];
+                if        C_IS_O(ctype) {
+                    char *begc = vals[i]; char *endc = begc + vlens[i] - 1;
+                    if (*begc == '{' || *endc == '}')                  break;
                 } else if (C_IS_I(ctype) || C_IS_L(ctype)) {
                     if (getExprType(vals[i], vlens[i]) == UETYPE_INT)  break;
                 } else if C_IS_X(ctype) {
@@ -562,7 +566,6 @@ static bool assignMisses(cli   *c,      int     tmatch,   int   ncols,
                 break;
             }
         }
-        cmiss[i] = miss;
     }
     return 1;
 }
@@ -573,19 +576,22 @@ static bool ovwrPKUp(cli    *c,        int    pkupc, char *mvals[],
     if (dwm.k || dwm.miss) { addReply(c, shared.update_pk_ovrw); return 1; }
     return 0;
 }
-static bool updatingIndex(int matches,  int   inds[], uchar cmiss[], 
-                          bool *mci_up, bool *u_up) {
+//TODO check DNI's
+static bool isUpdatingIndex(int matches, int   inds[], icol_t chit[], 
+                          bool *mci_up,  bool *u_up) {
     bool ret = 0; *u_up = 0; *mci_up = 0;
     for (int i = 0; i < matches; i++) {
         r_ind_t *ri = &Index[inds[i]];
-        if        (ri->virt) { continue;
-        } else if (ri->luat) { ret = 1;
+        if        (ri->virt)  { continue;
+        } else if (ri->luat)  { ret = 1;
         } else if (ri->clist) {
             for (int i = 0; i < ri->nclist; i++) {
-                if (!cmiss[ri->bclist[i].cmatch]) { ret = 1; *mci_up = 1; }
+                if (chit[ri->bclist[i].cmatch].cmatch != -1) {
+                    ret = 1; if UNIQ(ri->cnstr) *mci_up = 1;
+                }
             }
-        } else if (!cmiss[ri->icol.cmatch]) {
-            ret = 1; if (SIMP_UNIQ(ri->btr)) *u_up = 1;
+        } else if (chit[ri->icol.cmatch].cmatch != -1) {
+            ret = 1; if UNIQ(ri->cnstr) *u_up = 1;
         }
     }
     return ret;
@@ -611,9 +617,9 @@ int updateInnards(cli *c,      int   tmatch, sds vallist, sds wclause,
     /* Figure out which columns get updated(HIT) and which dont(MISS) */
     r_tbl_t *rt    = &Tbl[tmatch];
     int      ncols = rt->col_count;
-    uchar    cmiss[ncols]; ue_t    ue   [ncols]; lue_t le[ncols];
-    char    *vals [ncols]; uint32  vlens[ncols];
-    if (!assignMisses(c, tmatch, ncols, qcols, ics, cmiss, vals, vlens, ue,
+    icol_t   chit[ncols]; ue_t    ue   [ncols]; lue_t le[ncols];
+    char    *vals[ncols]; uint32  vlens[ncols];
+    if (!assignMisses(c, tmatch, ncols, qcols, ics, chit, vals, vlens, ue,
                       mvals, mvlens, le))                      return -1;
     int nsize = -1; /* B4 GOTO */
     cswc_t w; wob_t wb; init_wob(&wb);
@@ -631,7 +637,7 @@ int updateInnards(cli *c,      int   tmatch, sds vallist, sds wclause,
     } //dumpW(printf, &w); dumpWB(printf, &wb);
 
     bool  u_up, mci_up; 
-    bool  upi  = updatingIndex(matches, inds, cmiss, &mci_up, &u_up);
+    bool  upi  = isUpdatingIndex(matches, inds, chit, &mci_up, &u_up);
     bt   *btr  = getBtr(w.wf.tmatch);
     bool  isr  = (w.wtype != SQL_SINGLE_LKP);
     if (mci_up && isr) { addReply(c, shared.range_mciup);        goto upc_end; }
@@ -644,7 +650,7 @@ int updateInnards(cli *c,      int   tmatch, sds vallist, sds wclause,
         if (w.wf.imatch == -1) {
             addReply(c, shared.rangequery_index_not_found);      goto upc_end;
         }
-        iupdateAction(c,  &w, &wb, ncols, matches, inds, vals, vlens, cmiss,
+        iupdateAction(c,  &w, &wb, ncols, matches, inds, vals, vlens, chit,
                       ue, le, upi);
     } else {   /* SQL_SINGLE_UPDATE */
         uchar  pktyp = rt->col[0].type;
@@ -662,7 +668,7 @@ int updateInnards(cli *c,      int   tmatch, sds vallist, sds wclause,
                         else     addReply(c, shared.updatemiss); goto upc_end; }
         uc_t uc;
         init_uc(&uc, btr, w.wf.tmatch, ncols, matches, inds, vals, vlens,
-                cmiss, ue, le);
+                chit, ue, le);
         nsize        = updateRow(c, &uc, apk, rrow, 0); release_uc(&uc);
         //NOTE: rrow is no longer valid, updateRow() can change it
         if (nsize == -1)                                         goto upc_end;

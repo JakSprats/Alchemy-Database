@@ -130,21 +130,21 @@ void updateLru(cli *c, int tmatch, aobj *apk, uchar *lruc, bool lrud) {
         upIndex(c, ibtr, apk, &ocol, apk, &ncol, pktyp, NULL, NULL, imatch);
         releaseAobj(&ocol); releaseAobj(&ncol);
     } else { /* LRU empty -> run "UPDATE tbl SET LRU = now WHERE PK = apk" */
-        char     LruBuf[32]; snprintf(LruBuf, 32, "%u", getLru(tmatch));
+        char    lbuf[32]; snprintf(lbuf, 32, "%u", getLru(tmatch));
         MATCH_INDICES(tmatch)
-        int      ncols  = rt->col_count;
-        uchar    cmiss[ncols]; ue_t    ue   [ncols]; lue_t le[ncols];
-        char    *vals [ncols]; uint32  vlens[ncols];
+        int     ncols  = rt->col_count;
+        icol_t  chit[ncols]; ue_t    ue   [ncols]; lue_t le[ncols];
+        char   *vals[ncols]; uint32  vlens[ncols];
         for (int i = 0; i < ncols; i++) {
-            ue[i].yes = 0; le[i].yes = 0;
+            ue[i].yes = 0; le[i].yes = 0; INIT_ICOL(chit[i], -1);
             if (i == rt->lruc) {
-                cmiss[i] = 0; vals [i] = LruBuf; vlens[i] = strlen(LruBuf);
-            } else cmiss[i] = 1;
+                vals [i] = lbuf; vlens[i] = strlen(lbuf); chit[i].cmatch = i;
+            }
         }
         bt      *btr   = getBtr(tmatch);
         void    *rrow  = btFind(btr, apk); // apk has NOT been evicted
         uc_t uc;
-        init_uc(&uc, btr, tmatch, ncols, matches, inds, vals, vlens, cmiss,
+        init_uc(&uc, btr, tmatch, ncols, matches, inds, vals, vlens, chit,
                 ue,  le);
         updateRow(c, &uc, apk, rrow, 0); /* NOTE: ALWAYS succeeds */
         //NOTE: rrow is no longer valid, updateRow() can change it

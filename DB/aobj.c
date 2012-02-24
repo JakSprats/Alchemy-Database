@@ -53,6 +53,7 @@ void initAobj(aobj *a) {
 void releaseAobj(void *v) {
     aobj *a = (aobj *)v; a->type = COL_TYPE_NONE;                 a->empty = 1;
     if (a->freeme) { free(a->s); a->s = NULL; a->freeme = 0; }
+    //if (a->ic)     { destroyIC(a->ic); a->ic = NULL; } //TODO
 }
 void destroyAobj(void *v) { releaseAobj(v); free(v); }
 

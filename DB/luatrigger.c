@@ -48,6 +48,8 @@ ALL RIGHTS RESERVED
 #include "luatrigger.h"
 
 /* LUATRIGGER TODO LIST
+    0.) LUATRIGGER FIRST arg must be "isupdate"
+        |-> this must be automatically filled in on index-add/del
     1.) LuaCronFuncs should return the MS they want to be called again with
     2.) add "fk" to luatrigger (similar to arg: "table") will enable fk-checks
 */

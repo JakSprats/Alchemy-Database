@@ -113,12 +113,9 @@ void incrOffsetVar(redisClient *c, wob_t *wb, long incr) {
 
 // INSERT INSERT INSERT INSERT INSERT INSERT INSERT INSERT INSERT INSERT
 static char *validate_parsed_insert_val(uchar ctype, char *start, char *nextc) {
-    if        C_IS_S(ctype) { // column must be \' delimited
+    if  C_IS_S(ctype) { // column must be \' delimited
         char *endc = nextc - 1; REV_SKIP_SPACES(endc); SKIP_SPACES(start)
         if (*start != '\'' || *endc != '\'') return NULL; //TODO custom err-msg
-    } else if C_IS_O(ctype) { // column must be {.......}
-        char *endc = nextc - 1; REV_SKIP_SPACES(endc); SKIP_SPACES(start)
-        if (*start != '{' || *endc != '}') return NULL; //TODO custom err-msg
     }
     return nextc;
 }
@@ -534,11 +531,15 @@ uchar getExprType(char *pred, int plen) {
 int parseExpr(cli *c, int tmatch, int cmatch, char *val, uint32 vlen, ue_t *ue){
     uint32  i;
     uchar   ctype = Tbl[tmatch].col[cmatch].type;
-    for (i = 0; i < vlen; i++) { char e = *(val + i); if (!ISALNUM(e)) break; }
+    if C_IS_O(ctype)                             return 0;
+    for (i = 0; i < vlen; i++) {
+        char e = *(val + i);
+        if (!ISALNUM(e) && e != '_') break;
+    }
     if (!i || i == vlen)                         return 0;
     char   *cend  = val + i;
     icol_t  ic    = find_column_n(tmatch, val, (cend - val));
-    if (ic.cmatch == -1 || ic.cmatch != cmatch)        return 0;
+    if (ic.cmatch == -1 || ic.cmatch != cmatch)  return 0;
     char   *x     = cend; SKIP_SPACES(x)
     i             = (x - val); if (i == vlen)    return 0;
     char    e     = *x;      // TODO \/ use OpDelim[] array
@@ -629,8 +630,11 @@ bool parseCommaListToAobjs(char *tkn, int tmatch, list *as) {
         } else if (ISALPHA(c)) {
             a = createAobjFromString(tkn, len, COL_TYPE_STRING);    //FREEME 126
             icol_t ic  = find_column_n(tmatch, tkn, len);
-            if (ic.cmatch != -1) { a->i = ic.cmatch; a->type = COL_TYPE_CNAME; }
-            else {
+            if (ic.cmatch != -1) {
+                a->ic = (icol_t *)malloc(sizeof(icol_t));
+                cloneIC(a->ic, &ic);
+                a->i = ic.cmatch; a->type = COL_TYPE_CNAME;
+            } else {
                 for (int i = 0; i < len; i++) {
                     char c2 = *(tkn + i); if (!ISALNUM(c2)) return 0;
                 }
