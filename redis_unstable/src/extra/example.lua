@@ -66,3 +66,7 @@ function nest_json(num)
   print ('nest_json');
   return "{'DEEP':{'A':{'B':{'C':" .. cubed(num) .. "}}}}";
 end
+function nested_lua(n, f, s)
+  print ('nested_lua');
+  return {n = n; f = f; s = s;};
+end

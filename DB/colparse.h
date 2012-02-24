@@ -41,6 +41,7 @@ bool parseU128 (char *s,             uint128 *x);
 bool parseU128n(char *s, uint32 len, uint128 *x);
 
 // INSERT
+char *parse_insert_val_list_nextc(char *start, uchar ctype);
 char *parseRowVals(sds vals,  char   **pk,        int  *pklen,
                    int ncols, twoint   cofsts[],  int   tmatch,
                    int pcols, icol_t  *ics,       int   lncols, bool *ai);
@@ -89,6 +90,7 @@ int parseExpr(cli *c, int tmatch, int cmatch, char *val, uint32 vlen, ue_t *ue);
 void initLUE   (lue_t *le, sds fname, list *lcs);
 void releaseLUE(lue_t *le);
 bool parseCommaListToAobjs(char *tkn, int tmatch, list *as);
+bool luaFuncDefined(sds fname) ;
 bool checkOrCr8LFunc(int tmatch, lue_t *le, sds expr, bool cln);
 bool parseLuaExpr(int tmatch, char *val, uint32 vlen, lue_t *le);
 

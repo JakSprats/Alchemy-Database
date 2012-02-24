@@ -376,25 +376,119 @@ static uchar *createHashRow(cr_t *cr, crd_t *crd, uchar *rflag, uint32 *mlen) {
     return use16 ? createHash16Row(cr, crd, rflag, mlen, msize) :
                    createHash32Row(cr, crd, rflag, mlen, msize);
 }
+
+// WRITE_LUAOBJ WRITE_LUAOBJ WRITE_LUAOBJ WRITE_LUAOBJ WRITE_LUAOBJ WRITE_LUAOBJ
 #define DEBUG_WRITE_LUAOBJ                                              \
+  r_tbl_t *rt   = &Tbl[tmatch];                                         \
   printf("writeLuaObjCol: tname: %s cname: %s Lua: (%s) apk: ",         \
           rt->name, rt->col[cmatch].name, json); dumpAobj(printf, apk);
 
-static bool writeLuaObjCol(cli *c,    aobj   *apk,  int  tmatch, int cmatch,
-                           char *val, uint32  vlen, bool fromu) {
-    r_tbl_t *rt   = &Tbl[tmatch];
-    sds      json = sdsnewlen(val, vlen);                    DEBUG_WRITE_LUAOBJ
+static bool pushSdsToLua(sds arg) {
+    printf("pushSdsToLua: %s\n", arg);
+    if        (is_int  (arg)) {
+        long l = strtol(arg, NULL, 10);
+        lua_pushinteger(server.lua, l);  return 1;
+    } else if (is_float(arg)) {
+        double f = strtod(arg, NULL);
+        lua_pushnumber (server.lua, f);  return 1;
+    } else if (is_text (arg, sdslen(arg))) {
+        lua_pushstring(server.lua, arg); return 1;
+    } else return 0;
+}
+static bool writeLOC_FromFunc(cli *c,    aobj *apk,  int   tmatch, int  cmatch,
+                               sds fname, char *lprn, char *rprn,  bool fromu) {
+    r_tbl_t *rt    = &Tbl[tmatch];
+    int      ret   = 0;
+    sds      args  = NULL;
     CLEAR_LUA_STACK
-    char *func = fromu ? "queueLuaobjAssign" : "luaobjAssign";
+    char *func = fromu ? "__queueLuaobjAssign" : "__luaobjAssign";
+    lua_getfield  (server.lua, LUA_GLOBALSINDEX, func); // PUSH FUNC
+    lua_pushstring(server.lua, rt->name);
+    lua_pushstring(server.lua, rt->col[cmatch].name);
+    pushAobjLua   (apk, apk->type);
+
+    int  nargs = 0;
+    lua_getfield(server.lua, LUA_GLOBALSINDEX, fname); // PUSH FNAME
+
+    lprn++; SKIP_SPACES(lprn); rprn--; REV_SKIP_SPACES(rprn);
+    if (lprn < (rprn + 1)) {
+        sds   args = sdsnewlen(lprn, rprn - lprn + 1); // FREE 174
+        char *tkn  = args;
+        while (1) { bool r;
+            char *nextc = get_next_insert_value_token(tkn);
+            if (!nextc) {
+                sds arg = sdsnew(tkn);
+                r = pushSdsToLua(arg); sdsfree(arg); if (!r) goto w_locf_end;
+                nargs++; break;
+            }
+            sds arg = sdsnewlen(tkn, (nextc - tkn));
+            r = pushSdsToLua(arg); sdsfree(arg); if (!r) goto w_locf_end;
+            nextc++; tkn = nextc; SKIP_SPACES(nextc) nargs++;
+        }
+    }
+    int lret = DXDB_lua_pcall(server.lua, nargs, 1, 0); // call FNAME
+    if (lret) { ADD_REPLY_FAILED_LUA_STRING_CMD(fname) goto w_locf_end; }
+    lret = DXDB_lua_pcall(server.lua, 4, 0, 0);         // call FUNC
+    if (lret) { ADD_REPLY_FAILED_LUA_STRING_CMD(func)  goto w_locf_end; }
+    ret = 1;
+
+w_locf_end:
+    if (args) sdsfree(args);                             // FREED 174
+    CLEAR_LUA_STACK
+    return ret;
+}
+static bool runFuncForWriteLuaObjCol(cli *c, aobj *apk, int tmatch, int cmatch,
+                                     sds func, sds arg1) {
+    r_tbl_t *rt = &Tbl[tmatch];
+    CLEAR_LUA_STACK
     lua_getfield  (server.lua, LUA_GLOBALSINDEX, func);
     lua_pushstring(server.lua, rt->name);
     lua_pushstring(server.lua, rt->col[cmatch].name);
     pushAobjLua(apk, apk->type);
-    lua_pushstring(server.lua, json);
+    lua_pushstring(server.lua, arg1);
     int ret = DXDB_lua_pcall(server.lua, 4, 0, 0);
     if (ret) { ADD_REPLY_FAILED_LUA_STRING_CMD(func) }
     CLEAR_LUA_STACK
     return ret ? 0 : 1;
+}
+static bool write_LOC_NotJSON(cli *c,    aobj   *apk,  int  tmatch, int cmatch,
+                              char *val, uint32  vlen, bool fromu) {
+    char *lprn = _strnchr(val, '(', vlen);
+    if (lprn) {
+        char  llen = vlen - (lprn - val);
+        char *rprn = _strnchr(lprn, ')', llen);
+        if (rprn) {
+            char *endf  = lprn - 1; REV_SKIP_SPACES(endf)
+            sds   fname = sdsnewlen(val, endf - val + 1); // FREE 171
+            bool  isf   = luaFuncDefined(fname); int ok = 0;
+            if (isf) {
+                ok = writeLOC_FromFunc(c, apk, tmatch, cmatch,
+                                       fname, lprn, rprn, fromu);
+            }
+            sdsfree(fname);                               // FREED 171
+            if      (ok ==  1) return 1;
+            else if (ok == -1) return 0; // else fall thru to EVAL
+        }
+    }
+    //NOTE: FALL THRU, EVAL in LUA
+    sds   luae = sdsnewlen(val, vlen); // FREE 172
+    char *func = fromu ? "queueLuaobjAssignEval" : "luaobjAssignEval";
+    bool  ret  = runFuncForWriteLuaObjCol(c, apk, tmatch, cmatch, func, luae);
+    sdsfree(luae);                     // FREED 172
+    return ret;
+}
+
+static bool writeLuaObjCol(cli *c,    aobj   *apk,  int  tmatch, int cmatch,
+                           char *val, uint32  vlen, bool fromu) {
+    if (*val != '{') {
+        return write_LOC_NotJSON(c, apk, tmatch, cmatch, val, vlen, fromu);
+    }
+    sds   json = sdsnewlen(val, vlen);   // FREE 173
+    DEBUG_WRITE_LUAOBJ
+    char *func = fromu ? "queueLuaobjAssignJson" : "luaobjAssignJson";
+    bool  ret  = runFuncForWriteLuaObjCol(c, apk, tmatch, cmatch, func, json);
+    sdsfree(json);                      // FREED 173
+    return ret;
 }
 
 static uchar *writeRow(cli *c, aobj *apk, int tmatch, cr_t *cr, crd_t *crd,

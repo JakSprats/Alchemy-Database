@@ -3459,3 +3459,18 @@ function luaobj_nested_updates_test() {
   echo DUMP users
   $CLI DUMP users
 }
+
+function luaobj_assignment_test() {
+  $CLI DROP   TABLE doc >/dev/null;
+  $CLI CREATE TABLE doc "(pk INT, fk LONG, lo LUAOBJ)";
+  $CLI INTERPRET LUAFILE "./extra/example.lua";
+  $CLI INTERPRET LUAFILE "./core/dumper.lua";
+  echo JSON
+  $CLI INSERT INTO doc VALUES "(,111, {'nest':{'x':{'y':{'z':5}}}})";
+  echo LuaFunctionCall
+  $CLI INSERT INTO doc VALUES "(,111, nested_lua(10,9.99,'text'))"
+  echo LuaEval
+  $CLI INSERT INTO doc VALUES "(,111, nested_lua(45*77+100-math.sqrt(99)))"
+  $CLI DUMP doc
+
+}

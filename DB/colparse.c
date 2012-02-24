@@ -119,7 +119,7 @@ static char *validate_parsed_insert_val(uchar ctype, char *start, char *nextc) {
     }
     return nextc;
 }
-static char *parse_insert_val_list_nextc(char *start, uchar ctype) {
+char *parse_insert_val_list_nextc(char *start, uchar ctype) {
     char *nextc = get_next_insert_value_token(start); if (!nextc) return NULL;
     return validate_parsed_insert_val(ctype, start, nextc);
 }
@@ -692,7 +692,7 @@ static bool isLuaFunc(char *expr, sds *fname, sds *argt) {
     }
     return 0;
 }
-static bool luaFuncDefined(sds fname) {
+bool luaFuncDefined(sds fname) {
     lua_getglobal(server.lua, fname);
     int t = lua_type(server.lua, -1); lua_pop(server.lua, 1);
     printf("luaFuncDefined: fname: %s t: %d\n", fname, t);

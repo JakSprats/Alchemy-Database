@@ -258,7 +258,7 @@ int cr8Xcol(uint128 x, uint128 *col) { *col = x; return 16; }
 
 void pushLuaVar(int tmatch, icol_t ic, aobj *apk) {
     r_tbl_t *rt  = &Tbl[tmatch];                             DEBUG_PUSH_LUA_VAR
-    lua_getglobal (server.lua, LUA_OBJ_SHADOW_TABLE); // use STBL[] directly
+    lua_getglobal (server.lua, LUA_OBJ_SHADOW_TABLE); // READ from STBL[]
     lua_pushstring(server.lua, rt->name);
     lua_gettable  (server.lua, -2); lua_remove(server.lua, -2);
     lua_pushstring(server.lua, rt->col[ic.cmatch].name);
@@ -282,7 +282,7 @@ void pushLuaVar(int tmatch, icol_t ic, aobj *apk) {
          rt->name, rt->col[ic.cmatch].name); dumpAobj(printf, apk);
 void setLuaVar(int tmatch, icol_t ic, aobj *apk) {
     r_tbl_t *rt  = &Tbl[tmatch];                             DEBUG_SET_LUA_VAR
-    lua_getglobal (server.lua, LUA_OBJ_TABLE);
+    lua_getglobal (server.lua, LUA_OBJ_TABLE); // WRITE to ASQL[]
     lua_pushstring(server.lua, rt->name);
     lua_gettable  (server.lua, -2); lua_remove(server.lua, -2);
     lua_pushstring(server.lua, rt->col[ic.cmatch].name);

@@ -84,31 +84,44 @@ local function createASQLforSTBL(tbl, col, pk)
 end
 
 -- LUAOBJ_ASSIGN LUAOBJ_ASSIGN LUAOBJ_ASSIGN LUAOBJ_ASSIGN LUAOBJ_ASSIGN
-function __luaobjAssign(tbl, col, pk, luae)
+function __luaobjAssign(tbl, col, pk, t)
   --print ('__luaobjAssign: tbl: ' .. tbl .. ' col: ' .. col .. ' pk: ' .. pk);
-  STBL[tbl][col][pk] = luae; createASQLforSTBL(tbl, col, pk);
+  STBL[tbl][col][pk] = t; createASQLforSTBL(tbl, col, pk);
 end
-function luaobjAssign(tbl, col, pk, json) -- create Lua Object Row
+function luaobjAssignJson(tbl, col, pk, json) -- create Lua Object Row
   __luaobjAssign(tbl, col, pk, Json.decode(json));
 end
-function delete_luaobj(tbl, col, pk)
-  _G[LOTBL][tbl][col][pk] = nil; STBL[tbl][col][pk] = nil;
+function luaobjAssignEval(tbl, col, pk, luae)
+  local cmd = '__LOAET=' .. luae; assert(loadstring(cmd))();
+  __luaobjAssign(tbl, col, pk, __LOAET); --print('cmd: ' .. cmd);
 end
 
 -- ASSIGN_QUEUE ASSIGN_QUEUE ASSIGN_QUEUE ASSIGN_QUEUE ASSIGN_QUEUE
 local AssignQueue = {};
 local SlotAQ      = 1;
-function queueLuaobjAssign(tbl, col, pk, json) -- create Lua Object Row
+function __queueLuaobjAssign(tbl, col, pk, t)
   --print('QLO: tbl: ' .. tbl .. ' col: ' .. col .. ' pk: ' .. pk);
   table.insert(AssignQueue, SlotAQ, 
-               {tbl = tbl; col = col; pk = pk; luae = Json.decode(json); });
+               {tbl = tbl; col = col; pk = pk; t = t; });
   SlotAQ = SlotAQ + 1;
+end
+function queueLuaobjAssignJson(tbl, col, pk, json)
+  __queueLuaobjAssign(tbl, col, pk, Json.decode(json));
+end
+function queueLuaobjAssignEval(tbl, col, pk, luae)
+  local cmd = '__LOAET=' .. luae; assert(loadstring(cmd))();
+  __queueLuaobjAssign(tbl, col, pk, __LOAET);
 end
 function runQueueLuaobjAssign() --print('runQueueLuaobjAssign');
   for k, v in pairs(AssignQueue) do
-    __luaobjAssign(v.tbl, v.col, v.pk, v.luae);
+    __luaobjAssign(v.tbl, v.col, v.pk, v.t);
   end
   AssignQueue = {}; SlotAQ = 1;
+end
+
+-- DELETE_LUAOBJ DELETE_LUAOBJ DELETE_LUAOBJ DELETE_LUAOBJ DELETE_LUAOBJ
+function delete_luaobj(tbl, col, pk)
+  _G[LOTBL][tbl][col][pk] = nil; STBL[tbl][col][pk] = nil;
 end
 
 -- LUA_COLUMN_QUEUE LUA_COLUMN_QUEUE LUA_COLUMN_QUEUE LUA_COLUMN_QUEUE

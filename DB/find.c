@@ -74,6 +74,7 @@ static int _find_index(int tmatch, icol_t ic, bool prtl) {
     if (!C_IS_O(rt->col[ic.cmatch].type)) imatch = rt->col[ic.cmatch].imatch;
     else {
         ci_t     *ci = dictFetchValue(rt->cdict, rt->col[ic.cmatch].name);
+        if (!ci || !ci->ilist) return -1;
         listIter *li = listGetIterator(ci->ilist, AL_START_HEAD); listNode *ln;
         while((ln = listNext(li))) {
             int      im = (int)(long)ln->value;
