@@ -83,7 +83,8 @@ typedef bool select_callback(erow_t* erow);
 #define NOP 10 
 enum OP {NONE, EQ, NE, GT, GE, LT, LE, RQ, IN, LFUNC};
 
-#define LUA_OBJ_SHADOW_TABLE "STBL"
+#define LUA_OBJ_TABLE        "ASQL" // used for direct writes
+#define LUA_OBJ_SHADOW_TABLE "STBL" // used for reads
 
 struct uc_t;
 typedef struct uqc_t { 

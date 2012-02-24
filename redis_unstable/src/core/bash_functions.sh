@@ -3284,8 +3284,7 @@ function wiki_lua_tests() {
   echo "1 row FORMAT_NAME() [has_coupon]"
   $CLI SELECT "format_name(info)" FROM users WHERE "zipcode = 44555 AND has_coupon(info, 'XYZ123')"
   $CLI INTERPRET LUA "function generate_coupon() return 'XYZ' .. math.random(1,999); end"
-  #TODO UPDATE lua functionality
-  #$CLI UPDATE users SET "info.coupon = generate_coupon()" WHERE "userid = 1"
+  $CLI UPDATE users SET "info.coupon = generate_coupon()" WHERE "userid = 1"
   $CLI INTERPRET LUA "weight_gain_per_year={}; weight_gain_per_year[20]=1; weight_gain_per_year[25]=2; weight_gain_per_year[30]=3; weight_gain_per_year[35]=4; weight_gain_per_year[40]=5; weight_gain_per_year[45]=5; weight_gain_per_year[50]=4; weight_gain_per_year[55]=3; weight_gain_per_year[60]=2;"
   $CLI INTERPRET LUA "function update_weight(info) if (info.weight == nil) then return false; end for k, v in pairs(weight_gain_per_year) do if (k > info.age) then info.weight = info.weight + v; return true; end; end; end"
   echo "UPDATE as SELECT"

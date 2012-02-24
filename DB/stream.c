@@ -282,7 +282,7 @@ void pushLuaVar(int tmatch, icol_t ic, aobj *apk) {
          rt->name, rt->col[ic.cmatch].name); dumpAobj(printf, apk);
 void setLuaVar(int tmatch, icol_t ic, aobj *apk) {
     r_tbl_t *rt  = &Tbl[tmatch];                             DEBUG_SET_LUA_VAR
-    lua_getglobal (server.lua, LUA_OBJ_SHADOW_TABLE);
+    lua_getglobal (server.lua, LUA_OBJ_TABLE);
     lua_pushstring(server.lua, rt->name);
     lua_gettable  (server.lua, -2); lua_remove(server.lua, -2);
     lua_pushstring(server.lua, rt->col[ic.cmatch].name);
