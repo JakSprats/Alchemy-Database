@@ -40,8 +40,8 @@ bt *createLUBT(int num, uchar btype);
 bt *createULBT(int num, uchar btype);
 bt *createLLBT(int num, uchar btype);
 
-bt *createU_MCI_IBT(uchar ktype, int imatch, uchar pktyp);
 bt *createU_S_IBT  (uchar ktype, int imatch, uchar pktyp);
+bt *createU_MCI_IBT(uchar ktype, int imatch, uchar pktyp);
 bt *createMCI_MIDBT(uchar ktype, int imatch);
 bt *createIndexBT  (uchar ktype, int imatch);
 bt *createMCI_IBT  (list *clist, int imatch, uchar dtype);

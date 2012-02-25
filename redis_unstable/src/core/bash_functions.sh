@@ -3336,21 +3336,27 @@ function populate_graph_db() {
   $CLI SELECT "traverseByPK('BFS', 'graphdb', pk, 'REPLY.NODENAME_AND_PATH', 'EXPANDER.BOTH')" FROM graphdb WHERE pk BETWEEN 1 AND 3
 }
 
-function graphdb_fof_cities_test() {
+function graphdb_fof_cities_populate_cities() {
   $CLI INTERPRET LUAFILE "core/graph.lua";
   $CLI INTERPRET LUAFILE "core/example_user_cities.lua";
   $CLI DROP   TABLE cities >/dev/null
   $CLI CREATE TABLE cities "(pk INT, lo LUAOBJ, name TEXT)"
+  $CLI CREATE LUATRIGGER lt_cities ON cities INSERT "add_city(name, pk)"
+  $CLI CREATE LUATRIGGER lt_cities ON cities DELETE "del_city(name)"
+  #$CLI CREATE INDEX i_cityname ON cities "(name)"
   $CLI INSERT INTO cities VALUES "(10, {}, 'Washington D.C.')";
   $CLI SELECT "createNamedNode('cities', 'lo', pk, 'DC')" FROM cities WHERE pk=10
   $CLI INSERT INTO cities VALUES "(20, {}, 'New York City')";
   $CLI SELECT "createNamedNode('cities', 'lo', pk, 'NYC')" FROM cities WHERE pk=20
   $CLI INSERT INTO cities VALUES "(30, {}, 'San Francisco')";
   $CLI SELECT "createNamedNode('cities', 'lo', pk, 'SF')" FROM cities WHERE pk=30
+}
+function graphdb_fof_cities_test() {
+  graphdb_fof_cities_populate_cities
 
   $CLI DROP   TABLE users >/dev/null;
   $CLI CREATE TABLE users "(pk INT, hometown INT, lo LUAOBJ)";
-  $CLI CREATE INDEX lf_gf ON users "(relindx())" LONG constructUserGraphHooks destructUserGraphHooks
+  $CLI CREATE INDEX lf_users ON users "(relindx())" LONG constructUserGraphHooks destructUserGraphHooks
 
   $CLI INSERT INTO users VALUES "(1, 10, {})";
   $CLI SELECT "createNamedNode('users', 'lo', pk, 'A')" FROM users WHERE pk=1
@@ -3432,21 +3438,43 @@ function graphdb_fof_cities_test() {
   $CLI LUAFUNC addNodePropertyByPK 'cities' 10 'population'  5000000
   $CLI LUAFUNC addNodePropertyByPK 'cities' 20 'population' 20000000
   $CLI LUAFUNC addNodePropertyByPK 'cities' 30 'population'  2000000
-
-  $CLI LUAFUNC addNodeRelationShipByPK       'cities' 10 "PATH" 'cities' 20
-  $CLI LUAFUNC addPropertyToRelationshipByPK 'cities' 10 "PATH" 'cities' 20 \
-                                             'distance' 250
-  $CLI LUAFUNC addNodeRelationShipByPK       'cities' 10 "PATH" 'cities' 30
-  $CLI LUAFUNC addPropertyToRelationshipByPK 'cities' 10 "PATH" 'cities' 30 \
-                                             'distance' 2900
 }
 
-function advanced_tests() {
-  test_dot_notation_index
-  test_lua_sql_integration
-  wiki_lua_tests
-  populate_graph_db
-  graphdb_fof_cities_test
+function city_distance_test() {
+  graphdb_fof_cities_populate_cities
+
+  $CLI LUAFUNC addSqlCityRowAndNode 40 'Chicago' 'CHI'
+  $CLI LUAFUNC addSqlCityRowAndNode 50 'Cheyenne' 'CHE'
+  $CLI LUAFUNC addSqlCityRowAndNode 60 'Atlanta' 'ATL'
+  $CLI LUAFUNC addSqlCityRowAndNode 70 'Dallas' 'DAL'
+  $CLI LUAFUNC addSqlCityRowAndNode 80 'Albuquerque' 'ALB'
+  $CLI LUAFUNC addSqlCityRowAndNode 90 'Lexington' 'LEX'
+  $CLI LUAFUNC addSqlCityRowAndNode 100 'St. Louis' 'STL'
+  $CLI LUAFUNC addSqlCityRowAndNode 110 'Kansas City' 'KC'
+  $CLI LUAFUNC addSqlCityRowAndNode 120 'Denver' 'DEN'
+  $CLI LUAFUNC addSqlCityRowAndNode 130 'Salt Lake City' 'SLC'
+
+  $CLI LUAFUNC addCityDistance 'Washington D.C.' 'Chicago'        200
+  $CLI LUAFUNC addCityDistance 'Chicago'         'San Francisco'  500 # = 700
+  $CLI LUAFUNC addCityDistance 'Chicago'         'Cheyenne'       200
+  $CLI LUAFUNC addCityDistance 'Cheyenne'        'San Francisco'  200 # = 600
+
+  $CLI LUAFUNC addCityDistance 'Washington D.C.' 'Atlanta'        100
+  $CLI LUAFUNC addCityDistance 'Atlanta'         'Dallas'         100
+  $CLI LUAFUNC addCityDistance 'Dallas'          'San Francisco'  300 # = 500
+  $CLI LUAFUNC addCityDistance 'Dallas'          'Albuquerque'    100
+  $CLI LUAFUNC addCityDistance 'Albuquerque'     'San Francisco'  100 # = 400
+
+  $CLI LUAFUNC addCityDistance 'Washington D.C.' 'Lexington'       50
+  $CLI LUAFUNC addCityDistance 'Lexington'       'St. Louis'       50
+  $CLI LUAFUNC addCityDistance 'St. Louis'       'Kansas City'     50
+  $CLI LUAFUNC addCityDistance 'Kansas City'     'Denver'          50
+  $CLI LUAFUNC addCityDistance 'Denver'          'Salt Lake City'  50
+  $CLI LUAFUNC addCityDistance 'Salt Lake City'  'San Francisco'   50
+
+  $CLI LUAFUNC shortestPathByCityName 'cities'                          \
+                                      'Washington D.C.' 'San Francisco' \
+                                      "RELATIONSHIP_COST.WEIGHT"
 }
 
 
@@ -3497,3 +3525,15 @@ function luaobj_assignment_test() {
   $CLI DUMP doc
 
 }
+
+function advanced_tests() {
+  test_dot_notation_index
+  test_lua_sql_integration
+  wiki_lua_tests
+  populate_graph_db
+  graphdb_fof_cities_test
+  city_distance_test
+  luaobj_nested_updates_test
+  luaobj_assignment_test
+}
+

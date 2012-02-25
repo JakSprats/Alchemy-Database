@@ -489,7 +489,7 @@ local function get_val_func(v) return v.cost; end
 --TODO ProofOfConceptCode: this was a global shortestpath - for ALL nodes
 --     then I quickly hacked on it, to make it for [FromStartNode->ToEndNode]
 --     but it might be terribly INEFFICIENT on big-graphs
-function shortestpath(snode, tnode, so_options)
+function shortestpath(snode, tnode, options)
   assert(Vset[snode]  ~= nil, "start-node not in graph");
   assert(Vset[tnode]  ~= nil, "end-node not in graph");
   StartPK     = snode.__pk;
@@ -497,8 +497,8 @@ function shortestpath(snode, tnode, so_options)
   local paths = {};
   local dist  = {};
   local nopts = {expander_func   = defaultExpanderFunc;
-                 rel_cost_func   = so_options.rel_cost_func;
-                 node_delta_func = so_options.node_delta_func};
+                 rel_cost_func   = options.rel_cost_func;
+                 node_delta_func = options.node_delta_func};
   local H     = Heap.new(get_val_func) -- keep unmarked vertices ordered by dist
   for u in vertices() do dist[u] = math.huge end
   dist[snode] = 0;
@@ -558,16 +558,8 @@ function deletePropertyToRelationshipByPK(stbl, spk, rtype, ttbl, tpk, prop)
                                       getNodeByPK(ttbl, tpk), prop);
 end
 
-function traverseByPK(trav_type, tname, pk, reply_fname, ...)
-  local tfunc;
-  if     (trav_type == 'BFS') then tfunc = traverse_bfs;
-  elseif (trav_type == 'DFS') then tfunc = traverse_dfs;
-  else                         error("traversal_type:[BFS,DFS]"); end
-  if (tname == nil) then error("arg: 'tname' is required"); end
-  local reply_func = ReplyFuncs[reply_fname];
-  if (reply_func == nil) then
-    error("reply_fname: [NODENAME, PATH, NODENAME_AND_PATH]");
-  end
+
+function getOptions(...)
   local options = {};
   for i,v in ipairs(arg) do
     if (string.sub(v, 1, 9) == "EXPANDER.") then
@@ -611,7 +603,27 @@ function traverseByPK(trav_type, tname, pk, reply_fname, ...)
       options.max_depth = tonumber(string.sub(v, 11));
     end
   end
+  return options;
+end
+function traverseByPK(trav_type, tname, pk, reply_fname, ...)
+  local tfunc;
+  if     (trav_type == 'BFS') then tfunc = traverse_bfs;
+  elseif (trav_type == 'DFS') then tfunc = traverse_dfs;
+  else                         error("traversal_type:[BFS,DFS]"); end
+  if (tname == nil) then error("arg: 'tname' is required"); end
+  local reply_func = ReplyFuncs[reply_fname];
+  if (reply_func == nil) then
+    error("reply_fname: [NODENAME, PATH, NODENAME_AND_PATH]");
+  end
+  local options = getOptions(...);
   return tfunc(getNodeByPK(tname, pk), reply_func, options)
+end
+
+function shortestPathByPK(tname, spk, epk, ...)
+  local snode   = getNodeByPK(tname, spk);
+  local enode   = getNodeByPK(tname, epk);
+  local options = getOptions(...);
+  return shortestpath(snode, enode, options)
 end
 
 -- LUA_FUNCTION_INDEX  LUA_FUNCTION_INDEX  LUA_FUNCTION_INDEX 

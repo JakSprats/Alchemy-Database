@@ -54,3 +54,36 @@ function destructUserGraphHooks(tname, iname)
     end
   end
 end
+
+-- LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER
+UserData.CityToPK = {}; -- UserData[] gets persisted
+function add_city(name, pk) UserData.CityToPK[name] = pk;  end
+function del_city(name)     UserData.CityToPK[name] = nil; end
+
+-- API_TO_OUTSIDE API_TO_OUTSIDE API_TO_OUTSIDE API_TO_OUTSIDE API_TO_OUTSIDE
+function addSqlCityRowAndNode(pk, cityname, cityabbrv)
+  --$CLI INSERT INTO cities VALUES "(40,  {}, 'Chicago')";
+  --$CLI SELECT "createNamedNode('cities', 'lo', pk, 'CHI')" FROM cities WHERE pk=40
+  local r1 = redis('INSERT', 'INTO', 'cities', 'VALUES',
+                   "(" .. pk .. ", {}, '" .. cityname .. "')");
+  local r2 = redis('SELECT',
+                   "createNamedNode('cities', 'lo', pk, '" .. cityabbrv .."')",
+                   'FROM', 'cities', 'WHERE', 'pk = ' .. pk);
+  return "INSERT: "   .. DataDumper(r1) .. "\n" ..
+         "ADD_NODE: " .. DataDumper(r2);
+end
+
+function addCityDistance(to, from, dist)
+  addNodeRelationShipByPK('cities', UserData.CityToPK[to], "PATH",
+                          'cities', UserData.CityToPK[from]);
+  return addPropertyToRelationshipByPK('cities', UserData.CityToPK[to],   "PATH", 
+                                       'cities', UserData.CityToPK[from],
+                                       'weight', dist);
+end
+function shortestPathByCityName(tname, startcity, endcity, ...)
+  local r = shortestPathByPK(tname, UserData.CityToPK[startcity],
+            UserData.CityToPK[endcity], ...);
+  return {r.cost, r.path};
+end
+
+

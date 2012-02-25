@@ -583,9 +583,14 @@ int newIndex(cli    *c,     sds    iname, int  tmatch,    icol_t ic,
         if (ri->icol.nlo &&
             !createLuaElementIndex(c, tmatch, ic, imatch)) goto newind_err;
         uchar pktyp = rt->col[0].type;
-        ri->btr = ri->clist       ? createMCI_IBT(ri->clist, imatch, ri->dtype):
-                  UNIQ(ri->cnstr) ? createU_S_IBT(ri->dtype, imatch, pktyp) :
-        /* normal & lru/lfu */      createIndexBT(ri->dtype, imatch);
+        if        (ri->clist) {
+            ri->btr = createMCI_IBT(ri->clist, imatch, ri->dtype);
+        } else if UNIQ(ri->cnstr) {
+            ri->btr = createU_S_IBT(ri->dtype, imatch, pktyp);
+        } else { // Normal & LRU/LFU
+            ri->btr = createIndexBT(ri->dtype, imatch);
+        }
+
     }
     ASSERT_OK(dictAdd(IndD, sdsdup(ri->name), VOIDINT(imatch + 1)));
     if (!virt && !lru && !lfu && !luat && !prtl && !fname) {

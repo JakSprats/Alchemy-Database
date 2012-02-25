@@ -237,21 +237,20 @@ list *cloneAobjList(list *ll) {
 
 static char SFA_buf[64];
 static char *strFromAobj(aobj *a, int *len) {
-    char *s;
+    //printf("strFromAobj: a: "); dumpAobj(printf, a);
     if        (C_IS_S(a->type)) {
-        s         = malloc(a->len + 1);                  /* FREE ME 015 */
-        memcpy(s, a->s, a->len);
-        s[a->len] = '\0';
-        *len      = a->len;
+        char *s = malloc(a->len + 1);                  /* FREE ME 015 */
+        memcpy(s, a->s, a->len); s[a->len] = '\0'; *len = a->len;
         return s;
+
     } else if (C_IS_I(a->type))   snprintf   (SFA_buf, 64, "%u",      a->i);
       else if (C_IS_P(a->type))   snprintf   (SFA_buf, 64, "%u",      a->i);
       else if (C_IS_L(a->type))   snprintf   (SFA_buf, 64, "%lu",     a->l);
       else if (C_IS_F(a->type))   snprintf   (SFA_buf, 64, FLOAT_FMT, a->f);
       else if (C_IS_X(a->type)) { SPRINTF_128(SFA_buf, 64,            a->x); }
       else                        assert(!"strFromAobj ERROR");
-    s    = _strdup(SFA_buf);                    /* FREE ME 015 */
-    *len = strlen(SFA_buf);
+    char *s = _strdup(SFA_buf);                    /* FREE ME 015 */
+    *len    = strlen(SFA_buf);
     return s;
 }
 void initStringAobjFromAobj(aobj *a, aobj *a2) {
@@ -330,7 +329,10 @@ static char *outputAobj(aobj *a, int *rlen) {
     else if (C_IS_X(a->type)) return outputX    (a->x,         rlen);
     else if (C_IS_O(a->type)) return outputS    (a->s, a->len, rlen);
     else if (C_IS_N(a->type)) return outputNil  (              rlen);
-    else                      assert(!"outputAobj ERROR");
+    else if (C_IS_E(a->type)) { printf("outputAobj ERR\n");
+        sds e = ((robj *)server.alc.CurrError)->ptr;
+        return outputS(e, sdslen(e), rlen);
+    } else                    assert(!"outputAobj ERROR");
 }
 sl_t outputReformat(aobj *a) { //NOTE: used by orow_redis()
     sl_t sl; sl.s = outputAobj(a, &sl.len); sl.freeme = 1; sl.type = a->type;

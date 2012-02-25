@@ -10,6 +10,9 @@ require "pluto"
 dofile  "./core/dumper.lua";
 Json = require("json") -- Alchemy's IO is done via JSON (must be global)
 
+-- NOTE: this table is persisted to disk on "SAVE"
+UserData = {};
+
 -- HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER HELPER
 function open_or_error(file)
   infile, err = io.open(file, "rb")
@@ -173,6 +176,7 @@ end
 -- LUAOBJ_PERSISTENCE LUAOBJ_PERSISTENCE LUAOBJ_PERSISTENCE
 hooks_saveLuaUniverse = {}; hooks_loadLuaUniverse = {};
 local STBL_dump_file = "STBL.lua.rdb" local IEL_dump_file = "IEL.lua.rdb"
+local UD_dump_file   = "UserData.lua.rdb";
 
 function save_lua_universe()
   if (hooks_saveLuaUniverse ~= nil) then
@@ -184,6 +188,8 @@ function save_lua_universe()
   local ofile  = io.open(STBL_dump_file, "wb"); ofile:write(buf); ofile:close();
   buf          = pluto.persist(perms, IEL);
   ofile        = io.open(IEL_dump_file,  "wb"); ofile:write(buf); ofile:close();
+  buf          = pluto.persist(perms, UserData);
+  ofile        = io.open(UD_dump_file,  "wb"); ofile:write(buf); ofile:close();
 end
 
 function load_lua_universe()
@@ -193,6 +199,8 @@ function load_lua_universe()
   STBL         = pluto.unpersist(perms, buf)
   buf          = open_or_error(IEL_dump_file);
   IEL          = pluto.unpersist(perms, buf)
+  buf          = open_or_error(UD_dump_file);
+  UserData     = pluto.unpersist(perms, buf)
   _G[LOTBL]    = {};
   for tbl, colt in pairs(STBL) do -- Create ASQL[] from STBL[] values
     for col, pkt in pairs(colt) do

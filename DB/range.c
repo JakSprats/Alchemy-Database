@@ -491,7 +491,7 @@ static long singleOpFK(range_t *g, row_op *p) {               //DEBUG_SINGLE_FK
     node_op  *nop    = UNIQ(ri->cnstr) ? uBT_Op : nBT_Op;
     uint32    nexpc  = ri->clist ? (ri->clist->len - 1) : 0;
     bool      singu  = SIMP_UNIQ(ibtr);
-    bt       *fibtr  = singu ? NULL : btIndFind(ibtr, afk); DEBUG_SINGFK_INFO
+    bt       *fibtr  = singu ? NULL : btIndFind(ibtr, afk); //DEBUG_SINGFK_INFO
     // CHECK for a 100% Evicted Index
     if (!singu && iss && !fibtr) { if (btIndExist(ibtr, afk)) return -1; }
     bt       *nbtr   = singu ? ibtr : btMCIFindVal(w, fibtr, &nmatch, ri);

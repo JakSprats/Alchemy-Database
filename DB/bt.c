@@ -128,7 +128,7 @@ bt *createIBT(uchar ktype, int imatch, uchar btype) {
     return bt_create(cmp, TRANS_ONE, &bts, 0);
 }
 static bt *_createUIBT(uchar ktype, int imatch, uchar pktyp, uchar bflag) {
-    if (C_IS_I(ktype)) {
+    if        (C_IS_I(ktype)) {
         return  C_IS_I(pktyp) ? createUUBT(imatch, bflag) :
                (C_IS_L(pktyp) ? createULBT(imatch, bflag) :
              /* C_IS_X */       createUXBT(imatch, bflag));

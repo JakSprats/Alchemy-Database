@@ -55,8 +55,6 @@ extern dictType sdsDictType;
 
 // CONSTANT GLOBALS
 static uchar VIRTUAL_INDEX_TYPE = 255;
-static uchar LUAT_JUST_ADD      = 0;
-static uchar LUAT_WITH_DEL      = 1;
 
 /* PROTOTYPES */
 int       rdbSaveLen(FILE *fp, uint32_t len);
@@ -67,7 +65,12 @@ uint32_t  rdbLoadLen(FILE *fp, int *isencoded);
 int       rdbLoadType(FILE *fp);
 robj     *rdbLoadStringObject(FILE *fp);
 
+#define NO_LTC  1
+#define HAS_LTC 2
 static int saveLtc(FILE *fp, ltc_t *ltc) {
+    int exists = ltc->fname ? HAS_LTC: NO_LTC;
+    if (rdbSaveLen(fp, exists)              == -1)                  return -1;
+    if (!ltc->fname)                                                return  0;
     if (rdbSaveRawString(fp, ltc->fname, sdslen(ltc->fname)) == -1) return -1;
     if (rdbSaveLen(fp, ltc->tblarg)         == -1)                  return -1;
     if (rdbSaveLen(fp, ltc->ncols)          == -1)                  return -1;
@@ -82,30 +85,29 @@ int rdbSaveLuaTrigger(FILE *fp, r_ind_t *ri) {
     robj *r = createStringObject(ri->name, sdslen(ri->name));
     if (rdbSaveStringObject(fp, r) == -1)                           return -1;
     decrRefCount(r);
-    if (rdbSaveLen(fp, tmatch)    == -1)                            return -1;
-    if (luat->del.ncols) {
-        if (fwrite(&LUAT_WITH_DEL, 1, 1, fp) == 0)                  return -1;
-    } else {
-        if (fwrite(&LUAT_JUST_ADD, 1, 1, fp) == 0)                  return -1;
-    }
-    if                    (saveLtc(fp, &luat->add)         == -1)   return -1;
-    if (luat->del.ncols && saveLtc(fp, &luat->del)         == -1)   return -1;
+    if (rdbSaveLen(fp, tmatch)     == -1)                           return -1;
+    if (saveLtc(fp, &luat->add)    == -1)                           return -1;
+    if (saveLtc(fp, &luat->del)    == -1)                           return -1;
+    if (saveLtc(fp, &luat->preup)  == -1)                           return -1;
+    if (saveLtc(fp, &luat->postup) == -1)                           return -1;
     return 0;
 }
 static bool loadLtc(FILE *fp, ltc_t *ltc) {
+    uint32 u;
+    if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)             return 0;
+    if (u == NO_LTC)                                                return 1;
     robj *o;
     if (!(o = rdbLoadStringObject(fp)))                             return 0;
     ltc->fname = sdsdup(o->ptr);
     decrRefCount(o);
-    uint32 u;
     if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)             return 0;
     ltc->tblarg = (bool)u;
     if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)             return 0;
     ltc->ncols = u;
+    ltc->ics   = malloc(sizeof(icol_t) * ltc->ncols);    // FREE 083
     for (int j = 0; j < ltc->ncols; j++) {
         if ((u = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)         return 0; 
-        ltc->ics[j].cmatch = (int)u;
-        //TODO FIXME populate "lo"
+        INIT_ICOL(ltc->ics[j], (int)u); //TODO FIXME populate "lo"
         ltc->ics[j].lo     = NULL;
     }
     return 1;
@@ -117,10 +119,10 @@ bool rdbLoadLuaTrigger(FILE *fp) {
     if (!(trname = rdbLoadStringObject(fp)))                        return 0;
     if ((u     = rdbLoadLen(fp, NULL)) == REDIS_RDB_LENERR)         return 0;
     int     tmatch = (int)u;
-    uchar which;
-    if (fread(&which, 1, 1, fp) == 0)                               return 0;
     if (loadLtc(fp, &luat->add)              == 0)                  return 0;
-    if (which == LUAT_WITH_DEL && loadLtc(fp, &luat->del) == 0)     return 0;
+    if (loadLtc(fp, &luat->del)              == 0)                  return 0;
+    if (loadLtc(fp, &luat->preup)            == 0)                  return 0;
+    if (loadLtc(fp, &luat->postup)           == 0)                  return 0;
     DECLARE_ICOL(ic, -1)
     if ((newIndex(NULL, trname->ptr, tmatch, ic, NULL, 0, 0, 0, luat, ic,
                   0, 0, 0, NULL, NULL, NULL)) == -1)                return 0;
@@ -435,12 +437,16 @@ bool rdbLoadBT(FILE *fp) { //printf("rdbLoadBT\n");
             if (!ci->ilist) ci->ilist = listCreate();        // FREE 148
             listAddNodeTail(ci->ilist, VOIDINT imatch);
         }
-        uchar ktype;
+        uchar ktype; //TODO ktype may be redundant w/ ri->dtype
         if (fread(&ktype,    1, 1, fp) == 0)                        return 0;
         uchar pktyp = rt->col[0].type;
-        ri->btr = ri->clist       ? createMCI_IBT(ri->clist, imatch, ri->dtype):
-                  UNIQ(ri->cnstr) ? createU_S_IBT(ktype,     imatch, pktyp) :
-                                    createIndexBT(ktype,     imatch);
+        if        (ri->clist) {
+            ri->btr = createMCI_IBT(ri->clist, imatch, ri->dtype);
+        } else if UNIQ(ri->cnstr) {
+            ri->btr = createU_S_IBT(ri->dtype, imatch, pktyp);
+        } else {
+            ri->btr = createIndexBT(ri->dtype, imatch);
+        }
         ASSERT_OK(dictAdd(IndD, sdsdup(ri->name), VOIDINT(imatch + 1)));
         if (ri->iconstrct &&
             !runLuaFunctionIndexFunc(NULL, ri->iconstrct, rt->name,
