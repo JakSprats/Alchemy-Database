@@ -85,9 +85,9 @@ void DXDB_createSharedObjects() {
     shared.badindexedcolumnsyntax = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: JOIN WHERE tablename.columname ...\r\n"));
     shared.luat_decl_fmt = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: CREATE LUATRIGGER name ON table ADD_FUNC [DEL_FUNC] - NOTE: no U128 support\r\n"));
+        "-ERR SYNTAX: CREATE LUATRIGGER name ON table [INSERT|DELETE|PREUPDATE|POSTUPDATE] function(args,,,) - NOTE: no U128 support\r\n"));
     shared.luat_c_decl = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: CREATE LUATRIGGER ... ADD_FUNC can ONLY contain column names and commas, e.g. \"luafunc(col1, col2, col3)\"\r\n"));
+        "-ERR SYNTAX: CREATE LUATRIGGER ... Function can ONLY contain column names and commas, e.g. \"luafunc(col1, col2, col3)\"\r\n"));
 
     shared.invalidupdatestring = createObject(REDIS_STRING,sdsnew(
         "-ERR UPDATE: SET error, syntax is col1=val1,col2=val2,....\r\n"));
@@ -393,4 +393,6 @@ void DXDB_createSharedObjects() {
         "-ERR: NESTED Dot-Notation-Indexes not YET supported\r\n"));
     shared.overflow              = createObject(REDIS_STRING,sdsnew(
         "-ERR: MATH: INTEGER OVERFLOW\r\n"));
+    shared.nonunique_ltname      = createObject(REDIS_STRING,sdsnew(
+        "-ERR: NON-UNIQUE: LUATRIGGER name AND LUATRIGGER type already defined\r\n"));
 }

@@ -256,14 +256,16 @@ static void outputAdvancedIndexInfo(redisClient *c, int tmatch, long *card) {
         r_ind_t *ri = &Index[inds[i]];
         if (ri->hlt) {
             luat_t *luat = ri->luat;
-            sds     acmd = getLUATlist(&luat->add, tmatch);/* DESTROY ME 077 */
-            sds     desc = sdscatprintf(sdsempty(), "LUATRIGGER: %s [ADD: %s]",
-                                         ri->name, acmd);
-            sdsfree(acmd);                               /* DESTROYED 077 */
+            sds desc = sdscatprintf(sdsempty(), "LUATRIGGER: %s ", ri->name);
+            if (luat->add.ncols) {
+                sds acmd = getLUATlist(&luat->add, tmatch);    // FREE 078
+                desc     = sdscatprintf(desc, " [ADD: %s]", acmd);
+                sdsfree(acmd);                                 // FREED 078
+            }
             if (luat->del.ncols) {
-                sds dcmd = getLUATlist(&luat->del, tmatch); /* DESTROY ME 078*/
+                sds dcmd = getLUATlist(&luat->del, tmatch);    // FREE 078
                 desc     = sdscatprintf(desc, " [DEL: %s]", dcmd);
-                sdsfree(dcmd);                           /* DESTROYED 078 */
+                sdsfree(dcmd);                                 // FREED 078
             }
             if (luat->preup.ncols) {
                 sds pcmd = getLUATlist(&luat->preup, tmatch);  // FREE 078

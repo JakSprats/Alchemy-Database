@@ -2392,8 +2392,12 @@ function first_ltrigger_test() {
   $CLI INTERPRET LUA "function lcap_del(tname, fk1, pk) print('lcap_del: tname: ' .. tname .. ' fk1: ' .. fk1 .. ' pk: ' .. pk); end"
   $CLI INTERPRET LUA "function lcap_preup(tname, fk1, pk) print('lcap_preup: tname: ' .. tname .. ' fk1: ' .. fk1 .. ' pk: ' .. pk); end"
   $CLI INTERPRET LUA "function lcap_postup(tname, fk1, pk) print('lcap_postup: tname: ' .. tname .. ' fk1: ' .. fk1 .. ' pk: ' .. pk); end"
-  echo CREATE LUATRIGGER lt_cap ON cap "lcap_add(table, fk1, pk)" "lcap_del(table, fk1, pk)" "lcap_preup(table, fk1, pk)" "lcap_postup(table, fk1, pk)"
-  $CLI CREATE LUATRIGGER lt_cap ON cap "lcap_add(table, fk1, pk)" "lcap_del(table, fk1, pk)" "lcap_preup(table, fk1, pk)" "lcap_postup(table, fk1, pk)"
+
+  $CLI CREATE LUATRIGGER lt_cap ON cap INSERT     "lcap_add(table, fk1, pk)"
+  $CLI CREATE LUATRIGGER lt_cap ON cap DELETE     "lcap_del(table, fk1, pk)"
+  $CLI CREATE LUATRIGGER lt_cap ON cap PREUPDATE  "lcap_preup(table, fk1, pk)"
+  $CLI CREATE LUATRIGGER lt_cap ON cap POSTUPDATE "lcap_postup(table, fk1, pk)"
+
   echo 2 X INSERT INTO cap VALUES "(,7, '#')"
   $CLI INSERT INTO cap VALUES "(,7, 'ONE')"
   $CLI INSERT INTO cap VALUES "(,8, 'TWO')"
@@ -2408,7 +2412,8 @@ function lcap_test() {
   $CLI DROP   TABLE lcap
   $CLI CREATE TABLE lcap "(pk INT, fk1 INT, fk2 INT)"
   $CLI CREATE INDEX      i_lcap   ON lcap "(fk1)"
-  $CLI CREATE LUATRIGGER dlt_lcap ON lcap "lcap_add(table, fk1, pk)" "lcap_del(table, fk1, pk)"
+  $CLI CREATE LUATRIGGER dlt_lcap ON lcap INSERT "lcap_add(table, fk1, pk)"
+  $CLI CREATE LUATRIGGER dlt_lcap ON lcap DELETE "lcap_del(table, fk1, pk)"
   $CLI CREATE LRUINDEX ON lcap
   $CLI INSERT INTO lcap VALUES "(1,1,1)"
   $CLI INSERT INTO lcap VALUES "(2,2,2)"
@@ -2601,8 +2606,8 @@ function test_fully_loaded_table() {
   $CLI CREATE LRUINDEX ON fullload
   $CLI CREATE LFUINDEX ON fullload
   $CLI CREATE INDEX i_fl_ob_lru ON fullload "(fk2)" ORDER BY fk3
-  $CLI CREATE LUATRIGGER lt_fl ON fullload "ltrig_cnt(table, *)"
-  $CLI CREATE LUATRIGGER lt_fl2 ON fullload "hiya()"
+  $CLI CREATE LUATRIGGER lt_fl  ON fullload INSERT "ltrig_cnt(table, *)"
+  $CLI CREATE LUATRIGGER lt_fl2 ON fullload INSERT "hiya()"
   $CLI INSERT INTO fullload VALUES "(,1,1,9,'1','ONE')"
   $CLI INSERT INTO fullload VALUES "(,2,1,8,'2','TWO')"
   echo sleep 10

@@ -141,63 +141,48 @@ static bool parseLuatCmd(cli *c, sds cmd, ltc_t *ltc, int tmatch) {
     RELEASE_CS_LS_LIST
     return ok;
 }
-static void luaTAdd(cli *c, sds trname, sds tname, sds acmd, sds dcmd, 
-                    sds preupcmd, sds postupcmd) {
-    printf("luaTAdd; trname: %s tname: %s acmd: %s dcmd: %s preupcmd: %s postupcmd: %s\n", trname, tname, acmd, dcmd, preupcmd, postupcmd);
-    int     tmatch = find_table(tname);
-    if (tmatch == -1) { addReply(c, shared.nonexistenttable);    return; }
-    luat_t *luat   = init_lua_trigger();
-    if (!parseLuatCmd(c, acmd, &luat->add, tmatch)) {
+
+static void luaTAdd(cli    *c,    sds    trname, int tmatch,
+                    luat_t *luat, ltc_t *ltc,    sds cmd,    int imatch) {
+    printf("luaTAdd; trname: %s tmatch: %d cmd: %s\n", trname, tmatch, cmd);
+    if (!parseLuatCmd(c, cmd, ltc, tmatch)) {
         addReply(c, shared.luat_decl_fmt);     goto luatadd_err;
     }
-    if (dcmd) {
-        if (!parseLuatCmd(c, dcmd, &luat->del, tmatch)) {
-            addReply(c, shared.luat_decl_fmt); goto luatadd_err;
-        }
+    if (imatch == -1) {
+        DECLARE_ICOL(ic, -1)
+        newIndex(c, trname, tmatch, ic, NULL, 0, 0, 0, luat, ic,
+                 0, 0, 0, NULL, NULL, NULL); //Cant fail
     }
-    if (preupcmd) {
-        if (!parseLuatCmd(c, preupcmd, &luat->preup, tmatch)) {
-            addReply(c, shared.luat_decl_fmt); goto luatadd_err;
-        }
-    }
-    if (postupcmd) {
-        if (!parseLuatCmd(c, postupcmd, &luat->postup, tmatch)) {
-            addReply(c, shared.luat_decl_fmt); goto luatadd_err;
-        }
-    }
-    DECLARE_ICOL(ic, -1)
-    newIndex(c, trname, tmatch, ic, NULL, 0, 0, 0, luat, ic,
-             0, 0, 0, NULL, NULL, NULL); //Cant fail
     addReply(c, shared.ok);
     return;
 
 luatadd_err:
     destroy_lua_trigger(luat);
 }
+//SYNTAX: CREATE LUATRIGGER lname ON tbl TYPE command
 void createLuaTrigger(cli *c) {
-    if (c->argc < 6) { addReply(c, shared.luatrigger_wrong_nargs); return; }
+    if (c->argc != 7) { addReply(c, shared.luatrigger_wrong_nargs);   return; }
     if (strcasecmp(c->argv[3]->ptr, "ON")) { 
-        addReply(c, shared.createsyntax);                          return;
+        addReply(c, shared.createsyntax);                             return;
     }
-    sds   trname = c->argv[2]->ptr;
-    if (match_index_name(trname) != -1) {
-        addReply(c, shared.nonuniqueindexnames);                   return;
+    int     tmatch = find_table(c->argv[4]->ptr);
+    if (tmatch == -1) { addReply(c, shared.nonexistenttable);         return; }
+    sds     trname = c->argv[2]->ptr;
+    int     imatch = match_index_name(trname);
+    luat_t *luat   = (imatch == -1) ? init_lua_trigger() : Index[imatch].luat;
+    ltc_t  *ltc; sds targtype = c->argv[5]->ptr;
+    if      (!strcasecmp(targtype, "INSERT"))     ltc = &luat->add;
+    else if (!strcasecmp(targtype, "DELETE"))     ltc = &luat->del;
+    else if (!strcasecmp(targtype, "PREUPDATE"))  ltc = &luat->preup;
+    else if (!strcasecmp(targtype, "POSTUPDATE")) ltc = &luat->postup;
+    else {
+        addReply(c, shared.luat_decl_fmt); destroy_lua_trigger(luat); return;
     }
-    char *dcmd      = (c->argc > 6) ? c->argv[6]->ptr : NULL;
-    char *preupcmd  = (c->argc > 7) ? c->argv[7]->ptr : NULL;
-    char *postupcmd = (c->argc > 8) ? c->argv[8]->ptr : NULL;
-    luaTAdd(c, trname, c->argv[4]->ptr, c->argv[5]->ptr,
-            dcmd, preupcmd, postupcmd);
-}
-
-// DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP
-void dropLuaTrigger(cli *c) {
-    sds iname  = c->argv[2]->ptr;
-    int imatch = match_index_name(iname);
-    if (imatch == -1)        { addReply(c, shared.nullbulk);        return; }
-    if (!Index[imatch].luat) { addReply(c, shared.drop_luatrigger); return; }
-    emptyIndex(c, imatch);
-    addReply(c, shared.cone);
+    if (ltc->fname && imatch != -1) {
+        addReply(c, shared.nonunique_ltname);                         return;
+    }
+    sds cmd = c->argv[6]->ptr;
+    luaTAdd(c, trname, tmatch, luat, ltc, cmd, imatch);
 }
 
 // CALL_LUATRIGGER CALL_LUATRIGGER CALL_LUATRIGGER CALL_LUATRIGGER
@@ -215,7 +200,6 @@ static void luatDo(bt  *btr,    luat_t *luat, aobj *apk,
     r_ind_t *ri    = &Index[imatch];
     r_tbl_t *rt    = &Tbl[ri->tmatch];
     int      tcols = ltc->ncols + ltc->tblarg;
-
     //printf("luatDo: fname: %s tcols: %d\n", ltc->fname, tcols);
     lua_getfield(server.lua, LUA_GLOBALSINDEX, ltc->fname); // function to call
     if (ltc->tblarg) {
@@ -248,12 +232,21 @@ void luatPostUpdate(bt *btr, luat_t *luat, aobj *apk, int imatch, void *rrow) {
     luatDo(btr, luat, apk, imatch, rrow, LUAT_DO_POSTUP);
 }
 
+// DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP
+void dropLuaTrigger(cli *c) {
+    sds iname  = c->argv[2]->ptr;
+    int imatch = match_index_name(iname);
+    if (imatch == -1)        { addReply(c, shared.nullbulk);        return; }
+    if (!Index[imatch].luat) { addReply(c, shared.drop_luatrigger); return; }
+    emptyIndex(c, imatch);
+    addReply(c, shared.cone);
+}
+
 // DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
 //NOTE: Used in DESC & AOF
 sds getLUATlist(ltc_t *ltc, int tmatch) {
-    r_tbl_t *rt  = &Tbl[tmatch]; 
-    sds      cmd = sdsdup(ltc->fname);
-    cmd          = sdscatlen(cmd, "(", 1);
+    sds cmd = sdsdup(ltc->fname);
+    cmd     = sdscatlen(cmd, "(", 1);
     if (ltc->tblarg) cmd = sdscatlen(cmd, "table, ", 7);
     for (int j = 0; j < ltc->ncols; j++) {
         if (j) cmd = sdscatlen(cmd, ", ", 2);
