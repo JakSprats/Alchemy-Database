@@ -51,7 +51,7 @@ static bool SQLappendOnlyDumpIndices(FILE *fp, int tmatch) {
     MATCH_INDICES(tmatch)
     for (int i = 0; i < matches; i++) {
         r_ind_t *ri = &Index[inds[i]];
-        if (ri->virt || ri->luat || ri->fname) continue;
+        if (ri->virt || ri->hlt || ri->fname) continue;
         sds      s  = dumpSQL_Index(NULL, rt, ri, tmatch, 1);
         if (fwrite(s, strlen(s), 1, fp) == 0) return 0;
         sdsfree(s);
@@ -73,11 +73,11 @@ bool appendOnlyDumpIndices(FILE *fp, int tmatch) {
     for (int i = 0; i < matches; i++) {
         r_ind_t *ri   = &Index[inds[i]];
         if (ri->virt) continue;
-        luat_t  *luat = (luat_t *)ri->btr;/* NOTE: only used for LUATRIGGER */
+        luat_t *luat = ri->luat;
 
         char *cmd;
-        if (ri->luat) cmd = (luat->del.ncols) ? cmd_LUAT_D : cmd_LUAT;
-        else          cmd = UNIQ(ri->cnstr)   ? cmd_UINDEX : cmd_INDEX;
+        if (ri->hlt) cmd = (luat->del.ncols) ? cmd_LUAT_D : cmd_LUAT;
+        else         cmd = UNIQ(ri->cnstr)   ? cmd_UINDEX : cmd_INDEX;
         if (fwrite(cmd, strlen(cmd), 1, fp) == 0)                     return 0;
 
         sds s = ri->name;
@@ -86,8 +86,8 @@ bool appendOnlyDumpIndices(FILE *fp, int tmatch) {
         s     = tname;
         if (fwriteBulkString(fp, s, sdslen(s)) == -1)                 return 0;
 
-         if (ri->luat) {        /* LUA_TRIGGER */
-            luat_t *luat  = (luat_t *)ri->btr;
+         if (ri->hlt) {         /* LUA_TRIGGER */
+            luat_t *luat  = ri->luat;
             sds     alist = getLUATlist(&luat->add, tmatch);/* DESTROY ME 075 */
             if (fwriteBulkString(fp, alist, sdslen(alist)) == -1)     return 0;
             sdsfree(alist);                              /* DESTROYED 075 */
@@ -95,6 +95,16 @@ bool appendOnlyDumpIndices(FILE *fp, int tmatch) {
                 sds dlist = getLUATlist(&luat->del, tmatch); /* DESTROY ME 076*/
                 if (fwriteBulkString(fp, dlist, sdslen(dlist)) == -1) return 0;
                 sdsfree(dlist);                              /* DESTROYED 076 */
+            }
+            if (luat->preup.ncols) {
+                sds plist = getLUATlist(&luat->preup, tmatch);  // FREE 076
+                if (fwriteBulkString(fp, plist, sdslen(plist)) == -1) return 0;
+                sdsfree(plist);                                 // FREE 076
+            }
+            if (luat->postup.ncols) {
+                sds plist = getLUATlist(&luat->postup, tmatch); // FREE 076
+                if (fwriteBulkString(fp, plist, sdslen(plist)) == -1) return 0;
+                sdsfree(plist);                                 // FREE 076
             }
         } else if (ri->clist) { /* MCI */
             sds mlist = getMCIlist(ri->clist, tmatch);   /* DESTROY ME 051*/

@@ -824,6 +824,7 @@ function all_tests() {
   all_tests_5
   all_tests_6
   rest_api_first_test
+  advanced_tests
 }
 function all_tests_plus_benchmarks() {
   all_tests
@@ -2373,12 +2374,10 @@ function test_iup() {
 
 
 # LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER
-# LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER
 function init_cap_test() {
   $CLI DROP   TABLE cap
   $CLI CREATE TABLE cap "(pk INT, fk1 INT, t TEXT)"
   $CLI CREATE INDEX      i_cap  ON cap "(fk1)"
-  $CLI CREATE LUATRIGGER lt_cap ON cap "cap(fk1)"
 }
 function cap_test() {
   init_cap_test
@@ -2388,16 +2387,20 @@ function cap_test() {
 }
 
 function first_ltrigger_test() {
-  init_UU
+  init_cap_test
   $CLI INTERPRET LUA "function lcap_add(tname, fk1, pk) print('lcap_add: tname: ' .. tname .. ' fk1: ' .. fk1 .. ' pk: ' .. pk); end"
   $CLI INTERPRET LUA "function lcap_del(tname, fk1, pk) print('lcap_del: tname: ' .. tname .. ' fk1: ' .. fk1 .. ' pk: ' .. pk); end"
-  echo CREATE LUATRIGGER lt_UU ON UU "lcap_add(table, fk1, pk)" "lcap_del(table, fk1, pk)"
-  $CLI CREATE LUATRIGGER lt_UU ON UU "lcap_add(table, fk1, pk)" "lcap_del(table, fk1, pk)"
-  echo 2 X INSERT INTO UU VALUES "(,7)"
-  $CLI INSERT INTO UU VALUES "(,7)"
-  $CLI INSERT INTO UU VALUES "(,7)"
-  echo DELETE FROM UU WHERE pk=1
-  $CLI DELETE FROM UU WHERE pk=1
+  $CLI INTERPRET LUA "function lcap_preup(tname, fk1, pk) print('lcap_preup: tname: ' .. tname .. ' fk1: ' .. fk1 .. ' pk: ' .. pk); end"
+  $CLI INTERPRET LUA "function lcap_postup(tname, fk1, pk) print('lcap_postup: tname: ' .. tname .. ' fk1: ' .. fk1 .. ' pk: ' .. pk); end"
+  echo CREATE LUATRIGGER lt_cap ON cap "lcap_add(table, fk1, pk)" "lcap_del(table, fk1, pk)" "lcap_preup(table, fk1, pk)" "lcap_postup(table, fk1, pk)"
+  $CLI CREATE LUATRIGGER lt_cap ON cap "lcap_add(table, fk1, pk)" "lcap_del(table, fk1, pk)" "lcap_preup(table, fk1, pk)" "lcap_postup(table, fk1, pk)"
+  echo 2 X INSERT INTO cap VALUES "(,7, '#')"
+  $CLI INSERT INTO cap VALUES "(,7, 'ONE')"
+  $CLI INSERT INTO cap VALUES "(,8, 'TWO')"
+  echo DELETE FROM cap WHERE pk=1
+  $CLI DELETE FROM cap WHERE pk=1
+  echo UPDATE cap SET fk1=99 WHERE pk=2
+  $CLI UPDATE cap SET fk1=99 WHERE pk=2
 }
 
 function lcap_test() {
@@ -3456,6 +3459,12 @@ function luaobj_nested_updates_test() {
   echo Dynamic Lua Function UPDATE
   $CLI UPDATE users SET "info.nest.x.y.z = info.nest.x.y.z + info.nest.x.y.z * 100" WHERE userid=4
   $CLI SELECT \* FROM users WHERE userid=4
+  echo INSERT one more
+  $CLI INSERT INTO users VALUES "(, 3333, {'nest':{'x':{'y':{'z':9}}}})"
+  echo Full LUAOBJ UPDATE
+  $CLI UPDATE users SET "info = {'www':{'com':'org'}}" WHERE userid=5
+  $CLI SELECT \* FROM users WHERE userid=5
+
   echo DUMP users
   $CLI DUMP users
 }

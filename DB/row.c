@@ -1150,7 +1150,7 @@ bool addReplyRow(cli   *c,    robj *r,    int    tmatch, aobj *apk,
   dumpAobj(printf, apk);
 
 void deleteLuaObj(int tmatch, int cmatch, aobj *apk) {
-    r_tbl_t *rt = &Tbl[tmatch];                             DEBUG_DELETE_LUAOBJ
+    r_tbl_t *rt = &Tbl[tmatch];                           //DEBUG_DELETE_LUAOBJ
     CLEAR_LUA_STACK lua_getfield(server.lua, LUA_GLOBALSINDEX, "delete_luaobj");
     lua_pushstring(server.lua, rt->name);
     lua_pushstring(server.lua, rt->col[cmatch].name);
@@ -1166,7 +1166,7 @@ int deleteRow(int tmatch, aobj *apk, int matches, int inds[]) {
     void  *rrow = dwm.k;
     if (!rrow)    return 0;
     bool   wgost = btGetDR(btr, apk); // Indexes need to know WillGhost
-    bool   gost  = IS_GHOST(btr, rrow) && wgost; DEBUG_DELETE_ROW
+    bool   gost  = IS_GHOST(btr, rrow) && wgost;             //DEBUG_DELETE_ROW
     if (gost)     return 0; // GHOST -> ECASE:6
     if (!dwm.miss) {
         runDeleteIndexes(btr, apk, rrow, matches, inds, wgost);
@@ -1213,9 +1213,9 @@ static bool upEffectedFailableIndexes(cli    *c,       bt *btr,
                                       int     matches, int inds[],
                                       icol_t  chit[])              {
     bool hasup = 0;
+    bool upit[matches];
     for (int i = 0; i < matches; i++) { /* Redo ALL EFFECTED indexes */
-        if (inds[i] == -1) continue;
-        bool up = 0;
+        bool up = 0; upit[i] = 0;
         r_ind_t *ri = &Index[inds[i]];
         if      (ri->virt || ri->luat) continue; // LUATRIGGERS done later
         else if (ri->lru || ri->lfu) up = 1;     // ALWAYS updated
@@ -1225,26 +1225,23 @@ static bool upEffectedFailableIndexes(cli    *c,       bt *btr,
                 if (chit[ri->bclist[i].cmatch].cmatch != -1) { up = 1; break; }
             }
         } else { up = (chit[ri->icol.cmatch].cmatch != -1); }
-        if (!up) inds[i] = -1;
-        else     hasup   =  1;
+        if (up) { hasup = 1; upit[i] = 1; }
     }
     if (!hasup) return 1;
     for (int i = 0; i < matches; i++) {
-        if (inds[i] == -1) continue;
+        if (!upit[i]) continue;
         if (!addToIndex(c, btr, npk, nrow, inds[i])) {
             for (int j = 0; j < i; j++) { // ROLLBACK previous ADD-INDEXes
-                if (inds[j] == -1) continue;
+                if (!upit[j]) continue;
                 delFromIndex(btr, npk, nrow, inds[j], 0);
             }
             return 0;
         }
-    }
-    for (int i = 0; i < matches; i++) {
-        if (inds[i] == -1) continue;
         delFromIndex(btr, opk, orow, inds[i], 0);
     }
     return 1;
 }
+
 static uint32 getNumKeyLen(aobj *a) {
     if C_IS_X(a->type) return 16;
     uchar sflag; ulong col, l = C_IS_I(a->type) ? a->i : a->l;
@@ -1277,29 +1274,34 @@ static bool aobj_sflag(aobj *a, uchar *sflag) {
   UPDATE_FAILURES: (problem for RANGE-UPDATEs -> would need ROLLBACKs)
     -> SOLUTION Q nrows in memory, apply when ALL have passed.
 */
-
+#define DEBUG_RUN_UPDATE                  \
+  printf("runUpdate: cq: %d\n", cq);      \
+  printf("opk: "); dumpAobj(printf, opk); \
+  printf("npk: "); dumpAobj(printf, npk); 
 static int runUpdate(cli *c,    uc_t *uc,   aobj *opk,   void *orow,
                      aobj *npk, void *nrow, bool  lodlt, bool  cq,  int ncols) {
-    r_tbl_t *rt  = &Tbl[uc->tmatch]; //printf("runUpdate: cq: %d\n", cq);
+    r_tbl_t *rt  = &Tbl[uc->tmatch];                         //DEBUG_RUN_UPDATE
     int      ret = -1;
+    if (rt->nltrgr) { // LUATRIGGER: PRE-UPDATE
+        runPreUpdateLuatriggers(uc->btr, opk, orow, uc->matches, uc->inds);
+    }
     if (uc->chit[0].cmatch != -1) { // PK update
-        //NOTE: (runFailableInsertIndexes() can NOT FAIL)
+        //NOTE: runFailableInsertIndexes() can NOT FAIL -> FACTORED OUT
         runFailableInsertIndexes(c, uc->btr, npk, nrow, uc->matches, uc->inds);
         runDeleteIndexes(uc->btr, opk, orow, uc->matches, uc->inds, 0);
-        btDelete(uc->btr, opk);    // DELETE row w/ OLD PK
+        btDelete(uc->btr, opk);          // DELETE row w/ OLD PK
         ret = btAdd(uc->btr, npk, nrow); // ADD row w/ NEW PK
         UPDATE_AUTO_INC(rt->col[0].type, npk)
-    } else { // upEffectedFailableIndexes() CAN NOT FAIL
+    } else { // upEffectedFailableIndexes() CAN NOT FAIL -> FACTORED OUT
         upEffectedFailableIndexes(c, uc->btr, opk, orow, npk, nrow,
                                   uc->matches, uc->inds, uc->chit);
         ret = btReplace(uc->btr, opk, nrow); // OVERWRITE w/ new row 
     }
-    if (lodlt) { // only runs ONCE in a RangeUpdate
-        CLEAR_LUA_STACK
-        lua_getfield(server.lua, LUA_GLOBALSINDEX, "runQueueLuaobjAssign");
-        DXDB_lua_pcall(server.lua, 0, 0, 0); CLEAR_LUA_STACK
+    if (lodlt) { // Apply FULL LuaObject Updates
+        lua_getglobal(server.lua, "pop_AQ");
+        DXDB_lua_pcall(server.lua, 0, 0, 0);
     }
-    if (cq) {
+    if (cq) {    // Apply PARTIAL LuaObject Updates
         for (int i = 1; i < ncols; i++) { // 3rd loop
             uchar ctype = rt->col[i].type;
             if (C_IS_O(ctype) && uc->chit[i].nlo) {
@@ -1310,8 +1312,8 @@ static int runUpdate(cli *c,    uc_t *uc,   aobj *opk,   void *orow,
             }
         }
     }
-    if (rt->nltrgr) { // LUATRIGGERS come at the end (CANT FAIL the Xaction)
-        runVoidInsertIndexes(c, uc->btr, npk, nrow, uc->matches, uc->inds);
+    if (rt->nltrgr) { // LUATRIGGERS: POST-UPDATE
+        runPostUpdateLuatriggers(uc->btr, npk, nrow, uc->matches, uc->inds);
     }
     server.dirty++;
     return ret;
@@ -1319,12 +1321,11 @@ static int runUpdate(cli *c,    uc_t *uc,   aobj *opk,   void *orow,
 
 // UPDATE_QUEUE UPDATE_QUEUE UPDATE_QUEUE UPDATE_QUEUE UPDATE_QUEUE UPDATE_QUEUE
 typedef struct ur_t {
-    aobj *opk; void *orow; aobj *npk; void *nrow; bool cq;
+    aobj *opk; void *orow; aobj *npk; void *nrow;
 } ur_t;
-static ur_t *newUpdateRow(aobj *opk, void *orow,
-                          aobj *npk, void *nrow, bool cq) {
+static ur_t *newUpdateRow(aobj *opk, void *orow, aobj *npk, void *nrow) {
   ur_t *ur = (ur_t *)malloc(sizeof(ur_t));
-  ur->opk = opk; ur->orow = orow; ur->npk = npk; ur->nrow = nrow; ur->cq = cq;
+  ur->opk = opk; ur->orow = orow; ur->npk = npk; ur->nrow = nrow;
   return ur;
 }
 void vFreeUpdateRow(void *v) { if (v) free(v); }
@@ -1338,9 +1339,10 @@ static int queueUpdate(cli *c,     uc_t *uc,   aobj *opk,   void *orow,
         c->UpdateQueue.l->free         = vFreeUpdateRow;
         c->UpdateQueue.constants.uc    = uc;
         c->UpdateQueue.constants.lodlt = lodlt;
+        c->UpdateQueue.constants.cq    = cq;
         c->UpdateQueue.constants.ncols = ncols;
     }
-    listAddNodeTail(c->UpdateQueue.l, newUpdateRow(opk, orow, npk, nrow, cq));
+    listAddNodeTail(c->UpdateQueue.l, newUpdateRow(opk, orow, npk, nrow));
     return getNumKeyLen(npk) + getRowMallocSize(nrow); // stream size
 }
 void runUpdateQueue(cli *c) { //printf("runUpdateQueue\n");
@@ -1350,9 +1352,8 @@ void runUpdateQueue(cli *c) { //printf("runUpdateQueue\n");
     listIter  *li  = listGetIterator(c->UpdateQueue.l, AL_START_HEAD);
     while((ln = listNext(li))) {
         ur_t *ur = ln->value;
-        runUpdate(c, uqc->uc, ur->opk, ur->orow, ur->npk, ur->nrow,
-                  uqc->lodlt, ur->cq,  uqc->ncols);
-        uqc->lodlt = 0; // only run runQueueLuaobjAssign() once
+        runUpdate(c, uqc->uc,    ur->opk, ur->orow, ur->npk, ur->nrow,
+                     uqc->lodlt, uqc->cq, uqc->ncols);
     } listReleaseIterator(li);
     abandonUpdateQueue(c);
 }
@@ -1400,7 +1401,7 @@ static int updateOverwrite(cli   *c,         uc_t *uc,  cr_t *cr, crd_t *crd,
 //     therefore NON-OVERWRITE updates are Qed & Replayed when ALL pass
 //     & OVERWRITE updates do NOT FAIL
 int updateRow(cli *c, uc_t *uc, aobj *opk, void *orow, bool isr) {
-    //printf("START: updateRow\n");
+    //printf("START: updateRow: orow: %p\n", orow);
     r_tbl_t *rt     = &Tbl[uc->tmatch];
     INIT_CR(uc->tmatch, uc->ncols) /* holds values written to new ROW */
     INIT_COL_AVALS      /* merges values in update_string and vals from ROW */

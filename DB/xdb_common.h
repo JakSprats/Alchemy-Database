@@ -90,6 +90,7 @@ struct uc_t;
 typedef struct uqc_t { 
     struct uc_t *uc;
     bool         lodlt;
+    bool         cq;
     int          ncols;
 } uqc_t;
 typedef struct uq_t {

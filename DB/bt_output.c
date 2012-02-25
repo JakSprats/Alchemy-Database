@@ -340,7 +340,7 @@ void btreeCommand(redisClient *c) {
     if (matches) {
         for (int i = 0; i < matches; i++) {
             int j = inds[i];
-            if (!Index[j].virt && !Index[j].luat && !Index[j].fname) {
+            if (!Index[j].virt && !Index[j].hlt && !Index[j].fname) {
                 bt   *ibtr = getIBtr(j);
                 (*prn)("INDEX: %d (%p)\n", inds[i], (void *)ibtr);
                 if (ibtr) bt_dumptree(prn, ibtr, 1, 0);// NULL 4 empty INodes

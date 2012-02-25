@@ -99,8 +99,14 @@ end
 -- ASSIGN_QUEUE ASSIGN_QUEUE ASSIGN_QUEUE ASSIGN_QUEUE ASSIGN_QUEUE
 local AssignQueue = {};
 local SlotAQ      = 1;
+local MinSlotAQ   = 1;
+local ResetAQ     = false;
+function reset_AQ() --print('ResetAQ');
+    AssignQueue = {}; SlotAQ = 1; MinSlotAQ = 1; ResetAQ = false;
+end
 function __queueLuaobjAssign(tbl, col, pk, t)
-  --print('QLO: tbl: ' .. tbl .. ' col: ' .. col .. ' pk: ' .. pk);
+  if (ResetAQ) then reset_AQ(); end
+  --print('Q_LOA: tbl: ' .. tbl .. ' col: ' .. col .. ' pk: ' .. pk);
   table.insert(AssignQueue, SlotAQ, 
                {tbl = tbl; col = col; pk = pk; t = t; });
   SlotAQ = SlotAQ + 1;
@@ -112,11 +118,11 @@ function queueLuaobjAssignEval(tbl, col, pk, luae)
   local cmd = '__LOAET=' .. luae; assert(loadstring(cmd))();
   __queueLuaobjAssign(tbl, col, pk, __LOAET);
 end
-function runQueueLuaobjAssign() --print('runQueueLuaobjAssign');
-  for k, v in pairs(AssignQueue) do
-    __luaobjAssign(v.tbl, v.col, v.pk, v.t);
-  end
-  AssignQueue = {}; SlotAQ = 1;
+function pop_AQ()
+  local v = AssignQueue[MinSlotAQ]; if (v == nil) then return; end
+  __luaobjAssign(v.tbl, v.col, v.pk, v.t);
+  MinSlotAQ = MinSlotAQ + 1;
+  if (MinSlotAQ == SlotAQ) then ResetAQ = true; end
 end
 
 -- DELETE_LUAOBJ DELETE_LUAOBJ DELETE_LUAOBJ DELETE_LUAOBJ DELETE_LUAOBJ

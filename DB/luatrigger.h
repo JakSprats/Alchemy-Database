@@ -36,19 +36,26 @@ ALL RIGHTS RESERVED
 #include "bt.h"
 #include "common.h"
 
+// LUA_CRON
 /* this calls lua routines every second from a server cron -> an event */
 int luaCronTimeProc(struct aeEventLoop *eventLoop, lolo id, void *clientData);
 
-// LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER
+// LUATRIGGER
 luat_t *init_lua_trigger();
-sds     getLUATlist(ltc_t *ltc, int tmatch);
+void    destroy_lua_trigger(luat_t *luat) ;
+
 void createLuaTrigger(cli *c);
 void dropLuaTrigger  (cli *c);
 
-void luatAdd(bt *btr, luat_t *luat, aobj *apk, int imatch, void *rrow);
-void luatDel(bt *btr, luat_t *luat, aobj *apk, int imatch, void *rrow);
+void luatAdd       (bt *btr, luat_t *luat, aobj *apk, int imatch, void *rrow);
+void luatDel       (bt *btr, luat_t *luat, aobj *apk, int imatch, void *rrow);
+void luatPreUpdate (bt *btr, luat_t *luat, aobj *apk, int imatch, void *rrow);
+void luatPostUpdate(bt *btr, luat_t *luat, aobj *apk, int imatch, void *rrow);
 
-// INTERPRET_LUA INTERPRET_LUA INTERPRET_LUA INTERPRET_LUA INTERPRET_LUA
+// DESC
+sds getLUATlist(ltc_t *ltc, int tmatch);
+
+// INTERPRET_LUA
 void interpretLua    (redisClient *c);
 void interpretLuaFile(redisClient *c);
 

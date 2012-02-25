@@ -62,14 +62,16 @@ bool upIndex    (cli *c, bt *btr, aobj *aopk,  aobj *ocol,
 void emptyIndex(cli *c, int inum);
 void dropIndex (cli *c);
 
-bool runInsertIndexes(cli  *c,       bt  *btr, aobj *npk, void *nrow,
-                      int   matches, int  inds[]);
+bool runInsertIndexes        (cli  *c,       bt  *btr, aobj *npk, void *nrow,
+                              int   matches, int  inds[]);
 bool runFailableInsertIndexes(cli *c,       bt  *btr,  aobj *npk, void *nrow,
                               int  matches, int  inds[]);
-void runVoidInsertIndexes(cli *c,       bt  *btr,   aobj *npk, void *nrow,
-                          int  matches, int  inds[]);
-void runDeleteIndexes(bt   *btr, aobj *opk, void *orow, int matches, int inds[],
-                      bool  wgost);
+void runPreUpdateLuatriggers (              bt  *btr,   aobj *npk, void *nrow,
+                              int  matches, int  inds[]);
+void runPostUpdateLuatriggers(              bt  *btr,   aobj *npk, void *nrow,
+                              int  matches, int  inds[]);
+void runDeleteIndexes        (              bt   *btr,  aobj *opk, void *orow,
+                              int matches,  int inds[], bool  wgost);
 // LUA_INDEX_CALLBACKS
 int luaAlchemySetIndex         (lua_State *lua);
 int luaAlchemyUpdateIndex      (lua_State *lua);

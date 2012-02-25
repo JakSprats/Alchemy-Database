@@ -583,7 +583,7 @@ static bool isUpdatingIndex(int matches, int   inds[], icol_t chit[],
     for (int i = 0; i < matches; i++) {
         r_ind_t *ri = &Index[inds[i]];
         if        (ri->virt)  { continue;
-        } else if (ri->luat)  { ret = 1;
+        } else if (ri->hlt)   { ret = 1;
         } else if (ri->clist) {
             for (int i = 0; i < ri->nclist; i++) {
                 if (chit[ri->bclist[i].cmatch].cmatch != -1) {

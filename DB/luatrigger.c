@@ -48,16 +48,17 @@ ALL RIGHTS RESERVED
 #include "luatrigger.h"
 
 /* LUATRIGGER TODO LIST
-    0.) LUATRIGGER FIRST arg must be "isupdate"
-        |-> this must be automatically filled in on index-add/del
     1.) LuaCronFuncs should return the MS they want to be called again with
     2.) add "fk" to luatrigger (similar to arg: "table") will enable fk-checks
+
+    CHANGE SYNTAX?: CREATE LUATRIGGER lname ON tbl TYPE command
+    where TYPE:[ADD,DEL,PREUPDATE,POSTUPDATE]
 */
 
 extern r_tbl_t *Tbl;
 extern r_ind_t *Index;
 
-//#define SLOW_LUA_TRIGGER //TODO TEST VALUE - slow things down
+//#define SLOW_LUA_TRIGGER //TEST VALUE - slow things down
 
 // LUA_CRON LUA_CRON LUA_CRON LUA_CRON LUA_CRON LUA_CRON LUA_CRON LUA_CRON
 /* NOTE: this calls lua routines every second from a server cron -> an event */
@@ -86,33 +87,39 @@ int luaCronTimeProc(struct aeEventLoop *eventLoop, lolo id, void *clientData) {
 
 // LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER LUATRIGGER
 luat_t *init_lua_trigger() {
-    luat_t * luat = malloc(sizeof(luat_t)); bzero(luat, sizeof(luat_t));
-    return luat;
+    luat_t * luat = malloc(sizeof(luat_t));              // FREE 079
+    bzero(luat, sizeof(luat_t)); return luat;
 }
-static void destroy_lua_trigger(luat_t *luat) {//printf("destroy_luatrigger\n");
-    if (luat->add.ics) free(luat->add.ics);              // FREED 083
-    if (luat->del.ics) free(luat->del.ics);              // FREED 083
+static void destroy_ltc(ltc_t *ltc) {
+    if (ltc->ics)   free   (ltc->ics);                   // FREED 083
+    //TODO WALK ics -> destroyIC(ltc->ics[i])
+    if (ltc->fname) sdsfree(ltc->fname);                 // FREED 174
+}
+void destroy_lua_trigger(luat_t *luat) { //printf("destroy_luatrigger\n");
+    destroy_ltc(&luat->add);   destroy_ltc(&luat->del);
+    destroy_ltc(&luat->preup); destroy_ltc(&luat->postup);
     free(luat);                                          // FREED 079
 }
 
-static bool pLTCerr(cli *c) { addReply(c, shared.luat_c_decl); return 0; }
-
 static bool parseLuatCmd(cli *c, sds cmd, ltc_t *ltc, int tmatch) {
-    if (!ISALPHA(*cmd))                      return pLTCerr(c);
-    if (cmd[sdslen(cmd) -1] != ')')          return pLTCerr(c);
-    char *end  = strchr(cmd, '('); if (!end) return pLTCerr(c);
-    ltc->fname = sdsnewlen(cmd, end - cmd);
-    uint32 len = sdslen(cmd) - 2 - sdslen(ltc->fname); /* minus "fname()" */
-    STACK_STRDUP(clist, (end + 1), len)
-    char *tkn = clist;
-//TODO FIRST arg must be "isupdate"
+    char *begc = cmd; char *endc = cmd + sdslen(cmd) -1;
+    SKIP_SPACES(begc) REV_SKIP_SPACES(endc)
+    if (!ISALPHA(*begc)) { addReply(c, shared.luat_c_decl); return 0; }
+    if (*endc != ')')    { addReply(c, shared.luat_c_decl); return 0; }
+    char *fend = strchr(begc, '(');
+    if (!fend)           { addReply(c, shared.luat_c_decl); return 0; }
+    ltc->fname = sdsnewlen(begc, fend - begc);           // FREE 174
+    fend++; endc--; // skip '(' & ')'
+    if (fend == endc) return 1; // zero args is ok
+    sds args = sdsnewlen(fend, (endc - fend + 1));       // FREE 175
+    char *tkn = args;
     SKIP_SPACES(tkn)
-    if (strlen(tkn) >= 5 && !strncmp(tkn, "table", 5)) {// case: 1st arg "table"
+    if (strlen(tkn) >= 5 && !strncasecmp(tkn, "table", 5)) {// 1st arg "table"
         tkn += 5;
-        if (!*tkn || ISBLANK(*tkn) || *tkn == ',') {
-            if (*tkn == ',') tkn++;
-            SKIP_SPACES(tkn); ltc->tblarg = 1;
-        }
+        if (ISBLANK(*tkn)) SKIP_SPACES(tkn);
+        if (*tkn == ',') { tkn++; SKIP_SPACES(tkn); ltc->tblarg = 1; }
+        else if (!*tkn)                             ltc->tblarg = 1;
+        else             { tkn -= 5; } // maybe args is: "tablenameofwhoknows"
     }
     if (!strlen(tkn)) return 1; // zero args is ok
     CREATE_CS_LS_LIST(1)
@@ -120,7 +127,7 @@ static bool parseLuatCmd(cli *c, sds cmd, ltc_t *ltc, int tmatch) {
                                    ls, &ltc->ncols, NULL);
     if (ok) {
         r_tbl_t  *rt = &Tbl[tmatch];
-        ltc->ics     = malloc(sizeof(icol_t) * ltc->ncols); // FREE ME 083
+        ltc->ics     = malloc(sizeof(icol_t) * ltc->ncols); // FREE 083
         int       i  = 0;
         listIter *li = listGetIterator(cmatchl, AL_START_HEAD); listNode *ln;
         while((ln = listNext(li))) {
@@ -134,17 +141,27 @@ static bool parseLuatCmd(cli *c, sds cmd, ltc_t *ltc, int tmatch) {
     RELEASE_CS_LS_LIST
     return ok;
 }
-void luaTAdd(cli *c, sds trname, sds tname, sds acmd, sds dcmd) {
-    //printf("luaTAdd; trname: %s tname: %s acmd: %s dcmd: %s\n", 
-    //        trname, tname, acmd, dcmd);
+static void luaTAdd(cli *c, sds trname, sds tname, sds acmd, sds dcmd, 
+                    sds preupcmd, sds postupcmd) {
+    printf("luaTAdd; trname: %s tname: %s acmd: %s dcmd: %s preupcmd: %s postupcmd: %s\n", trname, tname, acmd, dcmd, preupcmd, postupcmd);
     int     tmatch = find_table(tname);
     if (tmatch == -1) { addReply(c, shared.nonexistenttable);    return; }
-    luat_t *luat   = init_lua_trigger();                   /* FREEME 079 */
+    luat_t *luat   = init_lua_trigger();
     if (!parseLuatCmd(c, acmd, &luat->add, tmatch)) {
         addReply(c, shared.luat_decl_fmt);     goto luatadd_err;
     }
     if (dcmd) {
         if (!parseLuatCmd(c, dcmd, &luat->del, tmatch)) {
+            addReply(c, shared.luat_decl_fmt); goto luatadd_err;
+        }
+    }
+    if (preupcmd) {
+        if (!parseLuatCmd(c, preupcmd, &luat->preup, tmatch)) {
+            addReply(c, shared.luat_decl_fmt); goto luatadd_err;
+        }
+    }
+    if (postupcmd) {
+        if (!parseLuatCmd(c, postupcmd, &luat->postup, tmatch)) {
             addReply(c, shared.luat_decl_fmt); goto luatadd_err;
         }
     }
@@ -166,27 +183,14 @@ void createLuaTrigger(cli *c) {
     if (match_index_name(trname) != -1) {
         addReply(c, shared.nonuniqueindexnames);                   return;
     }
-    char *dcmd   = (c->argc > 6) ? c->argv[6]->ptr : NULL;
-    luaTAdd(c, trname, c->argv[4]->ptr, c->argv[5]->ptr, dcmd);
-}
-sds getLUATlist(ltc_t *ltc, int tmatch) { //NOTE: Used in DESC & AOF
-    sds cmd = sdsdup(ltc->fname);
-    cmd     = sdscatlen(cmd, "(", 1);
-    for (int j = 0; j < ltc->ncols; j++) {
-        if (j) cmd = sdscatlen(cmd, ",", 1);
-        int cmatch = ltc->ics[j].cmatch; assert(cmatch > 0);
-        sds cname  = Tbl[tmatch].col[cmatch].name;
-        cmd        = sdscatprintf(cmd, "%s", cname);
-        if (ltc->ics[j].nlo) {
-            for (uint32 k = 0; k < ltc->ics[j].nlo; k++) {
-                cmd = sdscatprintf(cmd, ".%s", ltc->ics[j].lo[k]);
-            }
-        }
-    }
-    cmd     = sdscatlen(cmd, ")", 1);
-    return cmd;
+    char *dcmd      = (c->argc > 6) ? c->argv[6]->ptr : NULL;
+    char *preupcmd  = (c->argc > 7) ? c->argv[7]->ptr : NULL;
+    char *postupcmd = (c->argc > 8) ? c->argv[8]->ptr : NULL;
+    luaTAdd(c, trname, c->argv[4]->ptr, c->argv[5]->ptr,
+            dcmd, preupcmd, postupcmd);
 }
 
+// DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP DROP
 void dropLuaTrigger(cli *c) {
     sds iname  = c->argv[2]->ptr;
     int imatch = match_index_name(iname);
@@ -196,13 +200,21 @@ void dropLuaTrigger(cli *c) {
     addReply(c, shared.cone);
 }
 
+// CALL_LUATRIGGER CALL_LUATRIGGER CALL_LUATRIGGER CALL_LUATRIGGER
+#define LUAT_DO_ADD    1
+#define LUAT_DO_DEL    2
+#define LUAT_DO_PREUP  3
+#define LUAT_DO_POSTUP 4
 static void luatDo(bt  *btr,    luat_t *luat, aobj *apk, 
-                   int  imatch, void   *rrow, bool  add) {
+                   int  imatch, void   *rrow, int whom) {
+    ltc_t   *ltc   = (whom == LUAT_DO_ADD)   ?  &luat->add   :
+                     (whom == LUAT_DO_DEL)   ?  &luat->del   :
+                     (whom == LUAT_DO_PREUP) ?  &luat->preup :
+                     /*       LUAT_DO_POSTUP */ &luat->postup;
+    if (!ltc->fname) return; /* e.g. no luatDel */
     r_ind_t *ri    = &Index[imatch];
     r_tbl_t *rt    = &Tbl[ri->tmatch];
-    ltc_t   *ltc   = add ? &luat->add : &luat->del;
     int      tcols = ltc->ncols + ltc->tblarg;
-    if (!ltc->fname) return; /* e.g. no luatDel */
 
     //printf("luatDo: fname: %s tcols: %d\n", ltc->fname, tcols);
     lua_getfield(server.lua, LUA_GLOBALSINDEX, ltc->fname); // function to call
@@ -210,9 +222,9 @@ static void luatDo(bt  *btr,    luat_t *luat, aobj *apk,
         lua_pushlstring(server.lua, rt->name, sdslen(rt->name));
     }
     for (int i = 0; i < ltc->ncols; i++) {
-        if (ltc->ics[i].nlo) { printf("luatDo: pushLuaVar\n");
+        if (ltc->ics[i].nlo) {                //printf("luatDo: pushLuaVar\n");
             pushLuaVar(ri->tmatch, ltc->ics[i], apk);
-        } else { printf("luatDo: pushAobjLua\n");
+        } else {                          //printf("luatDo: rrow: %p\n", rrow);
             aobj acol = getCol(btr, rrow, ltc->ics[i], apk, ri->tmatch, NULL);
             pushAobjLua(&acol, rt->col[ltc->ics[i].cmatch].type);
             releaseAobj(&acol);
@@ -224,10 +236,38 @@ static void luatDo(bt  *btr,    luat_t *luat, aobj *apk,
                                       ltc->fname, lua_tostring(server.lua, -1));
 }
 void luatAdd(bt *btr, luat_t *luat, aobj *apk, int imatch, void *rrow) {
-    luatDo(btr, luat, apk, imatch, rrow, 1);
+    luatDo(btr, luat, apk, imatch, rrow, LUAT_DO_ADD);
 }
 void luatDel(bt *btr, luat_t *luat, aobj *apk, int imatch, void *rrow) {
-    luatDo(btr, luat, apk, imatch, rrow, 0);
+    luatDo(btr, luat, apk, imatch, rrow, LUAT_DO_DEL);
+}
+void luatPreUpdate(bt *btr, luat_t *luat, aobj *apk, int imatch, void *rrow) {
+    luatDo(btr, luat, apk, imatch, rrow, LUAT_DO_PREUP);
+}
+void luatPostUpdate(bt *btr, luat_t *luat, aobj *apk, int imatch, void *rrow) {
+    luatDo(btr, luat, apk, imatch, rrow, LUAT_DO_POSTUP);
+}
+
+// DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
+//NOTE: Used in DESC & AOF
+sds getLUATlist(ltc_t *ltc, int tmatch) {
+    r_tbl_t *rt  = &Tbl[tmatch]; 
+    sds      cmd = sdsdup(ltc->fname);
+    cmd          = sdscatlen(cmd, "(", 1);
+    if (ltc->tblarg) cmd = sdscatlen(cmd, "table, ", 7);
+    for (int j = 0; j < ltc->ncols; j++) {
+        if (j) cmd = sdscatlen(cmd, ", ", 2);
+        int cmatch = ltc->ics[j].cmatch;                    assert(cmatch > -1);
+        sds cname  = Tbl[tmatch].col[cmatch].name;
+        cmd        = sdscatprintf(cmd, "%s", cname);
+        if (ltc->ics[j].nlo) {
+            for (uint32 k = 0; k < ltc->ics[j].nlo; k++) {
+                cmd = sdscatprintf(cmd, ".%s", ltc->ics[j].lo[k]);
+            }
+        }
+    }
+    cmd     = sdscatlen(cmd, ")", 1);
+    return cmd;
 }
 
 // INTERPRET_LUA INTERPRET_LUA INTERPRET_LUA INTERPRET_LUA INTERPRET_LUA

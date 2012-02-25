@@ -67,7 +67,6 @@ uint32_t  rdbLoadLen(FILE *fp, int *isencoded);
 int       rdbLoadType(FILE *fp);
 robj     *rdbLoadStringObject(FILE *fp);
 
-
 static int saveLtc(FILE *fp, ltc_t *ltc) {
     if (rdbSaveRawString(fp, ltc->fname, sdslen(ltc->fname)) == -1) return -1;
     if (rdbSaveLen(fp, ltc->tblarg)         == -1)                  return -1;
@@ -79,7 +78,7 @@ static int saveLtc(FILE *fp, ltc_t *ltc) {
 }
 int rdbSaveLuaTrigger(FILE *fp, r_ind_t *ri) {
     int     tmatch = ri->tmatch;
-    luat_t *luat   = (luat_t *)ri->btr;
+    luat_t *luat   = ri->luat;
     robj *r = createStringObject(ri->name, sdslen(ri->name));
     if (rdbSaveStringObject(fp, r) == -1)                           return -1;
     decrRefCount(r);

@@ -73,7 +73,7 @@ void evictCommand(cli *c) {
         if (matches) { // EVICT indexes
             for (int j = 0; j < matches; j++) {
                 r_ind_t *ri  = &Index[inds[j]];
-                if (ri->virt || ri->luat || ri->lru || ri->lfu ||
+                if (ri->virt || ri->hlt || ri->lru || ri->lfu ||
                     ri->fname)                                    continue;
                 ulong    pre = ri->btr->msize;
                 evictFromIndex(btr, &apk, rrow, inds[j]);

@@ -216,7 +216,7 @@ void sqlDumpCommand(redisClient *c) {
         MATCH_INDICES(tmatch)
         for (int i = 0; i < matches; i++) {
             r_ind_t *ri = &Index[inds[i]];
-            if (ri->virt || ri->luat || ri->fname) continue;
+            if (ri->virt || ri->hlt || ri->fname) continue;
             sds      s  = dumpSQL_Index(mtname, rt, ri, tmatch, 0);
             r           = createObject(REDIS_STRING, s);
             addReplyBulk(c, r); decrRefCount(r); card++;
@@ -242,7 +242,7 @@ ull get_sum_all_index_size_for_table(int tmatch) {
     MATCH_INDICES(tmatch)
     for (int i = 0; i < matches; i++) {
         r_ind_t *ri = &Index[inds[i]];
-        if (!ri->virt && !ri->luat && !ri->fname) {
+        if (!ri->virt && !ri->hlt && !ri->fname) {
             bt *ibtr = getIBtr(inds[i]); isize += ibtr->msize;
         }
     }
@@ -254,8 +254,8 @@ static void outputAdvancedIndexInfo(redisClient *c, int tmatch, long *card) {
     if (!matches) return;
     for (int i = 0; i < matches; i++) {
         r_ind_t *ri = &Index[inds[i]];
-        if (ri->luat) {
-            luat_t *luat = (luat_t *)ri->btr;
+        if (ri->hlt) {
+            luat_t *luat = ri->luat;
             sds     acmd = getLUATlist(&luat->add, tmatch);/* DESTROY ME 077 */
             sds     desc = sdscatprintf(sdsempty(), "LUATRIGGER: %s [ADD: %s]",
                                          ri->name, acmd);
@@ -264,6 +264,16 @@ static void outputAdvancedIndexInfo(redisClient *c, int tmatch, long *card) {
                 sds dcmd = getLUATlist(&luat->del, tmatch); /* DESTROY ME 078*/
                 desc     = sdscatprintf(desc, " [DEL: %s]", dcmd);
                 sdsfree(dcmd);                           /* DESTROYED 078 */
+            }
+            if (luat->preup.ncols) {
+                sds pcmd = getLUATlist(&luat->preup, tmatch);  // FREE 078
+                desc     = sdscatprintf(desc, " [PREUP: %s]", pcmd);
+                sdsfree(pcmd);                                 // FREED 078
+            }
+            if (luat->postup.ncols) {
+                sds pcmd = getLUATlist(&luat->postup, tmatch); // FREE 078
+                desc     = sdscatprintf(desc, " [POSTUP: %s]", pcmd);
+                sdsfree(pcmd);                                 // FREED 078
             }
             robj *r    = createObject(REDIS_STRING, desc);
             addReplyBulk(c, r); decrRefCount(r); INCR(*card)
@@ -317,7 +327,7 @@ void descCommand(redisClient *c) {
                 r_ind_t *ri      = &Index[imatch];
                 if (ri->icol.cmatch != j) continue;
                 ull      isize   = 0;
-                if (!ri->virt && !ri->luat && !ri->fname) {
+                if (!ri->virt && !ri->hlt && !ri->fname) {
                     bt *ibtr = getIBtr(imatch); isize = ibtr->msize;
                 }
                 sds idesc = NULL; // DEST 051

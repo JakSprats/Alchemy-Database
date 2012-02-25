@@ -348,7 +348,7 @@ bool addToIndex(cli *c, bt *btr, aobj *apk, void *rrow, int imatch) {
     r_ind_t *ri    = &Index[imatch];
     if (ri->virt || ri->fname)                                       return 1;
     bt      *ibtr  = getIBtr(imatch);
-    if (ri->luat) { luatAdd(btr, (luat_t *)ibtr, apk, imatch, rrow); return 1; }
+    if (ri->hlt) { luatAdd(btr, ri->luat, apk, imatch, rrow);        return 1; }
     int      pktyp = Tbl[ri->tmatch].col[0].type;
     if (ri->clist) {
         if (ri->obc.cmatch == -1) {
@@ -378,7 +378,7 @@ void delFromIndex(bt *btr, aobj *apk, void *rrow, int imatch, bool gost) {
     r_ind_t *ri   = &Index[imatch];
     if (ri->virt || ri->fname)                                        return;
     bt      *ibtr = getIBtr(imatch);
-    if (ri->luat) { luatDel(btr,  (luat_t *)ibtr, apk, imatch, rrow); return; }
+    if (ri->hlt) { luatDel(btr, ri->luat, apk, imatch, rrow);         return; }
     if (ri->clist) {
         if (ri->obc.cmatch == -1) iRemMCI(btr, apk, imatch, rrow, NULL, gost);
         else {                                                    // MCI OBY
@@ -401,8 +401,8 @@ void delFromIndex(bt *btr, aobj *apk, void *rrow, int imatch, bool gost) {
 void evictFromIndex(bt *btr, aobj *apk, void *rrow, int imatch) {
     printf("Evict: imatch: %d apk: ", imatch); dumpAobj(printf, apk);
     r_ind_t *ri   = &Index[imatch];
-    if (ri->virt || ri->fname)                                        return;
-    if (ri->luat) { printf("TODO: EVICT call its own LuatTrigger\n"); return; }
+    if (ri->virt || ri->fname)                                       return;
+    if (ri->hlt) { printf("TODO: EVICT call its own LuatTrigger\n"); return; }
     bt      *ibtr = getIBtr(imatch);
     if (ri->clist) { // MCI
         if (ri->obc.cmatch == -1) iEvictMCI(btr, apk, imatch, rrow, NULL);//NORM
@@ -537,7 +537,7 @@ int newIndex(cli    *c,     sds    iname, int  tmatch,    icol_t ic,
     if (fname)     ri->fname     = sdsdup(fname);          // FREE 162
     if (iconstrct) ri->iconstrct = sdsdup(iconstrct);      // FREE 167
     if (idestrct)  ri->idestrct  = sdsdup(idestrct);       // FREE 166
-    ri->luat    = luat ? 1 :  0;
+    ri->hlt     = luat ? 1 :  0;
     ri->done    = prtl ? 0 :  1; 
     ri->dtype   = (ic.cmatch == -1 || dtype) ? dtype : rt->col[ic.cmatch].type;
     ri->ofst    = prtl ? 1 : -1;// NOTE: PKs start at 1 (not 0)
@@ -557,7 +557,7 @@ int newIndex(cli    *c,     sds    iname, int  tmatch,    icol_t ic,
         }
         ASSERT_OK(dictAdd(rt->fdict, sdsdup(fname), VOIDINT(imatch + 1)));// >0
     }
-    if (ri->luat) rt->nltrgr++;   // this table now has LUA TRIGGERS
+    if (ri->hlt) rt->nltrgr++;   // this table now has LUA TRIGGERS
     if (ri->clist) {
         listNode *ln; rt->nmci++; // this table now has MCI
         ri->nclist   = listLength(ri->clist);
@@ -573,8 +573,8 @@ int newIndex(cli    *c,     sds    iname, int  tmatch,    icol_t ic,
         } listReleaseIterator(li);
     } else if (ri->icol.cmatch != -1) rt->col[ri->icol.cmatch].indxd = 1;
     if      (virt) rt->vimatch = imatch;
-    else if (ri->luat) { //TODO btr should not point to luat, use ri->luat
-        ri->btr = (bt *)luat; luat->num = imatch;
+    else if (ri->hlt) {
+        ri->luat = luat; luat->num = imatch;
     } else {
         if (iconstrct &&
             !runLuaFunctionIndexFunc(c, iconstrct, rt->name, iname)) {
@@ -826,7 +826,7 @@ static bool __runInsertIndexes(cli  *c,      bt   *btr,
                                int   inds[], bool  flble) {
     if (!matches) return 1;
     for (int i = 0; i < matches; i++) {
-        if (flble && Index[inds[i]].luat) continue; // DONT DO LUATRIGGERS
+        if (flble && Index[inds[i]].hlt) continue; // DONT DO LUATRIGGERS
         if (!addToIndex(c, btr, npk, nrow, inds[i])) {
             for (int j = 0; j < i; j++) { // ROLLBACK previous ADD-INDEXes
                 delFromIndex(btr, npk, nrow, inds[j], 0);
@@ -846,13 +846,24 @@ bool runFailableInsertIndexes(cli *c,       bt  *btr,  aobj *npk, void *nrow,
     //printf("runFailableInsertIndexes\n");
     return __runInsertIndexes(c, btr, npk, nrow, matches, inds, 1);
 }
-void runVoidInsertIndexes(cli *c,       bt  *btr,   aobj *npk, void *nrow,
-                          int  matches, int  inds[]) {
-    //printf("runVoidInsertIndexes\n");
+void runPreUpdateLuatriggers(bt  *btr,    aobj *opk, void *orow,
+                             int  matches, int  inds[]) {
+    //printf("runPreUpdateLuatriggers: orow: %p\n", orow);
     if (!matches) return;
     for (int i = 0; i < matches; i++) {
-        if(!Index[inds[i]].luat) continue; // ONLY LUATRIGGERS
-        addToIndex(c, btr, npk, nrow, inds[i]);
+        r_ind_t *ri = &Index[inds[i]];
+        if(!ri->hlt) continue; // ONLY LUATRIGGERS
+        luatPreUpdate(btr, ri->luat, opk, inds[i], orow);
+    }
+}
+void runPostUpdateLuatriggers(bt  *btr,     aobj *npk, void *nrow,
+                              int  matches, int  inds[]) {
+    //printf("runPostUpdateLuatriggers: nrow: %p\n", nrow);
+    if (!matches) return;
+    for (int i = 0; i < matches; i++) {
+        r_ind_t *ri = &Index[inds[i]];
+        if(!ri->hlt) continue; // ONLY LUATRIGGERS
+        luatPostUpdate(btr, ri->luat, npk, inds[i], nrow);
     }
 }
 void runDeleteIndexes(bt   *btr, aobj *opk, void *orow, int matches, int inds[],
@@ -891,14 +902,14 @@ void emptyIndex(cli *c, int imatch) {
         listNode *ln = listSearchKey(rt->ilist, VOIDINT imatch);
         listDelNode(rt->ilist, ln);
     }
-    if (ri->luat && rt->nltrgr) rt->nltrgr--;
+    if (ri->hlt) { rt->nltrgr--; destroy_lua_trigger(ri->luat); }
     if (ri->clist) {
         if (rt->nmci) rt->nmci--;
         listRelease(ri->clist);                          /* DESTROYED 054 */
         free(ri->bclist);                                /* FREED 053 */
     }
     //NOTE:  ri->lru & ri->lfu can NOT be dropped, so no need to change rt
-    if (ri->icol.cmatch != -1 && ri->btr && !ri->luat) {
+    if (ri->icol.cmatch != -1 && ri->btr && !ri->hlt) {
         destroy_index(ri->btr, ri->btr->root, imatch);
     }
     if (ri->icol.nlo) {

@@ -44,6 +44,21 @@ typedef struct r_col {
     sds name; uchar type; bool  indxd; int imatch;
 } r_col_t;
 
+// LUATRGIGGER
+typedef struct lua_trigger_command {
+    sds     fname;
+    int     ncols;
+    icol_t *ics;
+    bool    tblarg;
+} ltc_t;
+typedef struct lua_trigger {
+    ltc_t     add;
+    ltc_t     del;
+    ltc_t     preup;
+    ltc_t     postup;
+    ushort16  num; /* Index[num] */
+} luat_t;
+
 //TODO many of r_tbl's elements are optional -> bitmap + malloc(elements)
 //TODO MM: many of r_tbl's elements are optional -> bitmap + malloc(elements)
 typedef struct r_tbl { // 131 bytes -> 136B
@@ -83,10 +98,10 @@ typedef struct r_tbl { // 131 bytes -> 136B
 
 //TODO bool's can all be in a bitmap
 //TODO MM: r_ind's elements [clist,ofst] are optional -> bitmap+malloc(elements)
-//TODO: luat should be type: "luat *"
-typedef struct r_ind { // 92 bytes -> 100B
+typedef struct r_ind { // 100 bytes -> 108B
     bool    virt;      /* virtual                      - i.e. on primary key */
     bt     *btr;       /* Btree of index                                     */
+    luat_t *luat;
     sds     name;      /* Name of index                                      */
 
     int     tmatch;    /* table index is ON                                  */
@@ -100,7 +115,7 @@ typedef struct r_ind { // 92 bytes -> 100B
     bool    lru;       /* LRUINDEX                                           */
     bool    lfu;       /* LFUINDEX                                           */
 
-    bool    luat;      /* LUATRIGGER - call lua function per CRUD            */
+    bool    hlt;       /* LUATRIGGER - call lua function per CRUD            */
 
     icol_t  obc;       /* ORDER BY col                                       */
     bool    done;      /* CREATE INDEX OFFSET -> not done until finished     */
@@ -157,18 +172,6 @@ typedef struct filter {
 
     lue_t    le;     /* Filters can be Dynamic Lua Expressions            */
 } f_t;
-
-typedef struct lua_trigger_command {
-    sds     fname;
-    int     ncols;
-    icol_t *ics;
-    bool    tblarg;
-} ltc_t;
-typedef struct lua_trigger {
-    ltc_t     add;
-    ltc_t     del;
-    ushort16  num; /* Index[num] */
-} luat_t;
 
 //TODO make all the [MAX_ORDER_BY_COLS] stack allocated
 typedef struct where_clause_order_by {
