@@ -821,12 +821,15 @@ cr8i_end:
 }
 
 // RUN_INDEX RUN_INDEX RUN_INDEX RUN_INDEX RUN_INDEX RUN_INDEX RUN_INDEX
+#define INDXRUN_NO_LT   1
+#define INDXRUN_ONLY_LT 2
 static bool __runInsertIndexes(cli  *c,      bt   *btr,
                                aobj *npk,    void *nrow, int matches,
-                               int   inds[], bool  flble) {
+                               int   inds[], int   flble) {
     if (!matches) return 1;
     for (int i = 0; i < matches; i++) {
-        if (flble && Index[inds[i]].hlt) continue; // DONT DO LUATRIGGERS
+        if (flble == INDXRUN_NO_LT   &&  Index[inds[i]].hlt) continue;
+        if (flble == INDXRUN_ONLY_LT && !Index[inds[i]].hlt) continue;
         if (!addToIndex(c, btr, npk, nrow, inds[i])) {
             for (int j = 0; j < i; j++) { // ROLLBACK previous ADD-INDEXes
                 delFromIndex(btr, npk, nrow, inds[j], 0);
@@ -836,16 +839,17 @@ static bool __runInsertIndexes(cli  *c,      bt   *btr,
     }
     return 1;
 }
-bool runInsertIndexes(cli  *c,       bt  *btr, aobj *npk, void *nrow,
-                      int   matches, int  inds[]) {
-    //printf("runInsertIndexes\n");
-    return __runInsertIndexes(c, btr, npk, nrow, matches, inds, 0);
-}
 bool runFailableInsertIndexes(cli *c,       bt  *btr,  aobj *npk, void *nrow,
                               int  matches, int  inds[]) {
     //printf("runFailableInsertIndexes\n");
-    return __runInsertIndexes(c, btr, npk, nrow, matches, inds, 1);
+    return __runInsertIndexes(c, btr, npk, nrow, matches, inds, INDXRUN_NO_LT);
 }
+void runLuaTriggerInsertIndexes(cli *c,       bt  *btr,  aobj *npk, void *nrow,
+                                int  matches, int  inds[]) {
+    //printf("runLuaTriggerInsertIndexes\n");
+    __runInsertIndexes(c, btr, npk, nrow, matches, inds, INDXRUN_ONLY_LT);
+}
+
 void runPreUpdateLuatriggers(bt  *btr,    aobj *opk, void *orow,
                              int  matches, int  inds[]) {
     //printf("runPreUpdateLuatriggers: orow: %p\n", orow);

@@ -86,6 +86,15 @@
 #define expect_false(expr) expect ((expr) != 0, 0)
 #define expect_true(expr)  expect ((expr) != 0, 1)
 
+/*NOTE: ALCHEMY_DATABASE #define INIT_HTAB
+        this has an expensive hashtable initialisation 
+        and should be commented out for production
+        but for testing w/ valgrind avoid annoying warnings
+*/
+#include <string.h>
+#undef  INIT_HTAB
+#define INIT_HTAB 1
+
 /*
  * compressed format
  *

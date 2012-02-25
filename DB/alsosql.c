@@ -32,6 +32,8 @@ ALL RIGHTS RESERVED
 #include <ctype.h>
 #include <assert.h>
 
+#include "xdb_hooks.h"
+
 #include "redis.h"
 #include "zmalloc.h"
 
@@ -116,6 +118,7 @@ uchar insertCommit(cli  *c,      sds     uset,   sds     vals,
     sds      pk     = NULL;
     int      pklen  = 0;                            // NEEDED? use sdslen(pk)
     r_tbl_t *rt     = &Tbl[tmatch];
+    bt      *btr    = getBtr(tmatch);
     int      lncols = ncols;
     if (rt->lrud) lncols--; if (rt->lfu) lncols--; // INSERT CANT have LRU/LFU
     bool     ai     = 0;    // AUTO-INCREMENT
@@ -144,7 +147,6 @@ uchar insertCommit(cli  *c,      sds     uset,   sds     vals,
         apk.s       = pk; apk.len = pklen; apk.freeme = 0; /* pk freed below */
     } else assert(!"insertCommit ERROR");
     int    len      = 0;
-    bt    *btr      = getBtr(tmatch);
     dwm_t  dwm      = btFindD(btr, &apk);
     void  *orow     = dwm.k;
     bool   gost     = IS_GHOST(btr, orow);
@@ -167,7 +169,13 @@ uchar insertCommit(cli  *c,      sds     uset,   sds     vals,
     } else { // UPDATE on GHOST/new, REPLACE, INSERT
         nrow = createRow(c, &apk, btr, tmatch, ncols, mvals, cofsts);
         if (!nrow) /* e.g. (UINT_COL > 4GB) error */               goto insc_e;
-        if (!runInsertIndexes(c, btr, &apk, nrow, matches, inds))  goto insc_e;
+        if (!runFailableInsertIndexes(c, btr, &apk, nrow,
+                                      matches, inds))              goto insc_e;
+        lua_getglobal (server.lua, "run_ALL_AQ"); // set ALL LuaObjects
+        DXDB_lua_pcall(server.lua, 0, 0, 0);
+        if (rt->nltrgr) {
+            runLuaTriggerInsertIndexes(c, btr, &apk, nrow, matches, inds);
+        }
         if (repl && orow) { /* Delete repld row's Indexes - same PK */
             runDeleteIndexes(btr, &apk, orow, matches, inds, 0);
         }
@@ -181,6 +189,10 @@ uchar insertCommit(cli  *c,      sds     uset,   sds     vals,
     server.dirty++;
 
 insc_e:
+    if (!ret) {
+        lua_getglobal (server.lua, "reset_AQ");
+        DXDB_lua_pcall(server.lua, 0, 0, 0);
+    }
     if (nrow && NORM_BT(btr)) free(nrow);                /* FREED 023 */
     if (pk)                   free(pk);                  /* FREED 021 */
     releaseAobj(&apk);

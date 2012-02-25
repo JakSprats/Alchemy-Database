@@ -51,7 +51,7 @@ ALL RIGHTS RESERVED
     1.) LuaCronFuncs should return the MS they want to be called again with
     2.) add "fk" to luatrigger (similar to arg: "table") will enable fk-checks
 
-    CHANGE SYNTAX?: CREATE LUATRIGGER lname ON tbl TYPE command
+    CHANGE SYNTAX: CREATE LUATRIGGER lname ON tbl TYPE command
     where TYPE:[ADD,DEL,PREUPDATE,POSTUPDATE]
 */
 

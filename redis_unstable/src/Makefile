@@ -19,7 +19,7 @@ ifeq ($(uname_S),SunOS)
   @echo "Sun not supported (no BigEndian support) - sorry"
   @exit
 endif
-CFLAGS?= -std=c99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF) -DALCHEMY_DATABASE -DINIT_HTAB
+CFLAGS?= -std=c99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF) -DALCHEMY_DATABASE
 CCLINK?= -lm -pthread -ldl
 DEBUG?= -g -rdynamic -ggdb
 

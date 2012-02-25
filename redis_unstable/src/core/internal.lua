@@ -83,20 +83,12 @@ local function createASQLforSTBL(tbl, col, pk)
                {__index=STBL[tbl][col][pk], __newindex=ASQL_setter});
 end
 
--- LUAOBJ_ASSIGN LUAOBJ_ASSIGN LUAOBJ_ASSIGN LUAOBJ_ASSIGN LUAOBJ_ASSIGN
-function __luaobjAssign(tbl, col, pk, t)
+-- ASSIGN_QUEUE ASSIGN_QUEUE ASSIGN_QUEUE ASSIGN_QUEUE ASSIGN_QUEUE
+local function __luaobjAssign(tbl, col, pk, t)
   --print ('__luaobjAssign: tbl: ' .. tbl .. ' col: ' .. col .. ' pk: ' .. pk);
   STBL[tbl][col][pk] = t; createASQLforSTBL(tbl, col, pk);
 end
-function luaobjAssignJson(tbl, col, pk, json) -- create Lua Object Row
-  __luaobjAssign(tbl, col, pk, Json.decode(json));
-end
-function luaobjAssignEval(tbl, col, pk, luae)
-  local cmd = '__LOAET=' .. luae; assert(loadstring(cmd))();
-  __luaobjAssign(tbl, col, pk, __LOAET); --print('cmd: ' .. cmd);
-end
 
--- ASSIGN_QUEUE ASSIGN_QUEUE ASSIGN_QUEUE ASSIGN_QUEUE ASSIGN_QUEUE
 local AssignQueue = {};
 local SlotAQ      = 1;
 local MinSlotAQ   = 1;
@@ -118,11 +110,17 @@ function queueLuaobjAssignEval(tbl, col, pk, luae)
   local cmd = '__LOAET=' .. luae; assert(loadstring(cmd))();
   __queueLuaobjAssign(tbl, col, pk, __LOAET);
 end
-function pop_AQ()
+function pop_AQ() --print('pop_AQ: MinSlotAQ: ' .. MinSlotAQ);
   local v = AssignQueue[MinSlotAQ]; if (v == nil) then return; end
   __luaobjAssign(v.tbl, v.col, v.pk, v.t);
   MinSlotAQ = MinSlotAQ + 1;
   if (MinSlotAQ == SlotAQ) then ResetAQ = true; end
+end
+function run_ALL_AQ() --print('run_ALL_AQ');
+  for k, v in pairs(AssignQueue) do
+    __luaobjAssign(v.tbl, v.col, v.pk, v.t);
+  end
+  reset_AQ();
 end
 
 -- DELETE_LUAOBJ DELETE_LUAOBJ DELETE_LUAOBJ DELETE_LUAOBJ DELETE_LUAOBJ

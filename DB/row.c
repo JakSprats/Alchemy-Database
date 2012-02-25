@@ -383,8 +383,7 @@ static uchar *createHashRow(cr_t *cr, crd_t *crd, uchar *rflag, uint32 *mlen) {
   printf("writeLuaObjCol: tname: %s cname: %s Lua: (%s) apk: ",         \
           rt->name, rt->col[cmatch].name, json); dumpAobj(printf, apk);
 
-static bool pushSdsToLua(sds arg) {
-    printf("pushSdsToLua: %s\n", arg);
+static bool pushSdsToLua(sds arg) { //printf("pushSdsToLua: %s\n", arg);
     if        (is_int  (arg)) {
         long l = strtol(arg, NULL, 10);
         lua_pushinteger(server.lua, l);  return 1;
@@ -396,12 +395,12 @@ static bool pushSdsToLua(sds arg) {
     } else return 0;
 }
 static bool writeLOC_FromFunc(cli *c,    aobj *apk,  int   tmatch, int  cmatch,
-                               sds fname, char *lprn, char *rprn,  bool fromu) {
+                               sds fname, char *lprn, char *rprn) {
     r_tbl_t *rt    = &Tbl[tmatch];
     int      ret   = 0;
     sds      args  = NULL;
     CLEAR_LUA_STACK
-    char *func = fromu ? "__queueLuaobjAssign" : "__luaobjAssign";
+    char *func = "__queueLuaobjAssign";
     lua_getfield  (server.lua, LUA_GLOBALSINDEX, func); // PUSH FUNC
     lua_pushstring(server.lua, rt->name);
     lua_pushstring(server.lua, rt->col[cmatch].name);
@@ -452,7 +451,7 @@ static bool runFuncForWriteLuaObjCol(cli *c, aobj *apk, int tmatch, int cmatch,
     return ret ? 0 : 1;
 }
 static bool write_LOC_NotJSON(cli *c,    aobj   *apk,  int  tmatch, int cmatch,
-                              char *val, uint32  vlen, bool fromu) {
+                              char *val, uint32  vlen) {
     char *lprn = _strnchr(val, '(', vlen);
     if (lprn) {
         char  llen = vlen - (lprn - val);
@@ -463,7 +462,7 @@ static bool write_LOC_NotJSON(cli *c,    aobj   *apk,  int  tmatch, int cmatch,
             bool  isf   = luaFuncDefined(fname); int ok = 0;
             if (isf) {
                 ok = writeLOC_FromFunc(c, apk, tmatch, cmatch,
-                                       fname, lprn, rprn, fromu);
+                                       fname, lprn, rprn);
             }
             sdsfree(fname);                               // FREED 171
             if      (ok ==  1) return 1;
@@ -472,27 +471,26 @@ static bool write_LOC_NotJSON(cli *c,    aobj   *apk,  int  tmatch, int cmatch,
     }
     //NOTE: FALL THRU, EVAL in LUA
     sds   luae = sdsnewlen(val, vlen); // FREE 172
-    char *func = fromu ? "queueLuaobjAssignEval" : "luaobjAssignEval";
+    char *func = "queueLuaobjAssignEval";
     bool  ret  = runFuncForWriteLuaObjCol(c, apk, tmatch, cmatch, func, luae);
     sdsfree(luae);                     // FREED 172
     return ret;
 }
 
 static bool writeLuaObjCol(cli *c,    aobj   *apk,  int  tmatch, int cmatch,
-                           char *val, uint32  vlen, bool fromu) {
+                           char *val, uint32  vlen) {
     if (*val != '{') {
-        return write_LOC_NotJSON(c, apk, tmatch, cmatch, val, vlen, fromu);
+        return write_LOC_NotJSON(c, apk, tmatch, cmatch, val, vlen);
     }
     sds   json = sdsnewlen(val, vlen);   // FREE 173
     DEBUG_WRITE_LUAOBJ
-    char *func = fromu ? "queueLuaobjAssignJson" : "luaobjAssignJson";
+    char *func = "queueLuaobjAssignJson";
     bool  ret  = runFuncForWriteLuaObjCol(c, apk, tmatch, cmatch, func, json);
     sdsfree(json);                      // FREED 173
     return ret;
 }
 
-static uchar *writeRow(cli *c, aobj *apk, int tmatch, cr_t *cr, crd_t *crd,
-                       bool fromu) {
+static uchar *writeRow(cli *c, aobj *apk, int tmatch, cr_t *cr, crd_t *crd) {
     cz_t cz; czd_t czd[cr->ncols]; init_cz(&cz, cr);
     uchar *row; uint32 mlen = 0; // compiler warning
     if (!GlobalZipSwitch) cz.zip = 0;
@@ -520,8 +518,9 @@ static uchar *writeRow(cli *c, aobj *apk, int tmatch, cr_t *cr, crd_t *crd,
             writeFloatCol(&row, crd[i].fflags, crd[i].fcols);
         } else if C_IS_O(ctype) {
             DECLARE_ICOL(ic, i)
-            if (!writeLuaObjCol(c, apk, tmatch, i, crd[i].strs, 
-                                crd[i].slens, fromu))           return NULL;
+            if (!writeLuaObjCol(c, apk, tmatch, i, crd[i].strs, crd[i].slens)) {
+                return NULL;
+            }
         } else if C_IS_S(ctype) {
             if        (cz.type == CZIP_SIX) {
                 memcpy(row, czd[k].sixs, czd[k].sixl); row += czd[k].sixl; k++;
@@ -643,7 +642,7 @@ void *createRow(cli *c,     aobj *apk,  bt     *btr,      int tmatch,
             crd[i].mcofsts  = (int)cr.rlen;                 //DEBUG_CREATE_ROW
         }
     }
-    return writeRow(c, apk, tmatch, &cr, crd, 0);
+    return writeRow(c, apk, tmatch, &cr, crd);
 }
 
 // mv to get_row.c
@@ -1550,7 +1549,7 @@ int updateRow(cli *c, uc_t *uc, aobj *opk, void *orow, bool isr) {
         else {
             nrow = UKEY(uc->btr) ? VOIDINT  avs[1].i :
                    LKEY(uc->btr) ? (uchar *)avs[1].l : 
-                   writeRow(c, opk, uc->tmatch, &cr, crd, 1);
+                   writeRow(c, opk, uc->tmatch, &cr, crd);
             if (!nrow)                                                   UP_ERR
         }
         aobj    *npk = cloneAobj(&avs[0]);                  // FREE 168
