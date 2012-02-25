@@ -3328,11 +3328,11 @@ function populate_graph_db() {
   $CLI SELECT "createNamedNode('graphdb', 'lo', pk, 'JACK')" FROM graphdb WHERE pk=2
   $CLI INSERT INTO graphdb VALUES "(3, 49, {'data':'supported'})";
   $CLI SELECT "createNamedNode('graphdb', 'lo', pk, 'JILL')" FROM graphdb WHERE pk=3
-  $CLI LUA addNodeRelationShipByPK "graphdb" 1 "KNOWS" "graphdb" 2
-  $CLI LUA addNodeRelationShipByPK "graphdb" 3 "KNOWS" "graphdb" 2
+  $CLI LUAFUNC addNodeRelationShipByPK "graphdb" 1 "KNOWS" "graphdb" 2
+  $CLI LUAFUNC addNodeRelationShipByPK "graphdb" 3 "KNOWS" "graphdb" 2
 
-  $CLI LUA traverseByPK BFS "graphdb" 1 "REPLY.NODENAME_AND_PATH" \
-                                          "EXPANDER.BOTH"
+  $CLI LUAFUNC traverseByPK BFS "graphdb" 1 "REPLY.NODENAME_AND_PATH" \
+                                            "EXPANDER.BOTH"
   $CLI SELECT "traverseByPK('BFS', 'graphdb', pk, 'REPLY.NODENAME_AND_PATH', 'EXPANDER.BOTH')" FROM graphdb WHERE pk BETWEEN 1 AND 3
 }
 
@@ -3367,51 +3367,60 @@ function graphdb_fof_cities_test() {
   $CLI INSERT INTO users VALUES "(7, 30, {})";
   $CLI SELECT "createNamedNode('users', 'lo', pk, 'G')" FROM users WHERE pk=7
 
-  $CLI LUA addNodeRelationShipByPK 'users' 1 "KNOWS" 'users' 2
-  $CLI LUA addNodeRelationShipByPK 'users' 2 "KNOWS" 'users' 4
-  $CLI LUA addNodeRelationShipByPK 'users' 4 "KNOWS" 'users' 7
-  $CLI LUA addNodeRelationShipByPK 'users' 1 "KNOWS" 'users' 3
-  $CLI LUA addNodeRelationShipByPK 'users' 3 "KNOWS" 'users' 5
-  $CLI LUA addNodeRelationShipByPK 'users' 3 "KNOWS" 'users' 6
+  $CLI LUAFUNC addNodeRelationShipByPK 'users' 1 "KNOWS" 'users' 2
+  $CLI LUAFUNC addNodeRelationShipByPK 'users' 2 "KNOWS" 'users' 4
+  $CLI LUAFUNC addNodeRelationShipByPK 'users' 4 "KNOWS" 'users' 7
+  $CLI LUAFUNC addNodeRelationShipByPK 'users' 1 "KNOWS" 'users' 3
+  $CLI LUAFUNC addNodeRelationShipByPK 'users' 3 "KNOWS" 'users' 5
+  $CLI LUAFUNC addNodeRelationShipByPK 'users' 3 "KNOWS" 'users' 6
 
-  $CLI LUA addNodeRelationShipByPK 'users' 1 "VIEWED_PIC" 'users' 2
-  $CLI LUA addNodeRelationShipByPK 'users' 2 "VIEWED_PIC" 'users' 4
-  $CLI LUA addNodeRelationShipByPK 'users' 4 "VIEWED_PIC" 'users' 1
+  $CLI LUAFUNC addNodeRelationShipByPK 'users' 1 "VIEWED_PIC" 'users' 2
+  $CLI LUAFUNC addNodeRelationShipByPK 'users' 2 "VIEWED_PIC" 'users' 4
+  $CLI LUAFUNC addNodeRelationShipByPK 'users' 4 "VIEWED_PIC" 'users' 1
 
-  $CLI LUA addNodeRelationShipByPK 'users' 6 "VIEWED_PIC" 'users' 1
-  $CLI LUA addNodeRelationShipByPK 'users' 5 "VIEWED_PIC" 'users' 7
+  $CLI LUAFUNC addNodeRelationShipByPK 'users' 6 "VIEWED_PIC" 'users' 1
+  $CLI LUAFUNC addNodeRelationShipByPK 'users' 5 "VIEWED_PIC" 'users' 7
 
   echo 'BFS: FOF who have seen my picture'
-  $CLI LUA traverseByPK BFS "users" 1 "REPLY.NODENAME_AND_PATH" "EXPANDER.FOF" "UNIQUENESS.PATH_GLOBAL" "EDGE_EVAL.FOF"
+  $CLI LUAFUNC traverseByPK BFS "users" 1 "REPLY.NODENAME_AND_PATH" \
+                                          "EXPANDER.FOF"            \
+                                          "UNIQUENESS.PATH_GLOBAL"  \
+                                          "EDGE_EVAL.FOF"
 
   echo 'BFS: FriendsANDPictureSeen-OfFriends  who have seen my picture'
-  $CLI LUA traverseByPK BFS "users" 1 "REPLY.NODENAME_AND_PATH" "ALL_RELATIONSHIP_EXPANDER.FOF" "UNIQUENESS.PATH_GLOBAL" "EDGE_EVAL.FOF"
+  $CLI LUAFUNC traverseByPK BFS "users" 1 "REPLY.NODENAME_AND_PATH"       \
+                                          "ALL_RELATIONSHIP_EXPANDER.FOF" \
+                                          "UNIQUENESS.PATH_GLOBAL"        \
+                                          "EDGE_EVAL.FOF"
 
   echo 'DFS: FOF who have seen my picture'
-  $CLI LUA traverseByPK DFS "users" 1 "REPLY.NODENAME_AND_PATH" "EXPANDER.FOF" "UNIQUENESS.PATH_GLOBAL" "EDGE_EVAL.FOF"
+  $CLI LUAFUNC traverseByPK DFS "users" 1 "REPLY.NODENAME_AND_PATH" \
+                                          "EXPANDER.FOF"            \
+                                          "UNIQUENESS.PATH_GLOBAL"  \
+                                          "EDGE_EVAL.FOF"
 
   # WASHINGTON
-  $CLI LUA addNodeRelationShipByPK 'users' 1 "HAS_VISITED" 'cities' 10
-  $CLI LUA addNodeRelationShipByPK 'users' 4 "HAS_VISITED" 'cities' 10
-  $CLI LUA addNodeRelationShipByPK 'users' 7 "HAS_VISITED" 'cities' 10
+  $CLI LUAFUNC addNodeRelationShipByPK 'users' 1 "HAS_VISITED" 'cities' 10
+  $CLI LUAFUNC addNodeRelationShipByPK 'users' 4 "HAS_VISITED" 'cities' 10
+  $CLI LUAFUNC addNodeRelationShipByPK 'users' 7 "HAS_VISITED" 'cities' 10
 
   # NYC
-  $CLI LUA addNodeRelationShipByPK 'users' 1 "HAS_VISITED" 'cities' 20
-  $CLI LUA addNodeRelationShipByPK 'users' 2 "HAS_VISITED" 'cities' 20
-  $CLI LUA addNodeRelationShipByPK 'users' 3 "HAS_VISITED" 'cities' 20
-  $CLI LUA addNodeRelationShipByPK 'users' 4 "HAS_VISITED" 'cities' 20
-  $CLI LUA addNodeRelationShipByPK 'users' 5 "HAS_VISITED" 'cities' 20
+  $CLI LUAFUNC addNodeRelationShipByPK 'users' 1 "HAS_VISITED" 'cities' 20
+  $CLI LUAFUNC addNodeRelationShipByPK 'users' 2 "HAS_VISITED" 'cities' 20
+  $CLI LUAFUNC addNodeRelationShipByPK 'users' 3 "HAS_VISITED" 'cities' 20
+  $CLI LUAFUNC addNodeRelationShipByPK 'users' 4 "HAS_VISITED" 'cities' 20
+  $CLI LUAFUNC addNodeRelationShipByPK 'users' 5 "HAS_VISITED" 'cities' 20
 
   # SAN FRAN
-  $CLI LUA addNodeRelationShipByPK 'users' 1 "HAS_VISITED" 'cities' 30
-  $CLI LUA addNodeRelationShipByPK 'users' 2 "HAS_VISITED" 'cities' 30
-  $CLI LUA addNodeRelationShipByPK 'users' 4 "HAS_VISITED" 'cities' 30
+  $CLI LUAFUNC addNodeRelationShipByPK 'users' 1 "HAS_VISITED" 'cities' 30
+  $CLI LUAFUNC addNodeRelationShipByPK 'users' 2 "HAS_VISITED" 'cities' 30
+  $CLI LUAFUNC addNodeRelationShipByPK 'users' 4 "HAS_VISITED" 'cities' 30
 
   echo SELECT "lo.node.__name" FROM users WHERE "relindx() = 10"
   $CLI SELECT "lo.node.__name" FROM users WHERE "relindx() = 10"
   
   echo LUA deleteNodeRelationShipByPK 'users' 7 "HAS_VISITED" 'cities' 10
-  $CLI LUA deleteNodeRelationShipByPK 'users' 7 "HAS_VISITED" 'cities' 10
+  $CLI LUAFUNC deleteNodeRelationShipByPK 'users' 7 "HAS_VISITED" 'cities' 10
 
   echo SELECT "lo.node.__name" FROM users WHERE "relindx() = 10"
   $CLI SELECT "lo.node.__name" FROM users WHERE "relindx() = 10"
@@ -3420,16 +3429,16 @@ function graphdb_fof_cities_test() {
   $CLI SELECT "hometown, get_fof(lo)" FROM users WHERE "relindx() = 30"
 
   #NOTE: the rest is not yet used, just testing persistence functions
-  $CLI LUA addNodePropertyByPK 'cities' 10 'population'  5000000
-  $CLI LUA addNodePropertyByPK 'cities' 20 'population' 20000000
-  $CLI LUA addNodePropertyByPK 'cities' 30 'population'  2000000
+  $CLI LUAFUNC addNodePropertyByPK 'cities' 10 'population'  5000000
+  $CLI LUAFUNC addNodePropertyByPK 'cities' 20 'population' 20000000
+  $CLI LUAFUNC addNodePropertyByPK 'cities' 30 'population'  2000000
 
-  $CLI LUA addNodeRelationShipByPK       'cities' 10 "PATH" 'cities' 20
-  $CLI LUA addPropertyToRelationshipByPK 'cities' 10 "PATH" 'cities' 20 \
-                                         'distance' 250
-  $CLI LUA addNodeRelationShipByPK       'cities' 10 "PATH" 'cities' 30
-  $CLI LUA addPropertyToRelationshipByPK 'cities' 10 "PATH" 'cities' 30 \
-                                         'distance' 2900
+  $CLI LUAFUNC addNodeRelationShipByPK       'cities' 10 "PATH" 'cities' 20
+  $CLI LUAFUNC addPropertyToRelationshipByPK 'cities' 10 "PATH" 'cities' 20 \
+                                             'distance' 250
+  $CLI LUAFUNC addNodeRelationShipByPK       'cities' 10 "PATH" 'cities' 30
+  $CLI LUAFUNC addPropertyToRelationshipByPK 'cities' 10 "PATH" 'cities' 30 \
+                                             'distance' 2900
 }
 
 function advanced_tests() {

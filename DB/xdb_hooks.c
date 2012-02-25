@@ -147,7 +147,7 @@ struct redisCommand DXDBCommandTable[] = {
     // MODIFICATION RDBMS
     {"alter",      alterCommand,      -5, 0,                 GLOB_FUNC_END},
     // LUA
-    {"lua",        luafuncCommand,    -2, 0,                 GLOB_FUNC_END},
+    {"luafunc",    luafuncCommand,    -2, 0,                 GLOB_FUNC_END},
     {"interpret",  interpretCommand,  -3, 0,                 GLOB_FUNC_END},
     // ADVANCED (messaging)
     {"message",    messageCommand,    -2, 0,                 GLOB_FUNC_END},
