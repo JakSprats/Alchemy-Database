@@ -3527,12 +3527,13 @@ function luaobj_assignment_test() {
 }
 
 function wiki_example_2_updates() { 
-  $CLI INTERPRET LUA "function cubed(n) return n * n * n; end function nest_json(num) return '{\'DEEP\':{\'A\':{\'B\':{\'C\':' .. cubed(num) .. '}}}}'; end"
+  $CLI INTERPRET LUA "function cubed(n) return n * n * n; end"
+  $CLI INTERPRET LUA "function nested_table(num) local t = {}; t['DEEP']={}; t['DEEP']['a']={} t['DEEP']['a']['b']={}; t['DEEP']['a']['b']['c']=cubed(num); return t; end"
   $CLI DROP TABLE users >/dev/null
   $CLI CREATE TABLE users "(userid INT, zipcode INT, info LUAOBJ)"
   $CLI INSERT INTO users VALUES "(1, 3333, {'nest':{'x':{'y':{'z':5}}}})";
   $CLI SELECT \* FROM users WHERE userid=1
-  $CLI UPDATE users SET "info.nest.x.y.A = nest_json(info.nest.x.y.z)" WHERE userid=1
+  $CLI UPDATE users SET "info.nest.x.y.TABLE = nested_table(info.nest.x.y.z)" WHERE userid=1
   $CLI SELECT \* FROM users WHERE userid=1
   $CLI UPDATE users SET "info.nest.x.y = {'K':{'L':777}}" WHERE userid=1
   $CLI SELECT \* FROM users WHERE userid=1

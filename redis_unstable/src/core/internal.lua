@@ -147,7 +147,7 @@ function queue_CQ_Function(func, ...)
 end
 function queue_CQ_Json(json)
   table.insert(ColumnQueue, SlotCQ, Json.decode(json));
-  --print('queue_CQ_json: json: ' .. json .. ' adding: ' .. SlotCQ);
+  print('queue_CQ_json: json: ' .. json .. ' adding: ' .. SlotCQ);
   SlotCQ = SlotCQ + 1;
 end
 function pop_CQ()
