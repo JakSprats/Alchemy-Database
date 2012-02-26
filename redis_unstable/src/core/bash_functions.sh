@@ -3526,6 +3526,22 @@ function luaobj_assignment_test() {
 
 }
 
+function wiki_example_2_updates() { 
+  $CLI INTERPRET LUA "function cubed(n) return n * n * n; end function nest_json(num) return '{\'DEEP\':{\'A\':{\'B\':{\'C\':' .. cubed(num) .. '}}}}'; end"
+  $CLI DROP TABLE users >/dev/null
+  $CLI CREATE TABLE users "(userid INT, zipcode INT, info LUAOBJ)"
+  $CLI INSERT INTO users VALUES "(1, 3333, {'nest':{'x':{'y':{'z':5}}}})";
+  $CLI SELECT \* FROM users WHERE userid=1
+  $CLI UPDATE users SET "info.nest.x.y.A = nest_json(info.nest.x.y.z)" WHERE userid=1
+  $CLI SELECT \* FROM users WHERE userid=1
+  $CLI UPDATE users SET "info.nest.x.y = {'K':{'L':777}}" WHERE userid=1
+  $CLI SELECT \* FROM users WHERE userid=1
+  $CLI UPDATE users SET "info.nest.x.y.z = 100" WHERE userid=1
+  $CLI SELECT \* FROM users WHERE userid=1
+  $CLI UPDATE users SET "info.nest.x.y.z = info.nest.x.y.z + info.nest.x.y.z * 100" WHERE userid=1
+  $CLI SELECT \* FROM users WHERE userid=1
+}
+
 function advanced_tests() {
   test_dot_notation_index
   test_lua_sql_integration
@@ -3535,5 +3551,6 @@ function advanced_tests() {
   city_distance_test
   luaobj_nested_updates_test
   luaobj_assignment_test
+  wiki_example_2_updates
 }
 

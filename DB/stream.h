@@ -36,7 +36,7 @@ void *row_malloc(bt *ibtr, int size);
 
 // LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ
 void pushLuaVar(int tmatch, icol_t ic, aobj *apk);
-void setLuaVar (int tmatch, icol_t ic, aobj *apk);
+bool setLuaVar (int tmatch, icol_t ic, aobj *apk);
 
 // LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU
 uchar  getLruSflag();

@@ -1304,10 +1304,11 @@ static int runUpdate(cli *c,    uc_t *uc,   aobj *opk,   void *orow,
         for (int i = 1; i < ncols; i++) { // 3rd loop
             uchar ctype = rt->col[i].type;
             if (C_IS_O(ctype) && uc->chit[i].nlo) {
-                setLuaVar(uc->tmatch, uc->chit[i], opk);
+                bool r = setLuaVar(uc->tmatch, uc->chit[i], opk);
                 lua_getglobal(server.lua, "pop_CQ");
                 DXDB_lua_pcall(server.lua, 0, 1, 0);
-                lua_settable(server.lua, -3);
+                if (r) lua_settable(server.lua, -3);
+                CLEAR_LUA_STACK
             }
         }
     }
