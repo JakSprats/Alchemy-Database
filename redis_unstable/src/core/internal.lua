@@ -141,8 +141,8 @@ function reset_CQ() --print('ResetCQ');
 end
 function queue_CQ_Function(func, ...)
   if (ResetCQ) then reset_CQ(); end
+  print('queue_CQ_Function: func: ' .. func(...) .. ' adding: ' .. SlotCQ);
   table.insert(ColumnQueue, SlotCQ, func(...));
-  --print('queue_CQ_Function: adding: ' .. SlotCQ);
   SlotCQ = SlotCQ + 1;
 end
 function queue_CQ_Json(json)
@@ -152,7 +152,7 @@ function queue_CQ_Json(json)
 end
 function pop_CQ()
   local ret = ColumnQueue[MinSlotCQ]; if (ret == nil) then return {}; end
-  --print('pop_CQ: returning: ' .. MinSlotCQ);
+  print('pop_CQ: ret: ' .. ret .. ' returning: ' .. MinSlotCQ);
   MinSlotCQ = MinSlotCQ + 1;
   if (MinSlotCQ == SlotCQ) then ResetCQ = true; end
   return ret;
@@ -160,10 +160,8 @@ end
 
 -- LUAOBJ_TO_OUTPUT LUAOBJ_TO_OUTPUT LUAOBJ_TO_OUTPUT LUAOBJ_TO_OUTPUT
 function DumpObjForOutput(obj)
-  return Json.encode(obj);
-end
-function DumpLuaObjForOutput(tbl, col, pk)
-  return Json.encode(STBL[tbl][col][pk]);
+  if (obj.__dump ~= nil) then return obj.__dump (obj);
+  else                        return Json.encode(obj); end
 end
 function DumpFunctionForOutput(func, ...)
   local res = func(...);

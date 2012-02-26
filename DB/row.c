@@ -479,6 +479,7 @@ static bool write_LOC_NotJSON(cli *c,    aobj   *apk,  int  tmatch, int cmatch,
 
 static bool writeLuaObjCol(cli *c,    aobj   *apk,  int  tmatch, int cmatch,
                            char *val, uint32  vlen) {
+    if (!vlen) return 1; // e.g.: SET lo.x=22
     if (*val != '{') {
         return write_LOC_NotJSON(c, apk, tmatch, cmatch, val, vlen);
     }

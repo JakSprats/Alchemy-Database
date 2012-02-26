@@ -3,7 +3,7 @@ local Queue = require "Queue"
 local Heap  = require "Heap"
 
 --TODO Vset && PKset are redundant ... PK is a better idea {all INTs}
---NOTE: Vset[] used by shortestpath()
+--NOTE: Vset[] used by findShortestPath()
 local Vset  = {}; -- table(unique-list) of nodes    -> {key=node}
 local PKset = {}; -- table(unique-list) of LuaObj's -> {key=pk}
 
@@ -59,8 +59,19 @@ NodeKeywords['__tname'] = true;
 NodeKeywords['__cname'] = true;
 NodeKeywords['__pk']    = true;
 NodeKeywords['__name']  = true;
+NodeKeywords['__dump']  = true;
 NodeKeywords['r']       = true;
 
+function loWithNodeDumper(lo) print('loWithNodeDumper');
+  local node = lo.node;
+  readOnlyLock_OFF(); lo.node = nil;  readOnlyLock_ON();
+  local ret = Json.encode(lo);
+  readOnlyLock_OFF(); lo.node = node; readOnlyLock_ON();
+  return ret .. ' PLUS loWithNodeDumper';
+end
+function nodeDumper(node) print('nodeDumper');
+  return 'nodeDumper';
+end
 --TODO MAKE_LOCAL
 function internalCreateNamedNode(tname, cname, pk, lo, name)
   if     (lo.node ~= nil) then
@@ -72,8 +83,9 @@ function internalCreateNamedNode(tname, cname, pk, lo, name)
   end
   readOnlyLock_OFF();
   lo.node = createEmptyReadOnlyTable();
-  lo.node.__tname  = tname; lo.node.__cname = cname;
-  lo.node.__pk     = pk;    lo.node.__name  = name;
+  lo.node.__tname  = tname;            lo.node.__cname = cname;
+  lo.node.__pk     = pk;               lo.node.__name  = name;
+  lo.__dump        = loWithNodeDumper; lo.node.__dump   = nodeDumper;
   readOnlyLock_ON();
   Vset[lo.node]    = true;
   if (PKset[tname] == nil) then PKset[tname] = {}; end
@@ -486,10 +498,10 @@ local function vertices() return next, Vset, nil end
 local function get_val_func(v) return v.cost; end
 
 --TODO MAKE_LOCAL
---TODO ProofOfConceptCode: this was a global shortestpath - for ALL nodes
+--TODO ProofOfConceptCode: this was a global findShortestPath - for ALL nodes
 --     then I quickly hacked on it, to make it for [FromStartNode->ToEndNode]
 --     but it might be terribly INEFFICIENT on big-graphs
-function shortestpath(snode, tnode, options)
+function findShortestPath(snode, tnode, options)
   assert(Vset[snode]  ~= nil, "start-node not in graph");
   assert(Vset[tnode]  ~= nil, "end-node not in graph");
   StartPK     = snode.__pk;
@@ -623,7 +635,7 @@ function shortestPathByPK(tname, spk, epk, ...)
   local snode   = getNodeByPK(tname, spk);
   local enode   = getNodeByPK(tname, epk);
   local options = getOptions(...);
-  return shortestpath(snode, enode, options)
+  return findShortestPath(snode, enode, options)
 end
 
 -- LUA_FUNCTION_INDEX  LUA_FUNCTION_INDEX  LUA_FUNCTION_INDEX 
