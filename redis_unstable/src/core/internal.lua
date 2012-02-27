@@ -173,7 +173,8 @@ end
 
 -- LUAOBJ_PERSISTENCE LUAOBJ_PERSISTENCE LUAOBJ_PERSISTENCE
 hooks_saveLuaUniverse = {}; hooks_loadLuaUniverse = {};
-local STBL_dump_file = "STBL.lua.rdb" local IEL_dump_file = "IEL.lua.rdb"
+local STBL_dump_file = "STBL.lua.rdb"
+local IEL_dump_file  = "IEL.lua.rdb"
 local UD_dump_file   = "UserData.lua.rdb";
 
 function save_lua_universe()

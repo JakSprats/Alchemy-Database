@@ -62,16 +62,7 @@ NodeKeywords['__name']  = true;
 NodeKeywords['__dump']  = true;
 NodeKeywords['r']       = true;
 
-function loWithNodeDumper(lo) print('loWithNodeDumper');
-  local node = lo.node;
-  readOnlyLock_OFF(); lo.node = nil;  readOnlyLock_ON();
-  local ret = Json.encode(lo);
-  readOnlyLock_OFF(); lo.node = node; readOnlyLock_ON();
-  return ret .. ' PLUS loWithNodeDumper';
-end
-function nodeDumper(node) print('nodeDumper');
-  return 'nodeDumper';
-end
+-- CREATE_NODE CREATE_NODE CREATE_NODE CREATE_NODE CREATE_NODE CREATE_NODE
 --TODO MAKE_LOCAL
 function internalCreateNamedNode(tname, cname, pk, lo, name)
   if     (lo.node ~= nil) then
@@ -712,7 +703,6 @@ function saveGraphNodes() --print ('saveGraphNodes');
         local pkt = relation[Direction.OUTGOING];
         if (pkt ~= nil) then
           for pk, trgt in pairs(pkt) do
-            --TODO dump relationship properties
             local tn = trgt.target;
             addRelToNode(dumpt, n, rtype, tn);
             for prop, value in pairs(trgt) do
@@ -736,6 +726,56 @@ function loadGraphNodes() --print ('loadGraphNodes');
   local buf = open_or_error(GRAPH_dump_file);
   assert(loadstring(buf))()
 end
+
+-- DUMP DUMP DUMP DUMP DUMP DUMP DUMP DUMP DUMP DUMP DUMP DUMP DUMP DUMP
+function nodeDumper(n)
+  local r = {};
+  table.insert(r, '{"name":"' .. n.__name .. '"');
+  for prop, value in pairs(n) do
+    if (not NodeKeywords[prop]) then
+      table.insert(r, '",{"' .. prop .. '":"' .. value .. '"}');
+    end
+  end
+  if (n.r ~= nil) then
+      table.insert(r, ',"Relations":[');
+      for rtype, relation in pairs(n.r) do
+        local pkt = relation[Direction.OUTGOING];
+        if (pkt ~= nil) then
+          local nrels = 0;
+          for pk, trgt in pairs(pkt) do
+            if (nrels > 0) then table.insert(r, ','); end nrels = nrels + 1;
+            local tn = trgt.target;
+            table.insert(r, '{"type":"'      .. rtype   .. '",' ..
+                             '"target_pk":"' .. tn.__pk .. '"');
+            for prop, value in pairs(trgt) do
+              if (prop ~= 'target') then
+                table.insert(r, ',"' .. prop .. '":"' ..  value .. '"');
+              end
+            end
+            table.insert(r, "}");
+          end
+        end
+      end
+      table.insert(r, "]");
+  end
+  table.insert(r, "}");
+  return table.concat(r);
+end
+function loWithNodeDumper(lo) print('loWithNodeDumper');
+  local node = lo.node;
+  readOnlyLock_OFF(); lo.node = nil;  readOnlyLock_ON();
+  local ret = Json.encode(lo);
+  readOnlyLock_OFF(); lo.node = node; readOnlyLock_ON();
+  local start;
+  if (string.len(ret) > 2) then
+    start = string.sub(ret, 1 , string.len(ret) - 1) .. ',';
+  else
+    start = '{';
+  end
+  return start .. '"GraphNode":' ..  nodeDumper(node) .. '}';
+end
+
+
 
 
 -- DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG DEBUG
