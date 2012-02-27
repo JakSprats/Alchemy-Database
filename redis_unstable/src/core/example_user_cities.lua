@@ -17,7 +17,7 @@ end
 
 -- CONSTRUCT/DESTRUCT CONSTRUCT/DESTRUCT CONSTRUCT/DESTRUCT CONSTRUCT/DESTRUCT
 function constructUserGraphHooks(tname, iname)
-  print ('constructUserGraphHooks: tname: ' .. tname .. ' iname: ' .. iname);
+  --print ('constructUserGraphHooks: tname: ' .. tname .. ' iname: ' .. iname);
   if (not IndexInited[iname]) then
     buildIndex(addIndexUserHasVisitedCity, iname);
   end
@@ -32,7 +32,7 @@ end
 
 function destructUserGraphHooks(tname, iname)
   IndexInited[iname] = false;
-  print ('destructGraphHooks: tname: ' .. tname .. ' iname: ' .. iname);
+  --print ('destructGraphHooks: tname: ' .. tname .. ' iname: ' .. iname);
   for k, hook in pairs(hooks_addNodeRelationShip) do
     if (hook.iname == iname) then
       hooks_addNodeRelationShip[k] = nil; break;

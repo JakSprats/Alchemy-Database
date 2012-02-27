@@ -576,7 +576,7 @@ long Op(range_t *g, row_op *p) {
 // FILTERS FILTERS FILTERS FILTERS FILTERS FILTERS FILTERS FILTERS FILTERS
 static bool runLuaFilter(lue_t *le, bt *btr, aobj *apk, void *rrow, int tmatch,
                          bool  *hf) {
-    printf("runLuaFilter: fname: %s ncols: %d\n", le->fname, le->ncols);
+    //printf("runLuaFilter: fname: %s ncols: %d\n", le->fname, le->ncols);
     lua_getglobal(server.lua, le->fname);
     for (int i = 0; i < le->ncols; i++) {
         pushColumnLua(btr, rrow, tmatch, le->as[i], apk);
@@ -698,9 +698,8 @@ void iselectAction(cli *c,      cswc_t *w,     wob_t *wb,
     g.se.ics     = ics;   g.se.lfca    = lfca;
     void *rlen   = (cstar || EREDIS) ? NULL : addDeferredMultiBulkLength(c);
     long  card   = Op(&g, select_op);
-
-//printf("iselectAction: card: %ld CurrCard: %ld CurrUpdated: %ld\n", card, server.alc.CurrCard, server.alc.CurrUpdated);
-
+    //printf("iselectAction: card: %ld CurrCard: %ld CurrUpdated: %ld\n",
+    //        card, server.alc.CurrCard, server.alc.CurrUpdated);
     if (card == -1) { replaceDMB(c, rlen, server.alc.CurrError); goto isele; }
     long sent    = 0;
     if (card) {

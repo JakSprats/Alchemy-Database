@@ -883,7 +883,7 @@ void runDeleteIndexes(bt   *btr, aobj *opk, void *orow, int matches, int inds[],
 }
 
 // DESTROY_INDEX DESTROY_INDEX DESTROY_INDEX DESTROY_INDEX DESTROY_INDEX
-static void emptyLuaObjectElementIndex(int imatch) {
+static void emptyLuaTableElementIndex(int imatch) {
     r_ind_t *ri = &Index[imatch];
     r_tbl_t *rt = &Tbl  [ri->tmatch];
     CLEAR_LUA_STACK lua_getfield(server.lua, LUA_GLOBALSINDEX, "dropIndLuaEl");
@@ -923,7 +923,7 @@ void emptyIndex(cli *c, int imatch) {
     }
     if (ri->icol.nlo) {
         for (uint32 i = 0; i < ri->icol.nlo; i++) sdsfree(ri->icol.lo[i]);
-        emptyLuaObjectElementIndex(imatch);
+        emptyLuaTableElementIndex(imatch);
         //TODO free ri->icol.lo & set to NULL
     }
     bzero(ri, sizeof(r_ind_t));

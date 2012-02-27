@@ -171,7 +171,7 @@ uchar insertCommit(cli  *c,      sds     uset,   sds     vals,
         if (!nrow) /* e.g. (UINT_COL > 4GB) error */               goto insc_e;
         if (!runFailableInsertIndexes(c, btr, &apk, nrow,
                                       matches, inds))              goto insc_e;
-        lua_getglobal (server.lua, "run_ALL_AQ"); // set ALL LuaObjects
+        lua_getglobal (server.lua, "run_ALL_AQ"); // set ALL LuaTables
         DXDB_lua_pcall(server.lua, 0, 0, 0);
         if (rt->nltrgr) {
             runLuaTriggerInsertIndexes(c, btr, &apk, nrow, matches, inds);

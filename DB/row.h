@@ -65,8 +65,8 @@ robj *outputRow(bt   *btr, void *rrow,   int     qcols, icol_t *ics,
                 aobj *apk, int   tmatch, lfca_t *lfca,  bool   *ostt);
 
 // DELETE DELETE DELETE DELETE DELETE DELETE DELETE DELETE DELETE
-void  deleteLuaObj(int tmatch, int cmatch, aobj *apk);
-int   deleteRow   (int tmatch, aobj *apk, int matches, int inds[]);
+void  deleteLuaTable(int tmatch, int cmatch, aobj *apk);
+int   deleteRow     (int tmatch, aobj *apk, int matches, int inds[]);
 
 // UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE UPDATE
 typedef struct uc_t {

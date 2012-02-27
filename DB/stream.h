@@ -34,23 +34,23 @@ ALL RIGHTS RESERVED
 
 void *row_malloc(bt *ibtr, int size);
 
-// LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ
+// LUATBL
 void pushLuaVar(int tmatch, icol_t ic, aobj *apk);
 bool setLuaVar (int tmatch, icol_t ic, aobj *apk);
 
-// LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU LRU
+// LRU
 uchar  getLruSflag();
 int    cLRUcol(ulong l, uchar *sflag, ulong *col);
 uint32 streamLRUToUInt(uchar *data);
 void   overwriteLRUcol(uchar *row,    ulong icol);
 
-// LFU LFU LFU LFU LFU LFU LFU LFU LFU LFU LFU LFU LFU
+// LFU
 uchar getLfuSflag();
 int   cLFUcol(ulong l, uchar *sflag, ulong *col);
 void  overwriteLFUcol(uchar *row, ulong icol);
 ulong streamLFUToULong(uchar *data);
 
-// NORMAL NORMAL NORMAL NORMAL NORMAL NORMAL NORMAL NORMAL NORMAL NORMAL NORMAL
+// NORMAL
 int     getCSize(ulong l,   bool isi);
 int     cIcol   (ulong l,   uchar *sflag, ulong   *col, bool isi);
 int     cr8Icol (ulong l,   uchar *sflag, ulong   *col);

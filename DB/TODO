@@ -1,15 +1,15 @@
 
 GRAND_PLAN:
-  1.) Luaobj                    -> 2 days
+  1.) LuaTable (memleaks        -> 1 day
   3.) Luvit w/ EmbeddedAlchemy  -> 2 weeks
   4.) EvictedRowSQL_Slave       -> 3 weeks
 IMPROVEMENTS:
   1.) Tokenizer                 -> 1 week
   2.) QueryOptimiser V3         -> 3 weeks
 
-LUAOBJ:
+LUATABLE:
   K.) Test STRING DNI
-  O.) in checkOrCr8LFunc, joins have precedence over nested luaobjs
+  O.) in checkOrCr8LFunc, joins have precedence over nested luatables
         in '.' delimited parsing
   P.) icol_t mem-leaks
   R.) test "SELECT ... IN (luafunc(lo))"

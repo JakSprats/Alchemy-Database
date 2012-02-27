@@ -92,7 +92,7 @@ typedef struct r_tbl { // 131 bytes -> 136B
     bool     dirty;      /* ALTER TABLE [UN]SET DIRTY             */
     ulong    nerows;     /* Number of Evicted Rows                */
     ulong    nebytes;    /* Number of Evicted Bytes               */
-    bool     haslo;      /* Table has LuaObj-Columns              */
+    bool     haslo;      /* Table has LuaTable-Columns            */
     dict    *fdict;      // USAGE: maps LuaFunctionIndexName to imatch
 } r_tbl_t;
 
@@ -124,7 +124,7 @@ typedef struct r_ind { // 100 bytes -> 108B
     bool    iposon;    /* Index Position On (i.e. SELECT "index.pos()"       */
     uint32  cipos;     /* Current Index position, when iposon                */
 
-    uchar   dtype;     /* DotNotation Index Type (e.g. luaobj.x.y.z -> INT)  */
+    uchar   dtype;     /* DotNotation Index Type (e.g. luatbl.x.y.z -> INT)  */
     sds     fname;     /* LuaFunctionIndex: functionname                     */
     sds     iconstrct; /* LuaFunctionIndex: constructor                      */
     sds     idestrct;  /* LuaFunctionIndex: destructor                       */

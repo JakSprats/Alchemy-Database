@@ -114,7 +114,7 @@ void DXDB_createSharedObjects() {
     shared.createsyntax = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: \"CREATE TABLE tablename (columnname type,,,,)\" OR \"CREATE INDEX indexname ON tablename (columnname) [ORDER BY othercolumn] [OFFSET X]\" OR \"CREATE LRUINDEX ON tablename\" OR \"CREATE LUATRIGGER luatriggername ON tablename ADD_LUA_CALL DEL_LUA_CALL\"\r\n"));
     shared.createsyntax_dn = createObject(REDIS_STRING,sdsnew(
-        "-ERR SYNTAX: CREATE TABLE tablename (luaobj.x.y.z,,,) TYPE\r\n"));
+        "-ERR SYNTAX: CREATE TABLE tablename (luatbl.x.y.z,,,) TYPE\r\n"));
     shared.dropsyntax = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: DROP TABLE tablename OR DROP INDEX indexname OR DROP LUATRIGGER\r\n"));
     shared.altersyntax = createObject(REDIS_STRING,sdsnew(
@@ -369,14 +369,14 @@ void DXDB_createSharedObjects() {
 
     shared.unsupported_pk        = createObject(REDIS_STRING,sdsnew(
         "-ERR PROHIBITED: Invalid Primary Key Type. Supported Types: [INT,LONG,U128,FLOAT,TEXT]\r\n"));
-    shared.order_by_luaobj       = createObject(REDIS_STRING,sdsnew(
-        "-ERR UNDEFINED: sorting by a LUAOBJ requires a function\r\n"));
+    shared.order_by_luatbl       = createObject(REDIS_STRING,sdsnew(
+        "-ERR UNDEFINED: sorting by a LUATABLE requires a function\r\n"));
     shared.buildindexdirty       = createObject(REDIS_STRING,sdsnew(
         "-ERR PROHIBITED: Build Index on Dirty Table\r\n"));
     shared.cr8tablesyntax        = createObject(REDIS_STRING,sdsnew(
         "-ERR SYNTAX: CREATE TABLE tblname (colname coltype,,,,,)\r\n"));
     shared.joindotnotation       = createObject(REDIS_STRING,sdsnew(
-        "-ERR NOT_SUPPORTED: JOINs on DotNotationIndexes (i.e. luaobj.x) are not yet supported, if you have a good use-case, please email us\r\n"));
+        "-ERR NOT_SUPPORTED: JOINs on DotNotationIndexes (i.e. luatbl.x) are not yet supported, if you have a good use-case, please email us\r\n"));
 
     shared.http_not_on           = createObject(REDIS_STRING,sdsnew(
         "-ERR CONFIGURATION: HTTP must be turned on, use [webserver_mode, rest_api_mode]\r\n"));

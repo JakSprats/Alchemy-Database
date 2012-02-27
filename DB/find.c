@@ -165,7 +165,7 @@ static icol_t check_special_column(int tmatch, sds cname) {
              int imatch = match_index_name(iname); sdsfree(iname); // FREED 109
              if (Index[imatch].tmatch != tmatch) return ic;
              if (imatch != -1) ic.cmatch = setOCmatchFromImatch(imatch);
-        } else { // CHECK for DotNotation (e.g. "luaobj.x.y.z")
+        } else { // CHECK for DotNotation (e.g. "luatbl.x.y.z")
             sds   cn = sdsnewlen(cname, sd - cname);           // FREE 143
             ci_t *ci = dictFetchValue(rt->cdict, cn);
             if (ci) {

@@ -83,8 +83,8 @@ typedef bool select_callback(erow_t* erow);
 #define NOP 10 
 enum OP {NONE, EQ, NE, GT, GE, LT, LE, RQ, IN, LFUNC};
 
-#define LUA_OBJ_TABLE        "ASQL" // used for direct writes
-#define LUA_OBJ_SHADOW_TABLE "STBL" // used for reads
+#define LUA_TBL_TABLE        "ASQL" /* used for direct writes */
+#define LUA_TBL_SHADOW_TABLE "STBL" /* used for reads */
 
 struct uc_t;
 typedef struct uqc_t { 
@@ -227,7 +227,7 @@ typedef struct alchemy_server_extensions_t {
     *deletemiss,             *uviol,                       \
     *updatemiss,             *dirtypk,                     \
     *unsupported_pk,                                       \
-    *order_by_luaobj,        *buildindexdirty,             \
+    *order_by_luatbl,        *buildindexdirty,             \
     *cr8tablesyntax,         *joindotnotation,             \
     *http_not_on,            *create_findex,               \
     *luafuncindex_rpt,       *interpret_syntax,            \

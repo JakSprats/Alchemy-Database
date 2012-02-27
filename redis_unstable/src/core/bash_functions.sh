@@ -3171,7 +3171,7 @@ function test_dirty_scion_iterators() {
 
 function pop_lua_sql_integration() {
   $CLI DROP   TABLE lo >/dev/null
-  $CLI CREATE TABLE lo "(pk INT, fk LONG, lo LUAOBJ)";
+  $CLI CREATE TABLE lo "(pk INT, fk LONG, lo LUATABLE)";
   $CLI CREATE INDEX i_lo_dn ON lo "(lo.age)" LONG
   $CLI INSERT INTO lo VALUES "(1, 111, {'name':'RUSS', 'age':35})";
   $CLI INSERT INTO lo VALUES "(2, 222, {'name':'JIM',  'age':55})";
@@ -3204,7 +3204,7 @@ function test_lua_sql_integration() {
 
 function populate_dot_notation_index() { 
   $CLI DROP   TABLE doc >/dev/null;
-  $CLI CREATE TABLE doc "(pk INT, fk LONG, lo LUAOBJ)";
+  $CLI CREATE TABLE doc "(pk INT, fk LONG, lo LUATABLE)";
   $CLI CREATE INDEX i_doc_dn ON doc "(lo.age)" LONG;
   $CLI INSERT INTO doc VALUES "(1, 111, {'name':'RUSS', 'age':35, 'group':2})";
   $CLI INSERT INTO doc VALUES "(2, 111, {'name':'JANE', 'age':25, 'group':2})";
@@ -3268,14 +3268,14 @@ function test_dot_notation_index() {
 
 function populate_join_dot_notation_index() {
   $CLI DROP   TABLE j_doc >/dev/null;
-  $CLI CREATE TABLE j_doc "(pk INT, fk LONG, lo LUAOBJ)";
+  $CLI CREATE TABLE j_doc "(pk INT, fk LONG, lo LUATABLE)";
   $CLI CREATE INDEX i_j_doc_dn ON j_doc "(lo.age)" LONG;
   $CLI INSERT INTO j_doc VALUES "(1, 111, {'name':'RUSS','age':35,'group':2})";
 }
 
 function wiki_lua_tests() {
   $CLI DROP TABLE users >/dev/null
-  $CLI CREATE TABLE users "(userid INT, zipcode INT, info LUAOBJ)"
+  $CLI CREATE TABLE users "(userid INT, zipcode INT, info LUATABLE)"
   $CLI INSERT INTO users "(userid, zipcode, info)" VALUES "(1,44555,{'fname':'BILL','lname':'DOE','age':32,'groupid':999,'height':70,'weight':180})"
   $CLI INSERT INTO users "(userid, zipcode, info)" VALUES "(2,44555,{'fname':'Jane','lname':'Smith','age':22,'groupid':888,'coupon':'XYZ123'})"
   $CLI CREATE INDEX i_users_i_a ON users "(info.age)" LONG
@@ -3320,7 +3320,7 @@ function rest_api_first_test() {
 function populate_graph_db() { 
   $CLI INTERPRET LUAFILE "core/graph.lua";
   $CLI DROP   TABLE graphdb >/dev/null;
-  $CLI CREATE TABLE graphdb "(pk INT, fk LONG, lo LUAOBJ)";
+  $CLI CREATE TABLE graphdb "(pk INT, fk LONG, lo LUATABLE)";
 
   $CLI INSERT INTO graphdb VALUES "(1, 50, {'data':'supported'})";
   $CLI SELECT "createNamedNode('graphdb', 'lo', pk, 'KEN')" FROM graphdb WHERE pk=1
@@ -3340,7 +3340,7 @@ function graphdb_fof_cities_populate_cities() {
   $CLI INTERPRET LUAFILE "core/graph.lua";
   $CLI INTERPRET LUAFILE "core/example_user_cities.lua";
   $CLI DROP   TABLE cities >/dev/null
-  $CLI CREATE TABLE cities "(pk INT, lo LUAOBJ, name TEXT)"
+  $CLI CREATE TABLE cities "(pk INT, lo LUATABLE, name TEXT)"
   $CLI CREATE LUATRIGGER lt_cities ON cities INSERT "add_city(name, pk)"
   $CLI CREATE LUATRIGGER lt_cities ON cities DELETE "del_city(name)"
   #$CLI CREATE INDEX i_cityname ON cities "(name)"
@@ -3355,7 +3355,7 @@ function graphdb_fof_cities_test() {
   graphdb_fof_cities_populate_cities
 
   $CLI DROP   TABLE users >/dev/null;
-  $CLI CREATE TABLE users "(pk INT, hometown INT, lo LUAOBJ)";
+  $CLI CREATE TABLE users "(pk INT, hometown INT, lo LUATABLE)";
   $CLI CREATE INDEX lf_users ON users "(relindx())" LONG constructUserGraphHooks destructUserGraphHooks
 
   $CLI LUAFUNC addSqlUserRowAndNode 1 10 'A'
@@ -3471,7 +3471,7 @@ function city_distance_test() {
 }
 
 
-function luaobj_nested_updates_test() {
+function luatable_nested_updates_test() {
   wiki_lua_tests >/dev/null;
   $CLI INTERPRET LUAFILE "extra/example.lua";
   $CLI INSERT INTO users VALUES "(, 3333, {'nest':{'x':{'y':{'z':5}}}})";
@@ -3496,7 +3496,7 @@ function luaobj_nested_updates_test() {
   $CLI SELECT \* FROM users WHERE userid=4
   echo INSERT one more
   $CLI INSERT INTO users VALUES "(, 3333, {'nest':{'x':{'y':{'z':9}}}})"
-  echo Full LUAOBJ UPDATE
+  echo Full LUATABLE UPDATE
   $CLI UPDATE users SET "info = {'www':{'com':'org'}}" WHERE userid=5
   $CLI SELECT \* FROM users WHERE userid=5
 
@@ -3504,9 +3504,9 @@ function luaobj_nested_updates_test() {
   $CLI DUMP users
 }
 
-function luaobj_assignment_test() {
+function luatable_assignment_test() {
   $CLI DROP   TABLE doc >/dev/null;
-  $CLI CREATE TABLE doc "(pk INT, fk LONG, lo LUAOBJ)";
+  $CLI CREATE TABLE doc "(pk INT, fk LONG, lo LUATABLE)";
   $CLI INTERPRET LUAFILE "./extra/example.lua";
   $CLI INTERPRET LUAFILE "./core/dumper.lua";
   echo JSON
@@ -3523,7 +3523,7 @@ function wiki_example_2_updates() {
   $CLI INTERPRET LUA "function cubed(n) return n * n * n; end"
   $CLI INTERPRET LUA "function nested_table(num) local t = {}; t['DEEP']={}; t['DEEP']['a']={} t['DEEP']['a']['b']={}; t['DEEP']['a']['b']['c']=cubed(num); return t; end"
   $CLI DROP TABLE users >/dev/null
-  $CLI CREATE TABLE users "(userid INT, zipcode INT, info LUAOBJ)"
+  $CLI CREATE TABLE users "(userid INT, zipcode INT, info LUATABLE)"
   $CLI INSERT INTO users VALUES "(1, 3333, {'nest':{'x':{'y':{'z':5}}}})";
   $CLI SELECT \* FROM users WHERE userid=1
   $CLI UPDATE users SET "info.nest.x.y.TABLE = nested_table(info.nest.x.y.z)" WHERE userid=1
@@ -3543,8 +3543,8 @@ function advanced_tests() {
   populate_graph_db
   graphdb_fof_cities_test
   city_distance_test
-  luaobj_nested_updates_test
-  luaobj_assignment_test
+  luatable_nested_updates_test
+  luatable_assignment_test
   wiki_example_2_updates
 }
 

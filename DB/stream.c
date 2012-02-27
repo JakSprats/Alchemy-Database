@@ -251,14 +251,14 @@ uint128 streamToU128(uchar *data, uint32 *clen) {
 }
 int cr8Xcol(uint128 x, uint128 *col) { *col = x; return 16; }
 
-// LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ LUAOBJ
+// LUATBL LUATBL LUATBL LUATBL LUATBL LUATBL LUATBL LUATBL LUATBL LUATBL LUATBL
 #define DEBUG_PUSH_LUA_VAR                                              \
   printf("pushLuaVar: tname: %s cname: %s pk: ",                        \
          rt->name, rt->col[ic.cmatch].name); dumpAobj(printf, apk);
 
 void pushLuaVar(int tmatch, icol_t ic, aobj *apk) {
-    r_tbl_t *rt  = &Tbl[tmatch];                             DEBUG_PUSH_LUA_VAR
-    lua_getglobal (server.lua, LUA_OBJ_SHADOW_TABLE); // READ from STBL[]
+    r_tbl_t *rt  = &Tbl[tmatch];                           //DEBUG_PUSH_LUA_VAR
+    lua_getglobal (server.lua, LUA_TBL_SHADOW_TABLE); // READ from STBL[]
     lua_pushstring(server.lua, rt->name);
     lua_gettable  (server.lua, -2); lua_remove(server.lua, -2);
     lua_pushstring(server.lua, rt->col[ic.cmatch].name);
@@ -267,7 +267,7 @@ void pushLuaVar(int tmatch, icol_t ic, aobj *apk) {
     lua_gettable  (server.lua, -2); lua_remove(server.lua, -2);
     if (ic.nlo) {
         for (uint32 i = 0; i < ic.nlo; i++) {
-            printf("pushLuaVar: pushing: ic.lo[%d]: %s\n", i, ic.lo[i]);
+            //printf("pushLuaVar: pushing: ic.lo[%d]: %s\n", i, ic.lo[i]);
             lua_pushstring(server.lua, ic.lo[i]);
             if (lua_type(server.lua, -2) == LUA_TTABLE) {
                 lua_gettable  (server.lua, -2); lua_remove(server.lua, -2);
@@ -281,8 +281,8 @@ void pushLuaVar(int tmatch, icol_t ic, aobj *apk) {
   printf("setLuaVar: tname: %s cname: %s pk: ",                        \
          rt->name, rt->col[ic.cmatch].name); dumpAobj(printf, apk);
 bool setLuaVar(int tmatch, icol_t ic, aobj *apk) {
-    r_tbl_t *rt  = &Tbl[tmatch];                             DEBUG_SET_LUA_VAR
-    lua_getglobal (server.lua, LUA_OBJ_TABLE); // WRITE to ASQL[]
+    r_tbl_t *rt  = &Tbl[tmatch];                            //DEBUG_SET_LUA_VAR
+    lua_getglobal (server.lua, LUA_TBL_TABLE); // WRITE to ASQL[]
     lua_pushstring(server.lua, rt->name);
     lua_gettable  (server.lua, -2); lua_remove(server.lua, -2);
     lua_pushstring(server.lua, rt->col[ic.cmatch].name);
@@ -291,11 +291,11 @@ bool setLuaVar(int tmatch, icol_t ic, aobj *apk) {
     lua_gettable  (server.lua, -2); lua_remove(server.lua, -2);
     if (ic.nlo) {
         for (uint32 i = 0; i < ic.nlo; i++) {
-            printf("setLuaVar: pushing: ic.lo[%d]: %s\n", i, ic.lo[i]);
+            //printf("setLuaVar: pushing: ic.lo[%d]: %s\n", i, ic.lo[i]);
             lua_pushstring(server.lua, ic.lo[i]);
             if (i == ic.nlo - 1) break;
             if (lua_type(server.lua, -2) == LUA_TTABLE) {
-                lua_gettable  (server.lua, -2); lua_remove(server.lua, -2);
+                lua_gettable(server.lua, -2); lua_remove(server.lua, -2);
             } else {
                 lua_pop(server.lua, 1); return 0;
             }

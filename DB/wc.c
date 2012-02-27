@@ -139,7 +139,8 @@ static bool setOffsetReply(cli *c, wob_t *wb, char *nextp) {
 /* SYNTAX: ORDER BY {col [DESC],}+ [LIMIT n [OFFSET m]] */
 static bool parseOBYcol(cli   *c,  char  **token, int   tmatch,
                         wob_t *wb, char  **fin,   bool *more,   bool isj) {
-printf("parseOBYcol wb->nob: %d tmatch: %d token: %s\n", wb->nob, tmatch, *token);
+    //printf("parseOBYcol wb->nob: %d tmatch: %d token: %s\n",
+    //        wb->nob, tmatch, *token);
     wb->le[wb->nob].yes = 0;
     char *nextc = get_next_nonparaned_comma(*token);
     *more       = nextc ? 1 : 0;
@@ -200,7 +201,7 @@ printf("parseOBYcol wb->nob: %d tmatch: %d token: %s\n", wb->nob, tmatch, *token
     if (wb->obt[wb->nob] != -1 && wb->obc[wb->nob].cmatch != -1 &&
         C_IS_O(Tbl[wb->obt[wb->nob]].col[wb->obc[wb->nob].cmatch].type) &&
         !wb->obc[wb->nob].nlo) {
-            addReply(c, shared.order_by_luaobj);     sdsfree(t2);    return 0;
+            addReply(c, shared.order_by_luatbl);     sdsfree(t2);    return 0;
     }
     wb->nob++; sdsfree(t2); return 1;
 }

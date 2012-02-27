@@ -116,7 +116,7 @@ static bool validateCreateTableCnames(cli *c, list *cnames) {
     } listReleaseIterator(li);
     return 1;
 }
-static bool createLuaObjectBaseTable(cli *c, int tmatch, int cmatch) {
+static bool createLuaTableBaseTable(cli *c, int tmatch, int cmatch) {
     r_tbl_t *rt  = &Tbl[tmatch];
     bool     ret = 1;
     CLEAR_LUA_STACK
@@ -162,7 +162,7 @@ static void newTable(cli *c, list *ctypes, list *cnames, int ccount, sds tname){
         listNode *lnt     = listIndex(ctypes, i);
         rt->col[i].type   = (uchar)(long)lnt->value;
         if C_IS_O(rt->col[i].type) {
-            rt->haslo = 1; createLuaObjectBaseTable(c, tmatch, i);
+            rt->haslo = 1; createLuaTableBaseTable(c, tmatch, i);
         }
         rt->col[i].imatch = -1;
     }
@@ -353,7 +353,7 @@ void alterCommand(cli *c) {
         if (imatch == -1)      { addReply(c, shared.alter_sk_no_i);     return;}
         if (Index[imatch].lru) { addReply(c, shared.alter_sk_no_lru);   return;}
         if (Index[imatch].lfu) { addReply(c, shared.alter_sk_no_lfu);   return;}
-//TODO check that this is not a LUAOBJ
+//TODO check that this is not a LUATABLE
         Tbl[tmatch].sk = ic.cmatch;
     } else {/* altfk */
         if (c->argc < 10) { addReply(c, shared.altersyntax);            return;}

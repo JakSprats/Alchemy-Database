@@ -293,7 +293,7 @@ static bool parseSelCol(int  tmatch, char   *cname, int   clen,
     if (!strcasecmp(cname, "COUNT(*)")) { *cstar = 1; *qcols = 1;    return 1; }
     icol_t *mic = malloc(sizeof(icol_t));
     *mic        = find_column_n(tmatch, cname, clen);
-printf("parseSelCol: clen: %d cname: %s cmatch: %d fimatch: %d nlo: %d\n", clen, cname, mic->cmatch, mic->fimatch, mic->nlo);
+    //printf("parseSelCol: clen: %d cname: %s cmatch: %d fimatch: %d nlo: %d\n", clen, cname, mic->cmatch, mic->fimatch, mic->nlo);
     if (mic->cmatch != -1) {
         listAddNodeTail(cs, VOIDINT mic); INCR(*qcols);              return 1;
     } else {
@@ -695,11 +695,11 @@ static bool isLuaFunc(char *expr, sds *fname, sds *argt) {
 bool luaFuncDefined(sds fname) {
     lua_getglobal(server.lua, fname);
     int t = lua_type(server.lua, -1); lua_pop(server.lua, 1);
-    printf("luaFuncDefined: fname: %s t: %d\n", fname, t);
+    //printf("luaFuncDefined: fname: %s t: %d\n", fname, t);
     return (t == LUA_TFUNCTION);
 }
 static bool checkExprIsFunc(char *expr, lue_t *le, int tmatch) {
-printf("checkExprIsFunc: expr: %s\n", expr);
+    //printf("checkExprIsFunc: expr: %s\n", expr);
     sds   fname = NULL; sds argt = NULL; list *lcs = NULL; bool ret = 0;
     if (isLuaFunc(expr, &fname, &argt) && luaFuncDefined(fname)) {
         lcs    = listCreate();                                // FREE 135
@@ -718,8 +718,7 @@ printf("checkExprIsFunc: expr: %s\n", expr);
   sdsfree(tkn);
 
 void dictIcolDestructor(void *privdata, void *val) {
-    ((void) privdata); ((void) val);
-    printf("dictIcolDestructor\n");
+    ((void) privdata); ((void) val); //printf("dictIcolDestructor\n");
 }
 // PROTOTYPES (from redis.c)
 unsigned int dictSdsHash(const void *key);
@@ -737,7 +736,7 @@ dictType icolDictType = {
 };
 
 static void addCnameToCdict(sds cname, icol_t *mic, dict *colD) {
-    if (mic->nlo) { //NOTE: only LuaObject-name is passed
+    if (mic->nlo) { //NOTE: only LuaTable-name is passed
         char   *p   = strchr(cname, '.');
         sds     cn  = sdsnewlen(cname, p - cname); // FREE 153
         icol_t *ic2 = dictFetchValue(colD, cn);
@@ -832,7 +831,7 @@ bool checkOrCr8LFunc(int tmatch, lue_t *le, sds expr, bool cln) {
                                                     cname, (i + 1));
             le->as[i]       = createAobjFromInt(cm);
             le->as[i]->type = COL_TYPE_CNAME;
-            printf("CREATE COMPLEX LUA: a: "); dumpAobj(printf, le->as[i]);
+            //printf("CREATE COMPLEX LUA: a: "); dumpAobj(printf, le->as[i]);
             i++;
         } dictReleaseIterator(di);
     }
@@ -842,8 +841,8 @@ bool checkOrCr8LFunc(int tmatch, lue_t *le, sds expr, bool cln) {
     } else lfunc = sdscatprintf(lfunc, " return (%s); end)(...)", mexpr);
     CLEAR_LUA_STACK
     int ret = luaL_loadstring(server.lua, lfunc);
-    printf("ret: %d fname: %s ncols: %d lfunc: %s\n",
-           ret, le->fname, le->ncols, lfunc);
+    //printf("ret: %d fname: %s ncols: %d lfunc: %s\n",
+           //ret, le->fname, le->ncols, lfunc);
     sdsfree(lfunc);                                                // FREED 100
     sdsfree(mexpr);                                                // FREED 154
     if (ret) { le->yes = 0; sdsfree(le->fname); le->fname = NULL; }// FREED 096
@@ -873,19 +872,19 @@ int ignore_cname(char *tkn) {
     return 0;
 }
 bool parseColType(cli *c, sds type, uchar *ctype) {
-    if      (!strncasecmp(type, "INT",    3))     *ctype = COL_TYPE_INT;
-    else if (!strncasecmp(type, "BIGINT", 6)  ||
-             !strncasecmp(type, "LONG",   4))     *ctype = COL_TYPE_LONG;
-    else if (!strncasecmp(type, "U128",   4))     *ctype = COL_TYPE_U128;
-    else if (!strncasecmp(type, "LUAOBJ", 6))     *ctype = COL_TYPE_LUAO;
-    else if (!strncasecmp(type, "FLOAT",  5)  ||
-             !strncasecmp(type, "REAL",   4)  ||
-             !strncasecmp(type, "DOUBLE", 6))     *ctype = COL_TYPE_FLOAT;
-    else if (!strncasecmp(type, "CHAR",   4)  ||
-             !strncasecmp(type, "TEXT",   4)  ||
-             !strncasecmp(type, "BLOB",   4)  ||
-             !strncasecmp(type, "BYTE",   4)  ||
-             !strncasecmp(type, "BINARY", 6))   *ctype = COL_TYPE_STRING;
+    if      (!strncasecmp(type, "INT",      3))    *ctype = COL_TYPE_INT;
+    else if (!strncasecmp(type, "BIGINT",   6)  ||
+             !strncasecmp(type, "LONG",     4))    *ctype = COL_TYPE_LONG;
+    else if (!strncasecmp(type, "U128",     4))    *ctype = COL_TYPE_U128;
+    else if (!strncasecmp(type, "LUATABLE", 6))    *ctype = COL_TYPE_LUAO;
+    else if (!strncasecmp(type, "FLOAT",    5)  ||
+             !strncasecmp(type, "REAL",     4)  ||
+             !strncasecmp(type, "DOUBLE",   6))    *ctype = COL_TYPE_FLOAT;
+    else if (!strncasecmp(type, "CHAR",     4)  ||
+             !strncasecmp(type, "TEXT",     4)  ||
+             !strncasecmp(type, "BLOB",     4)  ||
+             !strncasecmp(type, "BYTE",     4)  ||
+             !strncasecmp(type, "BINARY",   6))    *ctype = COL_TYPE_STRING;
     else { addReply(c, shared.undefinedcolumntype); return 0; }
     char *s = strchr(type, ' ');
     if (s) {

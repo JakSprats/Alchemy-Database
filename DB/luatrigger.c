@@ -144,7 +144,7 @@ static bool parseLuatCmd(cli *c, sds cmd, ltc_t *ltc, int tmatch) {
 
 static void luaTAdd(cli    *c,    sds    trname, int tmatch,
                     luat_t *luat, ltc_t *ltc,    sds cmd,    int imatch) {
-    printf("luaTAdd; trname: %s tmatch: %d cmd: %s\n", trname, tmatch, cmd);
+    //printf("luaTAdd; trname: %s tmatch: %d cmd: %s\n", trname, tmatch, cmd);
     if (!parseLuatCmd(c, cmd, ltc, tmatch)) {
         addReply(c, shared.luat_decl_fmt);     goto luatadd_err;
     }

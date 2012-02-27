@@ -63,7 +63,7 @@ function createIndLuaEl(tbl, col, el)
   IEL[tbl][col][el] = true;
 end
 
--- LUAOBJ_ASSIGNMENT LUAOBJ_ASSIGNMENT LUAOBJ_ASSIGNMENT LUAOBJ_ASSIGNMENT
+-- LUATABLE_ASSIGNMENT LUATABLE_ASSIGNMENT LUATABLE_ASSIGNMENT LUATABLE_ASSIGNMENT
 -- NOTE: fromrdb means a fully nested STBL[] was already created
 function create_nested_table(tbl, col, fromrdb)
   --print('LUA: create_nested_table: tbl: ' .. tbl .. ' col: ' .. col);
@@ -87,8 +87,8 @@ local function createASQLforSTBL(tbl, col, pk)
 end
 
 -- ASSIGN_QUEUE ASSIGN_QUEUE ASSIGN_QUEUE ASSIGN_QUEUE ASSIGN_QUEUE
-local function __luaobjAssign(tbl, col, pk, t)
-  --print ('__luaobjAssign: tbl: ' .. tbl .. ' col: ' .. col .. ' pk: ' .. pk);
+local function __luaTableAssign(tbl, col, pk, t)
+  --print ('_luaTableAssign: tbl: ' .. tbl .. ' col: ' .. col .. ' pk: ' .. pk);
   STBL[tbl][col][pk] = t; createASQLforSTBL(tbl, col, pk);
 end
 
@@ -99,35 +99,35 @@ local ResetAQ     = false;
 function reset_AQ() --print('ResetAQ');
     AssignQueue = {}; SlotAQ = 1; MinSlotAQ = 1; ResetAQ = false;
 end
-function __queueLuaobjAssign(tbl, col, pk, t)
+function __queueLuaTableAssign(tbl, col, pk, t)
   if (ResetAQ) then reset_AQ(); end
   --print('Q_LOA: tbl: ' .. tbl .. ' col: ' .. col .. ' pk: ' .. pk);
   table.insert(AssignQueue, SlotAQ, 
                {tbl = tbl; col = col; pk = pk; t = t; });
   SlotAQ = SlotAQ + 1;
 end
-function queueLuaobjAssignJson(tbl, col, pk, json)
-  __queueLuaobjAssign(tbl, col, pk, Json.decode(json));
+function queueLuaTableAssignJson(tbl, col, pk, json)
+  __queueLuaTableAssign(tbl, col, pk, Json.decode(json));
 end
-function queueLuaobjAssignEval(tbl, col, pk, luae)
+function queueLuaTableAssignEval(tbl, col, pk, luae)
   local cmd = '__LOAET=' .. luae; assert(loadstring(cmd))();
-  __queueLuaobjAssign(tbl, col, pk, __LOAET);
+  __queueLuaTableAssign(tbl, col, pk, __LOAET);
 end
 function pop_AQ() --print('pop_AQ: MinSlotAQ: ' .. MinSlotAQ);
   local v = AssignQueue[MinSlotAQ]; if (v == nil) then return; end
-  __luaobjAssign(v.tbl, v.col, v.pk, v.t);
+  __luaTableAssign(v.tbl, v.col, v.pk, v.t);
   MinSlotAQ = MinSlotAQ + 1;
   if (MinSlotAQ == SlotAQ) then ResetAQ = true; end
 end
 function run_ALL_AQ() --print('run_ALL_AQ');
   for k, v in pairs(AssignQueue) do
-    __luaobjAssign(v.tbl, v.col, v.pk, v.t);
+    __luaTableAssign(v.tbl, v.col, v.pk, v.t);
   end
   reset_AQ();
 end
 
--- DELETE_LUAOBJ DELETE_LUAOBJ DELETE_LUAOBJ DELETE_LUAOBJ DELETE_LUAOBJ
-function delete_luaobj(tbl, col, pk)
+-- DELETE_LUATABLE DELETE_LUATABLE DELETE_LUATABLE DELETE_LUATABLE
+function deleteLuaTable(tbl, col, pk)
   _G[LOTBL][tbl][col][pk] = nil; STBL[tbl][col][pk] = nil;
 end
 
@@ -141,24 +141,24 @@ function reset_CQ() --print('ResetCQ');
 end
 function queue_CQ_Function(func, ...)
   if (ResetCQ) then reset_CQ(); end
-  print('queue_CQ_Function: func: ' .. func(...) .. ' adding: ' .. SlotCQ);
+  --print('queue_CQ_Function: func: ' .. func(...) .. ' adding: ' .. SlotCQ);
   table.insert(ColumnQueue, SlotCQ, func(...));
   SlotCQ = SlotCQ + 1;
 end
 function queue_CQ_Json(json)
   table.insert(ColumnQueue, SlotCQ, Json.decode(json));
-  print('queue_CQ_json: json: ' .. json .. ' adding: ' .. SlotCQ);
+  --print('queue_CQ_json: json: ' .. json .. ' adding: ' .. SlotCQ);
   SlotCQ = SlotCQ + 1;
 end
 function pop_CQ()
   local ret = ColumnQueue[MinSlotCQ]; if (ret == nil) then return {}; end
-  print('pop_CQ: ret: ' .. ret .. ' returning: ' .. MinSlotCQ);
+  --print('pop_CQ: ret: ' .. ret .. ' returning: ' .. MinSlotCQ);
   MinSlotCQ = MinSlotCQ + 1;
   if (MinSlotCQ == SlotCQ) then ResetCQ = true; end
   return ret;
 end
 
--- LUAOBJ_TO_OUTPUT LUAOBJ_TO_OUTPUT LUAOBJ_TO_OUTPUT LUAOBJ_TO_OUTPUT
+-- LUATABLE_TO_OUTPUT LUATABLE_TO_OUTPUT LUATABLE_TO_OUTPUT LUATABLE_TO_OUTPUT
 function DumpObjForOutput(obj)
   if (obj.__dump ~= nil) then return obj.__dump (obj);
   else                        return Json.encode(obj); end
@@ -171,7 +171,7 @@ function DumpFunctionForOutput(func, ...)
   return Json.encode(res);
 end
 
--- LUAOBJ_PERSISTENCE LUAOBJ_PERSISTENCE LUAOBJ_PERSISTENCE
+-- LUATABLE_PERSISTENCE LUATABLE_PERSISTENCE LUATABLE_PERSISTENCE
 hooks_saveLuaUniverse = {}; hooks_loadLuaUniverse = {};
 local STBL_dump_file = "STBL.lua.rdb"
 local IEL_dump_file  = "IEL.lua.rdb"

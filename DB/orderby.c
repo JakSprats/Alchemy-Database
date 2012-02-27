@@ -253,7 +253,7 @@ bool addRow2OBList(list   *ll,    wob_t  *wb,   bt     *btr, void  *r,
                    bool    ofree, void   *rrow, aobj   *apk) {
     void   *row;
     int     tmatch = wb->obt[0]; /* function ONLY FOR RANGE_QEURIES */
-printf("addRow2OBList: wb: %p tmatch: %d\n", (void *)wb, tmatch);
+    //printf("addRow2OBList: wb: %p tmatch: %d\n", (void *)wb, tmatch);
     if (ofree == OBY_FREE_ROBJ)   row = cloneRobj((robj *)r); /* DEST 005 */
     else /*      OBY_FREE_AOBJ */ row = cloneAobj((aobj *)r); /* DEST 029 */
     obsl_t *ob  = create_obsl(row, wb->nob);                  /* FREE ME 001 */

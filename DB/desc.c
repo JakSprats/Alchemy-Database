@@ -52,8 +52,8 @@ extern r_ind_t *Index;
 
 // CONSTANT GLOBALS
 char *Col_type_defs[]       =
-  {"NONE", "INT UNSIGNED", "BIGINT UNSIGNED", "TEXT", "FLOAT", "U128",
-   "LUAOBJ", "FUNCTION", "BOOL", "COLUMN_NAME"};
+  {"NONE",     "INT UNSIGNED", "BIGINT UNSIGNED", "TEXT", "FLOAT", "U128",
+   "LUATABLE", "FUNCTION",     "BOOL",            "COLUMN_NAME"};
 
 #define ADD_REPLY_BULK(r, buf)    \
     r = _createStringObject(buf); \

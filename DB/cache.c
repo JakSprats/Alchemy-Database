@@ -83,7 +83,7 @@ void evictCommand(cli *c) {
         if (Tbl[tmatch].haslo) {
             r_tbl_t *rt = &Tbl[tmatch];
             for (int j = 0; j < rt->col_count; j++) {
-                if C_IS_O(rt->col[j].type) deleteLuaObj(tmatch, j, &apk);
+                if C_IS_O(rt->col[j].type) deleteLuaTable(tmatch, j, &apk);
             }}
         ulong pre = rt->btr->msize;
         btEvict(btr, &apk); card++; releaseAobj(&apk);

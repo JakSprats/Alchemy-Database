@@ -377,10 +377,10 @@ static uchar *createHashRow(cr_t *cr, crd_t *crd, uchar *rflag, uint32 *mlen) {
                    createHash32Row(cr, crd, rflag, mlen, msize);
 }
 
-// WRITE_LUAOBJ WRITE_LUAOBJ WRITE_LUAOBJ WRITE_LUAOBJ WRITE_LUAOBJ WRITE_LUAOBJ
-#define DEBUG_WRITE_LUAOBJ                                              \
+// WRITE_LUATABLE WRITE_LUATABLE WRITE_LUATABLE WRITE_LUATABLE WRITE_LUATABLE
+#define DEBUG_WRITE_LUATABLE                                            \
   r_tbl_t *rt   = &Tbl[tmatch];                                         \
-  printf("writeLuaObjCol: tname: %s cname: %s Lua: (%s) apk: ",         \
+  printf("writeLuaTblCol: tname: %s cname: %s Lua: (%s) apk: ",         \
           rt->name, rt->col[cmatch].name, json); dumpAobj(printf, apk);
 
 static bool pushSdsToLua(sds arg) { //printf("pushSdsToLua: %s\n", arg);
@@ -400,7 +400,7 @@ static bool writeLOC_FromFunc(cli *c,    aobj *apk,  int   tmatch, int  cmatch,
     int      ret   = 0;
     sds      args  = NULL;
     CLEAR_LUA_STACK
-    char *func = "__queueLuaobjAssign";
+    char *func = "__queueLuaTableAssign";
     lua_getfield  (server.lua, LUA_GLOBALSINDEX, func); // PUSH FUNC
     lua_pushstring(server.lua, rt->name);
     lua_pushstring(server.lua, rt->col[cmatch].name);
@@ -436,7 +436,7 @@ w_locf_end:
     CLEAR_LUA_STACK
     return ret;
 }
-static bool runFuncForWriteLuaObjCol(cli *c, aobj *apk, int tmatch, int cmatch,
+static bool runFuncForWriteLuaTblCol(cli *c, aobj *apk, int tmatch, int cmatch,
                                      sds func, sds arg1) {
     r_tbl_t *rt = &Tbl[tmatch];
     CLEAR_LUA_STACK
@@ -471,22 +471,22 @@ static bool write_LOC_NotJSON(cli *c,    aobj   *apk,  int  tmatch, int cmatch,
     }
     //NOTE: FALL THRU, EVAL in LUA
     sds   luae = sdsnewlen(val, vlen); // FREE 172
-    char *func = "queueLuaobjAssignEval";
-    bool  ret  = runFuncForWriteLuaObjCol(c, apk, tmatch, cmatch, func, luae);
+    char *func = "queueLuaTableAssignEval";
+    bool  ret  = runFuncForWriteLuaTblCol(c, apk, tmatch, cmatch, func, luae);
     sdsfree(luae);                     // FREED 172
     return ret;
 }
 
-static bool writeLuaObjCol(cli *c,    aobj   *apk,  int  tmatch, int cmatch,
+static bool writeLuaTblCol(cli *c,    aobj   *apk,  int  tmatch, int cmatch,
                            char *val, uint32  vlen) {
     if (!vlen) return 1; // e.g.: SET lo.x=22
     if (*val != '{') {
         return write_LOC_NotJSON(c, apk, tmatch, cmatch, val, vlen);
     }
     sds   json = sdsnewlen(val, vlen);   // FREE 173
-    DEBUG_WRITE_LUAOBJ
-    char *func = "queueLuaobjAssignJson";
-    bool  ret  = runFuncForWriteLuaObjCol(c, apk, tmatch, cmatch, func, json);
+    //DEBUG_WRITE_LUATABLE
+    char *func = "queueLuaTableAssignJson";
+    bool  ret  = runFuncForWriteLuaTblCol(c, apk, tmatch, cmatch, func, json);
     sdsfree(json);                      // FREED 173
     return ret;
 }
@@ -519,7 +519,7 @@ static uchar *writeRow(cli *c, aobj *apk, int tmatch, cr_t *cr, crd_t *crd) {
             writeFloatCol(&row, crd[i].fflags, crd[i].fcols);
         } else if C_IS_O(ctype) {
             DECLARE_ICOL(ic, i)
-            if (!writeLuaObjCol(c, apk, tmatch, i, crd[i].strs, crd[i].slens)) {
+            if (!writeLuaTblCol(c, apk, tmatch, i, crd[i].strs, crd[i].slens)) {
                 return NULL;
             }
         } else if C_IS_S(ctype) {
@@ -620,7 +620,7 @@ void *createRow(cli *c,     aobj *apk,  bt     *btr,      int tmatch,
             if        C_IS_S(ctype) { // dont store \' delims
                 crd[i].strs++; crd[i].slens -= 2; nclen = crd[i].slens;
             } else if C_IS_O(ctype) {
-                nclen = 0; // LUAOBJ !inRow (inLua)
+                nclen = 0; // LUATABLE !inRow (inLua)
             } else if (C_IS_I(ctype)) {
                 nclen = cr8IcolFromStr(c, crd[i].strs,    crd[i].slens,
                                           &crd[i].iflags, &crd[i].icols);
@@ -648,7 +648,7 @@ void *createRow(cli *c,     aobj *apk,  bt     *btr,      int tmatch,
 
 // mv to get_row.c
 /* GET_COL GET_COL GET_COL GET_COL GET_COL GET_COL GET_COL GET_COL GET_COL */
-#define DEBUG_GET_RAW_COL \
+#define DEBUG_GET_RAW_COL                                        \
 printf("getRawCol: orow: %p tmatch: %d cmatch: %d fs: %d apk: ", \
         orow, tmatch, cmatch, fs); dumpAobj(printf, apk);
 
@@ -659,9 +659,9 @@ printf("getRawCol: orow: %p tmatch: %d cmatch: %d fs: %d apk: ", \
 #define OBTXY_RAWC(vt, vcast, v_cf_func, kt, kaobjpart, k_cf_func)       \
   { if (cmatch) {                                                        \
         vt key = ((vcast *)orow)->val;                                   \
-        return v_cf_func(key, fs, cmatch);                          \
+        return v_cf_func(key, fs, cmatch);                               \
     } else {                                                             \
-        kt key = apk->kaobjpart; return k_cf_func(key, fs, cmatch); \
+        kt key = apk->kaobjpart; return k_cf_func(key, fs, cmatch);      \
     }}
 
 //TODO aobj *
@@ -686,7 +686,7 @@ static aobj getRC_LFunc(bt   *btr, uchar  *orow, int tmatch, aobj *apk,
     aobj a; initAobj(&a); lue_t *le = lfca->l[lfca->curr]; lfca->curr++;
     lua_getglobal(server.lua, "DumpFunctionForOutput");
     lua_getglobal(server.lua, le->fname);
-    printf("lua select function: fname: %s ncols: %d\n", le->fname, le->ncols);
+    //printf("lua select func: fname: %s ncols: %d\n", le->fname, le->ncols);
     for (int i = 0; i < le->ncols; i++) {
         pushColumnLua(btr, orow, tmatch, le->as[i], apk);
     }
@@ -889,8 +889,8 @@ static void initAobjFromLuaString(lua_State *lua, aobj *a) {
     initAobjString(a, x, len);
 }
 
-char *UnprintableLuaObject = "ERR: UNPRINTABLE_LUA_OBJECT";
-int   lenUnplo             = 27;
+char *UnprintableLuaTable = "ERR: UNPRINTABLE_LUA_OBJECT";
+int   lenUnplo            = 27;
 
 static void initAobjFromLuaNumber(lua_State *lua, aobj *a,
                                   bool       fs,  int   tmatch, icol_t *ic) {
@@ -907,7 +907,7 @@ static void initAobjFromLuaNumber(lua_State *lua, aobj *a,
         }
     }
     a->type = a->enc = dtype;
-    printf("initAobjFromLuaNumber: a: "); dumpAobj(printf, a);
+    //printf("initAobjFromLuaNumber: a: "); dumpAobj(printf, a);
 }
 static void initAobjFromLuaResponse(aobj *a, icol_t *ic, int tmatch, bool fs) {
     int t = lua_type(server.lua, -1);
@@ -925,13 +925,13 @@ static void initAobjFromLuaResponse(aobj *a, icol_t *ic, int tmatch, bool fs) {
        a->type = a->enc = COL_TYPE_BOOL; // for LuaFunctionUPDATES as SELECT
        a->b    = b;
     } else {
-        initAobjString(a, UnprintableLuaObject, lenUnplo);
+        initAobjString(a, UnprintableLuaTable, lenUnplo);
     }
     lua_pop(server.lua, 1);
 }
 static void init_LO_AobjFromCmatch(aobj *a,      aobj *apk, icol_t ic,
                                    int   tmatch, bool  fs) {
-    printf("initLO_AobjFromCmatch: t: %d apk: ", tmatch); dumpAobj(printf, apk);
+    //printf("initLOAobjFromCmtch: t: %d apk: ", tmatch); dumpAobj(printf, apk);
     lua_getglobal(server.lua, "DumpObjForOutput");
     pushLuaVar(tmatch, ic, apk);
     int t     = lua_type(server.lua, -1);
@@ -940,7 +940,7 @@ static void init_LO_AobjFromCmatch(aobj *a,      aobj *apk, icol_t ic,
         lua_pop(server.lua, -1); // pop off func: DumpObjForOutput()
     } else if (t == LUA_TTABLE) {
         int ret = DXDB_lua_pcall(server.lua, 1, 1, 0);
-        if (ret) initAobjString(a, UnprintableLuaObject, lenUnplo);
+        if (ret) initAobjString(a, UnprintableLuaTable, lenUnplo);
         else     initAobjFromLuaResponse(a, &ic, tmatch, fs);
     } else {
         initAobjFromLuaResponse(a, &ic, tmatch, fs);
@@ -1145,13 +1145,14 @@ bool addReplyRow(cli   *c,    robj *r,    int    tmatch, aobj *apk,
 // DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW DELETE_ROW
 #define DEBUG_DELETE_ROW                                                   \
   printf("deleteRow: miss: %d rrow: %p gost: %d\n", dwm.miss, rrow, gost);
-#define DEBUG_DELETE_LUAOBJ                                                \
+#define DEBUG_DELETE_LUATABLE                                                \
   printf("LO: tname: %s cname: %s apk: ", rt->name, rt->col[cmatch].name); \
   dumpAobj(printf, apk);
 
-void deleteLuaObj(int tmatch, int cmatch, aobj *apk) {
-    r_tbl_t *rt = &Tbl[tmatch];                           //DEBUG_DELETE_LUAOBJ
-    CLEAR_LUA_STACK lua_getfield(server.lua, LUA_GLOBALSINDEX, "delete_luaobj");
+void deleteLuaTable(int tmatch, int cmatch, aobj *apk) {
+    r_tbl_t *rt = &Tbl[tmatch];                         //DEBUG_DELETE_LUATABLE
+    CLEAR_LUA_STACK
+    lua_getfield(server.lua, LUA_GLOBALSINDEX, "deleteLuaTable");
     lua_pushstring(server.lua, rt->name);
     lua_pushstring(server.lua, rt->col[cmatch].name);
     pushAobjLua(apk, apk->type);
@@ -1173,7 +1174,7 @@ int deleteRow(int tmatch, aobj *apk, int matches, int inds[]) {
         if (Tbl[tmatch].haslo) {
             r_tbl_t *rt = &Tbl[tmatch];
             for (int i = 0; i < rt->col_count; i++) {
-                if C_IS_O(rt->col[i].type) deleteLuaObj(tmatch, i, apk);
+                if C_IS_O(rt->col[i].type) deleteLuaTable(tmatch, i, apk);
             }}
     }
     btDelete(btr, apk); server.dirty++; 
@@ -1297,11 +1298,11 @@ static int runUpdate(cli *c,    uc_t *uc,   aobj *opk,   void *orow,
                                   uc->matches, uc->inds, uc->chit);
         ret = btReplace(uc->btr, opk, nrow); // OVERWRITE w/ new row 
     }
-    if (lodlt) { // Apply FULL LuaObject Updates
+    if (lodlt) { // Apply FULL LuaTable Updates
         lua_getglobal(server.lua, "pop_AQ");
         DXDB_lua_pcall(server.lua, 0, 0, 0);
     }
-    if (cq) {    // Apply PARTIAL LuaObject Updates
+    if (cq) {    // Apply PARTIAL LuaTable Updates
         for (int i = 1; i < ncols; i++) { // 3rd loop
             uchar ctype = rt->col[i].type;
             if (C_IS_O(ctype) && uc->chit[i].nlo) {
@@ -1527,7 +1528,7 @@ int updateRow(cli *c, uc_t *uc, aobj *opk, void *orow, bool isr) {
             } else assert(!"updateRow create-column ERROR");
         }
         crd[i].empty    = nclen ? 0 : 1;
-        if C_IS_O(ctype) nclen = 0; // LUAOBJs are saved inLua, not inRow
+        if C_IS_O(ctype) nclen = 0; // LUATABLEs are saved inLua, not inRow
         crd[i].mcofsts  = cr.rlen + nclen;
         //printf("empty: %d mcofst: %d\n", crd[i].empty, crd[i].mcofsts);
         cr.rlen        += nclen;                             //DEBUG_UPDATE_ROW
@@ -1569,7 +1570,7 @@ up_end:
 /* UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR UPDATE_EXPR */
 void pushColumnLua(bt *btr, uchar *orow, int tmatch, aobj *a, aobj *apk) {
     aobj acol; initAobj(&acol); int ctype = COL_TYPE_NONE;
-    printf("pushColumnLua: type: %d a: ", a->type); dumpAobj(printf, a);
+    //printf("pushColumnLua: type: %d a: ", a->type); dumpAobj(printf, a);
     if        C_IS_C(a->type) {
         int cmatch = a->ic ? a->ic->cmatch : (int)a->i;
         assert(tmatch != -1 && cmatch != -1);
@@ -1585,7 +1586,7 @@ void pushColumnLua(bt *btr, uchar *orow, int tmatch, aobj *a, aobj *apk) {
         acol  = getCol(btr, orow, ic, apk, tmatch, NULL);
     } else if C_IS_O(a->type) {
         sds vname = sdsnewlen(a->s, a->len);
-        printf("pushColumnLua: VARIABLE: C_IS_O: vname: %s\n", vname);
+        //printf("pushColumnLua: VARIABLE: C_IS_O: vname: %s\n", vname);
         lua_getglobal(server.lua, vname); sdsfree(vname); return;
     } else if C_IS_L(a->type) {
         ctype = COL_TYPE_LONG;   initAobjLong (&acol, a->l);
@@ -1595,7 +1596,7 @@ void pushColumnLua(bt *btr, uchar *orow, int tmatch, aobj *a, aobj *apk) {
         ctype = COL_TYPE_STRING; initAobjFromStr(&acol, a->s, a->len,
                                                            COL_TYPE_STRING);
     } else assert(!"pushColumnLua UNDEFINED TYPE");
-printf("pushColumnLua: acol: "); dumpAobj(printf, &acol);
+    //printf("pushColumnLua: acol: "); dumpAobj(printf, &acol);
     pushAobjLua(&acol, ctype); releaseAobj(&acol);
 }
 
@@ -1613,7 +1614,7 @@ static bool evalLuaExpr(cli *c,    icol_t *ic, uc_t *uc, aobj *apk,
     for (int i = 0; i < le->ncols; i++) {
         pushColumnLua(uc->btr, orow, uc->tmatch, le->as[i], apk);
     }
-printf("evalLuaExpr: fname: %s ncols: %d ctype: %d nargs: %d retargs: %d\n", le->fname, le->ncols, ctype, nargs, retargs);
+    //printf("evalLuaExpr: fname: %s ncols: %d ctype: %d nargs: %d retargs: %d\n", le->fname, le->ncols, ctype, nargs, retargs);
     int ret = DXDB_lua_pcall(server.lua, nargs, retargs, 0);
     if (ret) { ADD_REPLY_FAILED_LUA_STRING_CMD(le->fname) return 0; }
     if (retargs) {
@@ -1628,8 +1629,8 @@ printf("evalLuaExpr: fname: %s ncols: %d ctype: %d nargs: %d retargs: %d\n", le-
             if (s) { aval->s = _strdup(s); aval->freeme = 1; }
         } else if C_IS_O(ctype) {
             initAobjFromLuaResponse(aval, ic, uc->tmatch, 0);
-            printf("evalLuaExpr: C_IS_0\n"); dumpAobj(printf, aval);
-        } else assert(!"evalLuaExpr ERROR 2"); //TODO LOG
+            //printf("evalLuaExpr: C_IS_0\n"); dumpAobj(printf, aval);
+        } else assert(!"evalLuaExpr ERROR 2");
     }
     CLEAR_LUA_STACK //printf("evalLuaExpr: a: "); dumpAobj(printf, aval);
     return 1;
