@@ -3358,20 +3358,13 @@ function graphdb_fof_cities_test() {
   $CLI CREATE TABLE users "(pk INT, hometown INT, lo LUAOBJ)";
   $CLI CREATE INDEX lf_users ON users "(relindx())" LONG constructUserGraphHooks destructUserGraphHooks
 
-  $CLI INSERT INTO users VALUES "(1, 10, {})";
-  $CLI SELECT "createNamedNode('users', 'lo', pk, 'A')" FROM users WHERE pk=1
-  $CLI INSERT INTO users VALUES "(2, 10, {})";
-  $CLI SELECT "createNamedNode('users', 'lo', pk, 'B')" FROM users WHERE pk=2
-  $CLI INSERT INTO users VALUES "(3, 20, {})";
-  $CLI SELECT "createNamedNode('users', 'lo', pk, 'C')" FROM users WHERE pk=3
-  $CLI INSERT INTO users VALUES "(4, 20, {})";
-  $CLI SELECT "createNamedNode('users', 'lo', pk, 'D')" FROM users WHERE pk=4
-  $CLI INSERT INTO users VALUES "(5, 30, {})";
-  $CLI SELECT "createNamedNode('users', 'lo', pk, 'E')" FROM users WHERE pk=5
-  $CLI INSERT INTO users VALUES "(6, 30, {})";
-  $CLI SELECT "createNamedNode('users', 'lo', pk, 'F')" FROM users WHERE pk=6
-  $CLI INSERT INTO users VALUES "(7, 30, {})";
-  $CLI SELECT "createNamedNode('users', 'lo', pk, 'G')" FROM users WHERE pk=7
+  $CLI LUAFUNC addSqlUserRowAndNode 1 10 'A'
+  $CLI LUAFUNC addSqlUserRowAndNode 2 10 'B'
+  $CLI LUAFUNC addSqlUserRowAndNode 3 20 'C'
+  $CLI LUAFUNC addSqlUserRowAndNode 4 20 'D'
+  $CLI LUAFUNC addSqlUserRowAndNode 5 30 'E'
+  $CLI LUAFUNC addSqlUserRowAndNode 6 30 'F'
+  $CLI LUAFUNC addSqlUserRowAndNode 7 30 'G'
 
   $CLI LUAFUNC addNodeRelationShipByPK 'users' 1 "KNOWS" 'users' 2
   $CLI LUAFUNC addNodeRelationShipByPK 'users' 2 "KNOWS" 'users' 4

@@ -761,7 +761,7 @@ function nodeDumper(n)
   table.insert(r, "}");
   return table.concat(r);
 end
-function loWithNodeDumper(lo) print('loWithNodeDumper');
+function loWithNodeDumper(lo)
   local node = lo.node;
   readOnlyLock_OFF(); lo.node = nil;  readOnlyLock_ON();
   local ret = Json.encode(lo);
