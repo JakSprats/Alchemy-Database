@@ -2,12 +2,7 @@ Alchemy Database: A Hybrid Relational-Database/NOSQL-Datastore
 
 Project Home Page: http://code.google.com/p/alchemydatabase/
 
-Alchemy Database is a full RDBMS and a full NOSQL datastore in a single server
-Alchemy Database is a lightweight OLTP SQL server w/ full support for redis data-structures/commands. Datastore-side-scripting is provided by embedding Lua. Alchemy Database is also blazingly fast and extremely memory efficient.
-
-  Speed is achieved by being an event driven network server that stores ALL data in RAM and achieves disk persistence by using a spare cpu-core to periodically log data changes (i.e. no threads, no locks, no undo-logs, no disk-seeks, serving data over a network at RAM speed)
-  Storage data structures w/ very low memory overhead and data compression, via algorithms w/ insignificant performance hits, greatly increase the amount of data you can fit in RAM
-  Optimising to the SQL statements most commonly used in OLTP workloads yields a lightweight SQL server designed for low latency at high concurrency (i.e. mindblowing speed).
+Alchemy Database is a low-latency high-TPS NewSQL RDBMS embedded in the NOSQL datastore redis. Extensive datastore-side-scripting is provided via deeply embedded Lua. Unstructured data, can also be stored, as there are no limits on #tables, #indexes, #columns, and sparsely populated rows use minimal memory.
 
 QUICK HOW TO
 BUILD:
