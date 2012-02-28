@@ -109,9 +109,9 @@ function isLoggedIn()
   initPerRequestIsLoggedIn();
   local authcookie = COOKIE['auth'];
   if (authcookie ~= nil) then
-    local userid = redis("get", "auth:" .. authcookie);
+    local userid = alchemy("get", "auth:" .. authcookie);
     if (userid ~= nil) then
-      if (redis("get", "uid:" .. userid .. ":auth") ~= authcookie) then
+      if (alchemy("get", "uid:" .. userid .. ":auth") ~= authcookie) then
         return false;
       end
       MyUserid = userid; LoggedIn = true; return true;
@@ -124,18 +124,18 @@ end
 function GiveEntityList(userid)
   if (userid == nil) then return nil; end
   local el = {};
-  el["username"]  = redis("get",      "uid:" .. userid .. ":username");
+  el["username"]  = alchemy("get",      "uid:" .. userid .. ":username");
   if (el["username"] == nil) then return nil; end
-  el["userid"]    = redis("get",      "username:" .. el["username"] .. ":id");
-  el["password"]  = redis("get",      "uid:" .. userid .. ":password");
-  el["following"] = redis("smembers", "uid:" .. userid .. ":following");
-  el["posts"]     = redis("zrange",   "uid:" .. userid .. ":posts",   0, -1);
-  el["myposts"]   = redis("zrange",   "uid:" .. userid .. ":myposts", 0, -1);
+  el["userid"]    = alchemy("get",      "username:" .. el["username"] .. ":id");
+  el["password"]  = alchemy("get",      "uid:" .. userid .. ":password");
+  el["following"] = alchemy("smembers", "uid:" .. userid .. ":following");
+  el["posts"]     = alchemy("zrange",   "uid:" .. userid .. ":posts",   0, -1);
+  el["myposts"]   = alchemy("zrange",   "uid:" .. userid .. ":myposts", 0, -1);
   for k, postid in pairs(el["myposts"]) do
-    el["post:" .. postid] = redis("get", "post:" .. postid);
+    el["post:" .. postid] = alchemy("get", "post:" .. postid);
   end
-  el["auth"]      = redis("get",      "uid:" .. userid .. ":auth");
-  el["nlogouts"]  = redis("get",      "uid:" .. userid .. ":nlogouts");
+  el["auth"]      = alchemy("get",      "uid:" .. userid .. ":auth");
+  el["nlogouts"]  = alchemy("get",      "uid:" .. userid .. ":nlogouts");
   return el;
 end
 

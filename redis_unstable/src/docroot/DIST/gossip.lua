@@ -47,7 +47,7 @@ function sync_pong_handler(o_pipeid, o_nodeid, o_channel)
     local fd      = tostring(PipeFD[pipeid]);
     local channel = tostring(o_channel);
     print ('sync_pong_handler inid: ' .. inid .. ' fd: ' .. fd);
-    SubscribeFD(fd, channel);          -- redis("publish", channel) -> fd
+    SubscribeFD(fd, channel);          -- alchemy("publish", channel) -> fd
     SyncedPipeFD[tonumber(fd)] = inid; -- means keep this one around
     NodeData[inid]['synced']   = true;
     NumSynced                  = NumSynced + 1;

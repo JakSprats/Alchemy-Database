@@ -1,6 +1,6 @@
 
 function local_publish(channel, pmsg) -- Assumes no failure (no Qing)
-  redis("publish", channel, pmsg);
+  alchemy("publish", channel, pmsg);
 end
 
 function checkFDsAgainstSyncedPipeFDs(fds, channel, fromb)
@@ -21,7 +21,7 @@ function checkFDsAgainstSyncedPipeFDs(fds, channel, fromb)
 end
 
 function publish(channel, pmsg) -- May fail, if so failing node NOT synced
-  redis("publish", channel, pmsg);
+  alchemy("publish", channel, pmsg);
   local fds = GetFDForChannel(channel)
   if (channel == 'sync') then
     checkFDsAgainstSyncedPipeFDs(fds, channel, false);
@@ -36,7 +36,7 @@ function publish_queue_sync(fname, ...)
   local pmsg    = Redisify('LUA', fname, MyNodeId, xactid, ...);
   --print ('publish_queue_sync: pmsg: ' .. pmsg);
   publish(channel, pmsg);
-  redis("zadd", 'Q_' .. channel, xactid, pmsg);
+  alchemy("zadd", 'Q_' .. channel, xactid, pmsg);
 end
 
 function call_sync(func, fname, ...)

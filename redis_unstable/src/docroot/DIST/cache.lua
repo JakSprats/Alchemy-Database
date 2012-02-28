@@ -6,10 +6,10 @@ local CacheExpireTime = 600; -- 10 minutes
 --CacheExpireTime = 5; -- DEBUG
 
 function clearCache() -- NOTE: used when cache format changes
-  local cached  = redis("keys", "PAGE_CACHE*");
-  for k,v in pairs(cached) do  redis("del", v); end
-  local gcached = redis("keys", "DEFLATE_PAGE_CACHE*");
-  for k,v in pairs(gcached) do redis("del", v); end
+  local cached  = alchemy("keys", "PAGE_CACHE*");
+  for k,v in pairs(cached) do  alchemy("del", v); end
+  local gcached = alchemy("keys", "DEFLATE_PAGE_CACHE*");
+  for k,v in pairs(gcached) do alchemy("del", v); end
 end
 clearCache(); -- NOTE: good idea to clear cache while developing
 
@@ -21,7 +21,7 @@ function getCacheKey(...)
 end
 function CacheExists(...)
   local key = getCacheKey(...);
-  local hit = redis("exists", key);
+  local hit = alchemy("exists", key);
   --print ('CacheExists: key: ' .. key .. ' hit: ' .. hit);
   if (hit == 0) then return false;
   else               return true;  end
@@ -34,9 +34,9 @@ function CacheGet(...)
   local key = getCacheKey(...);
   IsSet_IsDeflatable = false;
   --print ('CacheGet key: ' .. key);
-  redis("expire", key,            CacheExpireTime); -- live a little longer
-  redis("expire", key .. '_BLOB', CacheExpireTime); -- live a little longer
-  return redis("get", key .. '_BLOB');
+  alchemy("expire", key,            CacheExpireTime); -- live a little longer
+  alchemy("expire", key .. '_BLOB', CacheExpireTime); -- live a little longer
+  return alchemy("get", key .. '_BLOB');
 end
 function CachePutOutput(...)
   local key          = getCacheKey(...);
@@ -46,8 +46,8 @@ function CachePutOutput(...)
   --print ('CachePutOutput: out' .. out);
   local deflater     = set_is_deflatable();
   if (deflater) then out = LZ.deflate()(out, "finish") end
-  redis("setex", key,            CacheExpireTime, 1);
-  redis("setex", key .. '_BLOB', CacheExpireTime, out);
+  alchemy("setex", key,            CacheExpireTime, 1);
+  alchemy("setex", key .. '_BLOB', CacheExpireTime, out);
 end
 
 -- ETAG ETAG ETAG ETAG ETAG ETAG ETAG ETAG ETAG ETAG ETAG ETAG ETAG

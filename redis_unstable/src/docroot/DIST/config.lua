@@ -129,6 +129,6 @@ end
 
 ComputeCluster();
 
-redis("del", "SLAVE_LUA_FUNCTIONS"); -- reset state
-redis("del", "MASTER_DOWN");
+alchemy("del", "SLAVE_LUA_FUNCTIONS"); -- reset state
+alchemy("del", "MASTER_DOWN");
 

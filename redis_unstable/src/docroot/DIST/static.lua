@@ -6,15 +6,15 @@ local LZ = require("zlib");
 function load_image(ifile, name)
   local inp = assert(io.open(ifile, "rb"))
   local data = inp:read("*all")
-  redis("SET", 'STATIC/' .. name, data);
+  alchemy("SET", 'STATIC/' .. name, data);
   local b64_data = base64.encode(data);
-  redis("SET", 'BASE64/STATIC/' .. name, b64_data);
+  alchemy("SET", 'BASE64/STATIC/' .. name, b64_data);
 end
 
 function load_text(ifile, name)
   local inp = assert(io.open(ifile, "rb"))
   local data = inp:read("*all")
-  redis("SET", 'STATIC/' .. name, data);
+  alchemy("SET", 'STATIC/' .. name, data);
   local deflate_data = LZ.deflate()(data, "finish")
-  redis("SET", 'DEFLATE/STATIC/' .. name, deflate_data);
+  alchemy("SET", 'DEFLATE/STATIC/' .. name, deflate_data);
 end

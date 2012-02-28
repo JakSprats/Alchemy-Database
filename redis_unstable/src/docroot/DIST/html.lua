@@ -43,7 +43,7 @@ function create_header(inline, my_userid)
 end
 
 function create_inlined_js_for_png_at_EOD(ihtml_beg, n, isrc)
-  local b64_body = redis("get", 'BASE64/' .. isrc);
+  local b64_body = alchemy("get", 'BASE64/' .. isrc);
   return 'document.getElementById("alc_png_eod_" + ' .. n .. ').innerHTML = ' ..
            [[']] .. ihtml_beg .. [[ src="' + ]] ..
                  [['data:image/png;base64,]] .. b64_body .. [[' + '">'; ]];
@@ -57,7 +57,7 @@ function create_post_onload_script(inline)
       now_js = now_js .. create_inlined_js_for_png_at_EOD(ihtml_beg, k, isrc);
     end
     for k,v in pairs(InlinedJS_EOD) do
-      local body = redis("get", v)
+      local body = alchemy("get", v)
       now_js     = now_js  .. body;
     end --print ('now_js: ' .. now_js);
     local post_load_js = '';
@@ -188,12 +188,12 @@ function scriptElapsed(t)
 end
 
 function showPost(id)
-  local postdata = redis("get", "post:" .. id);
+  local postdata = alchemy("get", "post:" .. id);
   if (postdata == nil) then return false; end
   local aux      = explode("|", postdata);
   local userid   = aux[1];
   local time     = aux[2];
-  local username = redis("get", "uid:" .. userid .. ":username");
+  local username = alchemy("get", "uid:" .. userid .. ":username");
   local post     = aux[3];
   local userlink = 
   output([[
@@ -213,9 +213,9 @@ var AlchemyNows = (AlchemyNow.getTime()/1000);
 ]]);
   local posts;
   --if (key == "global:timeline") then
-    posts = redis("zrevrange", key, start, (start + count));
+    posts = alchemy("zrevrange", key, start, (start + count));
   --else 
-    --posts = redis("lrange", key, start, (start + count));
+    --posts = alchemy("lrange", key, start, (start + count));
   --end
   local c     = 0;
   for k,v in pairs(posts) do
@@ -254,11 +254,11 @@ function showUserPostsWithPagination(page, nposts, username, userid,
 end
 
 function showLastUsers()
-  local users = redis("sort", "global:users", "GET", "uid:*:username",
+  local users = alchemy("sort", "global:users", "GET", "uid:*:username",
                       "DESC", "LIMIT",        0,     10);
   output('<div>');
   for k,v in pairs(users) do
-    local userid = redis("get", "username:" .. v .. ":id");
+    local userid = alchemy("get", "username:" .. v .. ":id");
     output('<a class="username" href="' ..
                 build_link(userid, "profile", userid) ..  '">' .. v .. '</a> ');
   end

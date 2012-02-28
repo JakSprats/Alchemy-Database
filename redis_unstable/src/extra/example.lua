@@ -1,22 +1,22 @@
 function set(key, val)
   --print ('set');
-  return redis('set', key, val);
+  return alchemy('set', key, val);
 end
 function get(key)
   --print ('get');
-  return redis('get', key);
+  return alchemy('get', key);
 end
 function info()
-  return redis('info');
+  return alchemy('info');
 end
 
 function subscribe(channel)
   print ('subscribe');
-  return redis('subscribe', channel);
+  return alchemy('subscribe', channel);
 end
 function publish(channel, msg)
   print ('publish');
-  return redis('publish', channel, msg);
+  return alchemy('publish', channel, msg);
 end
 
 function print_packages()
@@ -37,9 +37,9 @@ function dump(o)
 end
 
 function ltrig_cnt(tbl, ...)
-  redis("incr", 'ltrig_cnt');
+  alchemy("incr", 'ltrig_cnt');
   print('ltrig_cnt: tbl: ' .. tbl);
-  print('ltrig_cnt: ' .. redis("get", 'ltrig_cnt'));
+  print('ltrig_cnt: ' .. alchemy("get", 'ltrig_cnt'));
   local args = {...};
   print('ltrig_cnt: #args: ' .. #args);
 end

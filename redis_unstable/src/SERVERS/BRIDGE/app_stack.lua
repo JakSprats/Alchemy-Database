@@ -27,8 +27,8 @@ function bridge_global_caller(nodeid, fname, orig_bxactid, ...)
   local channel = 'sync';
   local pmsg    = Redisify('LUA', fname, MyNodeId, nbxactid, ...);
   --print ('bridge_global_caller: pmsg: ' .. pmsg);
-  redis("publish", channel, pmsg);
-  redis("zadd", 'Q_' .. channel, nbxactid, pmsg);
+  alchemy("publish", channel, pmsg);
+  alchemy("zadd", 'Q_' .. channel, nbxactid, pmsg);
 end
 
 function queue_global_op(nodeid, xactid, fname, ...)
@@ -39,8 +39,8 @@ function queue_global_op(nodeid, xactid, fname, ...)
   local pmsg    = Redisify('LUA', 'bridge_global_caller',
                                   MyNodeId, fname, bxactid, ...);
   --print ('pmsg: ' .. pmsg);
-  redis("publish", channel, pmsg);
-  redis("zadd", 'Q_' .. channel, bxactid, pmsg);
+  alchemy("publish", channel, pmsg);
+  alchemy("zadd", 'Q_' .. channel, bxactid, pmsg);
 end
 
 -- SKELETONS SKELETONS SKELETONS SKELETONS SKELETONS SKELETONS SKELETONS

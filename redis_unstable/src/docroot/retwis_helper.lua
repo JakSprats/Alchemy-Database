@@ -6,7 +6,7 @@ local lz = require("zlib");
 function load_image(ifile, name)
   local inp = assert(io.open(ifile, "rb"))
   local data = inp:read("*all")
-  redis("SET", "STATIC/" .. name, data);
+  alchemy("SET", "STATIC/" .. name, data);
 end
 load_image('docroot/img/logo.png',    'logo.png');
 load_image('docroot/css/style.css',   'css/style.css');
@@ -108,7 +108,7 @@ function getCacheKey(...)
 end
 function CacheExists(...)
   local key = getCacheKey(...);
-  local hit = redis("exists", key);
+  local hit = alchemy("exists", key);
   --print ('CacheExists: key: ' .. key .. ' hit: ' .. hit);
   if (hit == 0) then return false;
   else               return true;  end
@@ -121,9 +121,9 @@ function CacheGet(...)
   local key = getCacheKey(...);
   IsSet_IsDeflatable = false;
   --print ('CacheGet key: ' .. key);
-  redis("expire", key,            CacheExpireTime); -- live a little longer
-  redis("expire", key .. '_BLOB', CacheExpireTime); -- live a little longer
-  return redis("get", key .. '_BLOB');
+  alchemy("expire", key,            CacheExpireTime); -- live a little longer
+  alchemy("expire", key .. '_BLOB', CacheExpireTime); -- live a little longer
+  return alchemy("get", key .. '_BLOB');
 end
 function CachePutOutput(...)
   local key          = getCacheKey(...);
@@ -132,8 +132,8 @@ function CachePutOutput(...)
   local out          = table.concat(OutputBuffer);
   local deflater     = set_is_deflatable();
   if (deflater) then out = lz.deflate()(out, "finish") end
-  redis("setex", key,            CacheExpireTime, 1);
-  redis("setex", key .. '_BLOB', CacheExpireTime, out);
+  alchemy("setex", key,            CacheExpireTime, 1);
+  alchemy("setex", key .. '_BLOB', CacheExpireTime, out);
 end
 
 -- ETAG ETAG ETAG ETAG ETAG ETAG ETAG ETAG ETAG ETAG ETAG ETAG ETAG
@@ -249,12 +249,12 @@ function strElapsed(t)
 end
 
 function showPost(id)
-  local postdata = redis("get", "post:" .. id);
+  local postdata = alchemy("get", "post:" .. id);
   if (postdata == nil) then return false; end
   local aux      = explode("|", postdata);
   local uid      = aux[1];
   local time     = aux[2];
-  local username = redis("get", "uid:" .. uid .. ":username");
+  local username = alchemy("get", "uid:" .. uid .. ":username");
   local post     = aux[3]; -- TODO: more
   local elapsed  = strElapsed(time);
   local userlink = 
@@ -267,7 +267,7 @@ function showPost(id)
 end
 
 function showUserPosts(key, start, count)
-  local posts = redis("lrange", key, start, (start + count));
+  local posts = alchemy("lrange", key, start, (start + count));
   local c     = 0;
   for k,v in pairs(posts) do
       if (showPost(v)) then c = c + 1; end
@@ -304,7 +304,7 @@ function showUserPostsWithPagination(thispage, nposts, username, userid, start, 
 end
 
 function showLastUsers()
-  local users = redis("sort", "global:users", "GET", "uid:*:username", "DESC", "LIMIT", 0, 10);
+  local users = alchemy("sort", "global:users", "GET", "uid:*:username", "DESC", "LIMIT", 0, 10);
   output("<div>");
   for k,v in pairs(users) do
     output("<a class=\"username\" href=\"/profile/" .. v .. "\">" .. v .. "</a> ");
@@ -341,16 +341,16 @@ end
 User = {};
 function loadUserInfo(userid)
   User['id']       = userid;
-  User['username'] = redis("get", "uid:" .. userid .. ":username");
+  User['username'] = alchemy("get", "uid:" .. userid .. ":username");
 end
 
 function isLoggedIn()
   User = {};
   local authcookie = COOKIE['auth'];
   if (authcookie ~= nil) then
-    local userid = redis("get", "auth:" .. authcookie);
+    local userid = alchemy("get", "auth:" .. authcookie);
     if (userid ~= nil) then
-      if (redis("get", "uid:" .. userid .. ":auth") ~= authcookie) then
+      if (alchemy("get", "uid:" .. userid .. ":auth") ~= authcookie) then
         return false;
       end
       loadUserInfo(userid);

@@ -21,7 +21,7 @@ function GenerateHBCommand() -- this command will be remotely EVALed
     if (inid == MyNodeId) then
       n_hw_cmd = n_hw_cmd  .. aiweq(inid) .. AutoInc['In_Xactid'];
     else
-      local hw = redis("get", getHWname(inid));
+      local hw = alchemy("get", getHWname(inid));
       if (hw == nil) then hw = '0'; end
       n_hw_cmd = n_hw_cmd  .. aiweq(inid) .. hw;
     end
@@ -80,7 +80,7 @@ function rexmit_ops(nodeid, beg, fin)
   local channel;
   if (AmBridge) then channel = 'Q_sync_bridge';
   else               channel = 'Q_sync';        end
-  local msgs     = redis("zrangebyscore", channel, beg, fin);
+  local msgs     = alchemy("zrangebyscore", channel, beg, fin);
   local pipeline = '';
   for k,v in pairs(msgs) do pipeline = pipeline .. v; end
   --print ('pipeline: ' .. pipeline);
@@ -97,22 +97,22 @@ function mod_hw(nodeid, o_xactid, issync)
   local inid   = tonumber(nodeid);
   local xactid = tonumber(o_xactid);
   local hwname = getHWname(inid);
-  local hw     = tonumber(redis("get", hwname));
+  local hw     = tonumber(alchemy("get", hwname));
   local fromb  = NodeData[inid]['isb'];
   if (issync) then        -- SYNC
       if (NodeData[inid]["slave"]) then hw = PromoteSlave(inid); end
       local beg;
       if (hw == nil) then -- CHERRY SYNC
         beg = giveInitialAutoInc(inid);
-        if (beg == xactid) then redis("set", hwname, xactid); return true; end;
+        if (beg == xactid) then alchemy("set", hwname, xactid); return true; end;
       else
-        if (hw  == xactid) then redis("set", hwname, xactid); return true; end;
+        if (hw  == xactid) then alchemy("set", hwname, xactid); return true; end;
         if (NodeData[inid]['isb']) then beg = getNextBridgeAutoInc(hw);
         else                            beg = getNextAutoInc      (hw); end
       end
       fetch_missing_ops(hw, inid, beg, xactid); -- ONLY sync or resync fetches
   else                    -- NORMAL OP
-    redis("set", hwname, xactid);
+    alchemy("set", hwname, xactid);
   end
   return true;
 end
@@ -134,7 +134,7 @@ function trim_sync_Q(hw, fromb)
   local channel;
   if (fromb) then channel = 'Q_sync_bridge';
   else            channel = 'Q_sync';        end
-  redis("zremrangebyscore", channel, "-inf", hw);
+  alchemy("zremrangebyscore", channel, "-inf", hw);
   TrimHW = hw;
 end
 function check_HB(inid, fromb)

@@ -50,7 +50,7 @@ function inline_include_js(js)
   if (VirginInlineCache and CanInline) then
     table.insert(InlinedJS, js)  
     --for k,v in pairs(InlinedJS)  do print('InlinedJS: ' .. v); end
-    local body = redis("get", js);
+    local body = alchemy("get", js);
     return '<script>' .. body .. '</script>';
   else
     return '<script src="/' .. js .. '"></script>';
@@ -61,7 +61,7 @@ function inline_include_css(css)
   if (VirginInlineCache and CanInline) then
     table.insert(InlinedCSS, css)  
     --for k,v in pairs(InlinedCSS)  do print('InlinedCSS: ' .. v); end
-    local body = redis("get", css);
+    local body = alchemy("get", css);
     return '<style type="text/css">' .. body .. '</style>';
   else
     return '<link href="/' .. css .. '" rel="stylesheet" type="text/css" />';
@@ -72,7 +72,7 @@ function inline_include_png_src(isrc)
   if (VirginInlineCache and CanInline) then
     table.insert(InlinedPNG, isrc)  
     --for k,v in pairs(InlinedPNG)  do print('InlinedPNG: ' .. v); end
-    local b64_body = redis("get", 'BASE64/' .. isrc);
+    local b64_body = alchemy("get", 'BASE64/' .. isrc);
     return 'data:image/png;base64,' .. b64_body;
   else
     return '/' .. isrc;

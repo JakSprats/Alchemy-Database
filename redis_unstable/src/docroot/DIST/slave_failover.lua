@@ -16,18 +16,18 @@ function CheckSlaveToMasterConnection()
 end
 function CheckSlaveLuaFunctions()
   if (AmSlave == false) then return end;
-  local funcs = redis("lrange", "SLAVE_LUA_FUNCTIONS", 0, -1);
+  local funcs = alchemy("lrange", "SLAVE_LUA_FUNCTIONS", 0, -1);
   if (funcs ~= nil) then
     for k, func in ipairs(funcs) do
       assert(loadstring(func))() -- Lua eval - each func
     end
-    redis("del", "SLAVE_LUA_FUNCTIONS");
+    alchemy("del", "SLAVE_LUA_FUNCTIONS");
   end
 end
 
 function ReconfigStunnels(mynid) print('ReconfigStunnels');
   --NOTE: MASTER_DOWN will be checked by cron scripts to reconfig stunnels
-  if (mynid == MyNodeId) then redis("set", "MASTER_DOWN", os.time()); end
+  if (mynid == MyNodeId) then alchemy("set", "MASTER_DOWN", os.time()); end
 end
 
 DeadMasters = {}; -- USED in linking.lua: UserNode()
@@ -35,9 +35,9 @@ function PromoteSlave(o_mynid) print('PROMO4SLAVE: inid: ' .. o_mynid);
   local mynid = tonumber(o_mynid);
   if (AmBridge) then ReconfigStunnels(mynid) end
   if (AmSlave == false) then -- SLAVE_LUA_FUNCTIONS will be run on SLAVEs
-    redis("rpush", "SLAVE_LUA_FUNCTIONS", "PromoteSlave(" .. mynid .. ")");
+    alchemy("rpush", "SLAVE_LUA_FUNCTIONS", "PromoteSlave(" .. mynid .. ")");
   end
-  if (mynid == MyNodeId) then redis("SLAVEOF", "NO", "ONE"); end
+  if (mynid == MyNodeId) then alchemy("SLAVEOF", "NO", "ONE"); end
   NodeData[mynid]['slave']   = false;             -- NodeData[] promotion
   NodeData[mynid]['synced']  = false;             -- PING ME
   local master               = MasterData[mynid];
@@ -53,10 +53,10 @@ function PromoteSlave(o_mynid) print('PROMO4SLAVE: inid: ' .. o_mynid);
     end
     SyncedHW[mynid] = SyncedHW[master]; SyncedHW[master] = nil;
     local hwname    = getHWname(master);          -- sync_Q -> master's state
-    local hw        = tonumber(redis("get", hwname));
+    local hw        = tonumber(alchemy("get", hwname));
     if (hw ~= nil) then
-      redis("del", hwname);
-      hwname = getHWname(mynid); redis("set", hwname, hw); return hw;
+      alchemy("del", hwname);
+      hwname = getHWname(mynid); alchemy("set", hwname, hw); return hw;
     end
   end
   return 0;

@@ -16,10 +16,10 @@ function giveInitialAutoInc(myid)
   end
 end
 function InitAutoInc(name)
-  local id = redis("get", 'global:' .. name);
+  local id = alchemy("get", 'global:' .. name);
   if (id == nil) then
     id = giveInitialAutoInc(MyNodeId);
-    redis("set", 'global:' .. name, id);
+    alchemy("set", 'global:' .. name, id);
   end
   AutoInc[name] = id;
 end
@@ -32,7 +32,7 @@ function getNextAutoInc(num)
 end
 function IncrementAutoInc(name)
   AutoInc[name] = getNextAutoInc(AutoInc[name]);
-  redis("set", 'global:' .. name, AutoInc[name]);
+  alchemy("set", 'global:' .. name, AutoInc[name]);
   return AutoInc[name];
 end
 function getPrevAutoInc(o_num)                             --local was = o_num;
@@ -46,10 +46,10 @@ function getPrevAutoInc(o_num)                             --local was = o_num;
 end
 -- BRIDGE_AUTO_INC_COUNTER BRIDGE_AUTO_INC_COUNTER BRIDGE_AUTO_INC_COUNTER
 function InitBridgeAutoInc(name)
-  local id = redis("get", 'global:' .. name);
+  local id = alchemy("get", 'global:' .. name);
   if (id == nil) then
     id = giveInitialAutoInc(MyNodeId);
-    redis("set", 'global:' .. name, id);
+    alchemy("set", 'global:' .. name, id);
   end
   AutoInc[name] = id;
 end
@@ -61,7 +61,7 @@ function getNextBridgeAutoInc(num)
 end
 function IncrementBridgeAutoInc(name)
   AutoInc[name] = getNextBridgeAutoInc(AutoInc[name]);
-  redis("set", 'global:' .. name, AutoInc[name]);
+  alchemy("set", 'global:' .. name, AutoInc[name]);
   return AutoInc[name];
 end
 function getPrevBridgeAutoInc(o_num)                       --local was = o_num;
@@ -92,7 +92,7 @@ end
 function __set_sha1_variable(name, my_userid, val)                   -- private
   local rname = __create_sha1_name(name, my_userid);
   local rval  = __create_sha1_variable(name, my_userid, val);
-  redis("set", rname, val);
+  alchemy("set", rname, val);
   return rval;
 end
 function init_sha1_variable(name, my_userid)                          -- PUBLIC
@@ -100,7 +100,7 @@ function init_sha1_variable(name, my_userid)                          -- PUBLIC
 end
 function get_sha1_variable(name, my_userid)                           -- PUBLIC
   local rname = __create_sha1_name(name, my_userid);
-  return redis("get", rname);
+  return alchemy("get", rname);
 end
 function incr_sha1_variable(name, my_userid)                          -- PUBLIC
   local rval = get_sha1_variable(name, my_userid);

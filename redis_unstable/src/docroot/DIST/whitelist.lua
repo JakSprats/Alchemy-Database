@@ -25,9 +25,9 @@ end
 
 function I_home(my_userid, my_username, s)
   setIsLoggedIn(my_userid); -- used for internal redirects
-  local nposts    = redis("zcard", "uid:" .. my_userid .. ":posts");
-  local nflwers   = redis("scard", "uid:" .. my_userid .. ":followers");
-  local nflwing   = redis("scard", "uid:" .. my_userid .. ":following");
+  local nposts    = alchemy("zcard", "uid:" .. my_userid .. ":posts");
+  local nflwers   = alchemy("scard", "uid:" .. my_userid .. ":followers");
+  local nflwing   = alchemy("scard", "uid:" .. my_userid .. ":following");
   local my_userid = MyUserid;
   if (CheckEtag('home', my_userid, nposts, nflwers, nflwing)) then return; end
   init_output();
@@ -45,7 +45,7 @@ function WL_home(rw, s)
       SetHttpRedirect(build_link(my_userid, 'home')); return;
     end
     InitRequest(rw);
-    local my_username = redis("get", "uid:" .. my_userid .. ":username");
+    local my_username = alchemy("get", "uid:" .. my_userid .. ":username");
     return I_home(my_userid, my_username, s);
   end
 end
@@ -53,7 +53,7 @@ end
 function D_profile(isl, my_userid, userid)
   local f   = -1;
   if (isl and my_userid ~= userid) then
-    local isf = redis("sismember", "uid:" .. my_userid .. ":following", userid);
+    local isf = alchemy("sismember", "uid:" .. my_userid .. ":following", userid);
     if (isf == 1) then f = 1;
     else               f = 0; end
   end
@@ -69,7 +69,7 @@ function I_profile(userid, username, s)
   if (LoggedIn) then my_userid = MyUserid;
   else               my_userid = 0;       end
   local f = D_profile(isl, my_userid, userid);
-  local nposts = redis("zcard", "uid:" .. userid .. ":myposts")
+  local nposts = alchemy("zcard", "uid:" .. userid .. ":myposts")
   if (CheckEtag('profile', isl, userid, nposts, s)) then return; end
   s = tonumber(s);
   if (s == nil) then s = 0; end
@@ -93,7 +93,7 @@ function WL_profile(rw, userid, start)
   if (IsCorrectNode(rw, userid) == false) then -- profile ONLY to shard-node
     SetHttpRedirect(build_link(userid, 'profile', userid, start)); return;
   end
-  local username = redis("get", "uid:" .. userid .. ":username");
+  local username = alchemy("get", "uid:" .. userid .. ":username");
   if (username == nil) then -- FOR: hackers doing userid scanning
     SetHttpRedirect(build_link(0, 'index_page')); return;
   end
@@ -113,7 +113,7 @@ function WL_follow(rw, muserid, userid, follow) -- muserid used ONLY by haproxy
     SetHttpRedirect(build_link(my_userid, 'follow', my_userid, userid, follow));
     return;
   end
-  local username = redis("get", "uid:" .. userid .. ":username");
+  local username = alchemy("get", "uid:" .. userid .. ":username");
   if (username == nil) then -- FOR: hackers doing userid scanning
     SetHttpRedirect(build_link(0, 'home')); return;
   end
@@ -135,7 +135,7 @@ function WL_register(rw, o_username, o_password)
   end
   local username   = url_decode(o_username);
   local password   = url_decode(o_password);
-  if (redis("get", "username:" .. username .. ":id")) then
+  if (alchemy("get", "username:" .. username .. ":id")) then
     goback(0, "Sorry the selected username is already in use.");
     return flush_output();
   end
@@ -188,7 +188,7 @@ function WL_login(rw, o_username, o_password)
   end
   local my_username  = url_decode(o_username);
   local password     = url_decode(o_password);
-  local my_userid    = redis("get", "username:" .. my_username ..":id");
+  local my_userid    = alchemy("get", "username:" .. my_username ..":id");
   if (my_userid == nil) then
     goback(0, "Wrong username or password"); return flush_output();
   end
@@ -196,13 +196,13 @@ function WL_login(rw, o_username, o_password)
     SetHttpRedirect(build_link(my_userid, 'login', o_username, o_password));
     return;
   end
-  local realpassword = redis("get", "uid:" .. my_userid .. ":password");
+  local realpassword = alchemy("get", "uid:" .. my_userid .. ":password");
   if (realpassword ~= password) then
     goback(0, "Wrong username or password"); return flush_output();
   end
   InitRequest(rw);
   -- Username / password OK, set the cookie and internal redirect to home
-  local authsecret   = redis("get", "uid:" .. my_userid .. ":auth");
+  local authsecret   = alchemy("get", "uid:" .. my_userid .. ":auth");
   SetHttpResponseHeader('Set-Cookie', 'auth=' .. authsecret ..
                             '; Expires=Wed, 09 Jun 2021 10:18:14 GMT; path=/;');
   return I_home(my_userid, my_username, 0); -- internal redirect
@@ -222,13 +222,13 @@ function WL_post(rw, muserid, o_msg) -- muserid for URL haproxy LoadBalancing
   local postid      = IncrementAutoInc('NextPostId');
   call_sync(global_post, 'global_post', my_userid, postid, ts, msg);
   local_post(my_userid, postid, msg, ts);
-  local my_username = redis("get", "uid:" .. my_userid .. ":username");
+  local my_username = alchemy("get", "uid:" .. my_userid .. ":username");
   return I_home(my_userid, my_username, 0); -- internal redirect
 end
 
 function WL_timeline(rw)
-  local n_users   = redis("scard",  "global:users");
-  local last_post = redis("zrange", "global:timeline", 0, 0);
+  local n_users   = alchemy("scard",  "global:users");
+  local last_post = alchemy("zrange", "global:timeline", 0, 0);
   if (CheckEtag('timeline',     n_users, last_post)) then return; end
   if (CacheExists('tineline',   n_users, last_post)) then
     return CacheGet('timeline', n_users, last_post);
@@ -251,5 +251,5 @@ end
 
 function WL_hello_world() return 'HELLO WORLD'; end
 
-redis("set", 'HELLO WORLD', 'HELLO WORLD');
-function WL_hello_world_data() return redis("get", 'HELLO WORLD'); end
+alchemy("set", 'HELLO WORLD', 'HELLO WORLD');
+function WL_hello_world_data() return alchemy("get", 'HELLO WORLD'); end

@@ -15,9 +15,9 @@ function WL_index_page(start)
 end
 
 function I_home(s) 
-  local nflwers   = redis("scard", "uid:" .. User['id'] .. ":followers");
-  local nflwing   = redis("scard", "uid:" .. User['id'] .. ":following");
-  local nposts    = redis("llen",  "uid:" .. User['id'] .. ":posts");
+  local nflwers   = alchemy("scard", "uid:" .. User['id'] .. ":followers");
+  local nflwing   = alchemy("scard", "uid:" .. User['id'] .. ":following");
+  local nposts    = alchemy("llen",  "uid:" .. User['id'] .. ":posts");
   local my_userid = User['id'];
   if (CheckEtag('home', my_userid, nposts, nflwers, nflwing)) then return; end
   init_output();
@@ -31,14 +31,14 @@ end
 
 function I_profile(username, s) -- NOTE: username is NOT encoded
   local page      = '/profile';
-  local userid    = redis("get", "username:" .. username .. ":id")
+  local userid    = alchemy("get", "username:" .. username .. ":id")
   if (userid == nil) then SetHttpRedirect('/index_page'); return; end
-  local nposts    = redis("llen", "uid:" .. userid .. ":myposts");
+  local nposts    = alchemy("llen", "uid:" .. userid .. ":myposts");
   local isl       = isLoggedIn(); -- populates User[]
   local my_userid = User['id'];
   local f         = -1;
   if (isl and my_userid ~= userid) then
-    local isf = redis("sismember", "uid:" .. my_userid .. ":following",userid);
+    local isf = alchemy("sismember", "uid:" .. my_userid .. ":following",userid);
     if (isf == 1) then f = 1;
     else               f = 0; end
   end
@@ -79,14 +79,14 @@ function WL_follow(my_userid, userid, follow) -- my_userid only for proxying
   if (userid ~= User['id']) then
     local f = tonumber(follow);
     if (f == 1) then
-      redis("sadd", "uid:" .. userid     .. ":followers", User['id']);
-      redis("sadd", "uid:" .. User['id'] .. ":following", userid);
+      alchemy("sadd", "uid:" .. userid     .. ":followers", User['id']);
+      alchemy("sadd", "uid:" .. User['id'] .. ":following", userid);
     else 
-      redis("srem", "uid:" .. userid     .. ":followers", User['id']);
-      redis("srem", "uid:" .. User['id'] .. ":following", userid);
+      alchemy("srem", "uid:" .. userid     .. ":followers", User['id']);
+      alchemy("srem", "uid:" .. User['id'] .. ":following", userid);
     end
   end
-  local username = redis("get", "uid:" .. userid .. ":username");
+  local username = alchemy("get", "uid:" .. userid .. ":username");
   return I_profile(username); -- internal redirect
 end
 
@@ -97,23 +97,23 @@ function WL_register(username, password)
   end
   username = url_decode(username);
   password = url_decode(password);
-  if (redis("get", "username:" .. username .. ":id")) then
+  if (alchemy("get", "username:" .. username .. ":id")) then
     goback("Sorry the selected username is already in use.");
     return flush_output();
   end
 
   -- Everything is ok, Register the user!
-  local userid = redis("incr", "global:nextUserId");
-  redis("set", "username:" .. username .. ":id",       userid);
-  redis("set", "uid:"      .. userid   .. ":username", username);
-  redis("set", "uid:"      .. userid   .. ":password", password);
+  local userid = alchemy("incr", "global:nextUserId");
+  alchemy("set", "username:" .. username .. ":id",       userid);
+  alchemy("set", "uid:"      .. userid   .. ":username", username);
+  alchemy("set", "uid:"      .. userid   .. ":password", password);
 
   local authsecret = getrand();
-  redis("set", "uid:" .. userid .. ":auth", authsecret);
-  redis("set", "auth:" .. authsecret,       userid);
+  alchemy("set", "uid:" .. userid .. ":auth", authsecret);
+  alchemy("set", "auth:" .. authsecret,       userid);
 
   -- Manage a Set with all the users, may be userful in the future
-  redis("sadd", "global:users", userid);
+  alchemy("sadd", "global:users", userid);
 
   -- User registered -> Log him in
   set_auth_cookie(authsecret, userid);
@@ -130,11 +130,11 @@ function WL_logout()
 
   local newauthsecret = getrand();
   local userid        = User['id'];
-  local oldauthsecret = redis("get", "uid:" .. userid .. ":auth");
+  local oldauthsecret = alchemy("get", "uid:" .. userid .. ":auth");
 
-  redis("set", "uid:" .. userid .. ":auth", newauthsecret);
-  redis("set", "auth:" .. newauthsecret, userid);
-  redis("delete", "auth:" .. oldauthsecret);
+  alchemy("set", "uid:" .. userid .. ":auth", newauthsecret);
+  alchemy("set", "auth:" .. newauthsecret, userid);
+  alchemy("delete", "auth:" .. oldauthsecret);
   return I_index_page(0); -- internal redirect
 end
 
@@ -146,17 +146,17 @@ function WL_login(username, password)
   end
   username = url_decode(username);
   password = url_decode(password);
-  local userid = redis("get", "username:" .. username ..":id");
+  local userid = alchemy("get", "username:" .. username ..":id");
   if (userid == nil) then
     goback("Wrong username or password"); return flush_output();
   end
-  local realpassword = redis("get", "uid:" .. userid .. ":password");
+  local realpassword = alchemy("get", "uid:" .. userid .. ":password");
   if (realpassword ~= password) then
     goback("Wrong username or password"); return flush_output();
   end
 
   -- Username / password OK, set the cookie and internal redirect to index
-  local authsecret = redis("get", "uid:" .. userid .. ":auth");
+  local authsecret = alchemy("get", "uid:" .. userid .. ":auth");
   set_auth_cookie(authsecret, userid);
   loadUserInfo(userid); -- log user in
   return I_home(); -- internal redirect
@@ -169,20 +169,20 @@ function WL_post(my_userid, msg)
   msg = url_decode(msg);
 
   local ts = os.time();
-  local postid = redis("incr", "global:nextPostId");
+  local postid = alchemy("incr", "global:nextPostId");
   local post   = User['id'] .. "|" .. ts .. "|" .. msg;
-  redis("set", "post:" .. postid, post);
-  local followers = redis("smembers", "uid:" .. User['id'] .. ":followers");
+  alchemy("set", "post:" .. postid, post);
+  local followers = alchemy("smembers", "uid:" .. User['id'] .. ":followers");
   table.insert(followers, User['id']); -- Add the post to our own posts too 
 
   for k,v in pairs(followers) do
-    redis("lpush", "uid:" .. v .. ":posts", postid);
+    alchemy("lpush", "uid:" .. v .. ":posts", postid);
   end
-  redis("lpush", "uid:" .. User['id'] .. ":myposts", postid); -- for /profile
+  alchemy("lpush", "uid:" .. User['id'] .. ":myposts", postid); -- for /profile
 
   -- Push post to timeline, and trim timeline to newest 1000 elements.
-  redis("lpush", "global:timeline", postid);
-  redis("ltrim", "global:timeline", 0, 1000);
+  alchemy("lpush", "global:timeline", postid);
+  alchemy("ltrim", "global:timeline", 0, 1000);
 
   return I_home(); -- internal redirect
 end
@@ -204,7 +204,7 @@ end
 function WL_hello_world()
   return 'HELLO WORLD';
 end
-redis("set", 'HELLO WORLD', 'HELLO WORLD');
+alchemy("set", 'HELLO WORLD', 'HELLO WORLD');
 function WL_hello_world_data()
-  return redis("get", 'HELLO WORLD');
+  return alchemy("get", 'HELLO WORLD');
 end
