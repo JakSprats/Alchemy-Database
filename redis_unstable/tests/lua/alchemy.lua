@@ -2,62 +2,62 @@
 
 -- LUA
 function luafunc(...)
-  return redis('LUAFUNC', ...)
+  return alchemy('LUAFUNC', ...)
 end
 
 -- SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL
 -- SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL SQL
 function create_table(tname, col_defs)
-  return redis('CREATE', 'TABLE', tname, "(" .. col_defs .. ")");
+  return alchemy('CREATE', 'TABLE', tname, "(" .. col_defs .. ")");
 end
 function create_table_as_select(tname, select_command)
-  return redis('CREATE', 'TABLE', tname, select_command);
+  return alchemy('CREATE', 'TABLE', tname, select_command);
 end
 function drop_table(tname)
-  return redis('DROP', 'TABLE', tname);
+  return alchemy('DROP', 'TABLE', tname);
 end
 function desc(tname)
-  return redis('DESC', tname);
+  return alchemy('DESC', tname);
 end
 function dump(tname)
-  return redis('DUMP', tname);
+  return alchemy('DUMP', tname);
 end
 function dump_to_mysql(tname, msname)
     if (msname) then
-        return redis('DUMP', tname, "TO", "MYSQL", msname);
+        return alchemy('DUMP', tname, "TO", "MYSQL", msname);
     else
-        return redis('DUMP', tname, "TO", "MYSQL");
+        return alchemy('DUMP', tname, "TO", "MYSQL");
     end
 end
 function dump_to_file(tname, fname)
-  return redis('DUMP', tname, "TO", "FILE", fname);
+  return alchemy('DUMP', tname, "TO", "FILE", fname);
 end
 
 function create_index(iname, tname, column)
   col_w_paren = "(" .. column .. ")";
-  return redis('CREATE', "INDEX", iname, "ON", tname, col_w_paren);
+  return alchemy('CREATE', "INDEX", iname, "ON", tname, col_w_paren);
 end
 function create_unique_index(iname, tname, column)
   col_w_paren = "(" .. column .. ")";
-  return redis('CREATE', "UNIQUE", "INDEX", iname, "ON", tname, col_w_paren);
+  return alchemy('CREATE', "UNIQUE", "INDEX", iname, "ON", tname, col_w_paren);
 end
 function drop_index(iname)
-  return redis('DROP', 'index', iname);
+  return alchemy('DROP', 'index', iname);
 end
 
 function create_luatrigger(trname, tname, ...)
-  return redis('CREATE', "LUATRIGGER", trname, "ON", tname, ...);
+  return alchemy('CREATE', "LUATRIGGER", trname, "ON", tname, ...);
 end
 function drop_luatrigger(trname)
-  return redis('DROP', 'LUATRIGGER', trname);
+  return alchemy('DROP', 'LUATRIGGER', trname);
 end
 
 function insert(tname, values_list)
-  return redis('INSERT', "INTO", tname, "VALUES", "(" .. values_list .. ")");
+  return alchemy('INSERT', "INTO", tname, "VALUES", "(" .. values_list .. ")");
 end
 
 function insert_return_size(tname, values_list)
-  return redis('INSERT', "INTO", tname, "VALUES", "(" .. values_list .. ")",
+  return alchemy('INSERT', "INTO", tname, "VALUES", "(" .. values_list .. ")",
                 "RETURN SIZE");
 end
 
@@ -68,23 +68,23 @@ function select(...)
   local args = {...};
   argCount = #args;
   if (argCount == 1) then
-    return redis('SELECT', args[1]);
+    return alchemy('SELECT', args[1]);
   else
-    return redis('SELECT', args[1], "FROM", args[2], "WHERE", args[3]);
+    return alchemy('SELECT', args[1], "FROM", args[2], "WHERE", args[3]);
   end
 end
 function select_count(...)
   local args = {...};
-  return redis('SELECT', 'COUNT(*)', "FROM", args[1], "WHERE", args[2]);
+  return alchemy('SELECT', 'COUNT(*)', "FROM", args[1], "WHERE", args[2]);
 end
 
 function scan(...)
   local args = {...};
   argCount = #args;
   if (argCount == 2) then
-    return redis('SCAN', args[1], "FROM", args[2]);
+    return alchemy('SCAN', args[1], "FROM", args[2]);
   else
-    return redis('SCAN', args[1], "FROM", args[2], "WHERE", args[3]);
+    return alchemy('SCAN', args[1], "FROM", args[2], "WHERE", args[3]);
   end
 end
 function scan_count(...)
@@ -92,17 +92,17 @@ function scan_count(...)
   argCount = #args;
   local cnt;
   if (argCount == 1) then
-    return redis('SCAN', "COUNT(*)", "FROM", args[1]);
+    return alchemy('SCAN', "COUNT(*)", "FROM", args[1]);
   else
-    return redis('SCAN', "COUNT(*)", "FROM", args[1], "WHERE", args[2]);
+    return alchemy('SCAN', "COUNT(*)", "FROM", args[1], "WHERE", args[2]);
   end
 end
 
 function delete(tname, where_clause)
-  return redis('DELETE', "FROM", tname, "WHERE", where_clause);
+  return alchemy('DELETE', "FROM", tname, "WHERE", where_clause);
 end
 function update(tname, update_list, where_clause)
-  return redis('UPDATE', tname, "SET", update_list, "WHERE", where_clause);
+  return alchemy('UPDATE', tname, "SET", update_list, "WHERE", where_clause);
 end
 
 -- TODO bulk_insert & insert_on_duplicate_key_update & replace

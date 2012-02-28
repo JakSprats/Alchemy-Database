@@ -698,6 +698,8 @@ function saveGraphNodes() --print ('saveGraphNodes');
         addPropToNode(dumpt, n, prop, value);
       end
     end
+  end
+  for n in vertices() do
     if (n.r ~= nil) then
       for rtype, relation in pairs(n.r) do
         local pkt = relation[Direction.OUTGOING];

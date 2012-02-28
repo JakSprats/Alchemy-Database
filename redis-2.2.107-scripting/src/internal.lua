@@ -82,7 +82,7 @@ function internal_select_store(clist, tlist, whereclause)
     --print ('wc: ' .. wc .. ' cmd: ' .. cmd);
 
     -- 3.) execute select, storing results in a table
-    local t = redis('select', clist, "FROM", tlist, "WHERE", wc);
+    local t = alchemy('select', clist, "FROM", tlist, "WHERE", wc);
     if (t == nil) then return 0; end
 
     -- 4.) iterate thru results, running "command" on each row
@@ -100,13 +100,13 @@ function internal_select_store(clist, tlist, whereclause)
                 table.insert(nargv, rcols[i]); -- then add rest of rcols
             end
             --for k,v in ipairs(nargv) do print('CX_ARGV: ' .. v) end
-            redis(unpack(nargv));
+            alchemy(unpack(nargv));
         else
             for i = 1, #rcols do
                 table.insert(nargv, rcols[i]); -- add rcols
             end
             --for k,v in ipairs(nargv) do print('ARGV: ' .. v) end
-            redis(unpack(nargv));
+            alchemy(unpack(nargv));
         end
     end
     return #t;
@@ -119,18 +119,18 @@ function internal_run_cmd(cmd)
     for token in string.gmatch(cmd, "[^%s]+") do -- poor man's split()
        table.insert(argv, token);
     end
-    return redis(unpack(argv));
+    return alchemy(unpack(argv));
 end
 
 function internal_copy_table_from_select(tname, clist, tlist, whereclause)
     --print ('internal_copy_table_from_select tname: ' .. tname ..
         --' clist: ' .. clist .. ' tlist: ' .. tlist .. ' wc: ' .. whereclause);
     local argv      = {"SELECT", clist, "FROM", tlist, "WHERE", whereclause};
-    local res      = redis(unpack(argv));
+    local res      = alchemy(unpack(argv));
     local inserter = {"INSERT", "INTO", tname, "VALUES", "()" };
     for k,v in pairs(res) do
          inserter[5] = '(' .. v .. ')';
-         redis(unpack(inserter));
+         alchemy(unpack(inserter));
     end
     return #res;
 end
@@ -140,11 +140,11 @@ function internal_cr8tbl_as_command(tname, ascmd)
     --print ('internal_cr8tbl_as_command cmd: ' .. cmd);
     local res = internal_run_cmd(cmd);
     if type(res) == "table" then
-        redis("CREATE", "TABLE", tname, "(pk INT, value TEXT)");
+        alchemy("CREATE", "TABLE", tname, "(pk INT, value TEXT)");
         local inserter = {"INSERT", "INTO", tname, "VALUES", "()" };
         for k,v in pairs(res) do
              inserter[5] = '(' .. k .. ',\'' .. v .. '\')';
-             redis(unpack(inserter));
+             alchemy(unpack(inserter));
         end
     else
         return res; -- single line responses should be errors
@@ -169,24 +169,24 @@ function internal_cr8tbl_as_dump(tname, dtype, dumpee)
         ttype = 3;
     end
     --print ('cdef: ' .. cdef);
-    redis("CREATE", "TABLE", tname, cdef);
+    alchemy("CREATE", "TABLE", tname, cdef);
     local inserter = {"INSERT", "INTO", tname, "VALUES", "()" };
     res = {};
     if (dtype == 'LIST') then
-        res    = redis("LRANGE", dumpee, 0, -1);
+        res    = alchemy("LRANGE", dumpee, 0, -1);
     elseif (dtype == 'SET') then
-        res    = redis("SMEMBERS", dumpee);
+        res    = alchemy("SMEMBERS", dumpee);
     elseif (dtype == 'ZSET') then
-        res    = redis("ZRANGE", dumpee, 0, -1, "WITHSCORES");
+        res    = alchemy("ZRANGE", dumpee, 0, -1, "WITHSCORES");
     elseif (dtype == 'HASH') then
-        res    = redis("HGETALL", dumpee);
+        res    = alchemy("HGETALL", dumpee);
     end
     local cnt = 1;
     if (ttype == 1) then
         for k,v in pairs(res) do
             local value_string = '(' .. k .. ',\'' .. v .. '\')';
             inserter[5] = value_string;
-            redis(unpack(inserter));
+            alchemy(unpack(inserter));
             cnt = cnt + 1;
             --for k,v in pairs(inserter) do print (k .. ': ' .. v); end
         end
@@ -205,7 +205,7 @@ function internal_cr8tbl_as_dump(tname, dtype, dumpee)
                     value_string = value_string .. '\'' .. v .. '\')';
                 end
                 inserter[5] = value_string;
-                redis(unpack(inserter));
+                alchemy(unpack(inserter));
                 --for k2,v2 in pairs(inserter) do print (k2 .. ': ' .. v2); end
                 cnt = cnt + 1;
                 i = 0;
