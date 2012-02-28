@@ -14,18 +14,18 @@ function debug()
 end
 
 function register(user, passwd) 
-  local exists = redis('get', 'user_' .. user);
+  local exists = alchemy('get', 'user_' .. user);
   if (exists ~= nil) then
     return '<html>ERROR: USER: "' .. user .. '" already exists</html>\n';
   else
-    redis('set', 'user_' .. user, passwd);
+    alchemy('set', 'user_' .. user, passwd);
     return '<html>USER: "' .. user .. '" REGISTERED</html>\n';
   end
 end
 
 function login(user, passwd) 
   local ok     = 0;
-  local exists = redis('get', 'user_' .. user);
+  local exists = alchemy('get', 'user_' .. user);
   if (exists ~= nil and exists == passwd) then
     ok = 1;
   end
@@ -37,7 +37,7 @@ function login(user, passwd)
 end
 
 function show_keys() 
-  local keys = redis('keys', '*');
+  local keys = alchemy('keys', '*');
   local html = '';
   for k,v in pairs(keys) do
     html = html .. "key: " .. k .. " value: " .. v .. "\n";

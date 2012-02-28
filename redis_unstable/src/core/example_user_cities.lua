@@ -61,12 +61,12 @@ function add_city(name, pk) UserData.CityToPK[name] = pk;  end
 function del_city(name)     UserData.CityToPK[name] = nil; end
 
 -- API_TO_OUTSIDE API_TO_OUTSIDE API_TO_OUTSIDE API_TO_OUTSIDE API_TO_OUTSIDE
-function addSqlCityRowAndNode(pk, cityname, cityabbrv)
-  local r1 = redis('INSERT', 'INTO', 'cities', 'VALUES',
-                   "(" .. pk .. ", {}, '" .. cityname .. "')");
-  local r2 = redis('SELECT',
-                   "createNamedNode('cities', 'lo', pk, '" .. cityabbrv .."')",
-                   'FROM', 'cities', 'WHERE', 'pk = ' .. pk);
+function addSqlCityRowAndNode(pk, cityname, ctyabrv)
+  local r1 = alchemy('INSERT', 'INTO', 'cities', 'VALUES',
+                     "(" .. pk .. ", {}, '" .. cityname .. "')");
+  local r2 = alchemy('SELECT',
+                     "createNamedNode('cities', 'lo', pk, '" .. ctyabrv .."')",
+                     'FROM', 'cities', 'WHERE', 'pk = ' .. pk);
   return '{ "INSERT": '   .. DataDumper(r1) .. ", " ..
            '"ADD_NODE": ' .. DataDumper(r2) .. "}";
 end
@@ -87,11 +87,11 @@ end
 --  $CLI INSERT INTO users VALUES "(1, 10, {})";
 --  $CLI SELECT "createNamedNode('users', 'lo', pk, 'A')" FROM users WHERE pk=1
 function addSqlUserRowAndNode(pk, citypk, nodename)
-  local r1 = redis('INSERT', 'INTO', 'users', 'VALUES',
-                   "(" .. pk .. ", " .. citypk .. ", {})");
-  local r2 = redis('SELECT',
-                   "createNamedNode('users', 'lo', pk, '" .. nodename .."')",
-                   'FROM', 'users', 'WHERE', 'pk = ' .. pk);
+  local r1 = alchemy('INSERT', 'INTO', 'users', 'VALUES',
+                     "(" .. pk .. ", " .. citypk .. ", {})");
+  local r2 = alchemy('SELECT',
+                     "createNamedNode('users', 'lo', pk, '" .. nodename .."')",
+                     'FROM', 'users', 'WHERE', 'pk = ' .. pk);
   return '{ "INSERT": '   .. DataDumper(r1) .. ", " ..
            '"ADD_NODE": ' .. DataDumper(r2) .. "}";
 end

@@ -265,7 +265,7 @@ function internal_copy_table_from_select(tname, clist, tlist, whereclause)
     -- print ('internal_copy_table_from_select tname: ' .. tname ..
        -- ' clist: ' .. clist .. ' tlist: ' .. tlist .. ' wc: ' .. whereclause);
     local argv      = {"SELECT", clist, "FROM", tlist, "WHERE", whereclause};
-    local res      = redis(unpack(argv));
+    local res      = alchemy(unpack(argv));
     local inserter = {"INSERT", "INTO", tname, "VALUES", "()" };
     for k,v in pairs(res) do
          local vallist = '';
@@ -280,7 +280,7 @@ function internal_copy_table_from_select(tname, clist, tlist, whereclause)
              end
          end
          inserter[5] = '(' .. vallist .. ')';
-         redis(unpack(inserter));
+         alchemy(unpack(inserter));
     end
     return #res;
 end

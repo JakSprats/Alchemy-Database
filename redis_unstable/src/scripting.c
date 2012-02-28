@@ -153,7 +153,7 @@ int luaRedisCommand(lua_State *lua) {
         }
         zfree(argv);
         luaPushError(lua,
-            "Lua redis() command arguments must be strings or integers");
+            "Lua alchemy() command arguments must be strings or integers");
         return 1;
     }
 
@@ -228,7 +228,11 @@ int luaLogCommand(lua_State *lua) {
     sds log;
 
     if (argc < 2) {
+#ifdef ALCHEMY_DATABASE
+        luaPushError(lua, "log() requires two arguments or more.");
+#else
         luaPushError(lua, "redis.log() requires two arguments or more.");
+#endif
         return 1;
     } else if (!lua_isnumber(lua,-argc)) {
         luaPushError(lua, "First argument must be a number (log level).");
@@ -275,9 +279,9 @@ void scriptingInit(void) {
 
 #ifdef ALCHEMY_DATABASE
     lua_pushcfunction(lua,luaRedisCommand);
-    lua_setglobal(lua,"redis");
+    lua_setglobal(lua, "alchemy");
     lua_pushcfunction(lua,luaLogCommand);
-    lua_setglobal(lua,"log");
+    lua_setglobal(lua, "log");
 #else
     /* Register the redis commands table and fields */
     lua_newtable(lua);
