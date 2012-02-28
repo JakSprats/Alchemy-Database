@@ -2,6 +2,8 @@ Alchemy Database: A Hybrid Relational-Database/NOSQL-Datastore
 
 Project Home Page: http://code.google.com/p/alchemydatabase/
 
+Latest Release Candidate: Feb 28, 2012: release_0.2_rc1: https://github.com/JakSprats/Alchemy-Database/tree/release_0.2_rc1
+
 Alchemy Database is a low-latency high-TPS NewSQL RDBMS embedded in the NOSQL datastore redis. Extensive datastore-side-scripting is provided via deeply embedded Lua. Unstructured data, can also be stored, as there are no limits on #tables, #indexes, #columns, and sparsely populated rows use minimal memory.
 
 QUICK HOW TO
