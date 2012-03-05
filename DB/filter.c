@@ -62,6 +62,7 @@ static void releaseFilterInnards(f_t *flt, bool le) {
     if (flt->key)  { sdsfree(flt->key);     flt->key  = NULL; }
     if (flt->low)  { sdsfree(flt->low);     flt->low  = NULL; }
     if (flt->high) { sdsfree(flt->high);    flt->high = NULL; }
+    releaseIC(&flt->ic);
     releaseAobj(&flt->akey); releaseAobj(&flt->alow); releaseAobj(&flt->ahigh);
     destroyINLlist(&flt->inl);
     if (le) releaseLUE(&flt->le);
@@ -140,6 +141,7 @@ uchar *serialiseFLT(f_t *flt) {
     uchar *x     = (uchar *)&SerialiseFLT_Buf;
     memcpy(x, &flt->tmatch,    sizeof(int));   x += sizeof(int);
     memcpy(x, &flt->ic.cmatch, sizeof(int));   x += sizeof(int);
+    flt->ic.nlo = 0;
     //TODO serialise ic.lo
     memcpy(x, &flt->jan,       sizeof(int));   x += sizeof(int);
     uchar  ctype = CTYPE_FROM_FLT(flt)

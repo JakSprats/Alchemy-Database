@@ -179,7 +179,7 @@ static bool parseOBYcol(cli   *c,  char  **token, int   tmatch,
         } else { wb->nob++;                             sdsfree(t2); return 1; }
     } 
     DECLARE_ICOL(ic, -1)
-    wb->obt[wb->nob] = tmatch; wb->obc[wb->nob] = ic; // Simple Parse DEFAULT
+    wb->obt[wb->nob] = tmatch; cloneIC(&wb->obc[wb->nob], &ic); // DEFAULT
     if (isj) { // JOIN COLUMN [tbl.col]
         if ((wb->obt[wb->nob] = find_table_n(t2, join)) == -1) {
             addReply(c, shared.join_order_by_tbl); sdsfree(t2);      return 0;

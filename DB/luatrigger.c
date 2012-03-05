@@ -91,8 +91,8 @@ luat_t *init_lua_trigger() {
     bzero(luat, sizeof(luat_t)); return luat;
 }
 static void destroy_ltc(ltc_t *ltc) {
+    release_ics(ltc->ics, ltc->ncols);                   // FREED 176
     if (ltc->ics)   free   (ltc->ics);                   // FREED 083
-    //TODO WALK ics -> destroyIC(ltc->ics[i])
     if (ltc->fname) sdsfree(ltc->fname);                 // FREED 174
 }
 void destroy_lua_trigger(luat_t *luat) { //printf("destroy_luatrigger\n");
@@ -135,7 +135,7 @@ static bool parseLuatCmd(cli *c, sds cmd, ltc_t *ltc, int tmatch) {
             int cm          = ic->cmatch;
             //NOTE: no support for U128 or index.pos()
             if (C_IS_X(rt->col[cm].type) || cm < 0) { ok = 0; break; }
-            cloneIC(&ltc->ics[i], ic); i++;
+            cloneIC(&ltc->ics[i], ic); i++;                // FREE 176
         } listReleaseIterator(li);
     }
     RELEASE_CS_LS_LIST

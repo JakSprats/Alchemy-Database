@@ -267,8 +267,11 @@ static bool checkRepeatCnames(cli *c, int tmatch, sds cname) {
     if (!strcasecmp(cname, "LRU")) { addReply(c, shared.col_lru); return 0; }
     if (!strcasecmp(cname, "LFU")) { addReply(c, shared.col_lfu); return 0; }
     icol_t ic = find_column(tmatch, cname);
-    if (ic.cmatch == -1)                         return 1;
-    else { addReply(c, shared.nonuniquecolumns); return 0; }
+    bool ret;
+    if (ic.cmatch == -1)                         ret = 1;
+    else { addReply(c, shared.nonuniquecolumns); ret = 0; }
+    releaseIC(&ic);
+    return ret;
 }
 // addColumn(): Used by ALTER TABLE & LRU & HASHABILITY
 void addColumn(int tmatch, char *cname, int ctype) {
@@ -353,8 +356,9 @@ void alterCommand(cli *c) {
         if (imatch == -1)      { addReply(c, shared.alter_sk_no_i);     return;}
         if (Index[imatch].lru) { addReply(c, shared.alter_sk_no_lru);   return;}
         if (Index[imatch].lfu) { addReply(c, shared.alter_sk_no_lfu);   return;}
-//TODO check that this is not a LUATABLE
+        //TODO check that this is not a LUATABLE
         Tbl[tmatch].sk = ic.cmatch;
+        //TODO releaseIC(&ic);
     } else {/* altfk */
         if (c->argc < 10) { addReply(c, shared.altersyntax);            return;}
         if (strcasecmp(c->argv[7]->ptr, "REFERENCES")) {
@@ -389,6 +393,7 @@ void alterCommand(cli *c) {
         rt->fk_cmatch  = ic.cmatch;
         rt->fk_otmatch = otmatch;
         rt->fk_ocmatch = oic.cmatch;
+        //TODO releaseIC(&ic); releaseIC(&oic);
     }
     addReply(c, shared.ok);
 }

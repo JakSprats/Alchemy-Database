@@ -1,6 +1,5 @@
 
 GRAND_PLAN:
-  1.) LuaTable (memleaks        -> 1 day
   3.) Luvit w/ EmbeddedAlchemy  -> 2 weeks
   4.) EvictedRowSQL_Slave       -> 3 weeks
 IMPROVEMENTS:
@@ -16,11 +15,10 @@ LUATABLE:
   S.) Lua U128 bindings
 
 LUATRIGGER:
-  3.) LUATRIGGER addfunc(isupdate,,,,) delfunc(isupdate,,,,)
-      |-> "isupdate" mandatory first argument
   4.) add in ability to pass lfunc(col1, 'indexname', 45) -> strings & nums
       |-> dont use parseCSLSelect() which can create DynLuaFuncs
   5.) UPDATE OVWR can work w/ LUATRIGGERs
+  6.) nested luatables as args rdbLoad/Save()
 
 REST_API:
   1.) push EREDIS down into responsefunctions (better code modularity)

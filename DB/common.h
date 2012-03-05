@@ -172,8 +172,8 @@ typedef struct twoint {
   SPLICE_128(num)                                       \
   (*prn)("DEBUG_U128: high: %llu low: %llu", ubh, ubl); }
 
-#define CREATE_CS_LS_LIST(lsalso)               \
-  list *cmatchl = listCreate();                 \
+#define CREATE_CS_LS_LIST(lsalso)                            \
+  list *cmatchl = listCreate(); cmatchl->free = v_destroyIC; \
   list *ls      = lsalso ? listCreate() : NULL;
 
 #define RELEASE_CS_LS_LIST    \

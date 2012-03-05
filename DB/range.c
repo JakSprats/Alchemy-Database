@@ -125,8 +125,9 @@ static void setRangeQueued(cswc_t *w, wob_t *wb, qr_t *q) {
     bzero(q, sizeof(qr_t));
     r_ind_t *ri     = (w->wf.imatch == -1) ? NULL: &Index[w->wf.imatch];
     bool     virt   = ri ? ri->virt : 0;
-    DECLARE_ICOL(ic,  -1)  if (ri && ri->icol.cmatch)      ic  = ri->icol;
-    DECLARE_ICOL(obc,  0); if (ri && ri->obc.cmatch != -1) obc = ri->obc;
+    DECLARE_ICOL(ic,  -1) DECLARE_ICOL(obc,  0)
+    if (ri && ri->icol.cmatch)      cloneIC(&ic,  &ri->icol);
+    if (ri && ri->obc.cmatch != -1) cloneIC(&obc, &ri->obc);
     if (virt) { // NOTE: there is no inner_desc possible (no inner loop)
         q->pk_desc  = ((wb->nob >= 1) && !wb->asc[0] && 
                        !icol_cmp(&wb->obc[0], &obc));
@@ -168,6 +169,7 @@ static void setRangeQueued(cswc_t *w, wob_t *wb, qr_t *q) {
         q->xth      = q->fk_lo && !(w->flist && (wb->ofst != -1));
         q->qed      = q->fk;
     } //dumpQueued(printf, w, wb, q, 1);
+    releaseIC(&ic); releaseIC(&obc);
 }
 static void setInQueued(cswc_t *w, wob_t *wb, qr_t *q) {
     setRangeQueued(w, wb, q); q->pk_lo = q->fk_lo = 0;// LIM OFST -> ALWAYS SORT

@@ -64,16 +64,39 @@ char    *Ignore_KW[]    = {"PRIMARY", "CONSTRAINT", "UNIQUE", "KEY", "FOREIGN"};
 int      Ignore_KW_lens[] = {  7,         10,          6,       3,       7};
 uint32   Num_Ignore_KW    = 5;
 
+// ICOL_T ICOL_T ICOL_T ICOL_T ICOL_T ICOL_T ICOL_T ICOL_T ICOL_T ICOL_T
+void cloneIC(icol_t *dic, icol_t *sic) {
+    bzero(dic, sizeof(icol_t));
+    dic->cmatch = sic->cmatch;
+    dic->nlo    = sic->nlo;
+    //printf("cloneIC: cmatch: %d nlo: %d\n", dic->cmatch, dic->nlo);
+    if (dic->nlo) {
+        dic->lo = malloc(sizeof(sds) * dic->nlo); // FREE 146
+        for (uint32 j = 0; j < dic->nlo; j++) {
+            dic->lo[j] = sdsdup(sic->lo[j]);
+        }
+    }
+}
+void releaseIC(icol_t *ic) {
+    if (ic->nlo) {
+        for (uint32 j = 0; j < ic->nlo; j++) sdsfree(ic->lo[j]);
+        free(ic->lo);                             // FREE 146
+    }
+}
+void destroyIC  (icol_t *ic) { if (ic) { releaseIC(ic); free(ic); } }
+void v_destroyIC(void *v)    { destroyIC((icol_t *)v); }
+
 // HELPERS HELPERS HELPERS HELPERS HELPERS HELPERS HELPERS HELPERS HELPERS
 void init_ics(icol_t *ics, list *cmatchl) {
     int       ncm  = 0;
     listIter *lic = listGetIterator(cmatchl, AL_START_HEAD); listNode *lnc;
     while((lnc = listNext(lic))) {
-        icol_t *ic      = lnc->value;
-        memcpy(&ics[ncm], ic, sizeof(icol_t)); ncm++;
-     } listReleaseIterator(lic);
-     //TODO destroy the malloc'ed icol[]s (but not the els of "lo")
-     //TODO  cloneLo() is the right choice here (& then destroy twice)
+        icol_t *ic = lnc->value;
+        cloneIC(&ics[ncm], ic); ncm++;
+    } listReleaseIterator(lic);
+}
+void release_ics(icol_t *ics, int ncols) {
+  for (int i = 0; i < ncols; i++) releaseIC(&ics[i]);
 }
 void init_mvals_mvlens(char   **mvals,  list *mvalsl,
                        uint32  *mvlens, list *mvlensl) {
@@ -87,16 +110,7 @@ void init_mvals_mvlens(char   **mvals,  list *mvalsl,
         mvlens[ncm] = (uint32)(long)lnc->value; ncm++;
     } listReleaseIterator(lic);
 }
-void cloneIC(icol_t *dic, icol_t *sic) {
-    dic->cmatch = sic->cmatch;
-    dic->nlo    = sic->nlo;
-    if (dic->nlo) {
-        dic->lo = malloc(sizeof(sds) * dic->nlo); // FREE 146
-        for (uint32 j = 0; j < dic->nlo; j++) {
-            dic->lo[j] = sdsdup(sic->lo[j]);
-        }
-    }
-}
+
 // CURSORS CURSORS CURSORS CURSORS CURSORS CURSORS CURSORS CURSORS
 /* set "OFFSET var" for next cursor iteration */
 void incrOffsetVar(redisClient *c, wob_t *wb, long incr) {
@@ -283,9 +297,8 @@ int deserialiseJTA(uchar *x) {
   printf("parseSelCol MISS -> ADD COL: %s tcols: %d\n",  \
           rt->tcnames[rt->tcols - 1], rt->tcols - 1);
 
-void luasellistRelease(list *ls) {
-    if (!ls) return; listRelease(ls);
-}
+void luasellistRelease(list *ls) { if (ls) listRelease(ls); }
+
 static bool parseSelCol(int  tmatch, char   *cname, int   clen,
                         list *cs,    list   *ls,    int  *qcols, bool *cstar,
                         bool  exact, bool    isi) {
@@ -388,6 +401,7 @@ static bool parseJCols(cli   *c,    char *y,    int   len,
     }
     jc_t *jc = malloc(sizeof(jc_t));
     jc->t    = tmatch; jc->c = ic.cmatch; jc->jan  = jan;
+    releaseIC(&ic);
     listAddNodeTail(js, jc);
     INCR(*qcols);
     return 1;
@@ -531,7 +545,7 @@ uchar getExprType(char *pred, int plen) {
 int parseExpr(cli *c, int tmatch, int cmatch, char *val, uint32 vlen, ue_t *ue){
     uint32  i;
     uchar   ctype = Tbl[tmatch].col[cmatch].type;
-    if C_IS_O(ctype)                             return 0;
+    if C_IS_O(ctype)                             return 0;//releaseIC-not needed
     for (i = 0; i < vlen; i++) {
         char e = *(val + i);
         if (!ISALNUM(e) && e != '_') break;
@@ -631,15 +645,15 @@ bool parseCommaListToAobjs(char *tkn, int tmatch, list *as) {
             a = createAobjFromString(tkn, len, COL_TYPE_STRING);    //FREEME 126
             icol_t ic  = find_column_n(tmatch, tkn, len);
             if (ic.cmatch != -1) {
-                a->ic = (icol_t *)malloc(sizeof(icol_t));
-                cloneIC(a->ic, &ic);
-                a->i = ic.cmatch; a->type = COL_TYPE_CNAME;
+                a->ic = (icol_t *)malloc(sizeof(icol_t)); cloneIC(a->ic, &ic);
+                a->i  = ic.cmatch; a->type = COL_TYPE_CNAME;
             } else {
                 for (int i = 0; i < len; i++) {
                     char c2 = *(tkn + i); if (!ISALNUM(c2)) return 0;
                 }
                 a->type = COL_TYPE_LUAO;
             }
+            releaseIC(&ic);
         } else if (ISDIGIT(c)) {
             sds num = sdsnewlen(tkn, len);               // FREE ME 132
             if        (is_int(num)) {
@@ -650,7 +664,7 @@ bool parseCommaListToAobjs(char *tkn, int tmatch, list *as) {
             sdsfree(num);                                // FREED 132
         }
         if (!a) return 0;
-        //printf("parseCommaListToAobjs: a: "); dumpAobj(printf, a);
+        //printf("parseCommaListToAobjs: a: (%p) ", a); dumpAobj(printf, a);
         listAddNodeTail(as, a);
         if (!nextc) break;
         tkn = nextc + 1;
@@ -718,7 +732,8 @@ static bool checkExprIsFunc(char *expr, lue_t *le, int tmatch) {
   sdsfree(tkn);
 
 void dictIcolDestructor(void *privdata, void *val) {
-    ((void) privdata); ((void) val); //printf("dictIcolDestructor\n");
+    ((void) privdata); //printf("dictIcolDestructor\n");
+    icol_t *ic = (icol_t *)val; destroyIC(ic);
 }
 // PROTOTYPES (from redis.c)
 unsigned int dictSdsHash(const void *key);
@@ -791,6 +806,7 @@ bool checkOrCr8LFunc(int tmatch, lue_t *le, sds expr, bool cln) {
                         addCnameToCdict(cname, mic, colD);
                     }
                 }                                            //DEBUG_DEEP_PARSE
+                releaseIC(&ic);
                 sdsfree(cname);                                    // FREE 141
                 spot = -1;
             }
@@ -812,6 +828,7 @@ bool checkOrCr8LFunc(int tmatch, lue_t *le, sds expr, bool cln) {
                 addCnameToCdict(cname, mic, colD);
             }
         }                                    //{int i = len; DEBUG_DEEP_PARSE }
+        releaseIC(&ic);
         sdsfree(cname);                                    // FREE 142
     }
     if (nexpr) nexpr = sdscatlen(nexpr, expr + pleq, len - pleq);//SQL= -> Lua==

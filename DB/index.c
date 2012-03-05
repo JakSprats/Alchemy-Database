@@ -531,8 +531,8 @@ int newIndex(cli    *c,     sds    iname, int  tmatch,    icol_t ic,
     r_tbl_t *rt = &Tbl  [tmatch];
     r_ind_t *ri = &Index[imatch]; bzero(ri, sizeof(r_ind_t));
     ri->name    = sdsdup(iname);                     // FREE 055
-    ri->tmatch  = tmatch; ri->icol  = ic;    ri->clist = clist;
-    ri->virt    = virt;   ri->cnstr = cnstr; ri->lru   = lru;
+    ri->tmatch  = tmatch; cloneIC(&ri->icol, &ic); ri->clist = clist;
+    ri->virt    = virt;   ri->cnstr = cnstr;       ri->lru   = lru;
     ri->obc     = obc;    ri->lfu   = lfu;
     if (fname)     ri->fname     = sdsdup(fname);          // FREE 162
     if (iconstrct) ri->iconstrct = sdsdup(iconstrct);      // FREE 167
@@ -618,26 +618,26 @@ bool addC2MCI(cli *c, icol_t ic, list *clist) {
 static bool ICommit(cli   *c,    sds iname,     sds  tname, sds   cname,
                     uchar cnstr, sds obcname,   long limit, uchar dtype,
                     sds   fname, sds iconstrct, sds idestrct) {
-    DECLARE_ICOL(ic, -1)
+    DECLARE_ICOL(ic, -1) DECLARE_ICOL(obc, -1)
+    bool     ret     = 0;
     list    *clist   = NULL;
     bool     prtl    = (limit != -1);
     int      tmatch  = find_table(tname);
-    if (tmatch == -1) { addReply(c, shared.nonexistenttable);       return 0; }
+    if (tmatch == -1) { addReply(c, shared.nonexistenttable);    goto icom_end;}
     r_tbl_t *rt      = &Tbl[tmatch];
-    if (rt->dirty) { addReply(c, shared.buildindexdirty);           return 0; }
+    if (rt->dirty) { addReply(c, shared.buildindexdirty);        goto icom_end;}
     if (prtl && !C_IS_NUM(rt->col[0].type)) { // INDEX CURSOR PK -> NUM
-        addReply(c, shared.indexcursorerr);                         return 0;
+        addReply(c, shared.indexcursorerr);                      goto icom_end;
     }
     bool  new   = 1; // Used in Index Cursors
     char *nextc = fname ? NULL : strchr(cname, ',');
     if (fname) { // NOOP
     } else if (nextc) {    /* Multiple Column Index */
         char *cn = cname;
-        if UNIQ(cnstr) {
-            //TODO why cant we have 2 UNIQ MCI's on a table?
-            if (rt->nmci) { addReply(c, shared.two_uniq_mci);       return 0;
+        if UNIQ(cnstr) { //TODO why cant we have 2 UNIQ MCI's on a table?
+            if (rt->nmci) { addReply(c, shared.two_uniq_mci);    goto icom_end;
             } else if (!C_IS_NUM(rt->col[0].type)) { /* INT & LONG */
-                addReply(c, shared.uniq_mci_pk_notint);             return 0;
+                addReply(c, shared.uniq_mci_pk_notint);          goto icom_end;
             }
         }
         DECLARE_ICOL(oic, -1)
@@ -646,16 +646,19 @@ static bool ICommit(cli   *c,    sds iname,     sds  tname, sds   cname,
             char *end = nextc - 1;
             REV_SKIP_SPACES(end)
             oic       = find_column_n(tmatch, cn, (end + 1 - cn));
-            if (!addC2MCI(c, oic, clist))                           return 0;
-            //TODO releaseIC(oic);
-            if (ic.cmatch == -1) cloneIC(&ic, &oic); // 1st col can be index
+            if        (!addC2MCI(c, oic, clist))  {
+                releaseIC(&oic);                                 goto icom_end;
+            } else if (ic.cmatch == -1) { // based at 1st col 
+                cloneIC(&ic, &oic); releaseIC(&oic);
+            }
             nextc++;
             SKIP_SPACES(nextc);
             cn        = nextc;
             nextc     = strchr(nextc, ',');
             if (!nextc) {
                 oic = find_column(tmatch, cn);
-                if (!addC2MCI(c, oic, clist))                       return 0;
+                bool r = addC2MCI(c, oic, clist); releaseIC(&oic);
+                if (!r)                                          goto icom_end;
                 break;
             }
         }
@@ -664,7 +667,7 @@ static bool ICommit(cli   *c,    sds iname,     sds  tname, sds   cname,
             icol_t   *fic     = ln->value;
             int       fcmatch = fic->cmatch;
             if (!C_IS_NUM(rt->col[fcmatch].type)) {
-                addReply(c, shared.uniq_mci_notint);                return 0;
+                addReply(c, shared.uniq_mci_notint);             goto icom_end;
             }
         }
         for (int i = 0; i < Num_indx; i++) { /* already indxd? */
@@ -683,9 +686,12 @@ static bool ICommit(cli   *c,    sds iname,     sds  tname, sds   cname,
                         if (prtl && !ri->done) {
                             new = 0;
                             if (strcmp(ri->name, iname)) {
-                                addReply(c, shared.indexcursorerr);  return 0;
+                                addReply(c, shared.indexcursorerr);
+                                                                 goto icom_end;
                             }
-                        } else { addReply(c, shared.indexedalready); return 0; }
+                        } else {
+                            addReply(c, shared.indexedalready);  goto icom_end;
+                        }
                     }
                 }
             }
@@ -693,51 +699,53 @@ static bool ICommit(cli   *c,    sds iname,     sds  tname, sds   cname,
     } else {
         ic = find_column_sds(tmatch, cname);
         if (ic.cmatch <= -1) {
-            addReply(c, shared.indextargetinvalid); return 0;
+            addReply(c, shared.indextargetinvalid);              goto icom_end;
         }
         if UNIQ(cnstr) {/*NOTE: RESTRICTION: UNIQUE MCI both cols -> NUM */
             if ((!C_IS_NUM(rt->col[ic.cmatch].type) && !C_IS_NUM(dtype)) ||
                 !C_IS_NUM(rt->col[0].type)) {
-                addReply(c, shared.uniq_simp_index_nums); return 0;
+                addReply(c, shared.uniq_simp_index_nums);        goto icom_end;
             }
-         }
+        }
         for (int i = 0; i < Num_indx; i++) { /* already indxd? */
             r_ind_t *ri = &Index[i];
             if (ri->name && ri->tmatch == tmatch && !icol_cmp(&ri->icol, &ic)) {
                 if (prtl && !ri->done) {
                     new = 0;
                     if (strcmp(ri->name, iname)) {
-                        addReply(c, shared.indexcursorerr);         return 0;
+                        addReply(c, shared.indexcursorerr);      goto icom_end;
                     }
-                } else { addReply(c, shared.indexedalready);        return 0; }
+                } else { addReply(c, shared.indexedalready);     goto icom_end;}
             }
         }
     }
-    DECLARE_ICOL(obc, -1)
     if (obcname) {
         obc = find_column(tmatch, obcname);
-        if (obc.cmatch == -1) { addReply(c, shared.indexobcerr);    return 0; }
-        if (obc.cmatch ==  0) { addReply(c, shared.indexobcrpt);    return 0; }
+        if (obc.cmatch == -1) { addReply(c, shared.indexobcerr); goto icom_end;}
+        if (obc.cmatch ==  0) { addReply(c, shared.indexobcrpt); goto icom_end;}
         if (UNIQ(cnstr) || (!icol_cmp(&obc, &ic)) ||
             !C_IS_NUM(rt->col[obc.cmatch].type)   ||
             !C_IS_NUM(rt->col[0].type)) {
-             addReply(c, shared.indexobcill);                       return 0;
+             addReply(c, shared.indexobcill);                    goto icom_end;
         }
     }
     if (new) {
         if ((newIndex(c,   iname, tmatch, ic,    clist, cnstr, 0, 0, NULL,
                       obc, prtl,  0,      dtype, fname,
-                      iconstrct, idestrct)) == -1)                  return 0;
+                      iconstrct, idestrct)) == -1)               goto icom_end;
     }
     if (prtl) {
         int imatch = find_partial_index(tmatch, ic);
-        if (imatch == -1) { addReply(c, shared.indexcursorerr);     return 0; }
+        if (imatch == -1) { addReply(c, shared.indexcursorerr);  goto icom_end;}
         long card = buildNewIndex(c, tmatch, imatch, limit);
-        if (card == -1)                                             return 0;
-        else { addReplyLongLong(c, (lolo)card);                     return 1; }
+        if (card == -1)                                          goto icom_end;
+        else { addReplyLongLong(c, (lolo)card);                  return 1; }
     }
-    addReply(c, shared.ok);
-    return 1;
+    addReply(c, shared.ok); ret = 1;
+
+icom_end:
+    releaseIC(&ic); releaseIC(&obc);
+    return ret;
 }
 void createIndex(redisClient *c) {
     if (c->argc < 6) { addReply(c, shared.index_wrong_nargs);         return; }
@@ -915,6 +923,7 @@ void emptyIndex(cli *c, int imatch) {
     if (ri->clist) {
         if (rt->nmci) rt->nmci--;
         listRelease(ri->clist);                          /* DESTROYED 054 */
+        for (int i = 0; i < ri->nclist; i++) releaseIC(&ri->bclist[i]);
         free(ri->bclist);                                /* FREED 053 */
     }
     //NOTE:  ri->lru & ri->lfu can NOT be dropped, so no need to change rt
@@ -976,7 +985,7 @@ static bool validatePKandOldVal(lua_State *lua, bt *ibtr,
     }
     return 0;
 }
-//TODO tname, cname, ename can be local variables
+//TODO tname, cname, ename, ic -> local variables
 static void getTblColElmntFromLua(lua_State *lua, int stack_size,
                                   sds *tname,  sds    *cname, sds *ename,
                                   int *tmatch, icol_t *ic,    int *imatch) {
@@ -994,6 +1003,7 @@ static void getTblColElmntFromLua(lua_State *lua, int stack_size,
     ic->lo    = malloc(sizeof(sds) * ic->nlo);   // FREE 146
     ic->lo[0] = sdsdup(*ename);
     *imatch   = find_index(*tmatch, *ic);
+    releaseIC(ic);
 }
 
 int luaAlchemySetIndex(lua_State *lua) {

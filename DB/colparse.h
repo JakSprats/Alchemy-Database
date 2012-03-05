@@ -47,7 +47,8 @@ char *parseRowVals(sds vals,  char   **pk,        int  *pklen,
                    int pcols, icol_t  *ics,       int   lncols, bool *ai);
 
 // HELPERS
-void init_ics(icol_t *ics, list *cmatchl);
+void init_ics   (icol_t *ics, list *cmatchl);
+void release_ics(icol_t *ics, int ncols);
 #define CMATCHS_FROM_CMATCHL                          \
     icol_t ics[cmatchl->len]; init_ics(ics, cmatchl);
 
@@ -58,9 +59,12 @@ void init_mvals_mvlens(char   **mvals,  list *mvalsl,
     char   *mvals  [mvalsl->len];                                    \
     uint32  mvlens [mvlensl->len];                                   \
     init_mvals_mvlens(mvals, mvalsl, mvlens, mvlensl);               \
-    listRelease(cmatchl); listRelease(mvalsl); listRelease(mvlensl);
+    RELEASE_CS_LS_LIST listRelease(mvalsl); listRelease(mvlensl);
 
-void cloneIC(icol_t *dic, icol_t *sic);
+void cloneIC    (icol_t *dic, icol_t *sic);
+void releaseIC  (icol_t *ic);
+void destroyIC  (icol_t *ic);
+void v_destroyIC(void *v);
 
 // SELECT
 bool parseCSLSelect(cli  *c,         char  *tkn, 

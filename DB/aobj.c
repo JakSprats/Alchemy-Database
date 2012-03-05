@@ -53,13 +53,12 @@ void initAobj(aobj *a) {
 void releaseAobj(void *v) {
     aobj *a = (aobj *)v; a->type = COL_TYPE_NONE;                 a->empty = 1;
     if (a->freeme) { free(a->s); a->s = NULL; a->freeme = 0; }
-    //if (a->ic)     { destroyIC(a->ic); a->ic = NULL; } //TODO
+    if (a->ic)     { destroyIC(a->ic); a->ic = NULL; }
 }
 void destroyAobj(void *v) { releaseAobj(v); free(v); }
 
 void initAobjZeroNum(aobj *a, uchar ctype) {
-    initAobj(a);
-    a->i = 0; a->l = 0; a->x = 0; a->type = a->enc = ctype;       a->empty = 0;
+    initAobj(a); a->type = a->enc = ctype;                        a->empty = 0;
 }
 bool initAobjInt(aobj *a, ulong l) {
     initAobjZeroNum(a, COL_TYPE_INT); a->i = l; return 1;
@@ -161,6 +160,9 @@ void aobjClone(aobj *dest, aobj *src) {
         dest->s      = malloc(src->len);
         memcpy(dest->s, src->s, src->len);
         dest->freeme = 1;
+    }
+    if (src->ic) {
+        dest->ic = (icol_t *)malloc(sizeof(icol_t)); cloneIC(dest->ic, src->ic);
     }
 }
 aobj *cloneAobj(aobj *a) {
@@ -441,8 +443,10 @@ void dumpAobj(printer *prn, aobj *a) {
     } else if (C_IS_C(a->type)) {
         if (a->empty) { (*prn)("\tCNAME aobj: EMPTY\n"); return; }
         memcpyAobjStoDumpBuf(a);
-        (*prn)("\tCNAME aobj: mt: %d -> (%s) cmatch: %d\n",
+        (*prn)("\tCNAME aobj: mt: %d -> (%s) cmatch: %d",
                a->empty, DumpBuf, a->i);
+        if (a->ic) { (*prn)(" ic: "); dumpIC(prn, a->ic); }
+        else       (*prn)("\n");
     } else if (C_IS_I(a->type) || C_IS_P(a->type)) {
         char *name = C_IS_I(a->type) ? "INT" : "FUNC";
         if (a->enc == COL_TYPE_INT || a->enc == COL_TYPE_FUNC) {

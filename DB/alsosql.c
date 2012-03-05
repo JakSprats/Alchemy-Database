@@ -310,6 +310,7 @@ void init_wob(wob_t *wb) {
     bzero(wb, sizeof(wob_t)); wb->lim = wb->ofst = -1;
 }
 void destroy_wob(wob_t *wb) {
+    for (uint32 i = 0; i < wb->nob; i++) releaseIC(&wb->obc[i]);
     if (wb->ovar) sdsfree(wb->ovar);
 }
 
@@ -480,7 +481,7 @@ bool sqlSelectInnards(cli *c,       sds  clist, sds from, sds tlist, sds where,
     ret = sqlSelectBinary(c, tmatch, cstar, ics, qcols, &w, &wb,
                           need_cn, &lfca);
 
-sel_e: fflush(NULL);
+sel_e:
     if (!cstar) resetIndexPosOn(qcols, ics);
     destroy_wob(&wb); destroy_check_sql_where_clause(&w);
     RELEASE_CS_LS_LIST releaseLFCA(&lfca);
@@ -611,7 +612,7 @@ static bool isUpdatingIndex(int matches, int   inds[], icol_t chit[],
 int updateInnards(cli *c,      int   tmatch, sds vallist, sds wclause,
                   bool fromup, aobj *u_apk) {
     //printf("updateInnards: vallist: %s wclause: %s\n", vallist, wclause);
-    list   *cmatchl = listCreate();
+    CREATE_CS_LS_LIST(0);
     list   *mvalsl  = listCreate(); list *mvlensl = listCreate();
     int     qcols   = parseUpdateColListReply(c,      tmatch, vallist, cmatchl,
                                               mvalsl, mvlensl);
@@ -690,6 +691,8 @@ int updateInnards(cli *c,      int   tmatch, sds vallist, sds wclause,
 
 upc_end:
     destroy_wob(&wb); destroy_check_sql_where_clause(&w);
+    for (int i = 0; i < ncols; i++) releaseIC(&chit[i]); // FREED 170
+    release_ics(ics, qcols);
     return nsize;
 }
 static int updateAction(cli *c, sds u_vallist, aobj *u_apk, int u_tmatch) {

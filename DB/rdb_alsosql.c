@@ -76,6 +76,7 @@ static int saveLtc(FILE *fp, ltc_t *ltc) {
     if (rdbSaveLen(fp, ltc->ncols)          == -1)                  return -1;
     for (int j = 0; j < ltc->ncols; j++) {
         if (rdbSaveLen(fp, ltc->ics[j].cmatch) == -1)               return -1;
+        //TODO FIXME: dump ics[j].lo
     }
     return 0;
 }
@@ -383,7 +384,7 @@ bool rdbLoadBT(FILE *fp) { //printf("rdbLoadBT\n");
                 if (!addC2MCI(NULL, ic, ri->clist))                 return 0;
                 cloneIC(&ri->bclist[i], &ic);
                 if (!i) cloneIC(&ri->icol, &ic);
-                //TODO releaseIC(ic);
+                releaseIC(&ic);
             }
         }
         ri->virt    = 0;
