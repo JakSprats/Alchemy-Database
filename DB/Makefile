@@ -31,7 +31,7 @@ ifeq ($(USE_JEMALLOC),yes)
   ALLOC_FLAGS=-DUSE_JEMALLOC -I$(REDISDIR)/deps/jemalloc/include
 endif
 
-CFLAGS?= -std=c99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF) -I./ -I$(REDISDIR)/src/ $(ALLOC_FLAGS) -DALCHEMY_DATABASE -I../redis/deps/hiredis/
+CFLAGS?= -std=c99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF) -I./ -I$(REDISDIR)/src/ $(ALLOC_FLAGS) -DALCHEMY_DATABASE -I../redis/deps/hiredis/ -fPIC
 CCLINK?= -lm -pthread
 DEBUG?= -g -rdynamic -ggdb 
 

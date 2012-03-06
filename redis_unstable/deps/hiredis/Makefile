@@ -26,7 +26,7 @@ ifeq ($(uname_S),Darwin)
   STLIBNAME?=libhiredis.a
   STLIB_MAKE_CMD?=libtool -static -o ${STLIBNAME} - ${OBJ}
 else
-  CFLAGS?=-std=c99 -pedantic $(OPTIMIZATION) -fPIC -Wall -W -Wstrict-prototypes -Wwrite-strings $(ARCH) $(PROF)
+  CFLAGS?=-std=c99 -pedantic $(OPTIMIZATION) -fPIC -Wall -W -Wstrict-prototypes -Wwrite-strings $(ARCH) $(PROF) -fPIC
   CCLINK?=-lm -pthread
   LDFLAGS?=-L. -Wl,-rpath,.
   DYLIBNAME?=libhiredis.so

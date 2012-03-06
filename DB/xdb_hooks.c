@@ -247,7 +247,7 @@ bool loadLuaHelperFile(cli *c, char *fname) {
     }
     CLEAR_LUA_STACK sdsfree(fwpath); return ret;
 }
-static bool initLua(cli *c) {
+static bool initLua(cli *c) { //printf("initLua\n");
     lua_pushcfunction(server.lua, luaSetHttpResponseHeaderCommand);
     lua_setglobal(server.lua, "SetHttpResponseHeader");
     lua_pushcfunction(server.lua, luaSetHttpRedirectCommand);

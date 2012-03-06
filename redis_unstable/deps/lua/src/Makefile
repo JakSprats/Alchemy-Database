@@ -8,7 +8,7 @@
 PLAT= none
 
 CC= gcc
-CFLAGS= -O2 -Wall $(MYCFLAGS) $(ARCH)
+CFLAGS= -O2 -Wall $(MYCFLAGS) $(ARCH) -fPIC
 AR= ar rcu
 RANLIB= ranlib
 RM= rm -f

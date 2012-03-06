@@ -10,7 +10,6 @@ LUATABLE:
   K.) Test STRING DNI
   O.) in checkOrCr8LFunc, joins have precedence over nested luatables
         in '.' delimited parsing
-  P.) icol_t mem-leaks
   R.) test "SELECT ... IN (luafunc(lo))"
   S.) Lua U128 bindings
 
@@ -24,14 +23,11 @@ REST_API:
   1.) push EREDIS down into responsefunctions (better code modularity)
   2.) Lua output_* should take a single table (w/ many args as an arg)
       |-> not many args (e.g. DO: output_row(argt) NOT: output_row(...))
-  3.) Announce REST API -> deprecate clients, and old server tarballs
 
 PROTOCOL:
   2.) ADD "SELECT col AS othername"
   3.) Merge SCAN into SELECT
   4.) INSERT/REPLACE SELECT (in Lua)
-  5.) INTERPRET_LUA command, replaces "CONFIG ADD LUA"
-      |-> ADD_LUA_FILE, replaces "CONFIG ADD LUAFILE" ???
   6.) WHERE indexed_col OP value (e.g. index_col > 10)
 
 TEST:

@@ -19,7 +19,7 @@ ifeq ($(uname_S),SunOS)
   @echo "Sun not supported (no BigEndian support) - sorry"
   @exit
 endif
-CFLAGS?= -std=c99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF) -DALCHEMY_DATABASE
+CFLAGS?= -std=c99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF) -DALCHEMY_DATABASE -fPIC
 CCLINK?= -lm -pthread -ldl
 DEBUG?= -g -rdynamic -ggdb
 
@@ -177,7 +177,7 @@ embedded_redis.o: redis.c redis.h fmacros.h config.h ae.h sds.h dict.h \
 
 dependencies:
 	@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)hiredis$(ENDCOLOR)
-	@cd ../deps/hiredis && $(MAKE) static ARCH="$(ARCH)" CFLAGS="-DALCHEMY_DATABASE"
+	@cd ../deps/hiredis && $(MAKE) static ARCH="$(ARCH)" CFLAGS="-fPIC -DALCHEMY_DATABASE"
 	@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)linenoise$(ENDCOLOR)
 	@cd ../deps/linenoise && $(MAKE) ARCH="$(ARCH)"
 	@printf '%b %b\n' $(MAKECOLOR)MAKE$(ENDCOLOR) $(BINCOLOR)lua$(ENDCOLOR)
@@ -189,9 +189,10 @@ dependencies:
 	@cp ../deps/pluto/pluto.so .
 
 ../deps/jemalloc/lib/libjemalloc.a:
-	cd ../deps/jemalloc && ./configure $(JEMALLOC_CFLAGS) --with-jemalloc-prefix=je_ --enable-cc-silence && $(MAKE) lib/libjemalloc.a
+	cd ../deps/jemalloc && (export CFLAGS=" -fPIC "; ./configure $(JEMALLOC_CFLAGS) --with-jemalloc-prefix=je_ --enable-cc-silence && $(MAKE) lib/libjemalloc.a)
 
 alchemy-server: $(SERVEROBJ) ../../DB/libx_db.a
+	 ar rcs libalchemy.a *.o
 	$(QUIET_CC)$(CC) -o $(PRGNAME) $(CCOPT) $(DEBUG) $(SERVEROBJ) $(CCLINK) $(ALLOC_LINK) -L../../DB/ -lx_db $(LUALIB) ../deps/hiredis/libhiredis.a ../deps/linenoise/linenoise.o
 
 alchemy-benchmark: dependencies $(BENCHOBJ)

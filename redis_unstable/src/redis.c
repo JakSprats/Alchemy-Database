@@ -1978,7 +1978,6 @@ static void *getMcontextEip(ucontext_t *uc) {
 }
 
 static void sigsegvHandler(int sig, siginfo_t *info, void *secret) {
-return; // TODO SEGV HACK
     void *trace[100];
     char **messages = NULL;
     int i, trace_size = 0;
