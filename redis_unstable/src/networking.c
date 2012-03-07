@@ -635,6 +635,9 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
 
         /* Close connection after entire reply has been sent. */
         if (c->flags & REDIS_CLOSE_AFTER_REPLY) freeClient(c);
+#ifdef ALCHEMY_DATABASE
+        DXDB_cleanup(c);
+#endif
     }
 }
 

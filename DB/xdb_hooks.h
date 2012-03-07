@@ -48,9 +48,10 @@ rcommand *DXDB_lookupCommand(sds name);
 
 void      DXDB_call(struct redisCommand *cmd, long long *dirty);
 
-int           DXDB_processCommand(redisClient *c);
-unsigned char DXDB_processInputBuffer_begin(redisClient *c);
+int           DXDB_processCommand             (redisClient *c);
+unsigned char DXDB_processInputBuffer_begin   (redisClient *c);
 void          DXDB_processInputBuffer_ZeroArgs(redisClient *c);
+void          DXDB_cleanup                    (redisClient *c);
 
 int           DXDB_loadServerConfig(int argc, sds *argv);
 int           DXDB_configSetCommand(redisClient *c, robj *o);

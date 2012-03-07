@@ -193,7 +193,7 @@ static bool parseOBYcol(cli   *c,  char  **token, int   tmatch,
         }
     } else {  // SIMPLE COLUMN [col]
         wb->obc[wb->nob] = find_column_sds(tmatch, t2);
-//TODO fimatch
+        //TODO fimatch
         if (wb->obc[wb->nob].cmatch == -1) {
             addReply(c, shared.order_by_col_not_found); sdsfree(t2); return 0;
         }

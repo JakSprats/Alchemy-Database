@@ -36,9 +36,10 @@ ALL RIGHTS RESERVED
 
 bool luafunc_call(cli *c, int argc, robj **argv);
 
-int start_http_session   (cli *c);
-int continue_http_session(cli *c);
-void end_http_session    (cli *c);
+int  start_http_session   (cli *c);
+int  continue_http_session(cli *c);
+void end_http_session     (cli *c);
+void cleanup_http_session (cli *c);
 
 int luaSetHttpResponseHeaderCommand(lua_State *lua);
 int luaSetHttpRedirectCommand      (lua_State *lua);

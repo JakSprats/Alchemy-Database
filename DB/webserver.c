@@ -60,8 +60,7 @@ static two_sds *init_two_sds(sds a, sds b) {
     return ss;
 }
 static void free_two_sds(void *v) {
-    if (!v) return;
-    two_sds *ss = (two_sds *)v;
+    if (!v) return; two_sds *ss = (two_sds *)v;
     sdsfree(ss->a); sdsfree(ss->b); free(ss);
 }
 
@@ -179,9 +178,6 @@ int start_http_session(cli *c) {
     else if (!strcasecmp(c->argv[0]->ptr, "HEAD"))     c->http.head = 1;
     else                                               { SEND_405; return 1; }
     c->http.mode     = HTTP_MODE_ON;
-    if (c->http.resp_hdr) listRelease(c->http.resp_hdr);
-    c->http.resp_hdr = NULL;
-    if (c->http.req_hdr) listRelease(c->http.req_hdr);
     c->http.req_hdr  = listCreate(); c->http.req_hdr->free = free_two_sds;
     char *fname      = c->argv[1]->ptr;
     int   fnlen      = sdslen(c->argv[1]->ptr);
@@ -241,7 +237,7 @@ static void sendStaticFileReply(cli *c) {
         addReply(c, o);
     }
 }
-static void sendLuaFuncReply(cli *c, sds file) {
+static void sendLuaFuncReply(cli *c, sds file) { //printf("sendLuaFuncReply\n");
     int argc; robj **rargv = NULL;
     if (!sdslen(file) || !strcmp(file, "/")) {
         argc      = 2; //NOTE: rargv[0] is ignored
@@ -261,16 +257,18 @@ static void sendLuaFuncReply(cli *c, sds file) {
             if (!x) continue; x++;
             rargv[i + urgc + 1] = createStringObject(x, strlen(x));
         }
-        argc += (urgc + 1); //NOTE: rargv[0] is ignored
+        for (int i = 0; i < urgc; i++) sdsfree(urgv[i]);
         zfree(urgv); zfree(argv);
+        argc += (urgc + 1); //NOTE: rargv[0] is ignored
     } else {
         sds *argv = sdssplitlen(file, sdslen(file), "/", 1, &argc);
         rargv     = zmalloc(sizeof(robj *) * (argc + 1));
         for (int i = 0; i < argc; i++) {
             rargv[i + 1] = createStringObject(argv[i], sdslen(argv[i]));
         }
-        argc++; //NOTE: rargv[0] is ignored
+        for (int i = 0; i < argc; i++) sdsfree(argv[i]);
         zfree(argv);
+        argc++; //NOTE: rargv[0] is ignored
     }
     if (!luafunc_call(c, argc, rargv)) {
         robj *resp = luaReplyToHTTPReply(server.lua);
@@ -354,7 +352,7 @@ static bool sendRestAPIReply(cli *c, sds file) { //printf("sendRestAPIReply\n");
     sds   s  = err ? send_http404_reponse_header(c, trlen) :
                      send_http200_reponse_header(c, trlen);
     robj *ho = createObject(REDIS_STRING, s);
-    addReply(c, ho);
+    addReply(c, ho); decrRefCount(ho);
     // 4.) tack on RestClient's response as HTTP Body
     if (brlen) { addReplyString(c, restc->buf, brlen); }
     if (restc->reply->len) {
@@ -370,7 +368,9 @@ static bool sendRestAPIReply(cli *c, sds file) { //printf("sendRestAPIReply\n");
     }
 
 send_rest_end:
-    sdsfree(url); zfree(argv); return ret;               // FREED 156 & 157
+    sdsfree(url);                                                 // FREE 156
+    for (int i = 0; i < argc; i++) sdsfree(argv[i]); zfree(argv); // FREE 157
+    return ret;
 }
 void end_http_session(cli *c) {
     if (c->http.get || c->http.post || c->http.head) {
@@ -390,6 +390,14 @@ void end_http_session(cli *c) {
     if (c->http.file) { decrRefCount(c->http.file); c->http.file = NULL; }
     if (!c->http.ka && !sdslen(c->querybuf)) { // not KeepAlive, not Pipelined
         c->flags |= REDIS_CLOSE_AFTER_REPLY;
+    }
+}
+void cleanup_http_session(cli *c) {
+    if (c->http.resp_hdr) {
+        listRelease(c->http.resp_hdr); c->http.resp_hdr = NULL;
+    }
+    if (c->http.req_hdr)  {
+        listRelease(c->http.req_hdr);  c->http.req_hdr = NULL;
     }
 }
 

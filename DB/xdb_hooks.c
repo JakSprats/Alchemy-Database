@@ -514,12 +514,15 @@ bool DXDB_processInputBuffer_begin(redisClient *c) {// NOTE: used for POST BODY
     }
     return 0;
 }
-void  DXDB_processInputBuffer_ZeroArgs(redisClient *c) {//HTTP Request End-Delim
+void DXDB_processInputBuffer_ZeroArgs(redisClient *c) {//HTTP Request End-Delim
     if (c->http.mode == HTTP_MODE_ON) {
         if (c->http.post && c->http.req_clen) c->http.mode = HTTP_MODE_POSTBODY;
         else { end_http_session(c); c->http.mode = HTTP_MODE_OFF; }
     } else c->http.mode = HTTP_MODE_OFF;
     return;
+}
+void DXDB_cleanup(redisClient *c) { //printf("DXDB_cleanup\n");
+    cleanup_http_session(c);
 }
 
 //TODO webserver_mode,              webserver_index_function,
