@@ -221,11 +221,13 @@ static void initServer_Extra() {
     DynLuaD  = dictCreate(&dbDictType,  NULL);
 }
 
-void DXDB_initServer() { //printf("DXDB_initServer\n");
+void DXDB_initServerConfig() {             //printf("DXDB_initServerConfig\n");
     bzero(&server.alc, sizeof(alchemy_server_extensions_t));
-    server.alc.Basedir            = zstrdup("./");
-    server.alc.WebServerMode      = -1;
-    server.alc.RestAPIMode        = -1;
+    server.alc.Basedir       = zstrdup("./");
+    server.alc.WebServerMode = -1;
+    server.alc.RestAPIMode   = -1;
+}
+void DXDB_initServer() {                   //printf("DXDB_initServer\n");
     server.alc.RestClient         = createClient(-1);
     server.alc.RestClient->flags |= REDIS_LUA_CLIENT;
     aeCreateTimeEvent(server.el, 1, luaCronTimeProc, NULL, NULL);
@@ -429,11 +431,13 @@ int DXDB_loadServerConfig(int argc, sds *argv) {
         computeWS_WL_MinMax();
         return 0;
     } else if (!strcasecmp(argv[0], "rest_api_mode") && argc == 2) {
-        if ((server.alc.RestAPIMode = yesnotoi(argv[1])) == -1) {
+        int yn = yesnotoi(argv[1]);
+        if (yn == -1) {
             char *err = "argument must be 'yes' or 'no'";
             fprintf(stderr, "%s\n", err);
             return -1;
         }
+        server.alc.RestAPIMode = yn ? 1 : -1;
 #if 0 //TODO webserver_mode & rest_api_mode can run in tandem??? right???
         if (server.alc.WebServerMode != -1) {
             char *err = "CHOOSE: webserver_mode OR rest_api_mode ";

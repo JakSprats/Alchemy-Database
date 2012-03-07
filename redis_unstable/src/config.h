@@ -96,7 +96,9 @@
 #endif
 #endif
 
-#define BYTE_ORDER LITTLE_ENDIAN /* ALCHEMY_DATABASE */
+#ifndef BYTE_ORDER /* ALCHEMY_DATABASE */
+  #define BYTE_ORDER LITTLE_ENDIAN
+#endif
 
 #if !defined(BYTE_ORDER) || \
     (BYTE_ORDER != BIG_ENDIAN && BYTE_ORDER != LITTLE_ENDIAN)

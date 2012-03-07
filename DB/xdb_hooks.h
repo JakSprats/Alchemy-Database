@@ -35,6 +35,7 @@ void  DXDB_populateCommandTable(dict *server_commands);
 
 void  DXDB_createSharedObjects();
 
+void  DXDB_initServerConfig();
 void  DXDB_initServer();
 
 void  DXDB_main();

@@ -939,6 +939,9 @@ void initServerConfig() {
     populateCommandTable();
     server.delCommand = lookupCommandByCString("del");
     server.multiCommand = lookupCommandByCString("multi");
+#ifdef ALCHEMY_DATABASE
+    DXDB_initServerConfig();
+#endif
 }
 
 void initServer() {
