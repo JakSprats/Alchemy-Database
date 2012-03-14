@@ -1,4 +1,4 @@
-LDLIBS= -lm -ldl -llua
+LDLIBS= -L../lua/src -llua -lm -ldl
 LDFLAGS = -rdynamic
 CFLAGS= -g3 -Wall -Wconversion -ansi -pedantic -I../lua/src/
 
