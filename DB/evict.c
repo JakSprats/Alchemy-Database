@@ -40,7 +40,7 @@ ALL RIGHTS RESERVED
 #include "find.h"
 #include "alsosql.h"
 #include "common.h"
-#include "cache.h"
+#include "evict.h"
 
 /* EVICT TODO LIST:
      1.) Table must be NUM PK & auto-inc
