@@ -360,7 +360,7 @@ static bt_n *setDR(bt *btr, bt_n *x, int i, uint32 dr, bt_n *p, int pi) {
     __setDR(btr, x, i, dr); return x;
 }
 static bt_n *zeroDR(bt *btr, bt_n *x, int i, bt_n *p, int pi) {
-    p = NULL; pi = 0; /* compiler warnings - these will be used later */
+    (void)p; (void) pi; // compiler warnings - these will be used later
     if (x->dirty <= 0)     return x;
     __setDR(btr, x, i, 0); return x;
 }

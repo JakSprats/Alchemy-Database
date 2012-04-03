@@ -179,16 +179,16 @@ static void iEvict(bt *ibtr, aobj *acol, aobj *apk, aobj *ocol) {
 static bool _iAddMCI(cli  *c,      bt   *btr,  aobj *apk,     uchar  pktyp,
                      int   imatch, void *rrow, bool  destroy, int    rec_ret,
                      aobj *ocol) {
-    bt      *nbtr  = NULL;                 /* compiler warning */
+    bt      *nbtr  = NULL;            // compiler warning
     r_ind_t *ri    = &Index[imatch];
     dp_t     dpl[ri->nclist];
     bt      *ibl[ri->nclist];
     int      trgr  = UNIQ(ri->cnstr) ? ri->nclist - 2 : -1;
     int      final = ri->nclist - 1;
     int      depth = UNIQ(ri->cnstr) ? ri->nclist - 1 : ri->nclist;
-    bt      *ibtr  = getIBtr(imatch);      /* get MCI */
+    bt      *ibtr  = getIBtr(imatch); /* get MCI */
     int      ndstr = 0;
-    bool     ret   = 1; /* assume success */
+    bool     ret   = 1;               /* assume success */
     for (int i = 0; i < depth; i++) {
         ibl[i]     = ibtr;
         aobj acol  = getCol(btr, rrow, ri->bclist[i], apk, ri->tmatch, NULL);
@@ -269,7 +269,7 @@ static void destroy_mci(bt *ibtr, bt_n *n, int imatch, int lvl) {
 }
 static void iRemMCI(bt   *btr, aobj *apk, int imatch, void *rrow, aobj *ocol,
                     bool  gost) {
-    bt      *nbtr  = NULL; /* compiler warning */
+    bt      *nbtr  = NULL; // compiler warning
     r_ind_t *ri    = &Index[imatch];
     dp_t     dpl[ri->nclist];
     int      final = ri->nclist - 1;
@@ -307,7 +307,7 @@ static void iRemMCI(bt   *btr, aobj *apk, int imatch, void *rrow, aobj *ocol,
 //TODO refactor iEvictMCI() into iRemMCI
 static void iEvictMCI(bt *btr, aobj *apk, int imatch, void *rrow, aobj *ocol) {
     printf("iEvictMCI\n");
-    bt      *nbtr  = NULL; /* compiler warning */
+    bt      *nbtr  = NULL; // compiler warning
     r_ind_t *ri    = &Index[imatch];
     dp_t     dpl[ri->nclist];
     int      final = ri->nclist - 1;

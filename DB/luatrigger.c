@@ -64,7 +64,7 @@ extern r_ind_t *Index;
 /* NOTE: this calls lua routines every second from a server cron -> an event */
 /*  luacronfunc(Operations) -> use Operations to estimate current load */
 int luaCronTimeProc(struct aeEventLoop *eventLoop, lolo id, void *clientData) {
-    eventLoop = NULL; id = 0; clientData = 0; /* compiler warnings */
+    (void)eventLoop; (void)id; (void)clientData; // compiler warnings
     if (server.alc.LuaCronFunc) {
         CLEAR_LUA_STACK
         lua_getfield(server.lua, LUA_GLOBALSINDEX, server.alc.LuaCronFunc);

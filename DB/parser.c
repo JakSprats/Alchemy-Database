@@ -113,7 +113,7 @@ char *rem_backticks(char *token, int *len) {
 //TODO "if (endptr && !*endptr)" is a better check
 bool is_int(char *s) { // Used in UPDATE EXPRESSIONS
     char *endptr; long val = strtol(s, &endptr, 10);
-    val = 0; /* compiler warning */
+    (void)val; // compiler warning
     if (endptr[0] != '\0') return 0;
     else                   return 1;
 }
@@ -123,7 +123,7 @@ bool is_u128(char *s) { // Used in UPDATE EXPRESSIONS
 }
 bool is_float(char *s) { // Used in UPDATE EXPRESSIONS
     char *endptr; double val = strtod(s, &endptr);
-    val = 0; /* compiler warning */
+    (void)val; // compiler warning
     if (endptr[0] != '\0') return 0;
     else                   return 1;
 }

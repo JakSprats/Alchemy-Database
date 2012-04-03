@@ -253,7 +253,7 @@ static bool popKlist(range_t *g,   int   imatch, list **klist,
     return 1;
 }
 static bool join_op(range_t *g, aobj *apk, void *rrow, bool q, long *card) {
-    q = 0; /* compiler warning */
+    (void)q; // compiler warning
     if (JoinErr || JoinMiss)  return 0;
     if (!JoinLim)             return 1; // LIMIT OFFSET has been fulfilled
     jb_t   *jb     = g->jb;   /* code compaction */

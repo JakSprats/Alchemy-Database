@@ -47,7 +47,7 @@ void hashScript(char *digest, char *script, size_t len);
 int luaRedisCommand(lua_State *lua);
 
 static void ignoreFCP(void *v, lolo val, char *x, lolo xlen, long *card) {
-    v = NULL; val = 0; x = NULL; xlen = 0; card = NULL; /* compiler warning */
+    (void)v; (void)val; (void)x; (void)xlen; (void)card; // compiler warning
 }
 
 //NOTE: this command does NOT reply

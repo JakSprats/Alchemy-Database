@@ -1001,7 +1001,7 @@ void decrRefCountErow(robj *r) { // NOTE Used in cloneRobj()
 static robj *orow_embedded(bt     *btr,  void *rrow, int qcols, 
                            icol_t *ics,  aobj *apk,  int tmatch,
                            lfca_t *lfca, bool *ost) {
-    ost        = NULL; // compiler warning
+    (void)ost; // compiler warning
     robj   *r  = createObject(REDIS_STRING, NULL);
     erow_t *er = malloc(sizeof(erow_t));
     er->ncols  = qcols;
