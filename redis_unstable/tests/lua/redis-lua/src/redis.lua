@@ -997,6 +997,7 @@ commands = {
             local info = {}
             response:gsub('([^\r\n]*)\r\n', function(kv)
                 local k,v = kv:match(('([^:]*):([^:]*)'):rep(1))
+                if (k ~= nil) then
                 if (k:match('db%d+')) then
                     info[k] = {}
                     v:gsub(',', function(dbkv)
@@ -1005,6 +1006,7 @@ commands = {
                     end)
                 else
                     info[k] = v
+                end
                 end
             end)
             return info
