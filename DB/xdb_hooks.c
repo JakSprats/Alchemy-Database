@@ -46,7 +46,6 @@ int inet_aton(const char *cp, struct in_addr *inp);
 #include "webserver.h"
 #include "messaging.h"
 #include "internal_commands.h"
-#include "ctable.h"
 #include "sixbit.h"
 #include "luatrigger.h"
 #include "aof_alsosql.h"
@@ -170,6 +169,8 @@ struct redisCommand DXDBCommandTable[] = {
 int *DXDB_getKeysFromCommand(rcommand *cmd, robj **argv, int argc, int *numkeys,
                              int flags,     sds *override_key, bool *err) {
     //printf("DXDB_getKeysFromCommand\n");
+    (void) override_key; (void) err; // compiler warnings
+#ifdef CLUSTER_VERSION
     if (cmd->proc == sqlSelectCommand || cmd->proc == insertCommand    || 
         cmd->proc == updateCommand    || cmd->proc == deleteCommand    || 
         cmd->proc == replaceCommand   || cmd->proc == tscanCommand) {
@@ -177,6 +178,7 @@ int *DXDB_getKeysFromCommand(rcommand *cmd, robj **argv, int argc, int *numkeys,
             *override_key = override_getKeysFromComm(cmd, argv, argc, err);
             return NULL;
     }
+#endif
     if (cmd->getkeys_proc) {
         return cmd->getkeys_proc(cmd, argv, argc, numkeys, flags);
     } else {

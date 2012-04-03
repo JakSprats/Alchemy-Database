@@ -407,6 +407,7 @@ void releaseLFCA(lfca_t *lfca) {
 bool sqlSelectBinary(cli  *c,     int     tmatch, bool   cstar, icol_t *ics,
                      int   qcols, cswc_t *w,      wob_t *wb,    bool    need_cn,
                      lfca_t *lfca) {
+    (void) need_cn; // compiler warning
     if (cstar && wb->nob) { /* SELECT COUNT(*) ORDER BY -> stupid */
         addReply(c, shared.orderby_count);                          return 0;
     }

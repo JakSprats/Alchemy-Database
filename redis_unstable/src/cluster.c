@@ -496,6 +496,7 @@ void nodeIp2String(char *buf, clusterLink *link) {
 /* Update the node address to the IP address that can be extracted
  * from link->fd, and at the specified port. */
 void nodeUpdateAddress(clusterNode *node, clusterLink *link, int port) {
+(void)node; (void)link; (void)port; // compiler warnings
 }
 
 /* When this function is called, there is a packet to process starting
