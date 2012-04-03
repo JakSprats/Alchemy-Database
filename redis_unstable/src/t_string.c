@@ -1,7 +1,9 @@
 #include "redis.h"
 #ifdef ALCHEMY_DATABASE
   #include "common.h"
-  void e_alc_got_obj(cli *c, robj *obj);
+  #ifdef EMBEDDED_VERSION
+    void e_alc_got_obj(cli *c, robj *obj);
+  #endif
 #endif
 
 /*-----------------------------------------------------------------------------
@@ -64,7 +66,9 @@ int getGenericCommand(redisClient *c) {
         return REDIS_ERR;
     } else {
 #ifdef ALCHEMY_DATABASE
+  #ifdef EMBEDDED_VERSION
         if (EREDIS) { e_alc_got_obj(c, o); return REDIS_OK; }
+  #endif
 #endif
         addReplyBulk(c,o);
         return REDIS_OK;

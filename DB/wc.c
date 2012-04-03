@@ -35,7 +35,9 @@ ALL RIGHTS RESERVED
 
 #include "debug.h"
 #include "prep_stmt.h"
+#ifdef EMBEDDED_VERSION
 #include "embed.h"
+#endif
 #include "internal_commands.h"
 #include "join.h"
 #include "index.h"
@@ -645,7 +647,9 @@ bool parseJoin(cli *c, jb_t *jb, char *clist, char *tlist, char *wc) {
     } listReleaseIterator(lijs);
     ret = joinParseWC(c, jb, wc);
     if (!leftoverParsingReply(c, jb->lvr))      goto prs_join_end;
+#ifdef EMBEDDED_VERSION
     if (EREDIS) embeddedSaveJoinedColumnNames(jb);
+#endif
 
 prs_join_end:
     listRelease(tl); luasellistRelease(ls);

@@ -40,7 +40,9 @@ ALL RIGHTS RESERVED
 #include "debug.h"
 #include "find.h"
 #include "prep_stmt.h"
+#ifdef EMBEDDED_VERSION
 #include "embed.h"
+#endif
 #include "lru.h"
 #include "lfu.h"
 #include "rpipe.h"
@@ -412,9 +414,11 @@ bool sqlSelectBinary(cli  *c,     int     tmatch, bool   cstar, icol_t *ics,
     else if (c->Explain) { explainRQ(c, w, wb, cstar, qcols, ics);  return 1; }
     //dumpW(printf, w); dumpWB(printf, wb);
 
+#ifdef EMBEDDED_VERSION
     if (EREDIS && (need_cn || GlobalNeedCn)) {
         embeddedSaveSelectedColumnNames(tmatch, ics, qcols);
     }
+#endif
     if (w->wtype != SQL_SINGLE_LKP) { /* FK, RQ, IN */
         if (w->wf.imatch == -1) {
             addReply(c, shared.rangequery_index_not_found);         return 0;

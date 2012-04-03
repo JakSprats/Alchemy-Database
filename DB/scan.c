@@ -33,7 +33,9 @@ ALL RIGHTS RESERVED
 
 #include "debug.h"
 #include "prep_stmt.h"
+#ifdef EMBEDDED_VERSION
 #include "embed.h"
+#endif
 #include "lru.h"
 #include "lfu.h"
 #include "bt_iterator.h"
@@ -94,7 +96,9 @@ static void scanJoin(cli *c) {
         if (ok) {
             if (c->Explain) explainJoin(c, &jb); 
             else {
+#ifdef EMBEDDED_VERSION
                 if (EREDIS) embeddedSaveJoinedColumnNames(&jb);
+#endif
                 executeJoin(c, &jb);
             }
         }
@@ -177,7 +181,9 @@ void tscanCommand(redisClient *c) { //printf("tscanCommand\n");
     if      (c->Prepare) prepareRQ(c, &w, &wb, cstar, qcols, ics);
     else if (c->Explain) explainRQ(c, &w, &wb, cstar, qcols, ics);
     else {
+#ifdef EMBEDDED_VERSION
         if (EREDIS) embeddedSaveSelectedColumnNames(tmatch, ics, qcols);
+#endif
         iselectAction(c, &w, &wb, ics, qcols, cstar, &lfca);
     }
 
