@@ -2,6 +2,8 @@
 # Copyright (C) 2009 Salvatore Sanfilippo <antirez at gmail dot com>
 # This file is released under the BSD license, see the COPYING file
 
+#USE_TCMALLOC=yes
+
 release_hdr := $(shell sh -c './mkreleasehdr.sh')
 uname_S := $(shell sh -c 'uname -s 2>/dev/null || echo not')
 OPTIMIZATION?=-O2
@@ -12,7 +14,7 @@ ifeq ($(uname_S),SunOS)
   CCLINK?=-ldl -lnsl -lsocket -lm -lpthread
   DEBUG?=-g -ggdb 
 else
-  CFLAGS?=-std=c99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF)
+  CFLAGS?=-std=c99 -pedantic $(OPTIMIZATION) -Wall -W $(ARCH) $(PROF) -DALCHEMY_DATABASE -fPIC
   CCLINK?=-lm -pthread
   DEBUG?=-g -rdynamic -ggdb 
 endif
@@ -69,8 +71,8 @@ MAKECOLOR="\033[32;1m"
 ENDCOLOR="\033[0m"
 
 ifndef V
-QUIET_CC = @printf '    %b %b\n' $(CCCOLOR)CC$(ENDCOLOR) $(SRCCOLOR)$@$(ENDCOLOR);
-QUIET_LINK = @printf '    %b %b\n' $(LINKCOLOR)LINK$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR);
+#QUIET_CC = @printf '    %b %b\n' $(CCCOLOR)CC$(ENDCOLOR) $(SRCCOLOR)$@$(ENDCOLOR);
+#QUIET_LINK = @printf '    %b %b\n' $(LINKCOLOR)LINK$(ENDCOLOR) $(BINCOLOR)$@$(ENDCOLOR);
 endif
 
 OBJ = adlist.o ae.o anet.o dict.o redis.o sds.o zmalloc.o lzf_c.o lzf_d.o pqsort.o zipmap.o sha1.o ziplist.o release.o networking.o util.o object.o db.o replication.o rdb.o t_string.o t_list.o t_set.o t_zset.o t_hash.o config.o aof.o pubsub.o multi.o debug.o sort.o intset.o syncio.o migrate.o crc16.o endianconv.o slowlog.o scripting.o bio.o rio.o rand.o memtest.o crc64.o
@@ -78,14 +80,15 @@ BENCHOBJ = ae.o anet.o redis-benchmark.o sds.o adlist.o zmalloc.o
 CLIOBJ = anet.o sds.o adlist.o redis-cli.o zmalloc.o release.o
 CHECKDUMPOBJ = redis-check-dump.o lzf_c.o lzf_d.o
 CHECKAOFOBJ = redis-check-aof.o
+GENBENCHOBJ = ae.o anet.o gen-benchmark.o sds.o adlist.o zmalloc.o
 
-PRGNAME = redis-server
-BENCHPRGNAME = redis-benchmark
-CLIPRGNAME = redis-cli
-CHECKDUMPPRGNAME = redis-check-dump
-CHECKAOFPRGNAME = redis-check-aof
+PRGNAME = alchemy-server
+BENCHPRGNAME = alchemy-benchmark
+CLIPRGNAME = alchemy-cli
+CHECKDUMPPRGNAME = alchemy-check-dump
+CHECKAOFPRGNAME = alchemy-check-aof
 
-all: redis-benchmark redis-cli redis-check-dump redis-check-aof redis-server
+all: alchemy-lib alchemy-benchmark alchemy-cli alchemy-check-dump alchemy-check-aof alchemy-server
 	@echo ""
 	@echo "Hint: To run 'make test' is a good idea ;)"
 	@echo ""
@@ -199,26 +202,35 @@ endif
 .make-prerequisites: .make-arch .make-malloc
 	@touch $@
 
-redis-server: .make-prerequisites $(OBJ)
-	$(QUIET_LINK)$(CC) -o $(PRGNAME) $(CCOPT) $(DEBUG) $(OBJ) ../deps/lua/src/liblua.a $(CCLINK)
+alchemy-server: .make-prerequisites $(OBJ) ../../DB/libx_db.a
+	ar rcs libalchemy.a *.o
+	$(QUIET_LINK)$(CC) -o $(PRGNAME) $(CCOPT) $(DEBUG) $(OBJ)  -L../../DB/ -lx_db ../deps/lua/src/liblua.a $(CCLINK)
 
-redis-benchmark: .make-prerequisites $(BENCHOBJ)
+alchemy-benchmark: .make-prerequisites $(BENCHOBJ)
 	$(QUIET_LINK)$(CC) -o $(BENCHPRGNAME) $(CCOPT) $(DEBUG) $(BENCHOBJ) ../deps/hiredis/libhiredis.a $(CCLINK)
 
 redis-benchmark.o: redis-benchmark.c .make-prerequisites
 	$(QUIET_CC)$(CC) -c $(CFLAGS) -I../deps/hiredis $(DEBUG) $(COMPILE_TIME) $<
 
-redis-cli: .make-prerequisites $(CLIOBJ)
-	$(QUIET_LINK)$(CC) -o $(CLIPRGNAME) $(CCOPT) $(DEBUG) $(CLIOBJ) ../deps/hiredis/libhiredis.a ../deps/linenoise/linenoise.o $(CCLINK)
+alchemy-cli: .make-prerequisites $(CLIOBJ)
+	$(QUIET_LINK)$(CC) -o $(CLIPRGNAME) $(CCOPT) $(DEBUG) $(CLIOBJ) ../deps/hiredis/libhiredis.a ../deps/linenoise/linenoise.o $(CCLINK) ../../DB/xdb_client_hooks.o
 
 redis-cli.o: redis-cli.c .make-prerequisites
 	$(QUIET_CC)$(CC) -c $(CFLAGS) -I../deps/hiredis -I../deps/linenoise $(DEBUG) $(COMPILE_TIME) $<
 
-redis-check-dump: .make-prerequisites $(CHECKDUMPOBJ)
+alchemy-gen-benchmark: dependencies $(GENBENCHOBJ)
+	@cd ../deps/hiredis && $(MAKE) static
+	$(QUIET_LINK)$(CC) -o $(GENBENCHPRGNAME) $(CCOPT) $(DEBUG) $(GENBENCHOBJ) ../deps/hiredis/libhiredis.a $(CCLINK)
+
+
+alchemy-check-dump: .make-prerequisites $(CHECKDUMPOBJ)
 	$(QUIET_LINK)$(CC) -o $(CHECKDUMPPRGNAME) $(CCOPT) $(DEBUG) $(CHECKDUMPOBJ) $(CCLINK)
 
-redis-check-aof: .make-prerequisites $(CHECKAOFOBJ)
+alchemy-check-aof: .make-prerequisites $(CHECKAOFOBJ)
 	$(QUIET_LINK)$(CC) -o $(CHECKAOFPRGNAME) $(CCOPT) $(DEBUG) $(CHECKAOFOBJ) $(CCLINK)
+
+alchemy-lib: .make-prerequisites
+	(cd ../../DB; make redis3)
 
 # Because the jemalloc.h header is generated as a part of the jemalloc build
 # process, building it should complete before building any other object. Instead of
@@ -229,7 +241,8 @@ redis-check-aof: .make-prerequisites $(CHECKAOFOBJ)
 .PHONY: all clean distclean
 
 clean:
-	rm -rf $(PRGNAME) $(BENCHPRGNAME) $(CLIPRGNAME) $(CHECKDUMPPRGNAME) $(CHECKAOFPRGNAME) *.o *.gcda *.gcno *.gcov
+	(cd ../../DB; make clean)
+	rm -rf $(PRGNAME) $(BENCHPRGNAME) $(CLIPRGNAME) $(CHECKDUMPPRGNAME) $(CHECKAOFPRGNAME) $(GENBENCHPRGNAME) *.o *.gcda *.gcno *.gcov pluto.so
 
 distclean: clean
 	-(cd ../deps && $(MAKE) distclean)
@@ -238,11 +251,11 @@ distclean: clean
 dep:
 	$(CC) -MM *.c -I ../deps/hiredis -I ../deps/linenoise
 
-test: redis-server redis-check-aof
+test: alchemy-server alchemy-check-aof
 	@(cd ..; ./runtest)
 
 bench:
-	./redis-benchmark
+	./alchemy-benchmark
 
 log:
 	git log '--pretty=format:%ad %s (%cn)' --date=short > ../Changelog

@@ -44,10 +44,14 @@ struct sdshdr {
     char buf[];
 };
 
+#ifdef ALCHEMY_DATABASE
+size_t sdslen(const sds s);
+#else
 static inline size_t sdslen(const sds s) {
     struct sdshdr *sh = (void*)(s-(sizeof(struct sdshdr)));
     return sh->len;
 }
+#endif
 
 static inline size_t sdsavail(const sds s) {
     struct sdshdr *sh = (void*)(s-(sizeof(struct sdshdr)));

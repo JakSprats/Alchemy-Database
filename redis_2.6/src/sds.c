@@ -62,6 +62,13 @@ sds sdsnew(const char *init) {
     return sdsnewlen(init, initlen);
 }
 
+#ifdef ALCHEMY_DATABASE
+inline size_t sdslen(const sds s) {
+    struct sdshdr *sh = (void*)(s-(sizeof(struct sdshdr)));
+    return sh->len;
+}
+#endif
+
 sds sdsdup(const sds s) {
     return sdsnewlen(s, sdslen(s));
 }

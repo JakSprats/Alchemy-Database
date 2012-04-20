@@ -1,3 +1,6 @@
+#ifdef ALCHEMY_DATABASE
+  #include "xdb_hooks.h"
+#endif
 #include "redis.h"
 #include "bio.h"
 #include "rio.h"
@@ -231,6 +234,22 @@ sds catAppendOnlyExpireAtCommand(sds buf, struct redisCommand *cmd, robj *key, r
 }
 
 void feedAppendOnlyFile(struct redisCommand *cmd, int dictid, robj **argv, int argc) {
+//TODO ALCHEMY_DATABASE: deprecate SQL_AOF
+#if 0
+#ifdef ALCHEMY_DATABASE
+    if (server.alc.SQL_AOF) {
+        sds buf = DXDB_SQL_feedAppendOnlyFile(cmd, argv, argc);
+        // following lines copied from below
+        server.aofbuf = sdscatlen(server.aofbuf, buf, sdslen(buf));
+        if (server.bgrewritechildpid != -1) {
+            server.bgrewritebuf = sdscatlen(server.bgrewritebuf, buf,
+                                            sdslen(buf));
+        }
+        sdsfree(buf);
+        return;
+    }
+#endif
+#endif
     sds buf = sdsempty();
     robj *tmpargv[3];
 
@@ -694,7 +713,12 @@ int rewriteAppendOnlyFile(char *filename) {
         return REDIS_ERR;
     }
 
+//TODO ALCHEMY_DATABASE: works w/ rioInitWithFile?
     rioInitWithFile(&aof,fp);
+#ifdef ALCHEMY_DATABASE
+    if (DXDB_rewriteAppendOnlyFile(fp) == -1) goto werr;
+#endif
+
     for (j = 0; j < server.dbnum; j++) {
         char selectcmd[] = "*2\r\n$6\r\nSELECT\r\n";
         redisDb *db = server.db+j;

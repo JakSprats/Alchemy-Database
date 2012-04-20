@@ -46,6 +46,11 @@
 #include <stdio.h>
 
 #include "anet.h"
+#ifdef ALCHEMY_DATABASE
+  struct sockaddr_in AcceptedClientSA;
+  void DXDB_setSA(struct sockaddr_in sa) { AcceptedClientSA = sa; }
+#endif
+
 
 static void anetSetError(char *err, const char *fmt, ...)
 {
@@ -336,6 +341,9 @@ int anetTcpAccept(char *err, int s, char *ip, int *port) {
 
     if (ip) strcpy(ip,inet_ntoa(sa.sin_addr));
     if (port) *port = ntohs(sa.sin_port);
+#ifdef ALCHEMY_DATABASE
+    DXDB_setSA(sa);
+#endif
     return fd;
 }
 

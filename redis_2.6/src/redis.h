@@ -33,6 +33,13 @@
 #include "version.h" /* Version macro */
 #include "util.h"    /* Misc functions useful in many places */
 
+#ifdef ALCHEMY_DATABASE
+  #include "xdb_common.h"
+  #include <sys/socket.h>
+  #include <netinet/tcp.h>
+  #include <arpa/inet.h>
+#endif
+
 /* Error codes */
 #define REDIS_OK                0
 #define REDIS_ERR               -1
@@ -317,9 +324,16 @@ typedef struct blockingState {
                              * for BRPOPLPUSH. */
 } blockingState;
 
+#ifdef ALCHEMY_DATABASE
+  DEFINE_ALCHEMY_HTTP_INFO
+#endif
+
 /* With multiplexing we need to take per-clinet state.
  * Clients are taken in a liked list. */
 typedef struct redisClient {
+#ifdef ALCHEMY_DATABASE
+    ALCHEMY_CLIENT_EXTENSIONS
+#endif
     int fd;
     redisDb *db;
     int dictid;
@@ -363,6 +377,9 @@ struct saveparam {
 };
 
 struct sharedObjectsStruct {
+#ifdef ALCHEMY_DATABASE
+    SHARED_OBJ_DECLARATION
+#endif
     robj *crlf, *ok, *err, *emptybulk, *czero, *cone, *cnegone, *pong, *space,
     *colon, *nullbulk, *nullmultibulk, *queued,
     *emptymultibulk, *wrongtypeerr, *nokeyerr, *syntaxerr, *sameobjecterr,
@@ -432,6 +449,9 @@ typedef struct redisOpArray {
  *----------------------------------------------------------------------------*/
 
 struct redisServer {
+#ifdef ALCHEMY_DATABASE
+    ALCHEMY_SERVER_EXTENSIONS
+#endif
     /* General */
     redisDb *db;
     dict *commands;             /* Command table hahs table */
@@ -1098,11 +1118,14 @@ void evalShaCommand(redisClient *c);
 void scriptCommand(redisClient *c);
 void timeCommand(redisClient *c);
 
+//TODO ALCHEMY_DATABASE: #ifdef needed?
+#ifndef ALCHEMY_DATABASE
 #if defined(__GNUC__)
 void *calloc(size_t count, size_t size) __attribute__ ((deprecated));
 void free(void *ptr) __attribute__ ((deprecated));
 void *malloc(size_t size) __attribute__ ((deprecated));
 void *realloc(void *ptr, size_t size) __attribute__ ((deprecated));
+#endif
 #endif
 
 /* Debugging stuff */

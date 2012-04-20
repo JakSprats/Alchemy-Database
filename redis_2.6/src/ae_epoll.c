@@ -87,6 +87,12 @@ static int aeApiPoll(aeEventLoop *eventLoop, struct timeval *tvp) {
             int mask = 0;
             struct epoll_event *e = state->events+j;
 
+#ifdef ALCHEMY_DATABASE // half closed sockets
+            if (e->events & EPOLLERR || e->events & EPOLLHUP) {
+                mask = AE_READABLE | AE_WRITABLE;
+                aeApiDelEvent(eventLoop, e->data.fd, mask);
+            }
+#endif
             if (e->events & EPOLLIN) mask |= AE_READABLE;
             if (e->events & EPOLLOUT) mask |= AE_WRITABLE;
             eventLoop->fired[j].fd = e->data.fd;
